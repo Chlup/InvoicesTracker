@@ -47,6 +47,9 @@ fastlane/test_output
 fastlane/.env
 *.p8
 
+# The Developer ID identity exported from the keychain, with its private key, for the release workflow's secret
+*.p12
+
 # macOS
 
 ## General
