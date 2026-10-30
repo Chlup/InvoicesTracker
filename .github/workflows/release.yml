@@ -167,10 +167,13 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ inputs.deploy && secrets.SPARKLE_PRIVATE_KEY || '' }}
         run: bundle exec fastlane ci_dmg version:"$VERSION" build:"$BUILD" deploy:"$DEPLOY" skip_tests:"$SKIP_TESTS"
 
-      # Right after the lane, before any step of the feed, so a deploy that fails still leaves the DMG.
+      # Right after the lane, before any step of the feed, so a deploy that fails still leaves the DMG. Unzipped, the
+      # artifact is named after the file, but overwrite deletes the artifact that name names ("artifact" by default),
+      # so name is the name of the file: a re-run then replaces the DMG of the first attempt.
       - name: Upload the DMG
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: InvoicesTracker-${{ steps.check.outputs.version }}-${{ steps.check.outputs.build }}.dmg
           path: build/InvoicesTracker-${{ steps.check.outputs.version }}-${{ steps.check.outputs.build }}.dmg
           archive: false
           if-no-files-found: error

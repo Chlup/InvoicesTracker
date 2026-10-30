@@ -220,12 +220,27 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   end
 
   # The upload comes right after the lane, before any step of the feed, so a deploy that fails still leaves the DMG.
+  # Unzipped, the artifact is named after the file whatever `name` says, but `overwrite` deletes the artifact that
+  # `name` names, "artifact" when there is none. A re-run would then meet the DMG of the first attempt (409 Conflict)
+  # after the whole build, unless `name` is the name of the file.
   def test_the_dmg_is_uploaded_as_the_file_it_is
     dmg = dmg_upload
+    file = "InvoicesTracker-#{CHECKED_VERSION}-#{CHECKED_BUILD}.dmg"
 
-    assert_equal "build/InvoicesTracker-#{CHECKED_VERSION}-#{CHECKED_BUILD}.dmg", dmg.dig("with", "path")
+    assert_equal "build/#{file}", dmg.dig("with", "path")
+    assert_equal file, dmg.dig("with", "name")
+    assert_equal true, dmg.dig("with", "overwrite")
     assert_equal "error", dmg.dig("with", "if-no-files-found")
     refute dmg.key?("if"), "the DMG is uploaded whether or not the run deploys"
+  end
+
+  def test_every_upload_that_overwrites_says_which_artifact
+    uploads = all_steps.select { |step| step["uses"].to_s.start_with?("actions/upload-artifact@") }
+
+    refute_empty uploads
+    uploads.select { |step| step.dig("with", "overwrite") }.each do |step|
+      refute_nil step.dig("with", "name"), "the upload #{step['name'].inspect} overwrites without a name"
+    end
   end
 
   def test_the_feed_is_made_and_uploaded_only_when_deploying
