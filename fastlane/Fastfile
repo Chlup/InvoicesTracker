@@ -79,11 +79,12 @@ lane :dmg do |options|
     preflight.values_at(:versions, :identity, :key_settings, :working_copy)
   paths = announce_build(versions: versions, identity: identity, working_copy: working_copy)
 
-  # The first run, and a run after the requirements changed, install dmgbuild
-  # from PyPI. That comes right after the preflight, so that a failure costs
-  # seconds and not the whole build.
-  dmgbuild = ensure_dmgbuild
+  # A DMG of the same name goes first, so that a run that fails from here on
+  # leaves none. The first run, and a run after the requirements changed,
+  # install dmgbuild from PyPI. That comes right after the preflight, so that a
+  # failure costs seconds and not the whole build.
   clear_previous_build(paths)
+  dmgbuild = ensure_dmgbuild
 
   if skip_tests
     UI.important("Skipping the unit tests (skip_tests:true)")
@@ -713,8 +714,9 @@ def build_on_ci(ci, keychain:, sparkle_key:)
   paths = announce_build(versions: versions, identity: identity, working_copy: working_copy)
   UI.message("Deploy:   #{ci[:deploy] ? 'yes, sparkle_feed makes the feed next' : 'no'}")
 
-  dmgbuild = ensure_dmgbuild
+  # As in the dmg lane: the previous DMG goes before dmgbuild is installed.
   clear_previous_build(paths)
+  dmgbuild = ensure_dmgbuild
 
   if ci[:skip_tests]
     UI.important("Skipping the unit tests (skip_tests:true)")
