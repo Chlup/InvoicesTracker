@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
+require "digest"
 require "fileutils"
 require "json"
 require "open3"
+require "securerandom"
 require "shellwords"
+require "tmpdir"
 
 # require_relative rather than fastlane's intercepted `require`, so the local
 # files raise no "you have required a gem" notice. The lib directory is on the
@@ -19,6 +22,15 @@ require_relative "lib/invoices_tracker/build_settings"
 require_relative "lib/invoices_tracker/verification"
 require_relative "lib/invoices_tracker/working_copy"
 require_relative "lib/invoices_tracker/preflight"
+require_relative "lib/invoices_tracker/ci_build"
+require_relative "lib/invoices_tracker/ci_keychain"
+require_relative "lib/invoices_tracker/deploy_preflight"
+require_relative "lib/invoices_tracker/github_releases"
+require_relative "lib/invoices_tracker/log_text"
+require_relative "lib/invoices_tracker/release_manifest"
+require_relative "lib/invoices_tracker/release_naming"
+require_relative "lib/invoices_tracker/release_notes"
+require_relative "lib/invoices_tracker/sparkle"
 
 # fastlane/README.md is written by hand; fastlane must not regenerate it.
 skip_docs
@@ -49,6 +61,12 @@ REQUIRED_TOOLS = %w[python3 xcbeautify].freeze
 # What dmgbuild is installed from, and the layout it gives the disk image.
 DMG_REQUIREMENTS = File.join(FASTLANE_DIR, "requirements-dmg.txt")
 DMG_SETTINGS = File.join(FASTLANE_DIR, "dmg_settings.py")
+
+# What sparkle_feed leaves for the publish job: the DMG, the appcast, the notes
+# and release.json. The appcast is made in the staging folder, which holds only
+# the DMG and its notes, since generate_appcast reads every archive it finds.
+FEED_DIR = File.join(REPO_ROOT, "build", "feed")
+FEED_STAGING_DIR = File.join(REPO_ROOT, "build", "feed-staging")
 
 desc "Builds the signed, notarized DMG of the checked-out commit: build/InvoicesTracker-<version>-<build>.dmg."
 desc "The version and build number come from the Xcode project. skip_tests:true skips the unit tests."
@@ -84,6 +102,73 @@ lane :dmg do |options|
 
   notarized_dmg(paths: paths, identity: identity, api_key: api_key, dmgbuild: dmgbuild)
   UI.success("DMG ready: #{paths[:final_dmg]} (#{working_copy.short_head})")
+end
+
+desc "CI only (CI=true, RUNNER_TEMP): the dmg lane on a GitHub-hosted runner, for the release workflow."
+desc "version: and build: are the typed numbers and must be the branch's. deploy:true also checks what a release " \
+     "needs (changelog, tag, Latest release, the app's update settings). skip_tests:true skips the unit tests."
+desc "Signs from a temporary keychain made from DEVELOPER_ID_P12 and DEVELOPER_ID_P12_PASSWORD, removed at the end."
+lane :ci_dmg do |options|
+  ci = ci_options(options)
+  # The secrets leave the environment before the lane starts any tool, so that
+  # no tool, build script or test inherits them; the lane hands them on itself.
+  identity_file = rewrapped_developer_id
+  sparkle_key = ENV.delete("SPARKLE_PRIVATE_KEY")
+  keychain = InvoicesTracker::CiBuild.keychain_path(ci[:runner_temp])
+  # Read before anything changes, so that it can be put back.
+  search_list = keychain_search_list
+
+  # From the first keychain command on, the keychain is removed and the search
+  # list put back however the build ends.
+  begin
+    make_signing_keychain(keychain: keychain, search_list: search_list, identity_file: identity_file,
+                          runner_temp: ci[:runner_temp])
+    build_on_ci(ci, keychain: keychain, sparkle_key: sparkle_key)
+  ensure
+    remove_signing_keychain(keychain: keychain, search_list: search_list)
+  end
+end
+
+desc "Writes build/feed/ for publishing the DMG that ci_dmg made: the DMG, its signed Sparkle appcast.xml, " \
+     "release-notes.md and release.json."
+desc "version: and build: name the DMG. RELEASE_CHANGELOG holds the notes, SPARKLE_PRIVATE_KEY signs the feed, " \
+     "and gh asks GitHub about the tag and the Latest release."
+lane :sparkle_feed do |options|
+  # The key leaves the environment before the lane starts any tool, and reaches
+  # generate_appcast on standard input alone.
+  sparkle_key = ENV.delete("SPARKLE_PRIVATE_KEY")
+  # A run that stops on the way leaves no feed behind that could be taken for its result.
+  FileUtils.rm_rf(FEED_DIR)
+
+  version = options[:version].to_s.strip
+  build = options[:build].to_s.strip
+  format_errors = InvoicesTracker::BuildSettings.typed_format_errors(version: version, build: build)
+  UI.user_error!("The feed cannot be made:\n#{bullet_list(format_errors)}") unless format_errors.empty?
+
+  paths = InvoicesTracker::Paths.resolve(repo_root: REPO_ROOT, version: version, build: build)
+  dmg = paths[:final_dmg]
+  UI.user_error!("There is no DMG at #{dmg} — the ci_dmg lane makes it") unless File.file?(dmg)
+  tools_dir = InvoicesTracker::Sparkle.tools_dir(derived_data: paths[:derived_data])
+  unless File.executable?(File.join(tools_dir, "generate_appcast"))
+    UI.user_error!("the branch's app has no Sparkle — no generate_appcast in #{tools_dir}")
+  end
+  UI.user_error!("gh is not installed — brew install gh") unless installed?("gh")
+
+  # The checks of a deploy once more, on the app inside the DMG this time: its
+  # SUFeedURL and SUPublicEDKey, the key, the changelog, the tag and the Latest
+  # release, whose tag goes into release.json for the publish job to compare.
+  UI.message("Checking the app in #{File.basename(dmg)}, the changelog, the key and GitHub...")
+  check = deploy_check(version: version, build: build, gh_installed: true, info_plist: info_plist_in_dmg(dmg),
+                       sparkle_key: sparkle_key)
+  UI.user_error!("The feed cannot be made:\n#{bullet_list(check[:errors])}") unless check[:errors].empty?
+
+  notes = InvoicesTracker::ReleaseNotes.normalize(ENV["RELEASE_CHANGELOG"])
+  appcast = signed_appcast(dmg: dmg, notes: notes, tools_dir: tools_dir, version: version, build: build,
+                           sparkle_key: sparkle_key)
+  manifest = write_feed(dmg: dmg, appcast: appcast, notes: notes, version: version, build: build,
+                        latest: check[:latest_release])
+  UI.success("Feed ready: #{FEED_DIR} (#{manifest['tag']}, Latest release seen: " \
+             "#{manifest['latest_tag_seen'].empty? ? 'none' : manifest['latest_tag_seen']})")
 end
 
 # --- the steps of a release build --------------------------------------------
@@ -208,13 +293,16 @@ end
 # every problem at once. Returns the versions, the signing identity, the API key
 # settings and the working copy (clean, and the commit the build starts from);
 # the settings are read here once, and the later steps use what this returns.
-def preflight
+#
+# `tools` are the command-line tools the lane needs. A lane with checks of its
+# own passes a block: it gets the project's versions (nil when they could not
+# be read), the tools that are missing and the app target's INFOPLIST_FILE
+# setting (nil when it has none), and returns its problems, which come last.
+def preflight(tools: REQUIRED_TOOLS)
   UI.message("Checking the working copy, the tools, the API key, the keychain and the project...")
 
   working_copy = working_copy_snapshot
-  missing_tools = REQUIRED_TOOLS.select do |tool|
-    run("command -v #{tool.shellescape}", must_succeed: false).strip.empty?
-  end
+  missing_tools = tools.reject { |tool| installed?(tool) }
   # Only whether the key file is there is checked; the key itself is never read here.
   key_settings = InvoicesTracker::ApiKeySettings.resolve(
     ENV, fastlane_dir: FASTLANE_DIR, repo_root: REPO_ROOT, file_exists: File.method(:exist?)
@@ -223,7 +311,7 @@ def preflight
     run("security find-identity -v -p codesigning", must_succeed: true),
     team_id: InvoicesTracker::Release::TEAM_ID
   )
-  versions, version_errors = project_versions
+  project = project_settings
 
   report = InvoicesTracker::Preflight.check(
     InvoicesTracker::Preflight::Context.new(
@@ -231,12 +319,23 @@ def preflight
       missing_tools: missing_tools,
       api_key_settings: key_settings,
       identity_result: identity_result,
-      version_errors: version_errors
+      version_errors: project[:version_errors]
     )
   )
-  UI.user_error!("Preflight failed:\n#{bullet_list(report.errors)}") unless report.ok?
+  errors = report.errors
+  if block_given?
+    errors += yield(versions: project[:versions], missing_tools: missing_tools,
+                    info_plist_file: project[:info_plist_file])
+  end
+  UI.user_error!("Preflight failed:\n#{bullet_list(errors)}") unless errors.empty?
 
-  { versions: versions, identity: identity_result.identity, key_settings: key_settings, working_copy: working_copy }
+  { versions: project[:versions], identity: identity_result.identity, key_settings: key_settings,
+    working_copy: working_copy }
+end
+
+# Whether the command-line tool `tool` is installed, that is, found in PATH.
+def installed?(tool)
+  !run("command -v #{tool.shellescape}", must_succeed: false).strip.empty?
 end
 
 # The working copy as git reports it now: the commit HEAD points at, and the
@@ -259,10 +358,30 @@ def ensure_working_copy_unchanged(since:)
   UI.user_error!(error) if error
 end
 
-# The version and build number of the app target, read from the project, and
-# the problems with them. Returns [versions, errors]; versions is nil when they
-# could not be read. Only the paths that do not depend on the version exist yet.
-def project_versions
+# What the lane needs from the app target's build settings, read with one
+# xcodebuild call: `versions`, its version and build number, nil when they
+# could not be read; `version_errors`, the problems with them; and
+# `info_plist_file`, its INFOPLIST_FILE setting as the project writes it, nil
+# when it has none or the settings could not be read.
+def project_settings
+  json, stderr, status = read_build_settings
+  unless status.success?
+    message = "cannot read the version from the project: xcodebuild -showBuildSettings failed " \
+              "(exit #{status.exitstatus}): #{error_line(stderr)}"
+    return { versions: nil, version_errors: [message], info_plist_file: nil }
+  end
+
+  versions = InvoicesTracker::BuildSettings.versions(json, target: APP_TARGET)
+  { versions: versions, version_errors: InvoicesTracker::BuildSettings.errors(versions),
+    info_plist_file: InvoicesTracker::BuildSettings.info_plist_file(json, target: APP_TARGET) }
+rescue ArgumentError, JSON::ParserError, KeyError, SystemCallError => e
+  { versions: nil, version_errors: ["cannot read the version from the project: #{e.message}"], info_plist_file: nil }
+end
+
+# Runs `xcodebuild -showBuildSettings -json` for the scheme's Release
+# configuration and returns [stdout, stderr, status]. Only the paths that do
+# not depend on the version exist yet.
+def read_build_settings
   paths = InvoicesTracker::Paths.base(repo_root: REPO_ROOT)
   argv = [
     "xcodebuild", "-showBuildSettings", "-json",
@@ -272,17 +391,26 @@ def project_versions
     "-derivedDataPath", paths[:derived_data],
     "-skipMacroValidation"
   ]
-  # stdout only: xcodebuild prints its warnings on stderr, and they are not JSON.
-  json, stderr, status = Open3.capture3(*argv)
-  unless status.success?
-    return [nil, ["cannot read the version from the project: xcodebuild -showBuildSettings failed " \
-                  "(exit #{status.exitstatus}): #{error_line(stderr)}"]]
-  end
+  # stdout only is read as JSON: xcodebuild prints its warnings on stderr.
+  Open3.capture3(*argv)
+end
 
-  versions = InvoicesTracker::BuildSettings.versions(json, target: APP_TARGET)
-  [versions, InvoicesTracker::BuildSettings.errors(versions)]
-rescue ArgumentError, JSON::ParserError, KeyError, SystemCallError => e
-  [nil, ["cannot read the version from the project: #{e.message}"]]
+# The property list at `path` as a Hash, converted by plutil, which reads its
+# every format. Its text is compared exactly, so it is read as data, never as
+# a line of tool output with a line break at its end. Nil when there is no
+# path, when the file cannot be read or converted, or when it holds no
+# dictionary.
+def read_plist(path)
+  return nil if path.nil?
+
+  json, _stderr, status = Open3.capture3("plutil", "-convert", "json", "-o", "-", path)
+  return nil unless status.success?
+
+  # Read as UTF-8 whatever the locale labels the output with, like the build settings.
+  plist = JSON.parse(json.dup.force_encoding(Encoding::UTF_8))
+  plist.is_a?(Hash) ? plist : nil
+rescue JSON::ParserError, SystemCallError
+  nil
 end
 
 # --- dmgbuild ----------------------------------------------------------------
@@ -472,6 +600,353 @@ rescue Exception
   raise
 end
 
+# --- CI: the run and the temporary keychain ----------------------------------
+
+# The options of a CI run, once the lane knows it may run here. It refuses to
+# run outside a CI runner, without RUNNER_TEMP, or with a deploy or skip_tests
+# that is neither true nor false, giving every reason at once. Returns the
+# typed version and build, trimmed, the two flags and the runner's temporary
+# folder.
+def ci_options(options)
+  errors = InvoicesTracker::CiBuild.environment_errors(ENV)
+  flags = {}
+  %i[deploy skip_tests].each do |name|
+    flags[name] = InvoicesTracker::CiBuild.flag(options[name], name: name)
+  rescue ArgumentError => e
+    errors << e.message
+  end
+  UI.user_error!("ci_dmg cannot run here:\n#{bullet_list(errors)}") unless errors.empty?
+
+  runner_temp = File.expand_path(ENV.fetch("RUNNER_TEMP"))
+  unless File.directory?(runner_temp)
+    UI.user_error!("RUNNER_TEMP is not a folder: #{InvoicesTracker::LogText.line(runner_temp)}")
+  end
+
+  { version: options[:version].to_s.strip, build: options[:build].to_s.strip, deploy: flags[:deploy],
+    skip_tests: flags[:skip_tests], runner_temp: runner_temp }
+end
+
+# The keychains in the user's search list now, as `security list-keychains -d
+# user` prints them: the temporary keychain goes in front of them, and the list
+# is put back afterwards. An empty list stops the lane before anything is
+# changed, since putting back nothing would leave the user without a keychain.
+def keychain_search_list
+  list = InvoicesTracker::CiKeychain.parse_search_list(run_argv(["security", "list-keychains", "-d", "user"]))
+  UI.user_error!("security list-keychains -d user lists no keychain — the search list is left alone") if list.empty?
+  list
+end
+
+# The Developer ID identity of DEVELOPER_ID_P12, a .p12 file in base64, opened
+# with DEVELOPER_ID_P12_PASSWORD and encrypted again in memory under a random
+# throwaway password: { der:, password: }. `security import` takes the password
+# of the file it imports as an argument, so only the throwaway one may reach a
+# command line. Both secrets are taken out of the environment here, and neither
+# is written or printed.
+def rewrapped_developer_id
+  encoded = ENV.delete("DEVELOPER_ID_P12").to_s
+  secret_password = ENV.delete("DEVELOPER_ID_P12_PASSWORD").to_s
+  UI.user_error!("DEVELOPER_ID_P12 is not set") if encoded.strip.empty?
+
+  password = SecureRandom.hex(32)
+  der = InvoicesTracker::CiKeychain.rewrap_p12(encoded.unpack1("m"), password: secret_password, new_password: password)
+  { der: der, password: password }
+rescue ArgumentError => e
+  # No message of rewrap_p12 quotes a password.
+  UI.user_error!(e.message)
+end
+
+# Makes the temporary keychain at `keychain` with a random password, imports
+# the identity into it for codesign, and puts it in front of `search_list` in
+# the user's search list. The re-encrypted identity is written for `security
+# import` alone, into a folder of its own under `runner_temp` that only this
+# user can open, readable by this user only, and the folder is deleted with it
+# as soon as the import has run, whether or not it worked.
+def make_signing_keychain(keychain:, search_list:, identity_file:, runner_temp:)
+  UI.message("Making the temporary keychain #{keychain}...")
+  after_import = Dir.mktmpdir("invoices-p12-", runner_temp) do |folder|
+    p12_path = File.join(folder, "developer-id.p12")
+    File.open(p12_path, File::WRONLY | File::CREAT | File::EXCL | File::BINARY, 0o600) do |file|
+      file.write(identity_file[:der])
+    end
+    commands = InvoicesTracker::CiKeychain.setup_commands(
+      keychain: keychain, keychain_password: SecureRandom.hex(32), p12_path: p12_path,
+      p12_password: identity_file[:password], search_list: search_list
+    )
+    import = commands.index { |command| command[1] == "import" } || raise("the keychain setup imports nothing")
+    commands.first(import + 1).each { |command| run_argv(command) }
+    commands.drop(import + 1)
+  end
+  after_import.each { |command| run_argv(command) }
+  UI.success("The Developer ID identity is in the temporary keychain")
+end
+
+# Undoes make_signing_keychain: puts the user's search list back to
+# `search_list` and deletes the keychain with the identity in it. It runs
+# however the build ended, so a command that fails is reported and the next
+# one still runs; the workflow's last step deletes a keychain left behind.
+def remove_signing_keychain(keychain:, search_list:)
+  failed = false
+  InvoicesTracker::CiKeychain.teardown_commands(keychain: keychain, search_list: search_list).each do |command|
+    run_argv(command)
+  rescue FastlaneCore::Interface::FastlaneError => e
+    failed = true
+    UI.important("Could not undo the temporary keychain: #{e.message}")
+  end
+  UI.message("Removed the temporary keychain and put the search list back") unless failed
+end
+
+# --- CI: the build -----------------------------------------------------------
+
+# Everything ci_dmg does once the temporary keychain holds the identity: the
+# steps of the dmg lane, with the CI lane's own checks in the preflight, the
+# tests signed ad hoc and without the timing suites, and the archive signed
+# with the Developer ID identity from `keychain`. `sparkle_key` is the
+# SPARKLE_PRIVATE_KEY secret, which only a deploy's preflight uses.
+def build_on_ci(ci, keychain:, sparkle_key:)
+  tools = REQUIRED_TOOLS + (ci[:deploy] ? ["gh"] : [])
+  checked = preflight(tools: tools) do |versions:, missing_tools:, info_plist_file:|
+    ci_preflight_errors(ci, versions: versions, gh_installed: !missing_tools.include?("gh"),
+                            info_plist_file: info_plist_file, sparkle_key: sparkle_key)
+  end
+  versions, identity, key_settings, working_copy =
+    checked.values_at(:versions, :identity, :key_settings, :working_copy)
+  paths = announce_build(versions: versions, identity: identity, working_copy: working_copy)
+  UI.message("Deploy:   #{ci[:deploy] ? 'yes, sparkle_feed makes the feed next' : 'no'}")
+
+  dmgbuild = ensure_dmgbuild
+  clear_previous_build(paths)
+
+  if ci[:skip_tests]
+    UI.important("Skipping the unit tests (skip_tests:true)")
+  else
+    UI.message("Leaving out the timing suites: #{InvoicesTracker::CiBuild::SKIPPED_TEST_SUITES.join(', ')}")
+    unit_tests(paths, xcargs: Shellwords.join(InvoicesTracker::CiBuild.test_xcargs),
+                      skip_testing: InvoicesTracker::CiBuild.skip_testing)
+  end
+
+  api_key = register_app_and_profile(key_settings, paths)
+  with_manual_app_signing(paths[:project], identity) do
+    archive_and_export(paths: paths, identity: identity,
+                       xcargs: Shellwords.join(InvoicesTracker::CiBuild.archive_xcargs(keychain: keychain)))
+  end
+
+  # As in the dmg lane, once the project file is back as it was.
+  ensure_working_copy_unchanged(since: working_copy)
+
+  notarized_dmg(paths: paths, identity: identity, api_key: api_key, dmgbuild: dmgbuild)
+  UI.success("DMG ready: #{paths[:final_dmg]} (#{working_copy.short_head})")
+end
+
+# The CI lane's own problems, which follow those of the dmg lane. The typed
+# numbers must be the branch's; when the branch's could not be read, only their
+# format is checked. A deploy must also have what a release needs, with the
+# app's update settings read from the file INFOPLIST_FILE names, relative to
+# the repository root.
+def ci_preflight_errors(ci, versions:, gh_installed:, info_plist_file:, sparkle_key:)
+  version = ci[:version]
+  build = ci[:build]
+  errors = if versions
+             InvoicesTracker::BuildSettings.mismatch_errors(versions, version: version, build: build)
+           else
+             InvoicesTracker::BuildSettings.typed_format_errors(version: version, build: build)
+           end
+  return errors unless ci[:deploy]
+
+  info_plist = read_plist(info_plist_file && File.expand_path(info_plist_file, REPO_ROOT))
+  errors + deploy_check(version: version, build: build, gh_installed: gh_installed, info_plist: info_plist,
+                        sparkle_key: sparkle_key)[:errors]
+end
+
+# What decides whether `version` and `build`, trimmed, may be released, as
+# DeployPreflight judges it: the changelog in RELEASE_CHANGELOG, whether the tag
+# is new, the Latest release, the app's update settings in `info_plist` (a
+# Hash, nil when it could not be read) and `sparkle_key`, the private key (nil
+# when SPARKLE_PRIVATE_KEY is not set). Returns a Hash: `latest_release`, nil
+# when nothing is published or GitHub could not tell, and `errors`, those of
+# asking GitHub first. The facts hold the key, so they are never printed whole.
+def deploy_check(version:, build:, gh_installed:, info_plist:, sparkle_key:)
+  github = github_facts(version: version, build: build, gh_installed: gh_installed)
+  facts = InvoicesTracker::DeployPreflight::Facts.new(
+    version: version, build: build, changelog: ENV["RELEASE_CHANGELOG"], tag_exists: github[:tag_exists],
+    latest_release: github[:latest_release], info_plist: info_plist, sparkle_private_key: sparkle_key
+  )
+  { latest_release: github[:latest_release], errors: github[:errors] + InvoicesTracker::DeployPreflight.errors(facts) }
+end
+
+# What GitHub says about the release of `version` and `build`: whether its tag
+# exists, and the Latest release. Without gh nothing is asked; the preflight
+# reports gh as missing. The tag goes into the address of a question, so it is
+# asked about only when both numbers are well formed; when they are not, that
+# is reported already. A question that fails is a problem of its own.
+def github_facts(version:, build:, gh_installed:)
+  facts = { tag_exists: false, latest_release: nil, errors: [] }
+  return facts unless gh_installed
+
+  repository = InvoicesTracker::Release::REPOSITORY
+  if InvoicesTracker::BuildSettings.typed_format_errors(version: version, build: build).empty?
+    tag = InvoicesTracker::ReleaseNaming.tag(version: version, build: build)
+    facts[:tag_exists] = asking_github(facts[:errors]) do
+      InvoicesTracker::GitHubReleases.tag_exists?(repository: repository, tag: tag, gh: gh_cli)
+    end || false
+  end
+  facts[:latest_release] = asking_github(facts[:errors]) do
+    InvoicesTracker::GitHubReleases.latest(repository: repository, gh: gh_cli)
+  end
+  facts
+end
+
+# The answer of a question to GitHub. One that fails adds a problem to
+# `errors` and gives nil; the message names the call and quotes nothing of what
+# gh printed.
+def asking_github(errors)
+  yield
+rescue RuntimeError, SystemCallError => e
+  errors << "GitHub could not be asked — #{e.message}; gh signs in with GH_TOKEN"
+  nil
+end
+
+# The gh command-line tool as GitHubReleases calls it: the arguments of one
+# call in, [stdout, stderr, success] out. gh signs in with GH_TOKEN from the
+# environment, so the token never passes through here.
+def gh_cli
+  lambda do |args|
+    stdout, stderr, status = Open3.capture3("gh", *args)
+    [stdout, stderr, status.success?]
+  end
+end
+
+# Runs the block with only the app target's Release configuration switched to
+# manual signing in the project file: the team, the Developer ID identity by
+# its SHA-1 and the profile by its name. The runner has no Apple Development
+# certificate, and automatic signing would register the runner as a device;
+# the SQLCipher package target keeps its settings. The project file gets its
+# bytes and its permissions back when the block ends, after a failure too, so
+# the working copy is what it was when it is checked again.
+def with_manual_app_signing(project, identity)
+  pbxproj = File.join(project, "project.pbxproj")
+  original = File.binread(pbxproj)
+  mode = File.stat(pbxproj).mode & 0o7777
+  begin
+    update_code_signing_settings(
+      path: project,
+      use_automatic_signing: false,
+      targets: [APP_TARGET],
+      build_configurations: [CONFIGURATION],
+      team_id: InvoicesTracker::Release::TEAM_ID,
+      code_sign_identity: identity.sha1,
+      profile_name: InvoicesTracker::Release::PROFILE_NAME
+    )
+    yield
+  ensure
+    File.binwrite(pbxproj, original)
+    File.chmod(mode, pbxproj)
+  end
+end
+
+# --- the Sparkle feed --------------------------------------------------------
+
+# The Info.plist of the app inside the DMG at `dmg`, as a Hash, nil when it
+# cannot be read. The image is attached read-only, out of Finder's sight, at a
+# folder of its own, and detached again.
+def info_plist_in_dmg(dmg)
+  mount_point = Dir.mktmpdir("invoices-feed-")
+  run_argv(["hdiutil", "attach", dmg, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount_point])
+  begin
+    read_plist(File.join(mount_point, "#{InvoicesTracker::Release::APP_NAME}.app", "Contents", "Info.plist"))
+  ensure
+    detach_image(mount_point)
+  end
+ensure
+  remove_empty_folder(mount_point)
+end
+
+# Detaches the disk image attached at `mount_point`, with -force if the first
+# attempt fails, since macOS may still hold the volume for a moment. An image
+# that stays attached is reported, not an error: it is attached read-only.
+def detach_image(mount_point)
+  [[], ["-force"]].each do |force|
+    _output, status = Open3.capture2e("hdiutil", "detach", mount_point, *force)
+    return if status.success?
+  end
+  UI.important("Could not detach the disk image at #{mount_point}")
+end
+
+# Removes the folder at `path` if it is empty. One that is not, such as a
+# mount point whose image is still attached, stays as it is.
+def remove_empty_folder(path)
+  Dir.rmdir(path) if path && File.directory?(path)
+rescue SystemCallError
+  nil
+end
+
+# Makes and checks the appcast of the DMG with Sparkle's generate_appcast,
+# signed with `sparkle_key`, and returns its path. generate_appcast reads every
+# archive in the folder it is given, so it gets a fresh staging folder with a
+# copy of the DMG and `notes` beside it, named like the DMG with .md, which it
+# embeds. The key reaches it on standard input only, never on a command line,
+# in its environment or in a file. Stops when generate_appcast fails or the
+# appcast must not be published.
+def signed_appcast(dmg:, notes:, tools_dir:, version:, build:, sparkle_key:)
+  FileUtils.rm_rf(FEED_STAGING_DIR)
+  FileUtils.mkdir_p(FEED_STAGING_DIR)
+  dmg_name = File.basename(dmg)
+  FileUtils.cp(dmg, File.join(FEED_STAGING_DIR, dmg_name))
+  File.binwrite(File.join(FEED_STAGING_DIR, InvoicesTracker::ReleaseNaming.notes_filename(dmg_name)), notes)
+
+  appcast = File.join(FEED_STAGING_DIR, InvoicesTracker::GitHubReleases::APPCAST_NAME)
+  prefix = InvoicesTracker::ReleaseNaming.download_prefix(version: version, build: build)
+  argv = InvoicesTracker::Sparkle.generate_appcast_command(
+    tools_dir: tools_dir, archives_dir: FEED_STAGING_DIR, download_url_prefix: prefix,
+    link: InvoicesTracker::Release::RELEASES_URL, output: appcast
+  )
+  key = sparkle_key.to_s.strip
+  UI.message("Making the appcast with generate_appcast...")
+  # The staging folder is the working directory, so no file named "-" there can stand in for standard input.
+  stdout, stderr, status = Open3.capture3(*argv, stdin_data: key, chdir: FEED_STAGING_DIR)
+  output = without_secret("#{stdout}#{stderr}", key).lines.map(&:strip).reject(&:empty?)
+  UI.user_error!("generate_appcast failed (exit #{status.exitstatus}):\n#{bullet_list(output)}") unless status.success?
+  # Each line after a word of the lane's own, so that none can start a workflow command.
+  output.each { |line| UI.message("generate_appcast: #{InvoicesTracker::LogText.line(line)}") }
+  UI.user_error!("generate_appcast wrote no appcast at #{appcast}") unless File.file?(appcast)
+
+  problems = InvoicesTracker::Sparkle.feed_problems(
+    File.read(appcast), archive_url: "#{prefix}#{dmg_name}", version: version, build: build
+  )
+  UI.user_error!("The appcast must not be published:\n#{bullet_list(problems)}") unless problems.empty?
+  appcast
+end
+
+# Writes the feed folder for the publish job: the DMG, the appcast, the notes
+# and release.json, which names them, gives their SHA-256, and records the
+# commit the release is built from and the Latest release seen (`latest`, nil
+# when nothing is published). Returns the contents of release.json.
+def write_feed(dmg:, appcast:, notes:, version:, build:, latest:)
+  FileUtils.rm_rf(FEED_DIR)
+  FileUtils.mkdir_p(FEED_DIR)
+  dmg_copy = File.join(FEED_DIR, File.basename(dmg))
+  appcast_copy = File.join(FEED_DIR, InvoicesTracker::GitHubReleases::APPCAST_NAME)
+  FileUtils.cp(dmg, dmg_copy)
+  FileUtils.cp(appcast, appcast_copy)
+  File.binwrite(File.join(FEED_DIR, InvoicesTracker::ReleaseManifest::NOTES_FILE_NAME), notes)
+
+  manifest = InvoicesTracker::ReleaseManifest.contents(
+    version: version, build: build, commit: working_copy_snapshot.head, dmg: File.basename(dmg),
+    dmg_sha256: Digest::SHA256.file(dmg_copy).hexdigest, appcast_sha256: Digest::SHA256.file(appcast_copy).hexdigest,
+    latest_tag: latest&.tag
+  )
+  File.write(File.join(FEED_DIR, InvoicesTracker::ReleaseManifest::FILE_NAME),
+             InvoicesTracker::ReleaseManifest.json(manifest))
+  manifest
+end
+
+# `text`, the output of a tool that was given `secret`, with every occurrence
+# of the secret replaced, so that printing it cannot show the secret. The text
+# is read as UTF-8, with bytes that are not replaced.
+def without_secret(text, secret)
+  text = text.dup.force_encoding(Encoding::UTF_8).scrub
+  secret.empty? ? text : text.gsub(secret, "[secret]")
+end
+
 # --- verification ------------------------------------------------------------
 
 # What Gatekeeper, the stapler and codesign say about the DMG and the app, as a
@@ -545,6 +1020,9 @@ def error_line(output)
   lines.find { |line| line.include?("error:") } || lines.last || "no output"
 end
 
+# The items as an indented list, one line each. Every item goes through
+# LogText.line: a typed value in a message cannot break its line, so no line of
+# the list can start a workflow command on a CI runner.
 def bullet_list(items)
-  items.map { |item| "  - #{item}" }.join("\n")
+  items.map { |item| "  - #{InvoicesTracker::LogText.line(item)}" }.join("\n")
 end
