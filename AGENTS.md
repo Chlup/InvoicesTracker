@@ -40,7 +40,7 @@ bundle exec rake test                  # tests of the fastlane helpers and of re
 
 ## Architecture
 
-The app target is Swift 6 with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so pure value types, enums and builders are declared `nonisolated`. The only package is SQLCipher. Both targets use file-system synchronized groups, so a new `.swift` file needs no project edit.
+The app target is Swift 6 with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so pure value types, enums and builders are declared `nonisolated`. The packages are SQLCipher and Sparkle (linked to the app target only). Both targets use file-system synchronized groups, so a new `.swift` file needs no project edit.
 
 The code is layered, bottom to top:
 
@@ -67,6 +67,10 @@ The code is layered, bottom to top:
   - `Import/`: Fakturoid CSV import;
   - `Invoices/`: numbering, PDF and the QR payment code;
   - `Search/`.
+- **Updates.** Sparkle 2 updates the app from the feed `https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml`:
+  - the feed URL must keep working for every installed version, so it never moves, and only the release workflow publishes releases;
+  - the public key (`SUPublicEDKey`) is committed. The appcast and every archive must be signed with its private half, which is never committed (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`);
+  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`.
 - **App** (`App/`):
   - `AppModel` is `@MainActor @Observable`, split across `AppModel+*.swift`. It holds:
     - the unlocked database and the selected screen;
