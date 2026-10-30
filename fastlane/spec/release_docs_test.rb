@@ -111,6 +111,12 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
     assert_match(/spaces around them are ignored/i, prose)
   end
 
+  # The first step of the run checks the branch, like the numbers, and a reader who is stopped there looks for the rule.
+  def test_the_readme_says_what_a_branch_name_may_hold
+    assert prose.include?("letters, digits, `.`, `_`, `-` and `/`"), "the README does not say what a branch may hold"
+    assert prose.match?(/spaces around it are ignored/i), "the README does not say that spaces around it are ignored"
+  end
+
   def test_the_readme_says_where_the_results_land
     assert_includes section, "InvoicesTracker-<version>-<build>.dmg"
     assert_includes section, "v<version>-<build>"

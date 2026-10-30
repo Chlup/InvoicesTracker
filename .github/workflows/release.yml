@@ -67,13 +67,15 @@ jobs:
       # fastlane stops waiting for `xcodebuild -showBuildSettings` after 3 seconds, which a cold runner can exceed.
       FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "60"
     steps:
-      # The one step that reads the typed version and build. The lanes trim them and name the DMG after the trimmed
-      # ones, so they are trimmed and checked here once, with the formats of the lanes, and every later step takes
-      # them from this step's outputs. Once checked they hold digits and dots only, safe to write to the outputs.
-      - name: Check the ref, who started the run and the typed numbers
+      # The one step that reads the typed branch, version and build. The lanes trim the version and the build and name
+      # the DMG after the trimmed ones, so all three are trimmed and checked here once, the numbers with the formats of
+      # the lanes, and every later step takes them from this step's outputs. Once checked they hold letters, digits and
+      # a few marks only (a branch: no white space, no `:`, no `$`), safe to write to the outputs.
+      - name: Check the ref, who started the run and the typed inputs
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          TYPED_BRANCH: ${{ inputs.branch }}
           TYPED_VERSION: ${{ inputs.version }}
           TYPED_BUILD: ${{ inputs.build }}
         run: |
@@ -102,25 +104,35 @@ jobs:
             value=${value%"${value##*[![:space:]]}"}
             printf '%s' "$value"
           }
+          branch=$(trim "$TYPED_BRANCH")
           version=$(trim "$TYPED_VERSION")
           build=$(trim "$TYPED_BUILD")
+          # The simple rule for a branch: letters, digits and . _ - /, not starting with -, without ..
+          # What git refuses beyond that, the checkout reports.
+          branch_pattern='^[A-Za-z0-9._/][A-Za-z0-9._/-]*$'
           version_pattern='^[0-9]+\.[0-9]+(\.[0-9]+)?$'
           build_pattern='^[1-9][0-9]*$'
-          numbers_fit=true
+          inputs_fit=true
+          if [[ ! $branch =~ $branch_pattern || $branch == *..* ]]; then
+            echo "::error::The branch must be a branch name of letters, digits, '.', '_', '-' and '/' only," \
+              "not starting with '-' and without '..'."
+            inputs_fit=false
+          fi
           if [[ ! $version =~ $version_pattern ]]; then
             echo "::error::The version must be X.Y or X.Y.Z, with digits only."
-            numbers_fit=false
+            inputs_fit=false
           fi
           if [[ ! $build =~ $build_pattern ]]; then
             echo "::error::The build must be a positive whole number without a leading zero."
-            numbers_fit=false
+            inputs_fit=false
           fi
-          if [[ $numbers_fit != true ]]; then
+          if [[ $inputs_fit != true ]]; then
             exit 1
           fi
           {
             echo "version=$version"
             echo "build=$build"
+            echo "branch=$branch"
           } >> "$GITHUB_OUTPUT"
 
       # No credentials stay in the working copy: the build runs the branch's own scripts and tests.
@@ -128,7 +140,7 @@ jobs:
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ steps.check.outputs.branch }}
           persist-credentials: false
 
       # The Ruby is the one in .ruby-version.

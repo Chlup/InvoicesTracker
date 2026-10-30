@@ -178,7 +178,9 @@ description; the names below are the ones `gh workflow run -f` takes. What the
 boxes do:
 
 - `branch`: the branch to build, `main` by default. It only chooses what is
-  built; the workflow file always comes from `main`.
+  built; the workflow file always comes from `main`. Spaces around it are
+  ignored, and the run stops at its first step when it holds anything but
+  letters, digits, `.`, `_`, `-` and `/`, starts with `-` or contains `..`.
 - `version` and `build`: the marketing version (X.Y or X.Y.Z) and the build
   number. Spaces around them are ignored. The run stops at its first step when
   one is not of that form, and before anything slow when it is not the one in

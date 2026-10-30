@@ -38,7 +38,8 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   LANE_COMMAND = 'bundle exec fastlane ci_dmg version:"$VERSION" build:"$BUILD" ' \
                  'deploy:"$DEPLOY" skip_tests:"$SKIP_TESTS"'
 
-  # The version and the build as the first step of the build job hands them on, trimmed and checked.
+  # The branch, the version and the build as the first step of the build job hands them on, trimmed and checked.
+  CHECKED_BRANCH = "${{ steps.check.outputs.branch }}"
   CHECKED_VERSION = "${{ steps.check.outputs.version }}"
   CHECKED_BUILD = "${{ steps.check.outputs.build }}"
 
@@ -132,18 +133,21 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   end
 
   # The lanes trim the typed version and build and name the DMG after the trimmed ones. So the first step trims and
-  # checks them once, the only place that reads the inputs, and hands them on as its outputs; every later step uses
-  # those. A number typed with spaces around it then finds its DMG instead of failing after the whole build.
-  def test_the_typed_numbers_are_read_once_and_every_later_step_uses_the_checked_outputs
+  # checks the version and the build once, together with the branch, which names what is checked out. It is the only
+  # place that reads the inputs, and it hands them on as its outputs; every later step uses those. A number typed with
+  # spaces around it then finds its DMG instead of failing after the whole build, and the branch that is checked out
+  # is the one that was checked.
+  def test_the_typed_inputs_are_read_once_and_every_later_step_uses_the_checked_outputs
     first = steps_of("build").first
 
     assert_equal "check", first["id"]
-    assert_equal({ "TYPED_VERSION" => "${{ inputs.version }}", "TYPED_BUILD" => "${{ inputs.build }}" },
-                 first.fetch("env").slice("TYPED_VERSION", "TYPED_BUILD"))
+    assert_equal({ "TYPED_BRANCH" => "${{ inputs.branch }}", "TYPED_VERSION" => "${{ inputs.version }}",
+                   "TYPED_BUILD" => "${{ inputs.build }}" },
+                 first.fetch("env").slice("TYPED_BRANCH", "TYPED_VERSION", "TYPED_BUILD"))
     assert_includes first.fetch("run"), '>> "$GITHUB_OUTPUT"'
     (all_steps - [first]).each do |step|
-      refute_match(/inputs\.(version|build)\b/, JSON.generate(step),
-                   "the step #{step['name'].inspect} reads a typed number instead of the checked one")
+      refute_match(/inputs\.(branch|version|build)\b/, JSON.generate(step),
+                   "the step #{step['name'].inspect} reads a typed input instead of the checked one")
     end
   end
 
@@ -160,7 +164,7 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     checkout = step_using("build", "actions/checkout")
 
     assert_equal "checkout", checkout["id"]
-    assert_equal "${{ inputs.branch }}", checkout.dig("with", "ref")
+    assert_equal CHECKED_BRANCH, checkout.dig("with", "ref")
     assert_equal false, checkout.dig("with", "persist-credentials")
   end
 
@@ -360,11 +364,54 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
   # --- the first step, run as it is --------------------------------------------------------------------------
 
-  def test_the_first_step_hands_on_the_numbers_trimmed
-    outputs, log, status = run_first_step(version: " 1.7.0 ", build: "\t10\n")
+  def test_the_first_step_hands_on_the_inputs_trimmed
+    outputs, log, status = run_first_step(branch: " release/1.7\t", version: " 1.7.0 ", build: "\t10\n")
 
     assert status.success?, log
-    assert_equal %w[version=1.7.0 build=10], outputs
+    assert_equal %w[version=1.7.0 build=10 branch=release/1.7], outputs
+  end
+
+  # The branch is the one input that is not a number, and it reaches the checkout as its ref. The rule is the simple
+  # one of names that need no quoting anywhere: letters, digits, `.`, `_`, `-` and `/`, not starting with `-` (a tool
+  # could take it for an option) and without `..`. What git refuses beyond that, a trailing `/` for one, the checkout
+  # reports itself. Spaces around the branch are ignored, like those around the numbers.
+  def test_the_first_step_accepts_a_branch_name_of_letters_digits_and_a_few_marks_and_trims_it
+    names = %w[
+      main release-workflow michal/MOB-1234-change-background-color michal/MOB-9801/MOB-4567-change-background-color
+      release/1.7.0 v1.7.0-10 feature_x.y 9 a refs/heads/main 0123456789abcdef0123456789abcdef01234567
+    ]
+
+    names.flat_map { |name| [name, " \t#{name}\n"] }.each do |typed|
+      outputs, log, status = run_first_step(branch: typed)
+
+      assert status.success?, "the branch #{typed.inspect} was refused: #{log}"
+      assert_equal ["version=1.7.0", "build=10", "branch=#{typed.strip}"], outputs, typed.inspect
+    end
+  end
+
+  def test_the_first_step_refuses_an_empty_branch_and_one_with_white_space_or_other_marks
+    refused = [
+      "", " ", "\n", "my branch", "my\tbranch", "two\nlines", "-main", "--upload-pack=x", "-", "a..b", "..", "../main",
+      "main..", "main:x", "main;x", "main&x", "main|x", "$HOME", "$(id)", "`id`", "main'x", 'main"x', "main*", "main?",
+      "main[0]", "main~1", "main^", "main@{1}", "main\\x", "main#x", "main%x", "main,x", "main=x", "main+x", "main!x",
+      "é", "větev", "ž/main", "main<x", "main>x", "main(x", "main)x", "main{x", "main}x"
+    ]
+
+    refused.each do |typed|
+      outputs, log, status = run_first_step(branch: typed)
+
+      refute status.success?, "the branch #{typed.inspect} got through"
+      assert_empty outputs, "the branch #{typed.inspect}: nothing may be handed on"
+      assert_match(/^::error::/, log, typed.inspect)
+    end
+  end
+
+  # Everything that is wrong is said at once, so that a run is not started again for each in turn.
+  def test_the_first_step_reports_every_input_that_is_wrong_at_once
+    _outputs, log, status = run_first_step(branch: "-x", version: "x", build: "0")
+
+    refute status.success?
+    assert_equal 3, log.scan(/^::error::/).size, log
   end
 
   # The step takes the same numbers as the lanes, whose BuildSettings it is checked against, and the same trimmed text
@@ -384,7 +431,7 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
       assert_equal accepted, status.success?, "#{what}: #{log}"
       if accepted
-        assert_equal ["version=#{version.strip}", "build=#{build.strip}"], outputs, what
+        assert_equal ["version=#{version.strip}", "build=#{build.strip}", "branch=main"], outputs, what
       else
         assert_empty outputs, "#{what}: nothing may be handed on"
         assert_match(/^::error::/, log, what)
@@ -394,10 +441,14 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
   # What was typed is not repeated in the log, where a line that starts with :: would be taken for a workflow command.
   def test_the_first_step_does_not_repeat_the_typed_text_when_it_refuses_it
-    _outputs, log, status = run_first_step(version: "1.7.0\n::set-output name=x::y", build: "10")
+    hostile = "\n::set-output name=x::y"
 
-    refute status.success?
-    refute_includes log, "set-output"
+    { branch: "main#{hostile}", version: "1.7.0#{hostile}", build: "10#{hostile}" }.each do |input, typed|
+      _outputs, log, status = run_first_step(input => typed)
+
+      refute status.success?, "the #{input} #{typed.inspect} got through"
+      refute_includes log, "set-output", "the #{input} was repeated"
+    end
   end
 
   def test_the_first_step_lets_an_admin_a_maintainer_and_a_writer_through
@@ -563,9 +614,10 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   end
 
   # Runs the script of the first step of the build job as the runner would, with bash -e on a file, in a folder of its
-  # own. The gh it finds answers the question for the role of the starter with `role` ("unreadable" makes it fail like
-  # a request that GitHub refuses). Gives the lines the step wrote to GITHUB_OUTPUT, what it printed, and its status.
-  def run_first_step(version: "1.7.0", build: "10", role: "admin", ref: "refs/heads/main")
+  # own. `branch`, `version` and `build` are the typed inputs. The gh it finds answers the question for the role of the
+  # starter with `role` ("unreadable" makes it fail like a request that GitHub refuses). Gives the lines the step wrote
+  # to GITHUB_OUTPUT, what it printed, and its status.
+  def run_first_step(branch: "main", version: "1.7.0", build: "10", role: "admin", ref: "refs/heads/main")
     Dir.mktmpdir do |dir|
       bin = File.join(dir, "bin")
       FileUtils.mkdir_p(bin)
@@ -580,7 +632,7 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
       env = {
         "PATH" => "#{bin}:#{ENV.fetch('PATH')}", "GITHUB_REF" => ref, "GITHUB_ACTOR" => "michal",
         "GITHUB_REPOSITORY" => "Chlup/InvoicesTracker", "GITHUB_OUTPUT" => output, "GH_TOKEN" => "not-a-token",
-        "TYPED_VERSION" => version, "TYPED_BUILD" => build
+        "TYPED_BRANCH" => branch, "TYPED_VERSION" => version, "TYPED_BUILD" => build
       }
       log, status = Open3.capture2e(env, "bash", "-e", script, chdir: dir)
       [File.readlines(output, chomp: true), log, status]
