@@ -33,23 +33,22 @@ struct InvoiceEditorView: View {
                 HStack(alignment: .top, spacing: 16) {
                     ScrollView {
                         form
-                            .padding(.vertical, 20)
+                            .pagePadding(.vertical)
                     }
                     ScrollView {
                         PreviewPane(document: model.document)
-                            .padding(.vertical, 20)
+                            .pagePadding(.vertical)
                     }
                     .frame(width: Self.previewWidth)
                 }
-                .padding(.horizontal, 24)
+                .pagePadding(.horizontal)
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
                         form
                         PreviewPane(document: model.document)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
+                    .pagePadding()
                 }
             }
         }

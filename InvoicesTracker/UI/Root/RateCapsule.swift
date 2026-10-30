@@ -27,17 +27,17 @@ struct RateCapsule: View {
                 Image(systemName: "arrow.left.arrow.right")
                     .scaleEffect(x: -1, y: 1)
                 Text(verbatim: capsule.title)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
                 Image(systemName: "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(Typography.subheadlineSemibold)
+                    .foregroundStyle(Palette.text2)
             }
-            .foregroundStyle(capsule.isTinted ? Color(.uniformRateText) : Color.primary)
+            .foregroundStyle(capsule.isTinted ? Palette.accentText : Palette.text)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background {
                 if capsule.isTinted {
-                    Capsule().fill(Color(.uniformRateBackground))
+                    Capsule().fill(Palette.accentTint)
                 }
             }
             .contentShape(Capsule())
@@ -73,8 +73,8 @@ private struct RateMenu: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: menu.heading)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(Typography.calloutSemibold)
+                .foregroundStyle(Palette.text2)
                 .padding(EdgeInsets(top: 6, leading: 10, bottom: 4, trailing: 10))
             if let content = menu.content {
                 ForEach(content.items, id: \.method) { item in
@@ -89,11 +89,12 @@ private struct RateMenu: View {
                 if let failure = menu.choiceFailure {
                     failureLine(failure)
                 }
-                Divider()
+                Palette.sep
+                    .frame(height: 1)
                     .padding(.top, 4)
                 Text(verbatim: content.footer)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(EdgeInsets(top: 8, leading: 10, bottom: 4, trailing: 10))
             } else if let errorText = menu.errorText {
@@ -111,7 +112,7 @@ private struct RateMenu: View {
 
     private func failureLine(_ text: String) -> some View {
         SettingsFailureLine(text: text)
-            .font(.callout)
+            .font(Typography.callout)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
     }
@@ -143,21 +144,22 @@ private struct RateMenuRow: View {
         Button(action: choose) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "checkmark")
-                    .font(.callout.weight(.semibold))
+                    .font(Typography.calloutSemibold)
                     .opacity(item.isChecked ? 1 : 0)
                     .frame(width: 16)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: item.title)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(item.isEnabled ? .primary : .secondary)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(item.isEnabled ? Palette.text : Palette.text3)
                     Text(verbatim: item.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(item.isEnabled ? Palette.text2 : Palette.text3)
                         .fixedSize(horizontal: false, vertical: true)
                     if let comparison = item.comparison {
                         Text(verbatim: comparison)
-                            .font(.callout)
+                            .font(Typography.callout)
                             .monospacedDigit()
+                            .foregroundStyle(Palette.text2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -166,8 +168,8 @@ private struct RateMenuRow: View {
             .padding(EdgeInsets(top: 7, leading: 6, bottom: 8, trailing: 10))
             .contentShape(Rectangle())
             .background(
-                hovered && item.isEnabled && !waits ? Color.primary.opacity(0.07) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8))
+                hovered && item.isEnabled && !waits ? Palette.fillStrong : Color.clear,
+                in: RoundedRectangle(cornerRadius: DesignMetrics.controlRadius))
         }
         .buttonStyle(.plain)
         .disabled(!item.isEnabled || waits)

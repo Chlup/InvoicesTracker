@@ -87,7 +87,7 @@ struct SimulatorWindowTests {
                 try await withAccessibilityElements {
                     try await expectSettled(window) { mainToolbarProblems(in: window) }
                     f.app.screen = .computation
-                    try await waitUntil { window.title == "Rozpis výpočtu" }
+                    try await waitUntil { window.title == "Výpočet" }
                     try await expectSettled(window) { mainToolbarProblems(in: window) }
                     #expect(f.app.asOf.asOf == civilDate("2026-07-15"))
                     #expect(!f.app.asOf.followsToday)
@@ -103,7 +103,7 @@ struct SimulatorWindowTests {
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     let screens: [(screen: Screen, title: String)] = [
-                        (.prediction, "Odhad odvodů"), (.simulator, "Simulátor"), (.computation, "Rozpis výpočtu"),
+                        (.prediction, "Odhad odvodů"), (.simulator, "Simulátor"), (.computation, "Výpočet"),
                     ]
                     for (screen, title) in screens {
                         f.app.screen = screen

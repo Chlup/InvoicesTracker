@@ -14,8 +14,7 @@ struct SettingsScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             tabs
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
+                .pagePadding([.horizontal, .top])
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if let banner = app.banner, banner.screen == .settings {
@@ -26,8 +25,7 @@ struct SettingsScreen: View {
                     tabContent
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 20)
+                .pagePadding([.horizontal, .bottom])
             }
         }
     }

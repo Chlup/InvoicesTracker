@@ -33,8 +33,7 @@ struct PredictionScreen: View {
             VStack(spacing: 16) {
                 content
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
         }
         .task(id: LoadTrigger(key: app.reloadKey, today: app.today)) {
             await model.load()

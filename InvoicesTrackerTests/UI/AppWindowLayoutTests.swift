@@ -223,7 +223,7 @@ struct AppWindowLayoutTests {
 
     /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
     /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
-    /// the least window, while the detail is closed, the card holds the table at its least width (820 points).
+    /// the least window, while the detail is closed, the card (828 points) holds the table, whose least width is 820.
     @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -349,7 +349,7 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the page of Faktury in `window`, in words: the views that stick out of the window, and where
     /// the card of the table is not where it belongs, which is under the toolbar and down to the bottom margin of the
-    /// page (20 points). With the detail closed the table reaches the right margin of the page (24 points); with the
+    /// page (24 points). With the detail closed the table reaches the right margin of the page (16 points); with the
     /// detail open the card of the detail is there (`problems(ofTheDetail:besideTheTable:in:)`) and a row is open.
     /// Empty when the page is laid out so. Needs the accessibility elements (`withAccessibilityElements(_:)`).
     private func problems(of window: NSWindow, detailOpen: Bool) -> [String] {
@@ -362,7 +362,7 @@ struct AppWindowLayoutTests {
         if table.maxY > room.maxY + 0.5 {
             problems.append("The table reaches under the toolbar: \(table)")
         }
-        if (table.minY - 20).magnitude >= 0.5 {
+        if (table.minY - 24).magnitude >= 0.5 {
             problems.append("The table does not end at the bottom margin of the page: \(table)")
         }
         let detail = detailCardFrame(in: window)
@@ -378,7 +378,7 @@ struct AppWindowLayoutTests {
             if let detail {
                 problems.append("The detail is open: \(detail)")
             }
-            if (table.maxX - (room.maxX - 24)).magnitude >= 0.5 {
+            if (table.maxX - (room.maxX - 16)).magnitude >= 0.5 {
                 problems.append("The table does not reach the right margin of the page: \(table)")
             }
         }
@@ -387,13 +387,13 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
     /// page `room`, all in the coordinates of the window: the detail is 320 points wide at the right margin of the page
-    /// (24 points), starts and ends at the height of the table (to a point), and the table ends 16 points before it.
+    /// (16 points), starts and ends at the height of the table (to a point), and the table ends 16 points before it.
     private func problems(ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
         var problems: [String] = []
         if (detail.width - 320).magnitude >= 0.5 {
             problems.append("The detail is not 320 points wide: \(detail)")
         }
-        if (detail.maxX - (room.maxX - 24)).magnitude >= 0.5 {
+        if (detail.maxX - (room.maxX - 16)).magnitude >= 0.5 {
             problems.append("The detail does not stand at the right margin of the page: \(detail)")
         }
         // The origin of the window is at the bottom left: the top is the largest y.
@@ -791,7 +791,7 @@ struct AppWindowLayoutTests {
         var search: CGRect
         var field: CGRect
 
-        /// Where the page ends on the right: its right margin, 24 points before the edge of the window.
+        /// Where the page ends on the right: its right margin, 16 points before the edge of the window.
         var pageEnd: CGFloat
     }
 
@@ -817,7 +817,7 @@ struct AppWindowLayoutTests {
         let onScreen = { (view: NSView) in window.convertToScreen(frameInWindow(view)) }
         return FilterRowFrames(
             scope: onScreen(scope), firstChip: firstChip, lastChip: lastChip, search: search, field: onScreen(field),
-            pageEnd: window.convertToScreen(window.contentLayoutRect).maxX - 24)
+            pageEnd: window.convertToScreen(window.contentLayoutRect).maxX - 16)
     }
 
     /// What is wrong with the filter row of Faktury in `window`, in words: the search is not 220 to 300 points wide, it
@@ -984,7 +984,7 @@ struct AppWindowLayoutTests {
     /// The page fits the window with the card of the estimate, and the card holds its parts: the title with its pill
     /// and the line under it, the button to the right of them, under them the four figures (the income, the levies,
     /// the settlement and the net income), none of them beyond the card or on another, and under the figures the chart
-    /// of the year, whose months VoiceOver reads within the card. At the least room (820 points of page, 780 with the
+    /// of the year, whose months VoiceOver reads within the card. At the least room (828 points of page, 740 with the
     /// sidebar as wide as it goes) the figures stand in two rows, the first three side by side and the net income under
     /// the income; in a large window all four stand side by side in one row.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
@@ -1816,12 +1816,12 @@ struct AppWindowLayoutTests {
 
     /// The table of Odběratelé is as wide as its card, with nothing to scroll sideways, in a large window and in the
     /// least window with the sidebar as wide as it starts. The page of the least window is 868 points wide, its card
-    /// 820, and the least width of the table is 814: the least widths of its columns, 590, with 14 points between each
+    /// 828, and the least width of the table is 814: the least widths of its columns, 590, with 14 points between each
     /// two of them, the button Nová faktura with 16 points before it and 112 of its own, and 20 points at either end.
     /// So the button of every row is whole there. Its rows are of one height, 60 points, whatever they say: among the
     /// clients of the fixture stand one that says as little as can be and one whose name is far too long for its
     /// column. Below its least width the table keeps it and scrolls sideways in its card: with the sidebar as wide as
-    /// it goes (320 points, the card 732).
+    /// it goes (320 points, the card 740).
     @Test func theClientTableFitsAndScrollsBelowItsMinimum() async throws {
         try await EditorFixture.with { f in
             try await f.database.saveClient(Client(name: "Bez údajů", country: ""))
@@ -1834,7 +1834,7 @@ struct AppWindowLayoutTests {
                     f.app.screen = .clients
                     try await waitUntil { clientRows(in: window).count == 5 }
 
-                    // A large window: its page is 1 368 points wide, its card 1 320.
+                    // A large window: its page is 1 368 points wide, its card 1 328.
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
                             + problems(ofTheClientTableFillingItsCardIn: window)
@@ -1842,9 +1842,9 @@ struct AppWindowLayoutTests {
                             + viewsOutside(window).map { "Outside the window: \($0)" }
                     }
                     let large = try #require(clientTableScrollView(in: window)?.documentView).frame.width
-                    #expect((large - 1_320).magnitude <= 1)
+                    #expect((large - 1_328).magnitude <= 1)
 
-                    // The least window: its card of 820 points holds the least width of the table, 814, so the table
+                    // The least window: its card of 828 points holds the least width of the table, 814, so the table
                     // is as wide as its card, nothing scrolls sideways, and every button Nová faktura is whole.
                     window.setContentSize(AppWindowSize.minimum)
                     try await expectSettled(window) {
@@ -1854,9 +1854,9 @@ struct AppWindowLayoutTests {
                             + viewsOutside(window).map { "Outside the window: \($0)" }
                     }
                     let card = try #require(clientTableScrollView(in: window)).contentView.bounds.width
-                    #expect((card - 820).magnitude <= 1)
+                    #expect((card - 828).magnitude <= 1)
 
-                    // The sidebar as wide as it goes: the card shrinks to 732 points, and the table keeps its least
+                    // The sidebar as wide as it goes: the card shrinks to 740 points, and the table keeps its least
                     // width and scrolls sideways.
                     widenSidebar(of: window)
                     try await expectSettled(window) {
@@ -1864,7 +1864,7 @@ struct AppWindowLayoutTests {
                             + problems(ofTheClientTableScrollingSidewaysIn: window)
                     }
                     let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
-                    #expect((narrow - 732).magnitude <= 1)
+                    #expect((narrow - 740).magnitude <= 1)
 
                     // A large window again: the table is as wide as its card, as it was.
                     window.setContentSize(AppWindowSize.large)
@@ -2196,7 +2196,7 @@ struct AppWindowLayoutTests {
                 if let year {
                     f.app.selectYear(year)
                 }
-                try await waitUntil { window.title == "Rozpis výpočtu" }
+                try await waitUntil { window.title == "Výpočet" }
                 // The page scrolls; with the data it is far taller than while it loads.
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
@@ -2216,7 +2216,7 @@ struct AppWindowLayoutTests {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .computation
-                try await waitUntil { window.title == "Rozpis výpočtu" }
+                try await waitUntil { window.title == "Výpočet" }
                 // The page scrolls; with the data it is far taller than while it loads.
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
@@ -2235,7 +2235,7 @@ struct AppWindowLayoutTests {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .computation
-                try await waitUntil { window.title == "Rozpis výpočtu" }
+                try await waitUntil { window.title == "Výpočet" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
@@ -2249,13 +2249,13 @@ struct AppWindowLayoutTests {
     }
 
     /// The breakdown of Výpočet has the income and the tax on the left and the social and the health insurance with the
-    /// net income under them on the right: all five in one column at the least room, where the detail has 820 points
+    /// net income under them on the right: all five in one column at the least room, where the detail has 828 points
     /// and two columns need 856, and in two columns in a large window, whichever way the window goes.
     @Test func theBreakdownIsOneColumnAtTheLeastRoomAndTwoInALargeWindow() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .computation
-                try await waitUntil { window.title == "Rozpis výpočtu" }
+                try await waitUntil { window.title == "Výpočet" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
@@ -2298,7 +2298,7 @@ struct AppWindowLayoutTests {
 
                     f.app.pickAsOf(civilDate("2026-01-31"))
                     f.app.screen = .computation
-                    try await waitUntil { window.title == "Rozpis výpočtu" }
+                    try await waitUntil { window.title == "Výpočet" }
                     try await expectFamilyRowsFit([Self.childRowBeforeTheBonus], in: window)
                 }
             }
@@ -2375,7 +2375,9 @@ struct AppWindowLayoutTests {
         }
         var found: [String] = []
         if let page = scrolledPage(in: window) {
-            let margins = window.convertToScreen(frameInWindow(page)).insetBy(dx: 24, dy: 0)
+            // The margins of the page: 24 points on its leading side and 16 on its trailing side.
+            let room = window.convertToScreen(frameInWindow(page))
+            let margins = CGRect(x: room.minX + 24, y: room.minY, width: room.width - 24 - 16, height: room.height)
             if frame.minX < margins.minX - 0.5 || frame.maxX > margins.maxX + 0.5 {
                 found.append("The row \(row.label) is not within the page: \(frame), the margins \(margins)")
             }
@@ -2458,7 +2460,7 @@ struct AppWindowLayoutTests {
     ]
 
     /// The sizes the breakdown of a screen is looked at in, and whether its two stacks stand beside each other in them:
-    /// the detail of the least window has 820 points, less than the 856 that two columns need, and a large window has
+    /// the detail of the least window has 828 points, less than the 856 that two columns need, and a large window has
     /// more. Back at the least room, the stacks come together again.
     private static let breakdownSizes = [
         (size: AppWindowSize.minimum, beside: false), (size: AppWindowSize.large, beside: true),
@@ -2638,7 +2640,7 @@ struct AppWindowLayoutTests {
     /// the clients folded and unfolded (and the group of the other clients with them), at the least room, at a large
     /// size and at the least room again, and at the least room with the sidebar as wide as it goes: the page fits the
     /// window, its breakdown stands in one column where the detail has less than the 856 points that two columns need
-    /// (820 at the least room, 780 with the wide sidebar) and in two columns in a large window (the cards of Výpočet,
+    /// (828 at the least room, 740 with the wide sidebar) and in two columns in a large window (the cards of Výpočet,
     /// with the same headings), the net income of the summary is read as one phrase in the summary card, under the
     /// parts of the income and above the note of the money of next year, and no text of a cell is cut or even shrunk:
     /// the months stand in rows of six at the least room, in cells of more than 100 points. In the narrowest window
@@ -3562,7 +3564,7 @@ struct AppWindowLayoutTests {
     ]
 
     /// The breakdown of the Simulátor has the tax on the left and the two insurances with the net income under them on
-    /// the right: all four in one column at the least room, where the detail has 820 points and two columns need 856,
+    /// the right: all four in one column at the least room, where the detail has 828 points and two columns need 856,
     /// and in two columns in a large window, whichever way the window goes.
     @Test func theSimulatorBreakdownIsOneColumnAtTheLeastRoomAndTwoInALargeWindow() async throws {
         try await EditorFixture.with { f in

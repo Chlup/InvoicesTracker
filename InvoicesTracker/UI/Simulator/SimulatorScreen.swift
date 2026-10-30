@@ -61,8 +61,7 @@ struct SimulatorScreen: View {
                     breakdown(page.sections)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
         }
         // The reload key also has the screen drawn again when other data is opened, whose model it then reads.
         .task(id: LoadKey(model: ObjectIdentifier(model), data: app.reloadKey)) {

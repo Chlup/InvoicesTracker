@@ -33,7 +33,7 @@ func withAppWindow(
     window.orderFront(nil)
     defer { window.close() }
     app.screen = .computation
-    try await waitUntil { window.title == "Rozpis výpočtu" }
+    try await waitUntil { window.title == "Výpočet" }
     try await body(window)
 }
 
@@ -208,6 +208,25 @@ func frameOfCard(headed title: String, in window: NSWindow) -> CGRect? {
             }
     }
     return card?.accessibilityFrame?()
+}
+
+/// The frame of the first group of `window` that holds a text which VoiceOver reads as `text`, in the coordinates of
+/// the screen, whose origin is at the bottom left. A note with actions, such as the green banner with its Zavřít, is a
+/// group (`accessibilityElement(children: .contain)`) that reads no label of its own, and its text is a value, not a
+/// label, so `frameOfCard(labelled:in:)` and `frameOfCard(headed:in:)` cannot find it. Nil when `window` has no such
+/// group, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func frameOfGroup(holdingText text: String, in window: NSWindow) -> CGRect? {
+    let group = firstElement(among: window.accessibilityChildren() ?? []) { element in
+        guard element.accessibilityRole?() == .group else { return false }
+        return (element.accessibilityChildren?() ?? []).contains { child in
+            // The value is asked for as a function of its type, because the protocols of accessibility declare
+            // `accessibilityValue()` with more than one type.
+            let value: (() -> Any?)? = (child as AnyObject).accessibilityValue
+            return (value?() ?? nil) as? String == text
+        }
+    }
+    return group?.accessibilityFrame?()
 }
 
 /// The frame of the first text of `window` that VoiceOver reads as a phrase starting with `phrase`, in the coordinates

@@ -23,9 +23,9 @@ nonisolated struct RateMenuItem: Equatable, Sendable {
     /// The line under the title: what the method converts with, or why it cannot be chosen.
     var detail: String
 
-    /// The levies of the year with the method and how they differ from those with the other one, such as "daň
-    /// a pojistné 548 037 Kč · o 3 063 Kč méně", when both methods can be chosen and the year has payments in other
-    /// currencies; nil otherwise.
+    /// The levies of the year with the method and how they differ from those with the other one, such as "odvody
+    /// 548 037 Kč · o 3 063 Kč méně", when both methods can be chosen and the year has payments in other currencies;
+    /// nil otherwise.
     var comparison: String?
 
     /// Whether the year converts by the method now (`YearFXState.effective`): the item has a check mark.
@@ -100,13 +100,13 @@ nonisolated enum RateMenuBuilder {
         return (rates + [source].compactMap { $0 }).joined(separator: " · ")
     }
 
-    /// "daň a pojistné 548 037 Kč · o 3 063 Kč méně": `levies` against `other`, the levies with the other method.
+    /// "odvody 548 037 Kč · o 3 063 Kč méně": `levies` against `other`, the levies with the other method.
     private static func levies(of levies: Int64, against other: Int64) -> String {
         let difference = levies - other
         let compared =
             difference == 0
             ? "stejně" : "o " + CzechFormat.wholeKc(abs(difference)) + (difference < 0 ? " méně" : " více")
-        return "daň a pojistné " + CzechFormat.wholeKc(levies) + " · " + compared
+        return "odvody " + CzechFormat.wholeKc(levies) + " · " + compared
     }
 
     /// The note under the items: that the choice changes nothing in a year without payments in other currencies, that

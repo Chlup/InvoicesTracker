@@ -198,7 +198,7 @@ struct RootViewEditorTests {
                 try await waitUntil { window.sheets.count == 1 }
                 f.app.cancelChooser()
                 try await waitUntil { window.sheets.isEmpty }
-                #expect(window.title == "Rozpis výpočtu")
+                #expect(window.title == "Výpočet")
 
                 // Over an editor, the editor stays under the sheet, with its title, and is there again on Zrušit.
                 f.app.startNewInvoice(templateID: f.dollarTemplate.id)

@@ -41,11 +41,11 @@ struct RateMenuWindowTests {
                     // The levies of each conversion are read when the menu opens.
                     try await waitUntil {
                         accessibilityValue(ofButtonLabelled: "Jednotný kurz 2025", in: menu)?
-                            .contains("daň a pojistné \(uniformLevies)") == true
+                            .contains("odvody \(uniformLevies)") == true
                     }
                     #expect(
                         accessibilityValue(ofButtonLabelled: "Denní kurz ČNB", in: menu)?
-                            .contains("daň a pojistné \(dailyLevies)") == true)
+                            .contains("odvody \(dailyLevies)") == true)
                     _ = try #require(accessibilityButton(labelled: "Jednotný kurz 2025", in: menu))
                         .accessibilityPerformPress?()
                     try await waitUntil { accessibilityButton(labelled: uniform, in: window) != nil }

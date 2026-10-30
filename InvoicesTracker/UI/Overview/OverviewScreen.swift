@@ -41,8 +41,7 @@ struct OverviewScreen: View {
                 }
                 content
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
         }
         .task(id: LoadTrigger(key: app.reloadKey, years: app.years, today: app.today)) {
             await model.load()

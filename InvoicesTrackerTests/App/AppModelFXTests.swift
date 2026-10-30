@@ -883,7 +883,6 @@ struct AppModelFXTests {
         #expect(
             Screen.invoices.header(
                 year: 2025, asOf: app.asOf.asOf, today: app.today, incomeFX: app.shownYearFXMethod
-            ).subtitle
-                == "Rok 2025 · bez DPH a v Kč (platby roku 2025 jednotným kurzem) · čistý příjem po dani a pojistném")
+            ).subtitle == "Rok 2025 · částky bez DPH, v Kč jednotným kurzem")
     }
 }

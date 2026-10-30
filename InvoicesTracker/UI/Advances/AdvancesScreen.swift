@@ -22,8 +22,7 @@ struct AdvancesScreen: View {
     var body: some View {
         ScrollView {
             content
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                .pagePadding()
         }
         .task(id: app.reloadKey) {
             await model.load()

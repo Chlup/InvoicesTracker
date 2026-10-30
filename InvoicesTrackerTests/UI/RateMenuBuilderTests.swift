@@ -136,17 +136,17 @@ struct RateMenuBuilderTests {
 
         #expect(
             content(of: year, comparison: (daily: 548_037, uniform: 551_100)).items.map(\.comparison) == [
-                "daň a pojistné 548\u{00A0}037\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč méně",
-                "daň a pojistné 551\u{00A0}100\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč více",
+                "odvody 548\u{00A0}037\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč méně",
+                "odvody 551\u{00A0}100\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč více",
             ])
         #expect(
             content(of: year, comparison: (daily: 551_100, uniform: 548_037)).items.map(\.comparison) == [
-                "daň a pojistné 551\u{00A0}100\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč více",
-                "daň a pojistné 548\u{00A0}037\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč méně",
+                "odvody 551\u{00A0}100\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč více",
+                "odvody 548\u{00A0}037\u{00A0}Kč · o 3\u{00A0}063\u{00A0}Kč méně",
             ])
         #expect(
             content(of: year, comparison: (daily: 551_100, uniform: 551_100)).items.map(\.comparison) == [
-                "daň a pojistné 551\u{00A0}100\u{00A0}Kč · stejně", "daň a pojistné 551\u{00A0}100\u{00A0}Kč · stejně",
+                "odvody 551\u{00A0}100\u{00A0}Kč · stejně", "odvody 551\u{00A0}100\u{00A0}Kč · stejně",
             ])
     }
 

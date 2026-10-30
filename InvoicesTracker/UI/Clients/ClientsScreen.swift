@@ -26,8 +26,7 @@ struct ClientsScreen: View {
                 topRow
                 content
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
         }
         .task(id: app.reloadKey) {
             await model.load()

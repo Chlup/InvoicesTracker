@@ -105,8 +105,7 @@ struct InvoicesScreen: View {
                 }
                 .frame(maxHeight: .infinity)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
             // The page fills the room the window gives it and asks for no minimum size of its own, as the other
             // screens do; the minimum size of the window keeps that room enough. The page's own minimum is more than
             // the window has: the tiles, measured at no width, are thousands of points high. AppKit lays out a window
