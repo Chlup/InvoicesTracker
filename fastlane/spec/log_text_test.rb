@@ -24,7 +24,7 @@ class InvoicesTrackerLogTextTest < Minitest::Test
   end
 
   def test_unicode_line_separators_and_other_controls_are_escaped_too
-    assert_equal "a\\u2028b\\u2029c\\u0085d", line("a b c\u0085d")
+    assert_equal "a\\u2028b\\u2029c\\u0085d", line("a\u2028b\u2029c\u0085d")
     assert_equal "bell\\a esc\\e[31m nul\\x00 del\\x7F vt\\v ff\\f", line("bell\a esc\e[31m nul\0 del\x7F vt\v ff\f")
   end
 
@@ -36,11 +36,11 @@ class InvoicesTrackerLogTextTest < Minitest::Test
   end
 
   def test_every_result_is_one_line_without_a_command
-    hostile = "1.0\n::stop-commands::t\r\n  ::error::x ::warning::y ##[error]z"
+    hostile = "1.0\n::stop-commands::t\r\n  ::error::x\u2028::warning::y ##[error]z"
     result = line(hostile)
 
     assert_equal 1, result.lines.size
-    refute_match(/[\r\n  \u0085]/, result)
+    refute_match(/[\r\n\u2028\u2029\u0085]/, result)
     refute_includes result, "##["
   end
 
@@ -58,5 +58,14 @@ class InvoicesTrackerLogTextTest < Minitest::Test
     line(text)
 
     assert_equal "a\nb", text
+  end
+
+  # U+2028 and U+2029 end a line in some editors and tools and show as nothing in others, so the module and this test
+  # write them as escapes and hold no such character themselves.
+  def test_neither_the_module_nor_this_test_holds_a_line_separator_character
+    [File.expand_path("../lib/invoices_tracker/log_text.rb", __dir__), __FILE__].each do |path|
+      refute File.read(path, encoding: "UTF-8").match?(/[\u2028\u2029]/),
+             "#{File.basename(path)} holds U+2028 or U+2029 itself, not as an escape"
+    end
   end
 end

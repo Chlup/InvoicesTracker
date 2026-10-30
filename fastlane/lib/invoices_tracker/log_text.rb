@@ -13,7 +13,7 @@ module InvoicesTracker
     # The characters that end a line, or that a terminal acts on, none of which
     # belongs inside one line of a message: the C0 controls except the tab, DEL,
     # and Unicode's next line, line separator and paragraph separator.
-    CONTROL = /[\x00-\x08\x0A-\x1F\x7F\u0085  ]/
+    CONTROL = /[\x00-\x08\x0A-\x1F\x7F\u0085\u2028\u2029]/
 
     # How a workflow command in the older form starts, and what it is printed
     # as instead: the second `#` written as the escape of its code.
@@ -23,7 +23,7 @@ module InvoicesTracker
     module_function
 
     # `text` as one line: each character of `CONTROL` written as its escape,
-    # the way Ruby writes it in a string literal (`\n`, `\r`, `\e`, ` `),
+    # the way Ruby writes it in a string literal (`\n`, `\r`, `\e`, `\u2028`),
     # and `##[` as `#\x23[`. Ordinary text comes back as it is. Any value is
     # turned into text first, and bytes that are not UTF-8 become U+FFFD. The
     # text passed in is not changed.
