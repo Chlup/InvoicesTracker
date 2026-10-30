@@ -137,13 +137,24 @@ jobs:
         with:
           bundler-cache: true
 
-      # Only this job can read the file, and the lane finds it through ASC_KEY_FILEPATH.
+      # Only this job can read the file, and the lane finds it through ASC_KEY_FILEPATH. The lane parses the key only
+      # after the tests, so a secret that is not set (it reaches the step as an empty string) or that holds anything
+      # but the text of a key file stops the run here, before anything slow, and is never printed.
       - name: Write the App Store Connect API key
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           set -euo pipefail
+          if [[ -z ${ASC_KEY_P8//[[:space:]]/} ]]; then
+            echo "::error::ASC_KEY_P8 is empty. Set it in the release environment."
+            exit 1
+          fi
+          if [[ $ASC_KEY_P8 != *"-----BEGIN PRIVATE KEY-----"* ]]; then
+            echo "::error::ASC_KEY_P8 must be the text of the key file AuthKey_<key id>.p8," \
+              "which starts with -----BEGIN PRIVATE KEY-----."
+            exit 1
+          fi
           umask 077
           mkdir -p "$RUNNER_TEMP/asc"
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"

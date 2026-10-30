@@ -42,6 +42,14 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   CHECKED_VERSION = "${{ steps.check.outputs.version }}"
   CHECKED_BUILD = "${{ steps.check.outputs.build }}"
 
+  # What the step that writes the App Store Connect key left after a run: its files under RUNNER_TEMP, by their path
+  # in it, each with its contents and permissions; the lines it wrote to GITHUB_ENV; the runner's temporary folder;
+  # what it printed; and its status.
+  KeyStepRun = Struct.new(:files, :github_env, :runner_temp, :log, :status, keyword_init: true)
+
+  # The text of a key file in the form Apple makes it, with a body that is no key.
+  FAKE_KEY = "-----BEGIN PRIVATE KEY-----\nTm90IGEgcmVhbCBrZXkgYXQgYWxs\n-----END PRIVATE KEY-----"
+
   # --- the start of a run ------------------------------------------------------------------------------------
 
   def test_a_run_is_started_by_hand_and_in_no_other_way
@@ -171,6 +179,56 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     assert_match(/^umask 077$/, run)
     assert_includes run, %q(printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8")
     assert_includes run, %q(echo "ASC_KEY_FILEPATH=$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" >> "$GITHUB_ENV")
+  end
+
+  # The step as it runs: the key, with or without the line break that a file redirected into `gh secret set` ends in,
+  # lands in a file only its owner can open, and the lane finds the file through ASC_KEY_FILEPATH.
+  def test_the_api_key_step_writes_the_key_for_its_owner_alone_and_hands_the_path_on
+    [FAKE_KEY, "#{FAKE_KEY}\n"].each do |key|
+      run = run_key_step(key: key)
+      file = "asc/AuthKey_ABC123DEFG.p8"
+
+      assert run.status.success?, run.log
+      assert_equal [file], run.files.keys
+      assert_equal "#{key}\n", run.files.dig(file, :content)
+      assert_equal 0o600, run.files.dig(file, :mode)
+      assert_equal ["ASC_KEY_FILEPATH=#{run.runner_temp}/#{file}"], run.github_env
+      refute_includes run.log, "Tm90IGEgcmVhbCBrZXkgYXQgYWxs", "the key must not be printed"
+    end
+  end
+
+  # A secret that is not set reaches the step as an empty string. The lane first parses the key after the tests, so a
+  # step that wrote the empty file anyway would let a run build and test for minutes before it failed. The step stops
+  # at once, writes nothing, and names the secret.
+  def test_the_api_key_step_stops_when_the_secret_is_empty_or_only_white_space
+    ["", " ", "\n", " \t\r\n "].each do |key|
+      run = run_key_step(key: key)
+
+      refute run.status.success?, "the key #{key.inspect} got through"
+      assert_match(/^::error::ASC_KEY_P8 is empty/, run.log, "the key #{key.inspect}")
+      assert_empty run.files, "the key #{key.inspect}: nothing may be written"
+      assert_empty run.github_env, "the key #{key.inspect}: no file may be handed on"
+    end
+  end
+
+  # The other way for a run to fail late is a key pasted wrong: the file would be written and handed on, and only
+  # fastlane's parse of it, after the tests, would object. A key file starts with a PEM header. The base64 text of
+  # the file does not, and that is what the secret DEVELOPER_ID_P12 holds, so it is the likely mistake; nor does a
+  # paste that lost its first line. What was pasted is not repeated in the log.
+  def test_the_api_key_step_stops_when_the_secret_is_not_the_text_of_a_key_file
+    pasted = ["xyz-not-a-key-0123", [FAKE_KEY].pack("m0"), FAKE_KEY.lines.drop(1).join]
+
+    pasted.each do |key|
+      run = run_key_step(key: key)
+
+      refute run.status.success?, "the key #{key.inspect} got through"
+      assert_match(/^::error::ASC_KEY_P8 /, run.log, "the key #{key.inspect}")
+      key.lines.map(&:strip).reject(&:empty?).each do |line|
+        refute_includes run.log, line, "the key #{key.inspect} was printed"
+      end
+      assert_empty run.files, "the key #{key.inspect}: nothing may be written"
+      assert_empty run.github_env, "the key #{key.inspect}: no file may be handed on"
+    end
   end
 
   def test_the_lane_gets_the_inputs_and_the_secrets_it_reads_through_its_environment
@@ -526,6 +584,29 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
       }
       log, status = Open3.capture2e(env, "bash", "-e", script, chdir: dir)
       [File.readlines(output, chomp: true), log, status]
+    end
+  end
+
+  # Runs the script of the step that writes the App Store Connect key as the runner would, with bash -e on a file, in a
+  # folder of its own that holds RUNNER_TEMP and the GITHUB_ENV file. `key` is what the secret ASC_KEY_P8 holds.
+  def run_key_step(key:, key_id: "ABC123DEFG")
+    Dir.mktmpdir do |dir|
+      runner_temp = File.join(dir, "temp")
+      Dir.mkdir(runner_temp)
+      github_env = File.join(dir, "github-env")
+      File.write(github_env, "")
+      script = File.join(dir, "step.sh")
+      File.write(script, step_running("build", "AuthKey_").fetch("run"))
+
+      env = { "RUNNER_TEMP" => runner_temp, "GITHUB_ENV" => github_env, "ASC_KEY_ID" => key_id, "ASC_KEY_P8" => key }
+      log, status = Open3.capture2e(env, "bash", "-e", script, chdir: dir)
+      files = Dir.glob(File.join(runner_temp, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) }
+      KeyStepRun.new(
+        files: files.to_h do |path|
+          [path.delete_prefix("#{runner_temp}/"), { content: File.read(path), mode: File.stat(path).mode & 0o777 }]
+        end,
+        github_env: File.readlines(github_env, chomp: true), runner_temp: runner_temp, log: log, status: status
+      )
     end
   end
 
