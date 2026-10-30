@@ -59,6 +59,39 @@ lane :dmg do |options|
   # tests or the build start.
   versions, identity, key_settings, working_copy =
     preflight.values_at(:versions, :identity, :key_settings, :working_copy)
+  paths = announce_build(versions: versions, identity: identity, working_copy: working_copy)
+
+  # The first run, and a run after the requirements changed, install dmgbuild
+  # from PyPI. That comes right after the preflight, so that a failure costs
+  # seconds and not the whole build.
+  dmgbuild = ensure_dmgbuild
+  clear_previous_build(paths)
+
+  if skip_tests
+    UI.important("Skipping the unit tests (skip_tests:true)")
+  else
+    unit_tests(paths, xcargs: "-skipMacroValidation")
+  end
+
+  api_key = register_app_and_profile(key_settings, paths)
+  archive_and_export(paths: paths, identity: identity, xcargs: local_archive_xcargs(key_settings))
+
+  # The preflight's look at the working copy was minutes ago, before the tests
+  # and the archive. A branch switch, a stash pop or an editor's autosave since
+  # then is compiled into the app, and the DMG would pass every check below
+  # while matching no commit. No DMG exists yet, so there is nothing to clean up.
+  ensure_working_copy_unchanged(since: working_copy)
+
+  notarized_dmg(paths: paths, identity: identity, api_key: api_key, dmgbuild: dmgbuild)
+  UI.success("DMG ready: #{paths[:final_dmg]} (#{working_copy.short_head})")
+end
+
+# --- the steps of a release build --------------------------------------------
+
+# The paths of the build of `versions`, after the lane has said what it is
+# about to build: the commit, the version and build, the signing identity and
+# where the DMG will be.
+def announce_build(versions:, identity:, working_copy:)
   paths = InvoicesTracker::Paths.resolve(
     repo_root: REPO_ROOT, version: versions.marketing_version, build: versions.build
   )
@@ -68,54 +101,58 @@ lane :dmg do |options|
   UI.message("Build:    #{versions.build}")
   UI.message("Identity: #{identity.name}")
   UI.message("DMG:      #{paths[:final_dmg]}")
+  paths
+end
 
-  # The first run, and a run after the requirements changed, install dmgbuild
-  # from PyPI. That comes right after the preflight, so that a failure costs
-  # seconds and not the whole build.
-  dmgbuild = ensure_dmgbuild
-
-  # A DMG of the same name is gone as soon as the build starts, so a run that
-  # fails cannot leave an older DMG behind that looks like its result.
+# A DMG of the same name is gone as soon as the build starts, so a run that
+# fails cannot leave an older DMG behind that looks like its result. The work
+# folder starts empty.
+def clear_previous_build(paths)
   remove_previous_dmg(paths[:final_dmg])
   FileUtils.rm_rf(paths[:work_dir])
   FileUtils.mkdir_p(paths[:work_dir])
+end
 
-  if skip_tests
-    UI.important("Skipping the unit tests (skip_tests:true)")
-  else
-    run_tests(
-      project: paths[:project],
-      scheme: InvoicesTracker::Release::SCHEME,
-      destination: "platform=macOS",
-      derived_data_path: paths[:test_derived_data],
-      xcodebuild_formatter: XCODEBUILD_FORMATTER,
-      xcargs: "-skipMacroValidation",
-      output_directory: File.join(REPO_ROOT, "build", "test_output"),
-      # The JUnit report only. The default also asks for an HTML report, which
-      # only xcpretty can write, so it would only add a warning to every run.
-      output_types: "junit"
-    )
-  end
+# Runs the unit tests in the tests' own DerivedData folder, with `xcargs` (one
+# string, split like a shell command line) and, when given, `skip_testing`, the
+# tests to leave out as `<target>/<suite>`.
+def unit_tests(paths, xcargs:, skip_testing: nil)
+  options = {
+    project: paths[:project],
+    scheme: InvoicesTracker::Release::SCHEME,
+    destination: "platform=macOS",
+    derived_data_path: paths[:test_derived_data],
+    xcodebuild_formatter: XCODEBUILD_FORMATTER,
+    xcargs: xcargs,
+    output_directory: File.join(REPO_ROOT, "build", "test_output"),
+    # The JUnit report only. The default also asks for an HTML report, which
+    # only xcpretty can write, so it would only add a warning to every run.
+    output_types: "junit"
+  }
+  options[:skip_testing] = skip_testing if skip_testing
+  run_tests(**options)
+end
 
+# Loads the App Store Connect API key and makes sure the App ID and the
+# Developer ID profile exist; returns the key for the notarization. The App ID
+# and the profile come before the build, so a signing or permission problem
+# fails within seconds instead of after the archive.
+def register_app_and_profile(key_settings, paths)
   api_key = app_store_connect_api_key(
     key_id: key_settings.key_id,
     issuer_id: key_settings.issuer_id,
     key_filepath: key_settings.key_file
   )
-
-  # The App ID and the profile come before the build, so a signing or
-  # permission problem fails within seconds instead of after the archive.
   ensure_app_id(api_key)
   ensure_profile(api_key, output_path: paths[:work_dir])
+  api_key
+end
 
-  archive_and_export(paths: paths, identity: identity, key_settings: key_settings)
-
-  # The preflight's look at the working copy was minutes ago, before the tests
-  # and the archive. A branch switch, a stash pop or an editor's autosave since
-  # then is compiled into the app, and the DMG would pass every check below
-  # while matching no commit. No DMG exists yet, so there is nothing to clean up.
-  ensure_working_copy_unchanged(since: working_copy)
-
+# Turns the exported app into the finished DMG at the final path: notarizes
+# and staples the app, puts a copy of it in a disk image, signs, notarizes and
+# staples the image, and verifies the image and the app. Only a DMG that passed
+# verification reaches the final path; any failure on the way deletes it.
+def notarized_dmg(paths:, identity:, api_key:, dmgbuild:)
   # notarize also staples the ticket to the app.
   UI.message("Notarizing #{File.basename(paths[:app])}...")
   notarize(package: paths[:app], api_key: api_key, print_log: true)
@@ -163,7 +200,6 @@ lane :dmg do |options|
 
     FileUtils.mv(paths[:work_dmg], paths[:final_dmg])
   end
-  UI.success("DMG ready: #{paths[:final_dmg]} (#{working_copy.short_head})")
 end
 
 # --- preflight ---------------------------------------------------------------
@@ -347,24 +383,27 @@ end
 
 # --- the build ---------------------------------------------------------------
 
-# Archives the app and exports it for Developer ID distribution.
-#
-# The archive keeps the project's automatic signing: signing settings forced on
-# the command line would reach the SQLCipher package target too, which takes no
-# profile. -allowProvisioningUpdates, authenticated with the API key, lets
-# xcodebuild reach the portal without the accounts in Xcode's settings. The
-# export signs manually: the team, the certificate by its SHA-1 (another team's
-# Developer ID is in the keychain too) and the profile by its name.
-def archive_and_export(paths:, identity:, key_settings:)
-  # xcargs is split like a shell command line, so every value is escaped.
-  xcargs = Shellwords.join([
+# The xcargs of the local archive. It keeps the project's automatic signing:
+# signing settings forced on the command line would reach the SQLCipher package
+# target too, which takes no profile. -allowProvisioningUpdates, authenticated
+# with the API key, lets xcodebuild reach the portal without the accounts in
+# Xcode's settings. xcargs is split like a shell command line, so every value
+# is escaped.
+def local_archive_xcargs(key_settings)
+  Shellwords.join([
     "-skipMacroValidation",
     "-allowProvisioningUpdates",
     "-authenticationKeyPath", key_settings.key_file,
     "-authenticationKeyID", key_settings.key_id,
     "-authenticationKeyIssuerID", key_settings.issuer_id
   ])
+end
 
+# Archives the app with `xcargs` (one string, split like a shell command line)
+# and exports it for Developer ID distribution. The export signs manually: the
+# team, the certificate by its SHA-1 (another team's Developer ID is in the
+# keychain too) and the profile by its name.
+def archive_and_export(paths:, identity:, xcargs:)
   with_system_rsync_first do
     build_app(
       project: paths[:project],
