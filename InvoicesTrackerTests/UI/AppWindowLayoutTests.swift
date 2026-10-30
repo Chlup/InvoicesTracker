@@ -2384,14 +2384,14 @@ struct AppWindowLayoutTests {
         }
         // As the card sets a row: the sign 18 points wide, 10 points between it and the texts, the label with the note
         // 2 points under it, and 10 points more before the value, which keeps its width. The frame VoiceOver has for
-        // the row is that of what it reads, without the 8 points above and below it.
+        // the row is that of what it reads, without the 8 points above and below it. The value of the total is title 2.
         let weight: Font.Weight =
             switch row.style {
             case .plain: .regular
             case .strong: .semibold
             case .total: .bold
             }
-        let valueFont = row.style == .total ? Font.system(size: 17, weight: .bold) : Font.body.weight(weight)
+        let valueFont = row.style == .total ? Typography.title2 : Font.body.weight(weight)
         let valueWidth = fittingSize(of: Text(verbatim: row.value).font(valueFont).monospacedDigit()).width
         let signWidth = fittingSize(of: Text(verbatim: row.sign.rawValue).fontWeight(.bold)).width
         // How far into the row the frame starts: where the sign is drawn, in the middle of its 18 points, or at the

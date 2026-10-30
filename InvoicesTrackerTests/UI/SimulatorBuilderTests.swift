@@ -808,6 +808,10 @@ struct SimulatorBuilderTests {
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 37,81\u{00A0}Kč:"
                 + " daň 15,00 · sociální 16,06 · zdravotní 6,75.")
         #expect(page.marginal.shares.map(\.authority) == [.tax, .social, .health])
+        // The parts of its bar are the rates themselves, as on Výpočet: 15 %, 16,06 % and 6,75 % of the whole width.
+        #expect(isClose(page.marginal.shares[0].fraction, 0.15))
+        #expect(isClose(page.marginal.shares[1].fraction, 0.1606))
+        #expect(isClose(page.marginal.shares[2].fraction, 0.0675))
     }
 
     // MARK: The texts of the inputs

@@ -102,11 +102,14 @@ nonisolated struct ComputationEquation: Sendable, Hashable {
     var split: String
 }
 
-/// What one authority takes of the next crown, as a part of the bar of the marginal levy.
+/// What one authority takes, as a part of a bar of the three authorities.
 nonisolated struct MarginalShare: Identifiable, Sendable, Hashable {
     var authority: Authority
 
-    /// The part of the bar, 0 to 1. It is for drawing only; the rates are in the text.
+    /// The part of the full width of the bar, 0 to 1. The bar of the marginal levy gives each authority its rate
+    /// itself: a tax of 15 % of the next crown is 0,15 of the width, so the three parts together fill as much of the
+    /// bar as the levy total is of a hundred crowns. A bar of what the authorities are paid gives each its share of
+    /// the total instead, and those add up to 1. It is for drawing only; the money is in the texts.
     var fraction: Double
 
     var id: Authority {
@@ -119,7 +122,8 @@ nonisolated struct ComputationMarginal: Sendable, Hashable {
     /// "37,8 %".
     var total: String
 
-    /// The parts of the bar: tax, social, health.
+    /// The parts of the bar: tax, social, health. Each one is as wide as the rate of its authority, so the parts
+    /// together fill as much of the bar as `total` is of a hundred crowns.
     var shares: [MarginalShare]
     var text: String
 }

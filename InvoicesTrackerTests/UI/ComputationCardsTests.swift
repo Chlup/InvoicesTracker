@@ -215,9 +215,12 @@ struct ComputationCardsTests {
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 37,81\u{00A0}Kč:"
                 + " daň 15,00 · sociální 16,06 · zdravotní 6,75.")
         #expect(marginal.shares.map(\.authority) == [.tax, .social, .health])
-        #expect(isClose(marginal.shares[0].fraction, 0.3967204443268976))
-        #expect(isClose(marginal.shares[1].fraction, 0.42475535572599843))
-        #expect(isClose(marginal.shares[2].fraction, 0.17852419994710395))
+        // Each part of the bar is the rate itself, 15 %, 16,06 % and 6,75 % of the whole width, so that the three
+        // together fill 37,81 % of it, as much as the levy total is of a hundred crowns.
+        #expect(isClose(marginal.shares[0].fraction, 0.15))
+        #expect(isClose(marginal.shares[1].fraction, 0.1606))
+        #expect(isClose(marginal.shares[2].fraction, 0.0675))
+        #expect(isClose(marginal.shares.map(\.fraction).reduce(0, +), 0.3781))
     }
 
     @Test func aHighIncomeHasNoMarginalSocialInsuranceAndTheTopRateOfTax() {
@@ -229,9 +232,9 @@ struct ComputationCardsTests {
             marginal.text
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 29,75\u{00A0}Kč:"
                 + " daň 23,00 · sociální 0,00 · zdravotní 6,75.")
-        #expect(isClose(marginal.shares[0].fraction, 0.773109243697479))
+        #expect(isClose(marginal.shares[0].fraction, 0.23))
         #expect(marginal.shares[1].fraction == 0)
-        #expect(isClose(marginal.shares[2].fraction, 0.226890756302521))
+        #expect(isClose(marginal.shares[2].fraction, 0.0675))
     }
 
     @Test func thePartsOfTheMarginalLevyAddUpToTheTotalShown() {
@@ -262,6 +265,32 @@ struct ComputationCardsTests {
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 9,06\u{00A0}Kč:"
                 + " daň 0,00 · sociální 6,43 · zdravotní 2,63.")
         #expect(marginal.shares[0].fraction == 0)
+        #expect(isClose(marginal.shares[1].fraction, 0.06424))
+        #expect(isClose(marginal.shares[2].fraction, 0.02634))
+    }
+
+    @Test func theBarOfTheMarginalLevyHoldsTheRatesExactlyWhileTheTextRoundsThem() {
+        // 1 125 000 Kč of income: the rates are 6 %, 6,424 % and 0,022 %. The text rounds them to the hundredth of a
+        // crown and gives the largest remainder the hundredth that the sum needs, but the bar is drawn from the rates.
+        let marginal = computationPage(computationYearInput(netHalere: 112_500_000)).marginal
+
+        #expect(isClose(marginal.shares[0].fraction, 0.06))
+        #expect(isClose(marginal.shares[1].fraction, 0.06424))
+        #expect(isClose(marginal.shares[2].fraction, 0.00022))
+    }
+
+    @Test func aRateBelowZeroFillsNothingOfTheBarAndOneAboveOneFillsAllOfIt() {
+        var result = TaxEngine.compute(sample, asOf: civilDate("2026-10-17"))
+        result.marginal[.tax] = decimal("-0.05")
+        result.marginal[.social] = decimal("1.5")
+        result.marginal[.health] = decimal("0.0675")
+
+        let shares = ComputationBuilder.marginal(of: result).shares
+
+        #expect(shares.map(\.authority) == [.tax, .social, .health])
+        #expect(shares[0].fraction == 0)
+        #expect(shares[1].fraction == 1)
+        #expect(isClose(shares[2].fraction, 0.0675))
     }
 
     @Test func withoutIncomeNothingMoreIsLeviedAndTheBarIsEmpty() {
@@ -533,13 +562,20 @@ struct ComputationCardsTests {
             #expect(page.equation.split.contains(CzechFormat.wholeKc(result.settlementTotal)), "\(context)")
         }
 
-        // The marginal levy: the shares fill the bar, or it is empty.
+        // The marginal levy: each part of the bar is the rate of its authority, 0 to 1 of the whole width, so that the
+        // parts fill as much of the bar as the levy total is of a hundred crowns.
         #expect(page.marginal.total == CzechFormat.percent(result.marginalTotal), "\(context)")
         #expect(page.marginal.shares.map(\.authority) == Authority.allCases, "\(context)")
         let fractions = page.marginal.shares.map(\.fraction)
+        let rates = Authority.allCases.map { NSDecimalNumber(decimal: result.marginal[$0] ?? 0).doubleValue }
         #expect(fractions.allSatisfy { (0...1).contains($0) }, "\(context)")
-        #expect(
-            isClose(fractions.reduce(0, +), result.marginalTotal > 0 ? 1 : 0), "\(context) \(fractions)")
+        for (fraction, rate) in zip(fractions, rates) {
+            #expect(isClose(fraction, min(1, max(0, rate))), "\(context) \(fractions) \(rates)")
+        }
+        if rates.allSatisfy({ $0 >= 0 }) {
+            let total = NSDecimalNumber(decimal: result.marginalTotal).doubleValue
+            #expect(isClose(fractions.reduce(0, +), total), "\(context) \(fractions) \(total)")
+        }
         // The parts in the sentence add up to the total in it, to the hundredth.
         let shown = hundredths(in: page.marginal.text)
         #expect(shown.count == 4, "\(context) \(page.marginal.text)")

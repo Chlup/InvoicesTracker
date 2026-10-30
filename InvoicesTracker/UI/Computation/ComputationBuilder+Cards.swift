@@ -79,15 +79,16 @@ nonisolated extension ComputationBuilder {
     // MARK: Marginal levy
 
     /// What the three levies take of the next crown, from the levies with 100 000 Kč more income that the engine
-    /// worked out, and each authority's part of the sum for the bar. The sentence names the sum and the three parts per
-    /// hundred crowns, with the haléře, and the parts add up to the sum shown. Only the result is read, so the
-    /// Simulátor shows the same card.
+    /// worked out, and the rate of each authority for the bar: the part of the bar of each is its rate itself, 0 to 1,
+    /// so that the three fill as much of it as the sum is of a hundred crowns. The sentence names the sum and the three
+    /// parts per hundred crowns, with the haléře, and the parts add up to the sum shown. Only the result is read, so
+    /// the Simulátor shows the same card.
     static func marginal(of result: TaxResult) -> ComputationMarginal {
         // Tax, social, health: the order of `Authority.allCases`, which the text and the bar follow.
         let rates = Authority.allCases.map { result.marginal[$0] ?? 0 }
         let sum = result.marginalTotal
         let shares = zip(Authority.allCases, rates).map { authority, rate in
-            MarginalShare(authority: authority, fraction: sum > 0 ? fraction(of: max(0, rate), in: sum) : 0)
+            MarginalShare(authority: authority, fraction: NSDecimalNumber(decimal: min(1, max(0, rate))).doubleValue)
         }
         // Hundredths of a crown per hundred crowns (0,3781 is 3 781), the parts adding up to the rounded sum.
         let (parts, total) = DecimalMath.roundedKeepingSum(rates.map { $0 * 10_000 }, total: sum * 10_000)
