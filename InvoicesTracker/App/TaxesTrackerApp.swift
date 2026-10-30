@@ -40,7 +40,7 @@ struct TaxesTrackerApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
-            AppCommands(model: model)
+            AppCommands(model: model, updates: updater?.model)
             #if DEBUG
             DebugCommands()
             #endif
