@@ -124,33 +124,40 @@ The API key is the same kind as the local lane needs: a **Team** key of team
 3VN358756R whose role can register App IDs, manage provisioning profiles and
 notarize.
 
+The repository is public, so the key files that the steps below make are saved
+outside its checkout, and no key goes through the clipboard.
+
 Export the Developer ID identity. In Keychain Access, open My Certificates,
 select "Developer ID Application: … (3VN358756R)" together with its private key
-and choose File > Export Items…, then save it as a .p12 file with a password.
-Put the file in the clipboard as base64 and set the secrets:
+and choose File > Export Items…, then save it as a .p12 file with a password in
+a folder outside the checkout, the Desktop for example. Send the file as base64
+straight into the secret and set the password:
 
-    base64 -i DeveloperID.p12 | pbcopy
-    gh secret set DEVELOPER_ID_P12 --env release --repo Chlup/InvoicesTracker
+    base64 -i ~/Desktop/DeveloperID.p12 | gh secret set DEVELOPER_ID_P12 --env release --repo Chlup/InvoicesTracker
     gh secret set DEVELOPER_ID_P12_PASSWORD --env release --repo Chlup/InvoicesTracker
 
-`gh` asks for each value: paste the clipboard for the first, type the password
-for the second. Delete the .p12 file afterwards. The App Store Connect secrets
-are set the same way; `ASC_KEY_P8` is the key file itself:
+`gh` asks for the password with the second command. Delete the .p12 file
+afterwards. The App Store Connect secrets are set the same way; `ASC_KEY_P8` is
+the key file itself, which sits in `fastlane/`, where git ignores it:
 
     gh secret set ASC_KEY_ID --env release --repo Chlup/InvoicesTracker
     gh secret set ASC_ISSUER_ID --env release --repo Chlup/InvoicesTracker
     gh secret set ASC_KEY_P8 --env release --repo Chlup/InvoicesTracker < fastlane/AuthKey_<key id>.p8
 
-The Sparkle key sits in the login keychain, made with `generate_keys --account
-InvoicesTracker`. Export it to a file, set the secret from the file, and delete
-the file:
+`generate_keys` is in the `bin` folder of the Sparkle 2.10.1 download, for
+example `~/SparkleTools/bin`; set `sparkle_bin` to yours. The Sparkle key sits in
+the login keychain, made with `generate_keys --account InvoicesTracker`. Export
+it to a file in a temporary folder outside the checkout, set the secret from
+that file, and remove the folder:
 
-    ~/SparkleTools/bin/generate_keys --account InvoicesTracker -x sparkle-key.txt
-    gh secret set SPARKLE_PRIVATE_KEY --env release --repo Chlup/InvoicesTracker < sparkle-key.txt
-    rm sparkle-key.txt
+    sparkle_bin=~/SparkleTools/bin
+    dir=$(mktemp -d)
+    "$sparkle_bin/generate_keys" --account InvoicesTracker -x "$dir/sparkle-key.txt"
+    gh secret set SPARKLE_PRIVATE_KEY --env release --repo Chlup/InvoicesTracker < "$dir/sparkle-key.txt"
+    rm -rf "$dir"
 
 Keep a backup of the Sparkle key, in a password manager for example, before you
-delete the file. Installed copies accept only updates signed with that key, so
+remove the folder. Installed copies accept only updates signed with that key, so
 if it is lost they can never accept another update.
 
 ### Starting a run
@@ -171,8 +178,9 @@ boxes do:
 - `branch`: the branch to build, `main` by default. It only chooses what is
   built; the workflow file always comes from `main`.
 - `version` and `build`: the marketing version (X.Y or X.Y.Z) and the build
-  number. They must equal `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` of
-  the project on that branch, or the run stops before anything slow.
+  number. Spaces around them are ignored. The run stops at its first step when
+  one is not of that form, and before anything slow when it is not the one in
+  the project on that branch (`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`).
 - `changelog`: the release notes in Markdown. A deploy needs them: they become
   the text of the release and what Sparkle's update window shows. The box in the
   Actions form is one line, so type `\n` where a line break belongs. A text with
