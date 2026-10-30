@@ -4,9 +4,9 @@ require "json"
 
 module InvoicesTracker
   # Reads the version numbers of the app out of `xcodebuild -showBuildSettings
-  # -json` output and checks that they are fit to name and ship a release. Pure
-  # parsing and validation with no I/O; callers run xcodebuild and pass its
-  # output.
+  # -json` output, checks that they are fit to name and ship a release, and
+  # checks that they are the ones typed for a release. Pure parsing and
+  # validation with no I/O; callers run xcodebuild and pass its output.
   module BuildSettings
     Versions = Struct.new(:marketing_version, :build, keyword_init: true)
 
@@ -54,5 +54,44 @@ module InvoicesTracker
 
       found
     end
+
+    # The problems with the version and the build typed for a release, empty
+    # when they are fine. Typed text tends to carry a space or a line break, so
+    # both are trimmed first. Each must be in the format of its number (a `v`
+    # before the version is refused) and must be the branch's own, since a
+    # release is named after what the branch builds and its numbers are bumped
+    # in a pull request, never at release time. The first argument holds the
+    # branch's numbers, as `BuildSettings.versions` reads them; a number the
+    # branch does not define differs from any typed one. A typed number that is
+    # not in its format is reported as that alone: there is nothing to compare
+    # it with.
+    def mismatch_errors(versions, version:, build:)
+      found = []
+
+      typed_version = version.to_s.strip
+      if !MARKETING_VERSION_FORMAT.match?(typed_version)
+        found << "the typed version '#{typed_version}' is not X.Y or X.Y.Z"
+      elsif versions.marketing_version != typed_version
+        found << "the branch's MARKETING_VERSION is #{branch_number(versions.marketing_version)}, " \
+                 "not the typed #{typed_version} — bump it in a PR first"
+      end
+
+      typed_build = build.to_s.strip
+      if !BUILD_FORMAT.match?(typed_build)
+        found << "the typed build '#{typed_build}' is not a positive whole number"
+      elsif versions.build != typed_build
+        found << "the branch's CURRENT_PROJECT_VERSION is #{branch_number(versions.build)}, " \
+                 "not the typed #{typed_build} — bump it in a PR first"
+      end
+
+      found
+    end
+
+    # A number of the branch as it reads in a message: the number itself, or
+    # "unset" when the branch does not define it.
+    def branch_number(value)
+      value.to_s.empty? ? "unset" : value
+    end
+    private_class_method :branch_number
   end
 end
