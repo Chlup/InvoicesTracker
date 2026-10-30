@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The note above the cards about what the computation counts up to the day shown: a box in the semantic blue at a low
-/// opacity, so that it follows the appearance of the window. Simulátor's note has a button at its end. VoiceOver reads
-/// a note without a button as one phrase, and reaches the button of one that has it on its own.
+/// The note above the cards about what the computation counts up to the day shown: a note of the information tone,
+/// blue. Simulátor's note has a small secondary button at its end. VoiceOver reads a note without a button as one
+/// phrase, and reaches the button of one that has it on its own.
 struct ComputationBanner: View {
     let text: String
 
@@ -10,22 +10,14 @@ struct ComputationBanner: View {
     var button: (title: String, action: () -> Void)?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: "info.circle")
-                .foregroundStyle(.blue)
-                .accessibilityHidden(true)
-            Text(verbatim: text)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let button {
+        if let button {
+            Note(.info, text: text) {
                 Button(button.title, action: button.action)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
             }
+        } else {
+            Note(.info, text: text)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: button == nil ? .combine : .contain)
     }
 }
 
