@@ -79,6 +79,23 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
     assert_match(/can never accept another update/, prose)
   end
 
+  # The exported file is the only copy outside the keychain, and the folder with it is removed by a command. A block
+  # of commands is pasted whole, so the advice to back the file up has to stand before the block that removes the
+  # folder, and that command has to be a block of its own, to be pasted once the backup is made.
+  def test_the_readme_has_the_backup_of_the_sparkle_key_before_the_command_that_removes_it
+    backup = section.index(/backup of the Sparkle key/)
+    removal = section.index('rm -rf "$dir"')
+
+    refute_nil backup
+    refute_nil removal
+    assert_operator backup, :<, removal, "the advice to keep a backup comes after the command that removes the key"
+    removal_block = command_blocks.find { |block| block.include?('rm -rf "$dir"') }
+    %w[generate_keys mktemp].each do |command|
+      refute_includes removal_block, command, "the removal is pasted together with #{command}, before any backup"
+    end
+    refute_includes removal_block, "gh secret set"
+  end
+
   def test_the_readme_shows_how_to_start_a_run_from_the_web_and_from_a_terminal
     assert_match(/Actions tab/, prose)
     assert_includes section_on_one_line_per_command,
@@ -140,6 +157,13 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
   # The section with each command that continues on the next line (a backslash at the end of the line) joined.
   def section_on_one_line_per_command
     section.gsub(/ \\\n\s*/, " ")
+  end
+
+  # The commands of the section as the reader pastes them: each run of lines indented by four spaces is one block.
+  def command_blocks
+    section.lines.slice_when { |before, after| before.start_with?("    ") != after.start_with?("    ") }
+           .select { |lines| lines.first.start_with?("    ") }
+           .map(&:join)
   end
 
   # The section with every run of white space, a line break included, made one space, for sentences that wrap.

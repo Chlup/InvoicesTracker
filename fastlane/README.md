@@ -147,18 +147,20 @@ the key file itself, which sits in `fastlane/`, where git ignores it:
 `generate_keys` is in the `bin` folder of the Sparkle 2.10.1 download, for
 example `~/SparkleTools/bin`; set `sparkle_bin` to yours. The Sparkle key sits in
 the login keychain, made with `generate_keys --account InvoicesTracker`. Export
-it to a file in a temporary folder outside the checkout, set the secret from
-that file, and remove the folder:
+it to a file in a temporary folder outside the checkout and set the secret from
+that file:
 
     sparkle_bin=~/SparkleTools/bin
     dir=$(mktemp -d)
     "$sparkle_bin/generate_keys" --account InvoicesTracker -x "$dir/sparkle-key.txt"
     gh secret set SPARKLE_PRIVATE_KEY --env release --repo Chlup/InvoicesTracker < "$dir/sparkle-key.txt"
-    rm -rf "$dir"
 
-Keep a backup of the Sparkle key, in a password manager for example, before you
-remove the folder. Installed copies accept only updates signed with that key, so
-if it is lost they can never accept another update.
+Before you remove the folder, keep a backup of the Sparkle key: copy
+`sparkle-key.txt` from it to a password manager, for example. Installed copies
+accept only updates signed with that key, so if it is lost they can never accept
+another update. Then remove the folder, in the same terminal window:
+
+    rm -rf "$dir"
 
 ### Starting a run
 
