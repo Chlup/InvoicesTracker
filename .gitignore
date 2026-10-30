@@ -33,6 +33,10 @@ playground.xcworkspace
 # Swift Package Manager
 .build/
 
+# Bundler: on the release runner, ruby/setup-ruby installs the gems into the checkout
+/.bundle/
+/vendor/bundle/
+
 # fastlane
 fastlane/report.xml
 fastlane/Preview.html
