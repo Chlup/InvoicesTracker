@@ -58,8 +58,8 @@ jobs:
       contents: read
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
-      # Gemfile.lock lists the platform of this runner. Frozen, Bundler fails instead of rewriting the lockfile,
-      # which the lane would refuse as a change in the working copy.
+      # The lockfile lists the ruby platform and no platform-specific gem, so a frozen install works on any platform.
+      # Frozen, Bundler never rewrites it, which the lane would refuse as a change in the working copy.
       BUNDLE_FROZEN: "true"
       # fastlane needs a UTF-8 locale.
       LANG: en_US.UTF-8

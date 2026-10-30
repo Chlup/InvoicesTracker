@@ -88,8 +88,8 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     assert_equal "/Applications/Xcode_27.1.app/Contents/Developer", build.fetch("env")["DEVELOPER_DIR"]
   end
 
-  # The lane refuses a working copy with changes, and Bundler may rewrite Gemfile.lock when it finds the platform of
-  # the runner missing from it. A frozen bundle fails instead of rewriting the file.
+  # The lane refuses a working copy with changes, and a frozen bundle never rewrites Gemfile.lock. That the lockfile
+  # works on any platform is checked in bundler_on_the_runner_test.rb.
   def test_bundler_may_not_rewrite_the_lockfile_on_the_runner
     assert_equal "true", job("build").fetch("env")["BUNDLE_FROZEN"]
   end
