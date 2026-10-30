@@ -131,7 +131,7 @@ private struct CapsuleButtonBody: View {
     @ViewBuilder
     private var capsule: some View {
         if kind.isRaised {
-            Capsule().fill(kind.background).elevation(.control)
+            Capsule().surface(kind.background, elevation: .control)
         } else {
             Capsule().fill(kind.background)
         }

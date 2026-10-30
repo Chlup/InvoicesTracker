@@ -509,8 +509,10 @@ private struct LevyPopover: View {
         .padding(.vertical, LevyBarMetrics.popoverVerticalPadding)
         .padding(.horizontal, LevyBarMetrics.popoverHorizontalPadding)
         .frame(width: LevyBarLayout.popoverWidth, alignment: .leading)
-        .background(Palette.bgCard, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
-        .elevation(.pop)
+        .background {
+            RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
+                .surface(Palette.bgCard, elevation: .pop)
+        }
     }
 
     /// A line under the rows, the share line or the note, in callout and tertiary text, which wraps in the popover.

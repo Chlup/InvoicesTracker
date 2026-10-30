@@ -28,8 +28,9 @@ struct SearchLineView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.bgCard, in: shape)
-        .elevation(.card, in: shape)
+        .background {
+            shape.surface(Palette.bgCard, elevation: .card)
+        }
         .accessibilityElement(children: .contain)
     }
 

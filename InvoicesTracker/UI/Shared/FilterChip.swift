@@ -34,7 +34,7 @@ struct FilterChip: View {
         if isSelected {
             Capsule().fill(Palette.accent)
         } else {
-            Capsule().fill(Palette.bgCard).elevation(.control)
+            Capsule().surface(Palette.bgCard, elevation: .control)
         }
     }
 }

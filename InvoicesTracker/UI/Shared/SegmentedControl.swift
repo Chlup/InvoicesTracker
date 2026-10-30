@@ -68,7 +68,7 @@ private struct SegmentButton: View {
                 .frame(height: DesignMetrics.smallControlHeight)
                 .background {
                     if isSelected {
-                        Capsule().fill(Palette.bgCard).elevation(.control)
+                        Capsule().surface(Palette.bgCard, elevation: .control)
                     }
                 }
                 .contentShape(Capsule())

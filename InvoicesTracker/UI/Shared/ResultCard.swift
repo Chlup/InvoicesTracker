@@ -73,12 +73,7 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
         }
         .padding(DesignMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background {
-            // The look of the card, with its ring, lies under the content rather than over it, as no content of the
-            // card reaches its edge but what hangs out of a part.
-            Color.clear
-                .card()
-        }
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }

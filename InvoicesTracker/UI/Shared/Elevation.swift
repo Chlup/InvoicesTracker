@@ -51,23 +51,27 @@ enum Elevation {
     }
 }
 
-extension View {
-    /// Raises the view off the page at `level`: a ring half a point wide that follows `shape`, and the drop shadow of
-    /// the level. The shadow follows what the view draws, so apply it to a view that already has its background.
-    func elevation(_ level: Elevation, in shape: some InsettableShape) -> some View {
-        overlay(shape.strokeBorder(level.ringColor, lineWidth: Elevation.ringWidth))
+extension InsettableShape {
+    /// The shape drawn as a surface that stands off the page at `level`: filled with `fill`, with a ring half a point
+    /// wide along its edge, and the drop shadow of the level under it. A card is `RoundedRectangle` of 16 points, a
+    /// control is a `Capsule`, and a bubble, a menu or a line on the window is a `RoundedRectangle` of 10.
+    ///
+    /// Only the shape casts the shadow. SwiftUI puts a shadow under everything that is drawn beneath it, each text and
+    /// each figure on its own, so a shadow set on a view that holds content would be cast by the content too. Draw the
+    /// surface as the background of the view that stands on it, never over it:
+    ///
+    ///     Text("Obsah")
+    ///         .padding(20)
+    ///         .background {
+    ///             RoundedRectangle(cornerRadius: DesignMetrics.cardRadius)
+    ///                 .surface(Palette.bgCard, elevation: .card)
+    ///         }
+    ///
+    /// The ring lies under the content as well, so what hangs out over the edge of the surface, such as a popover on a
+    /// card, covers it. The shape takes the room the background is given: the size of the view it is the background of.
+    func surface(_ fill: some ShapeStyle, elevation level: Elevation) -> some View {
+        self.fill(fill)
             .shadow(color: level.dropColor, radius: level.dropRadius, y: level.dropOffset)
-    }
-
-    /// Raises the view off the page at `level`, in the shape the design gives that level: a card has the corners of a
-    /// card, a control is a capsule, and a bubble or a menu has the corners of a panel. The shadow follows what the
-    /// view draws, so apply it to a view that already has its background.
-    @ViewBuilder
-    func elevation(_ level: Elevation) -> some View {
-        switch level {
-        case .card: elevation(level, in: RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
-        case .control: elevation(level, in: Capsule())
-        case .pop: elevation(level, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
-        }
+            .overlay(strokeBorder(level.ringColor, lineWidth: Elevation.ringWidth))
     }
 }

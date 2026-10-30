@@ -85,10 +85,15 @@ extension View {
     /// off the page by the elevation of a card, a hairline ring and a faint shadow. It takes the colours from the
     /// palette, so it follows the appearance of the window. Give the view its padding first, and clip it first where
     /// its content runs to the edge, as a table does.
+    ///
+    /// The look is the background of the view, so it lies under all of its content: the content casts no shadow of its
+    /// own, and what hangs out of the view, such as a popover, covers the edge of the card. Only the rounded rectangle
+    /// casts the shadow of the card (`InsettableShape.surface(_:elevation:)`).
     func card() -> some View {
-        let shape = RoundedRectangle(cornerRadius: DesignMetrics.cardRadius)
-        return background(Palette.bgCard, in: shape)
-            .elevation(.card, in: shape)
+        background {
+            RoundedRectangle(cornerRadius: DesignMetrics.cardRadius)
+                .surface(Palette.bgCard, elevation: .card)
+        }
     }
 
     /// Reads the view to VoiceOver under `name`, or leaves it as it is where there is none.
