@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Přehled: the headline with the bars of the three authorities, the income chart with the net income of the year above
-/// it, the card with the estimate of the whole year and the chart of its months (for the current year while it is in
-/// progress), the latest payments and the upcoming ones, with the banner that reminds of a uniform rate to enter by
-/// hand, the New Year banner, the warning about rules that are only an estimate and the line about income converted at
-/// a provisional rate above them. The title and the line under it are the shell's. The data is loaded again whenever
-/// what it depends on changes, and when the day changes.
+/// Přehled: the result card with what is left to pay, the bar of the levies of the three authorities and the tiles
+/// under them, the income chart with the net income of the year above it, the card with the estimate of the whole year
+/// and the chart of its months (for the current year while it is in progress), the latest payments and the upcoming
+/// ones, with the banner that reminds of a uniform rate to enter by hand, the New Year banner, the warning about rules
+/// that are only an estimate and the line about income converted at a provisional rate above them. The title and the
+/// line under it are the shell's. The data is loaded again whenever what it depends on changes, and when the day
+/// changes.
 struct OverviewScreen: View {
     let app: AppModel
     @State private var model: OverviewModel
@@ -67,9 +68,13 @@ struct OverviewScreen: View {
     @ViewBuilder
     private var content: some View {
         if let data = model.data {
-            HeroCard(
-                hero: data.hero, mini: data.mini, bars: data.bars,
-                showComputation: { app.screen = .computation }, editAdvances: { app.screen = .advances })
+            // The popover of the bar hangs out of the card over the cards that follow it, so the card is drawn above
+            // them, and nothing clips it.
+            OverviewResultCard(
+                keyFigure: data.keyFigure, levies: data.levies, tiles: data.tiles,
+                showComputation: { app.screen = .computation }, editAdvances: { app.screen = .advances }
+            )
+            .zIndex(1)
             IncomeChart(
                 columns: data.columns, subtitle: data.chartSubtitle, netIncome: data.netIncome,
                 uniformLine: data.uniformLine, mode: app.appSettings.chartMode, withVAT: app.appSettings.chartWithVAT,

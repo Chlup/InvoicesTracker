@@ -90,75 +90,6 @@ nonisolated struct OverviewInput: Sendable {
 
 // MARK: - Output
 
-/// The headline of Přehled: what is left to pay, what the authorities want in all and what part of the income that is.
-nonisolated struct OverviewHero: Sendable, Hashable {
-    /// "Zbývá zaplatit", "Doplatek za rok 2025" for a year that is over and shown as of its last day, or "Vše pokryto
-    /// zálohami" when nothing is left. Any other day of a past year is worded as a year in progress.
-    var label: String
-
-    /// What is left to pay, in whole Kč.
-    var amountKc: Int64
-
-    /// The sentence under the amount.
-    var text: String
-
-    /// The heading of the bars: "Odvody z příjmů do 17. 10.".
-    var head: String
-
-    /// What the authorities want from the income so far, in whole Kč.
-    var totalLiabilityKc: Int64
-
-    /// The part of the income that the three levies take, "11,8 % z příjmů": the shares of the bars add up to it. Nil
-    /// when the income is not above zero, as there is nothing for the levies to take a part of. It is negative while a
-    /// tax bonus is more than the two insurances, "−5,9 % z příjmů".
-    var shareText: String? = nil
-}
-
-/// The bar of one authority: the whole bar is what it wants, the solid part is what the advances paid, and its title is
-/// followed by the part of the income it takes.
-nonisolated struct AuthorityBar: Sendable, Hashable {
-    var authority: Authority
-    var title: String
-
-    /// What the authority wants from the income so far, in whole Kč. Negative for a tax bonus.
-    var liability: Int64
-
-    /// The figure of the bar: "94 440 Kč", or for a tax bonus, a negative tax, "bonus 37 524 Kč".
-    var liabilityText: String
-
-    /// What the advances paid, in whole Kč. It can be more than the liability.
-    var paid: Int64
-
-    /// The solid part of the bar, 0 to 1. It is for drawing only; the money is in `liability` and `paid`.
-    var paidFraction: Double
-
-    /// "zaplaceno zálohami 23 000 Kč".
-    var paidText: String
-
-    /// "zbývá 71 440 Kč", "přeplatek 1 200 Kč", "nic nezbývá", or with a tax bonus "vrátí se 47 524 Kč", the advances
-    /// and the bonus that the tax office returns.
-    var remainingText: String
-
-    /// The part of the income that the authority takes, "1,5 %", or nil when the income is not above zero, as there is
-    /// nothing for the levies to take a part of. The tax office's is negative while a tax bonus is paid, "−15,0 %".
-    var shareText: String? = nil
-
-    /// What VoiceOver reads for the bar: the figure with the part of the income it is, what the advances paid and what
-    /// is left or comes back, as the bar shows them.
-    var accessibilityLabel: String {
-        let tail = paid > liability ? remainingText : "zbývá " + CzechFormat.wholeKc(liability - paid)
-        let share = shareText.map { " (\($0) z příjmů)" } ?? ""
-        return "\(title) \(liabilityText)\(share): zaplaceno zálohami \(CzechFormat.wholeKc(paid)), \(tail)"
-    }
-}
-
-/// One of the three numbers under the headline.
-nonisolated struct MiniStat: Sendable, Hashable {
-    var label: String
-    var value: String
-    var subtitle: String
-}
-
 /// The strip above the chart of the card "Příjmy": what the income of the year so far leaves after the tax and the
 /// insurance, and the average of that per month, each with the words that say what the figure is. The figures are in
 /// whole Kč.
@@ -345,9 +276,18 @@ nonisolated struct UpcomingItem: Sendable, Hashable {
 
 /// What Přehled shows.
 nonisolated struct OverviewData: Sendable, Hashable {
-    var hero: OverviewHero
-    var bars: [AuthorityBar]
-    var mini: [MiniStat]
+    /// The key figure of the result card: what is left to pay, with the sentence under it that says which levies it
+    /// counts and which advances it takes off. The levies themselves are in `levies`, not beside it.
+    var keyFigure: KeyFigureData
+
+    /// The bar of the levies at the other side of the result card: what the three authorities want from the income so
+    /// far, each with the advances paid and what is left in its popover. It is the bar that Výpočet shows for the same
+    /// year and day, and has the total of the levies and its share of the income in its header, because the key figure
+    /// is what is left to pay and not the levies.
+    var levies: LevyBarData
+
+    /// The tiles under the hairline of the result card, in the order they stand in.
+    var tiles: [FigureTileData]
     var columns: [ChartColumn]
     var chartSubtitle: String
 
@@ -377,13 +317,13 @@ nonisolated enum OverviewBuilder {
         // A year is over when it is before the current one and shown as of its last day. Any other day of it is the
         // year as it was on that day, worded like a year in progress, with the advances after it still to come.
         let isOver = AsOfState.isFinishedYear(asOf: input.asOf, today: input.today)
-        // The part of the income that the levies take, which the headline and the bars tell, and the part that is left
-        // of it, which the strip of the net income tells. There is none while the income is not above zero.
+        // The part of the income that the levies take, which the strip of the net income tells. There is none while the
+        // income is not above zero.
         let shares = IncomeShares(input.result)
         return OverviewData(
-            hero: hero(input, isOver: isOver, shares: shares),
-            bars: Authority.allCases.map { bar(for: input.result.balance($0), shares: shares) },
-            mini: mini(input, isOver: isOver),
+            keyFigure: keyFigure(input, isOver: isOver),
+            levies: levies(input, isOver: isOver),
+            tiles: tiles(input, isOver: isOver),
             columns: columns(input, isOver: isOver),
             chartSubtitle: chartSubtitle(input),
             netIncome: netIncome(input, shares: shares),
@@ -394,109 +334,93 @@ nonisolated enum OverviewBuilder {
         )
     }
 
-    // MARK: Headline and bars
+    // MARK: The result card
 
-    /// The headline: what is left to pay, what the authorities want in all and, when `shares` has it, what part of the
-    /// income that is.
-    private static func hero(_ input: OverviewInput, isOver: Bool, shares: IncomeShares?) -> OverviewHero {
+    /// The key figure: what is left to pay, with the sentence that says what it counts. The eyebrow is "Zbývá
+    /// zaplatit", "Doplatek za rok 2025" for a year that is over and shown as of its last day, or "Vše pokryto
+    /// zálohami" when nothing is left; any other day of a past year is worded as a year in progress. The levies and
+    /// their share of the income are not here but in the header of the bar (`levies(_:isOver:)`).
+    private static func keyFigure(_ input: OverviewInput, isOver: Bool) -> KeyFigureData {
         let result = input.result
         let year = input.year
-        let label: String
+        let eyebrow: String
         if result.remainingTotal > 0 {
-            label = isOver ? "Doplatek za rok \(year)" : "Zbývá zaplatit"
+            eyebrow = isOver ? "Doplatek za rok \(year)" : "Zbývá zaplatit"
         } else {
-            label = "Vše pokryto zálohami"
+            eyebrow = "Vše pokryto zálohami"
         }
-        let text: String
-        let head: String
+        let sentence: String
         if isOver {
-            var sentence = "Daň a pojistné za celý rok \(year) po odečtení všech záloh."
+            var text = "Odvody za celý rok \(year) po odečtení všech záloh."
             if result.childBonus > 0 {
                 // A tax bonus comes back with the advances the levies did not need, and is no overpayment of them.
                 let overpaidAdvances = result.overpaymentTotal - result.childBonus
-                sentence += " Vrátí se " + CzechFormat.wholeKc(result.overpaymentTotal) + " – daňový bonus "
+                text += " Vrátí se " + CzechFormat.wholeKc(result.overpaymentTotal) + " – daňový bonus "
                     + CzechFormat.wholeKc(result.childBonus)
                     + (overpaidAdvances > 0 ? " a přeplatky záloh " + CzechFormat.wholeKc(overpaidAdvances) : "")
                     + "."
             } else if result.overpaymentTotal > 0 {
-                sentence += " U některého úřadu zálohy převýšily povinnost o "
+                text += " U některého úřadu zálohy převýšily povinnost o "
                     + CzechFormat.wholeKc(result.overpaymentTotal) + " – ten přeplatek se vrací."
             }
-            text = sentence
-            head = "Odvody za rok \(year)"
+            sentence = text
         } else {
             // In January there is one month of advances to name, not a span from January to January.
             let months = input.asOf.month == 1 ? "leden" : "leden až " + CzechFormat.monthNames[input.asOf.month - 1]
-            text = "Daň a pojistné z příjmů od 1. 1. do " + CzechFormat.date(input.receivedThrough)
+            sentence = "Odvody z příjmů od 1.\u{00A0}1. do " + CzechFormat.date(input.receivedThrough)
                 + " po odečtení záloh za " + months + "."
-            head = "Odvody z příjmů do " + BuilderText.date(input.receivedThrough, omittingYear: input.year)
         }
-        return OverviewHero(
-            label: label, amountKc: result.remainingTotal, text: text, head: head,
-            totalLiabilityKc: result.liabilityTotal,
-            shareText: shares.map { BuilderText.share(tenths: $0.leviesTenths) + " z příjmů" }
-        )
+        return KeyFigureData(
+            eyebrow: eyebrow, figure: CzechFormat.wholeKc(result.remainingTotal), sentence: sentence)
     }
 
-    /// The bar of one authority, with the part of the income it takes when `shares` has it.
-    private static func bar(for balance: AuthorityBalance, shares: IncomeShares?) -> AuthorityBar {
-        let liability = balance.liability
-        let paid = balance.advancesPaid
-        let paidFraction: Double
-        if liability > 0 {
-            paidFraction = Double(min(paid, liability)) / Double(liability)
-        } else {
-            paidFraction = paid > 0 ? 1 : 0
-        }
-        // A negative liability is a tax bonus: the tax office returns it with the advances.
-        let isBonus = liability < 0
-        let remainingText: String
-        if balance.overpayment > 0 {
-            remainingText = (isBonus ? "vrátí se " : "přeplatek ") + CzechFormat.wholeKc(balance.overpayment)
-        } else if balance.remaining > 0 {
-            remainingText = "zbývá " + CzechFormat.wholeKc(balance.remaining)
-        } else {
-            remainingText = "nic nezbývá"
-        }
-        return AuthorityBar(
-            authority: balance.authority, title: balance.authority.title, liability: liability,
-            liabilityText: BuilderText.taxOrBonus(liability),
-            paid: paid, paidFraction: paidFraction, paidText: "zaplaceno zálohami " + CzechFormat.wholeKc(paid),
-            remainingText: remainingText,
-            shareText: shares?.tenths[balance.authority].map(BuilderText.share(tenths:))
-        )
+    /// The bar of the levies, the one Výpočet shows for the same year and day (`LevyBarBuilder.balances`): the levies
+    /// of the income received through the day shown, "Odvody z příjmů do 17. 10.", or of the whole year, "Odvody za
+    /// rok 2025", with the total of the levies and its share of the income in the header, because the key figure
+    /// beside the bar is what is left to pay and not the levies.
+    private static func levies(_ input: OverviewInput, isOver: Bool) -> LevyBarData {
+        let header =
+            isOver
+            ? "Odvody za rok \(input.year)"
+            : "Odvody z příjmů do " + BuilderText.date(input.receivedThrough, omittingYear: input.year)
+        return LevyBarBuilder.balances(
+            of: input.result, kind: .toDate(isOver: isOver), header: header, showsTotal: true)
     }
 
-    private static func mini(_ input: OverviewInput, isOver: Bool) -> [MiniStat] {
+    /// The tiles under the key figure. In a year in progress: what the planned advances will still pay, what is paid
+    /// with the return and the overviews, and what the levies take of the next crown. In a year that is over: what the
+    /// advances paid, the Doplatek and what comes back. The Doplatek of a year that is over is the key figure again,
+    /// and so is the second tile of a year with no advance left to plan, as the design draws them.
+    private static func tiles(_ input: OverviewInput, isOver: Bool) -> [FigureTileData] {
         let result = input.result
         if isOver {
             return [
-                MiniStat(
-                    label: "Zaplaceno zálohami", value: CzechFormat.wholeKc(result.advancesPaidTotal),
-                    subtitle: "za celý rok \(input.year)"),
-                MiniStat(
-                    label: "Doplatek s přiznáním", value: CzechFormat.wholeKc(result.remainingTotal),
-                    subtitle: "daň, ČSSZ a VZP"),
+                FigureTileData(
+                    label: "Zaplaceno zálohami", figure: CzechFormat.wholeKc(result.advancesPaidTotal),
+                    note: "za celý rok \(input.year)"),
+                FigureTileData(
+                    label: "Doplatek", figure: CzechFormat.wholeKc(result.remainingTotal),
+                    note: "s přiznáním a přehledy"),
                 // A tax bonus comes back after the return, not after the overviews, and is no overpayment.
                 result.childBonus > 0
-                    ? MiniStat(
-                        label: "Vrátí se", value: CzechFormat.wholeKc(result.overpaymentTotal),
-                        subtitle: "daňový bonus a přeplatky")
-                    : MiniStat(
-                        label: "Přeplatky", value: CzechFormat.wholeKc(result.overpaymentTotal),
-                        subtitle: "vrací se po přehledech"),
+                    ? FigureTileData(
+                        label: "Vrátí se", figure: CzechFormat.wholeKc(result.overpaymentTotal),
+                        note: "daňový bonus a přeplatky")
+                    : FigureTileData(
+                        label: "Přeplatky", figure: CzechFormat.wholeKc(result.overpaymentTotal),
+                        note: "vrací se po přehledech"),
             ]
         }
         return [
-            MiniStat(
-                label: "Odejde zálohami", value: CzechFormat.wholeKc(result.leavesViaPlannedAdvances),
-                subtitle: "do konce roku podle plánu"),
-            MiniStat(
-                label: "Doplatek s přiznáním", value: CzechFormat.wholeKc(result.settlementTotal),
-                subtitle: "daň, ČSSZ a VZP za rok \(input.year)"),
-            MiniStat(
-                label: "Z další koruny příjmu", value: CzechFormat.percent(result.marginalTotal),
-                subtitle: "tolik počítat do odvodů"),
+            FigureTileData(
+                label: "Odejde zálohami", figure: CzechFormat.wholeKc(result.leavesViaPlannedAdvances),
+                note: "do konce roku podle plánu"),
+            FigureTileData(
+                label: "Doplatek", figure: CzechFormat.wholeKc(result.settlementTotal),
+                note: "s přiznáním a přehledy za rok \(input.year)"),
+            FigureTileData(
+                label: "Mezní odvod", figure: CzechFormat.percent(result.marginalTotal),
+                note: "z další koruny příjmu"),
         ]
     }
 

@@ -102,6 +102,43 @@ struct LevyBarWindowTests {
         }
     }
 
+    // MARK: The section
+
+    /// The bar with its header and its legend is one section for VoiceOver, named "Odvody podle úřadů" on every screen
+    /// that shows the bar: a group that holds the picture of the bar and the three items of the legend, each of which
+    /// is still read on its own, and that is as large as the whole bar, from its header to the foot of its legend.
+    @Test func theBarWithItsLegendIsOneSectionNamedOdvodyPodleUradu() async throws {
+        try await withHostedView(hostedBar(), size: windowSize) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityElement(labelled: data.accessibilityLabel, in: window) != nil }
+
+                let section = try #require(accessibilityElement(labelled: "Odvody podle úřadů", in: window))
+                #expect(section.accessibilityRole?() == .group)
+
+                let readings = accessibilityReadings(under: section)
+                #expect(readings.contains(data.accessibilityLabel), "The picture of the bar is not in the section")
+                for part in data.parts {
+                    #expect(readings.contains(part.accessibilityLabel), "\(part.authority) is not in the section")
+                }
+
+                // The section is the panel: the bar and the items of the legend are within its frame, and it is as
+                // wide as the bar.
+                let frame = try #require(section.accessibilityFrame?())
+                let bar = try #require(accessibilityElement(labelled: data.accessibilityLabel, in: window))
+                let barFrame = try #require(bar.accessibilityFrame?())
+                #expect(abs(frame.width - width) < 0.5, "\(frame)")
+                #expect(frame.insetBy(dx: -0.5, dy: -0.5).contains(barFrame), "\(barFrame) is not in \(frame)")
+                for part in data.parts {
+                    let item = try #require(accessibilityElement(labelled: part.accessibilityLabel, in: window))
+                    let itemFrame = try #require(item.accessibilityFrame?())
+                    #expect(
+                        frame.insetBy(dx: -0.5, dy: -0.5).contains(itemFrame),
+                        "The item of \(part.authority) is not in \(frame)")
+                }
+            }
+        }
+    }
+
     // MARK: An open popover
 
     @Test func anOpenPopoverTakesNoRoomAndIsNotRead() async throws {

@@ -962,6 +962,372 @@ struct AppWindowLayoutTests {
         }
     }
 
+    // MARK: The result card of Přehled
+
+    /// Přehled on the sample year as of 17. 10. 2026: the card "Kolik zbývá zaplatit" holds the picture of the bar of
+    /// the levies, and the card "Příjmy" stands under it, 16 points lower and as wide, whether the pointer is away from
+    /// the bar, over its part of the tax or over the item of the tax in its legend: the popover that shows then takes
+    /// no room, and the card does not move. Nothing of the page is beyond the window at the least room, at a large size
+    /// and at the least room again.
+    @Test func theResultCardOfPrehledHoldsTheLevyBarAndPrijmyStaysUnderItWithOrWithoutTheHover() async throws {
+        try await EditorFixture.with { f in
+            let result = try await f.app.computeSelectedYear()
+            let levyBar = LevyBarBuilder.balances(
+                of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.", showsTotal: true)
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofTheResultCardOfPrehledIn: window, levyBar: levyBar) + problems(ofPageIn: window)
+                        }
+                        let frames = [
+                            try #require(frameOfCard(labelled: "Kolik zbývá zaplatit", in: window)),
+                            try #require(frameOfCard(labelled: "Příjmy", in: window)),
+                        ]
+
+                        // The pointer over the part of the tax in the bar, and then over its item of the legend,
+                        // as a mouse moves it; the corner of the window takes it away again.
+                        for (name, point) in try pointsOpeningThePopoverOfTheTax(in: window) {
+                            try movePointer(to: point, in: window)
+                            try await expectSettled(window) {
+                                problems(ofTheResultCardOfPrehledIn: window, levyBar: levyBar)
+                                    + problems(ofPageIn: window)
+                            }
+                            let now = [
+                                try #require(frameOfCard(labelled: "Kolik zbývá zaplatit", in: window)),
+                                try #require(frameOfCard(labelled: "Příjmy", in: window)),
+                            ]
+                            let moved = zip(frames, now).contains { before, after in
+                                (before.minX - after.minX).magnitude > 0.5 || (before.minY - after.minY).magnitude > 0.5
+                                    || (before.width - after.width).magnitude > 0.5
+                                    || (before.height - after.height).magnitude > 0.5
+                            }
+                            #expect(!moved, "The cards moved with the pointer over the \(name): \(frames), \(now)")
+                            try movePointer(to: CGPoint(x: 4, y: 4), in: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The popover of the levy bar of Přehled hangs out of the result card, over the hairline and the tiles under the
+    /// bar, over the edge of the card and the card "Příjmy" under it, and is drawn above all of them: the card is drawn
+    /// above what follows it, and nothing clips the popover. With the sidebar as wide as it goes the card stacks its
+    /// parts and the legend stands over the tiles, so that the popover reaches past the card; the pointer is moved
+    /// over the part of the tax, and then over its item of the legend, as a mouse moves it. A strip down the popover,
+    /// 6 points inside its leading edge, from 4 points under its top to 2 points under the top edge of "Příjmy", shows
+    /// nothing but the colour of the popover while it is open, where the tiles, the hairline and the edges of the two
+    /// cards cross it while it is closed.
+    @Test func thePopoverOfPrehledIsDrawnOverTheTilesAndTheEdgesOfTheCardsUnderTheBar() async throws {
+        try await EditorFixture.with { f in
+            let result = try await f.app.computeSelectedYear()
+            let weights = Authority.allCases.map { result.balance($0).liability }
+            let levyBar = LevyBarBuilder.balances(
+                of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.", showsTotal: true)
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    widenSidebar(of: window)
+                    try await expectSettled(window) {
+                        problems(ofTheResultCardOfPrehledIn: window, levyBar: levyBar)
+                    }
+                    let card = try #require(frameOfCard(labelled: "Kolik zbývá zaplatit", in: window))
+                    #expect(
+                        !ResultCardLayout.standsSideBySide(innerWidth: card.width - 2 * DesignMetrics.cardPadding),
+                        "The parts stand side by side in a card \(card.width) points wide")
+
+                    let content = try #require(window.contentView)
+                    let bar = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window)?
+                                .accessibilityFrame?()))
+                    let legend = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: "Daň z příjmů: odvody z příjmů", in: window)?
+                                .accessibilityFrame?()))
+                    let income = window.convertFromScreen(try #require(frameOfCard(labelled: "Příjmy", in: window)))
+                    // The popover of the tax: 8 points under the legend, centred on its part and held in the panel.
+                    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
+                    let centre = LevyBarLayout.partCentres(widths: widths)[0]
+                    let left = bar.minX + LevyBarLayout.popoverX(centredOn: centre, panelWidth: bar.width)
+                    let top = content.bounds.height - legend.minY + LevyBarLayout.popoverGap
+                    let incomeTop = content.bounds.height - income.maxY
+
+                    /// The points of the strip down the popover, from 4 points under its top to 2 points under the
+                    /// top edge of "Příjmy", whose colour is not that of the top of the strip: what is drawn over the
+                    /// popover.
+                    @MainActor func strayPoints() throws -> [CGPoint] {
+                        let picture = try WindowPicture(of: window)
+                        let strip = stride(from: top + 4, through: incomeTop + 2, by: 0.5).map {
+                            CGPoint(x: left + 6, y: $0)
+                        }
+                        let colour = picture.bytes(at: strip[0])
+                        return strip.filter { point in
+                            zip(picture.bytes(at: point), colour).contains { abs($0 - $1) > 6 }
+                        }
+                    }
+
+                    // With no popover the tiles, the hairline and the edges of the cards cross the strip: the test
+                    // can tell the two states apart.
+                    let corner = CGPoint(x: 4, y: 4)
+                    try await expectSettled(window) {
+                        ((try? strayPoints()) ?? []).isEmpty ? ["Nothing crosses the strip"] : []
+                    }
+
+                    let overPart = CGPoint(x: bar.minX + 10, y: bar.midY)
+                    let overLegend = CGPoint(x: legend.minX + 10, y: legend.midY)
+                    for (name, pointer) in [("part", overPart), ("item of the legend", overLegend)] {
+                        try movePointer(to: pointer, in: window)
+                        try await waitUntil { ((try? strayPoints()) ?? [CGPoint.zero]).isEmpty }
+                        #expect(try strayPoints() == [], "Drawn over the popover of the \(name)")
+
+                        try movePointer(to: corner, in: window)
+                        try await waitUntil { !((try? strayPoints()) ?? []).isEmpty }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The parts of the result card of Přehled stand where the shared result card sets them: the key figure at the top
+    /// left, the two buttons of 28 points under it, 12 points lower and 8 apart, the section of the levy bar beside it
+    /// in a column of its own, level at the top and 28 points to the right, or under the buttons in the whole width,
+    /// 20 points lower, where the card is too narrow for two columns, and under both, under the hairline, the three
+    /// tiles in one row, 48 points apart and never stretched. At a large size, at the least room (where the page has
+    /// the room the card says) and with the sidebar as wide as it goes.
+    @Test func thePartsOfTheResultCardOfPrehledStandWhereTheSharedCardSetsThem() async throws {
+        try await EditorFixture.with { f in
+            let result = try await f.app.computeSelectedYear()
+            let tiles = [
+                "Odejde zálohami, " + CzechFormat.wholeKc(result.leavesViaPlannedAdvances),
+                "Doplatek, " + CzechFormat.wholeKc(result.settlementTotal),
+                "Mezní odvod, " + CzechFormat.percent(result.marginalTotal),
+            ]
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) {
+                        problems(ofThePartsOfTheResultCardOfPrehledIn: window, tiles: tiles, beside: true)
+                    }
+                    // Whatever the room, the parts stand as the width of the card says: side by side from 788 points
+                    // inside its padding.
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(ofThePartsOfTheResultCardOfPrehledIn: window, tiles: tiles, beside: nil)
+                    }
+                    widenSidebar(of: window)
+                    try await expectSettled(window) {
+                        problems(ofThePartsOfTheResultCardOfPrehledIn: window, tiles: tiles, beside: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Jak se to počítá" opens Výpočet and "Upravit plán záloh" opens Zálohy a odpočty, each as the button of a page
+    /// is pressed for VoiceOver, which reads the arrow of the first one as no part of its name.
+    @Test func theButtonsOfTheResultCardOfPrehledOpenTheComputationAndThePlanOfAdvances() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    for (label, title, screen) in [
+                        ("Jak se to počítá", "Výpočet", Screen.computation),
+                        ("Upravit plán záloh", "Zálohy a odpočty", Screen.advances),
+                    ] {
+                        f.app.screen = .overview
+                        try await waitUntil { window.title == "Přehled" }
+                        try await waitUntil { accessibilityButton(labelled: label, in: window) != nil }
+
+                        _ = try #require(accessibilityButton(labelled: label, in: window)).accessibilityPerformPress?()
+
+                        try await waitUntil { window.title == title }
+                        #expect(f.app.screen == screen)
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with how the parts of the result card of Přehled stand in `window`, in words: a part is missing or
+    /// not inside the card; the key figure is not at the top left, 20 points inside the card; the buttons are not 28
+    /// points tall, side by side 8 points apart and 12 points under the key figure; the section of the levy bar is not
+    /// the second column of two columns of one width 28 points apart, level at the top, or, one above the other, 20
+    /// points under the buttons in the whole width; or the three tiles (`tiles`, the beginnings of what VoiceOver reads
+    /// for each) are not in one row at the left edge, 48 points apart, level at the top, 37 points (20, the hairline
+    /// and 16) under the lowest of the buttons and the legend, and 20 points above the foot of the card. `beside` says
+    /// whether the parts of the first row should stand side by side, and nil that they should do what the width of the
+    /// card says: side by side from 788 points inside its padding of 20. The origin of the screen is at the bottom
+    /// left, so what is under has the smaller y. Needs the accessibility elements.
+    private func problems(
+        ofThePartsOfTheResultCardOfPrehledIn window: NSWindow, tiles: [String], beside: Bool?
+    ) -> [String] {
+        guard let card = frameOfCard(labelled: "Kolik zbývá zaplatit", in: window) else {
+            return ["No card Kolik zbývá zaplatit"]
+        }
+        guard let key = frameOfText(startingWith: "Zbývá zaplatit", in: window) else {
+            return ["No key figure"]
+        }
+        guard let section = accessibilityElement(labelled: "Odvody podle úřadů", in: window)?.accessibilityFrame?()
+        else {
+            return ["No section Odvody podle úřadů"]
+        }
+        guard let computation = accessibilityButton(labelled: "Jak se to počítá", in: window)?.accessibilityFrame?(),
+            let advances = accessibilityButton(labelled: "Upravit plán záloh", in: window)?.accessibilityFrame?()
+        else {
+            return ["No buttons Jak se to počítá and Upravit plán záloh"]
+        }
+        var legend: [CGRect] = []
+        for authority in Authority.allCases {
+            guard
+                let item = accessibilityElement(labelStartingWith: authority.title + ": ", in: window)?
+                    .accessibilityFrame?()
+            else {
+                return ["No item of \(authority.title) in the legend"]
+            }
+            legend.append(item)
+        }
+        var tileFrames: [CGRect] = []
+        for tile in tiles {
+            guard let frame = frameOfText(startingWith: tile, in: window) else {
+                return ["No tile \(tile)"]
+            }
+            tileFrames.append(frame)
+        }
+
+        var found: [String] = []
+        let parts = [("The key figure", key), ("The section of the levy bar", section)]
+            + [("The button Jak se to počítá", computation), ("The button Upravit plán záloh", advances)]
+            + tileFrames.enumerated().map { ("The tile \($0.offset + 1)", $0.element) }
+        for (name, frame) in parts where !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+            found.append("\(name) is not inside the card: \(frame) and \(card)")
+        }
+        // The origin of the screen is at the bottom left: what is at the top has the largest y. The padding is 20.
+        let padding = DesignMetrics.cardPadding
+        if (card.maxY - padding - key.maxY).magnitude > 1 || (key.minX - card.minX - padding).magnitude > 1 {
+            found.append("The key figure is not at the top left of the card: \(key) and \(card)")
+        }
+        for (name, frame) in [("Jak se to počítá", computation), ("Upravit plán záloh", advances)]
+        where (frame.height - 28).magnitude > 0.5 {
+            found.append("The button \(name) is \(frame.height) points tall, not 28")
+        }
+        if (computation.minY - advances.minY).magnitude > 0.5 || (computation.minX - key.minX).magnitude > 1
+            || (advances.minX - computation.maxX - 8).magnitude > 1
+        {
+            found.append("The buttons are not side by side under the key figure: \(computation), \(advances)")
+        }
+        if (key.minY - computation.maxY - DesignMetrics.innerSpacing).magnitude > 1 {
+            found.append("The buttons are not 12 points under the key figure: \(computation), \(key)")
+        }
+
+        let inner = card.width - 2 * padding
+        if beside ?? ResultCardLayout.standsSideBySide(innerWidth: inner) {
+            let column = (inner - ResultCardLayout.columnGap) / 2
+            let second = card.minX + padding + column + ResultCardLayout.columnGap
+            if (section.minX - second).magnitude > 1 || (section.width - column).magnitude > 1 {
+                found.append("The levy bar is not the second column of \(column) points, 28 from the first: \(section)")
+            }
+            if (card.maxY - padding - section.maxY).magnitude > 1 {
+                found.append("The levy bar is not level at the top with the key figure: \(section), \(card)")
+            }
+        } else {
+            if (computation.minY - section.maxY - ResultCardLayout.rowGap).magnitude > 1 {
+                found.append("The levy bar is not 20 points under the buttons: \(section), \(computation)")
+            }
+            if (section.minX - key.minX).magnitude > 1 || (section.width - inner).magnitude > 1 {
+                found.append("The levy bar does not have the whole width of the card, from its left edge: \(section)")
+            }
+        }
+
+        // The tiles: one row from the left edge, level at the top, 48 points apart, not stretched.
+        if (tileFrames[0].minX - card.minX - padding).magnitude > 1 {
+            found.append("The first tile is not at the left edge of the card: \(tileFrames[0]), the card \(card)")
+        }
+        for index in tileFrames.indices.dropFirst() {
+            let (before, after) = (tileFrames[index - 1], tileFrames[index])
+            if (before.maxY - after.maxY).magnitude > 1 {
+                found.append("The tile \(index + 1) is not level at the top with the one before: \(after), \(before)")
+            }
+            if (after.minX - before.maxX - 48).magnitude > 1 {
+                found.append("The tile \(index + 1) is not 48 points from the one before it: \(after), \(before)")
+            }
+        }
+        // Under the lowest of the parts above: the gap of the rows (20), the hairline (1) and the gap under it (16).
+        let lowestPart = ([computation.minY, advances.minY] + legend.map(\.minY)).min() ?? 0
+        let gap = ResultCardLayout.rowGap + 1 + ResultCardLayout.belowGap
+        if (lowestPart - tileFrames[0].maxY - gap).magnitude > 1 {
+            found.append("The tiles are not \(gap) points under the parts above them: \(tileFrames[0]), \(lowestPart)")
+        }
+        if ((tileFrames.map(\.minY).min() ?? 0) - card.minY - padding).magnitude > 1 {
+            found.append("The tiles are not 20 points above the foot of the card: \(tileFrames), the card \(card)")
+        }
+        return found
+    }
+
+    /// The points in `window`, in its coordinates (the origin at the bottom left), where the pointer opens the popover
+    /// of the tax in the levy bar of Přehled: ten points inside its part in the bar, and ten points inside its item in
+    /// the legend. Needs the accessibility elements.
+    private func pointsOpeningThePopoverOfTheTax(in window: NSWindow) throws -> [(name: String, point: CGPoint)] {
+        let bar = window.convertFromScreen(
+            try #require(
+                accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window)?.accessibilityFrame?()))
+        let legend = window.convertFromScreen(
+            try #require(
+                accessibilityElement(labelStartingWith: "Daň z příjmů: odvody z příjmů", in: window)?
+                    .accessibilityFrame?()))
+        return [
+            (name: "part of the tax", point: CGPoint(x: bar.minX + 10, y: bar.midY)),
+            (name: "item of the tax in the legend", point: CGPoint(x: legend.minX + 10, y: legend.midY)),
+        ]
+    }
+
+    /// What is wrong with the result card of Přehled in `window`, in words: the card "Kolik zbývá zaplatit" is missing,
+    /// does not hold the picture of the bar of the levies (`levyBar`, read as an image) or has it beyond its frame; or
+    /// the card "Příjmy" is not under it, 16 points lower and as wide. Empty when the cards stand so. The origin of the
+    /// screen is at the bottom left, so what is under has the smaller y. Needs the accessibility elements.
+    private func problems(ofTheResultCardOfPrehledIn window: NSWindow, levyBar: LevyBarData) -> [String] {
+        guard let card = accessibilityElement(labelled: "Kolik zbývá zaplatit", in: window),
+            let cardFrame = card.accessibilityFrame?()
+        else {
+            return ["No card Kolik zbývá zaplatit"]
+        }
+        var found: [String] = []
+        if !accessibilityReadings(under: card).contains(levyBar.accessibilityLabel) {
+            found.append("The card does not hold the picture of the levy bar: \(levyBar.accessibilityLabel)")
+        }
+        if let bar = accessibilityElement(labelled: levyBar.accessibilityLabel, in: window) {
+            if bar.accessibilityRole?() != .image {
+                found.append("The levy bar is no image: \(String(describing: bar.accessibilityRole?()))")
+            }
+            if let frame = bar.accessibilityFrame?(), !cardFrame.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                found.append("The levy bar is not within the card: \(frame), the card \(cardFrame)")
+            }
+        }
+        guard let income = frameOfCard(labelled: "Příjmy", in: window) else {
+            return found + ["No card Příjmy"]
+        }
+        let gap = cardFrame.minY - income.maxY
+        if (gap - 16).magnitude > 1 {
+            found.append("Příjmy is \(gap) points under the card, not 16: \(income), \(cardFrame)")
+        }
+        if (income.minX - cardFrame.minX).magnitude > 1 || (income.width - cardFrame.width).magnitude > 1 {
+            found.append("Příjmy is not as wide as the card: \(income), \(cardFrame)")
+        }
+        return found
+    }
+
     // MARK: The estimate of the whole year on Přehled
 
     /// Přehled on the prediction sample, as of Saturday 17. 10. 2026 with "K datu" on another day: the card of the
@@ -2399,11 +2765,11 @@ struct AppWindowLayoutTests {
 
     /// Výpočet and Přehled with the family of the sample stored for 2026. As of 28. 2. the children's benefit is a
     /// bonus: the tax card has every row of the family, the tax is negative with its note, the longest of the card,
-    /// "záporná daň je daňový bonus – vyplatí ho finanční úřad", and the tax comes back; the bar of the tax reads the
-    /// bonus with its share of the income, below zero. As of 31. 1. the bonus is not paid yet, and the row of the
-    /// children says why in its longest note. At the least room, at a large size and at the least room again, the
-    /// pages fit the window, each of these rows is within the page and as tall as its label and note need beside its
-    /// value, and both lines of the bar fit its width.
+    /// "záporná daň je daňový bonus – vyplatí ho finanční úřad", and the tax comes back; the item of the tax in the
+    /// legend of the levy bar reads the bonus with its share of the income, below zero. As of 31. 1. the bonus is not
+    /// paid yet, and the row of the children says why in its longest note. At the least room, at a large size and at
+    /// the least room again, the pages fit the window, each of these rows is within the page and as tall as its label
+    /// and note need beside its value, and both lines of the item of the tax fit its column.
     @Test func vypocetAndPrehledWithTheFamilyAndABonusFitTheWindow() async throws {
         try await EditorFixture.with { f in
             try await Self.storeTheSampleFamily(in: f.database)
@@ -2415,10 +2781,14 @@ struct AppWindowLayoutTests {
 
                     f.app.screen = .overview
                     try await waitUntil { window.title == "Přehled" }
-                    try await waitUntil { accessibilityElement(labelled: Self.taxBarWithABonus, in: window) != nil }
+                    try await waitUntil {
+                        accessibilityElement(labelled: Self.taxItemOfTheLegendWithABonus, in: window) != nil
+                    }
                     for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
                         window.setContentSize(size)
-                        try await expectSettled(window) { problems(ofPageIn: window) + problemsOfTheTaxBar(in: window) }
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window) + problemsOfTheTaxItemOfTheLegend(in: window)
+                        }
                     }
 
                     f.app.pickAsOf(civilDate("2026-01-31"))
@@ -2486,10 +2856,12 @@ struct AppWindowLayoutTests {
     /// bonus of 37 524 Kč below zero, minus 17,0 % of the income of 220 000 Kč.
     private static let taxShareWithABonus = "\u{2212}17,0\u{00A0}%"
 
-    /// What VoiceOver reads for the bar of the tax in Přehled as of 28. 2. 2026 with the sample family.
-    private static let taxBarWithABonus =
-        "Daň z příjmů bonus 37\u{00A0}524\u{00A0}Kč (\(taxShareWithABonus) z příjmů):"
-        + " zaplaceno zálohami 0\u{00A0}Kč, vrátí se 37\u{00A0}524\u{00A0}Kč"
+    /// What VoiceOver reads for the item of the tax in the legend of the levy bar of Přehled as of 28. 2. 2026 with the
+    /// sample family: the bonus as the levy, no advances paid, the bonus that comes back, and the part of the income
+    /// the tax takes, below zero.
+    private static let taxItemOfTheLegendWithABonus =
+        "Daň z příjmů: odvody z příjmů bonus 37\u{00A0}524\u{00A0}Kč, zaplaceno zálohami 0\u{00A0}Kč,"
+        + " vrátí se 37\u{00A0}524\u{00A0}Kč, \(taxShareWithABonus) z příjmů bez DPH"
 
     /// What is wrong with `row` of a card of Výpočet in `window`, in words: VoiceOver does not find it, it is not
     /// within the margins of the page, or it is lower than its label and its note need at the width they have beside
@@ -2533,28 +2905,24 @@ struct AppWindowLayoutTests {
         return found
     }
 
-    /// What is wrong with the bar of the tax with a bonus in Přehled, in `window`, in words: VoiceOver does not find
-    /// it, or one of its lines of text is wider than the bar, so that a text of it would be cut short. Empty when it
-    /// fits. Needs the accessibility elements.
-    private func problemsOfTheTaxBar(in window: NSWindow) -> [String] {
-        guard let frame = accessibilityElement(labelled: Self.taxBarWithABonus, in: window)?.accessibilityFrame?()
+    /// What is wrong with the item of the tax with a bonus in the legend of the levy bar of Přehled, in `window`, in
+    /// words: VoiceOver does not find it, or one of its two lines of text is wider than the item, so that a text of it
+    /// would be cut short or run into the item beside it. Empty when it fits. Needs the accessibility elements.
+    private func problemsOfTheTaxItemOfTheLegend(in window: NSWindow) -> [String] {
+        guard
+            let frame = accessibilityElement(labelled: Self.taxItemOfTheLegendWithABonus, in: window)?
+                .accessibilityFrame?()
         else {
-            return ["No bar of the tax with a bonus"]
+            return ["No item of the tax with a bonus in the legend"]
         }
-        // The dot of the authority, 10 points and 8 after it, the title, 8 points and the part of the income it takes,
-        // at least 8 points, and the bonus; under the bar what the advances paid, at least 12 points, and what comes
-        // back.
-        let title = Text(verbatim: "Daň z příjmů").fontWeight(.semibold)
-        let share = Text(verbatim: Self.taxShareWithABonus).font(.callout).monospacedDigit()
-        let bonus = Text(verbatim: "bonus 37\u{00A0}524\u{00A0}Kč").fontWeight(.bold).monospacedDigit()
-        let paid = Text(verbatim: "zaplaceno zálohami 0\u{00A0}Kč").font(.callout).monospacedDigit()
-        let back = Text(verbatim: "vrátí se 37\u{00A0}524\u{00A0}Kč").font(.callout.weight(.semibold)).monospacedDigit()
-        let top =
-            10 + 8 + fittingSize(of: title).width + 8 + fittingSize(of: share).width + 8 + fittingSize(of: bonus).width
-        let bottom = fittingSize(of: paid).width + 12 + fittingSize(of: back).width
+        // The dot of the authority, 8 points and 6 after it, the short name, and under them the bonus.
+        let name = Text(verbatim: "Daň").font(Typography.callout)
+        let bonus = Text(verbatim: "bonus 37\u{00A0}524\u{00A0}Kč").font(Typography.bodySemibold).monospacedDigit()
+        let top = 8 + 6 + fittingSize(of: name).width
+        let bottom = fittingSize(of: bonus).width
         return [("top", top), ("bottom", bottom)].compactMap { line, needed in
             needed > frame.width + 0.5
-                ? "The \(line) line of the bar needs \(needed) points, it has \(frame.width)" : nil
+                ? "The \(line) line of the item needs \(needed) points, it has \(frame.width)" : nil
         }
     }
 

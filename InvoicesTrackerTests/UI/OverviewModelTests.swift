@@ -102,9 +102,9 @@ struct OverviewModelTests {
         await model.load()
 
         let data = try #require(model.data)
-        #expect(data.hero.label == "Zbývá zaplatit")
-        #expect(data.hero.amountKc == 110_844)
-        #expect(data.hero.totalLiabilityKc == 320_664)
+        #expect(data.keyFigure.eyebrow == "Zbývá zaplatit")
+        #expect(data.keyFigure.figure == CzechFormat.wholeKc(110_844))
+        #expect(data.levies.total == CzechFormat.wholeKc(320_664))
         #expect(model.rulesWarning == nil)
         #expect(model.errorText == nil)
 
@@ -147,6 +147,35 @@ struct OverviewModelTests {
             model.rulesWarning == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
     }
 
+    /// Přehled and Výpočet show one bar of the levies: loaded from the same app, in a year in progress, in a year that
+    /// is over and with "K datu" on another day, the two models have equal data for it.
+    @Test func theLevyBarIsTheOneThatVypocetShowsForTheSameApp() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let overview = OverviewModel(app: app)
+        let computation = ComputationModel(app: app)
+
+        @MainActor func expectTheSameBar(_ comment: String) async throws {
+            await overview.load()
+            await computation.load()
+            let levies = try #require(overview.data).levies
+            let page = try #require(computation.page)
+            #expect(levies == page.levies, "\(comment)")
+        }
+
+        try await expectTheSameBar("2026 as of 17. 10.")
+        #expect(try #require(overview.data).levies.header == "Odvody z příjmů do 17.\u{00A0}10.")
+
+        app.pickAsOf(civilDate("2026-03-31"))
+        try await expectTheSameBar("2026 as of 31. 3.")
+        #expect(try #require(overview.data).levies.header == "Odvody z příjmů do 31.\u{00A0}3.")
+
+        app.selectYear(2025)
+        try await expectTheSameBar("2025")
+        #expect(try #require(overview.data).levies.header == "Odvody za rok 2025")
+    }
+
     @Test func theNewYearIsAnEstimateWithTheRulesOfTheYearBeforeIt() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -160,7 +189,7 @@ struct OverviewModelTests {
         #expect(
             model.rulesWarning == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
         let data = try #require(model.data)
-        #expect(data.hero.head == "Odvody z příjmů do 1.\u{00A0}1.")
+        #expect(data.levies.header == "Odvody z příjmů do 1.\u{00A0}1.")
         #expect(data.latestReceipts.isEmpty)
     }
 
@@ -242,7 +271,7 @@ struct OverviewModelTests {
             data.latestReceipts.map(\.date) == [
                 "2.\u{00A0}10.", "9.\u{00A0}9.", "26.\u{00A0}8.", "7.\u{00A0}8.", "7.\u{00A0}7.",
             ])
-        #expect(data.hero.head == "Odvody z příjmů do 10.\u{00A0}10.")
+        #expect(data.levies.header == "Odvody z příjmů do 10.\u{00A0}10.")
     }
 
     @Test func anIncomeAdjustmentCountsInTheLeviesButIsNoReceiptInTheList() async throws {
@@ -258,7 +287,9 @@ struct OverviewModelTests {
 
         let withoutAdjustment = try #require(before.data)
         let withAdjustment = try #require(after.data)
-        #expect(withAdjustment.hero.totalLiabilityKc > withoutAdjustment.hero.totalLiabilityKc)
+        let leviesWithout = withoutAdjustment.levies.parts.map(\.weight).reduce(0, +)
+        let leviesWith = withAdjustment.levies.parts.map(\.weight).reduce(0, +)
+        #expect(leviesWith > leviesWithout)
         #expect(withAdjustment.latestReceipts == withoutAdjustment.latestReceipts)
         #expect(withAdjustment.latestReceipts.first?.number == "20260902")
     }
@@ -273,7 +304,7 @@ struct OverviewModelTests {
         await model.load()
 
         let data = try #require(model.data)
-        #expect(data.hero.head == "Odvody za rok 2025")
+        #expect(data.levies.header == "Odvody za rok 2025")
         #expect(data.upcoming.isEmpty)
         #expect(data.latestReceipts.map(\.number) == ["20250901"])
         #expect(data.latestReceipts.map(\.date) == ["10.\u{00A0}10."])
@@ -568,7 +599,7 @@ struct OverviewModelTests {
         #expect(try column(ofYear: 2025, in: model).netIncomeHalere == nil)
         #expect(try column(ofYear: 2025, in: model).netAverage == nil)
         #expect(try column(ofYear: 2026, in: model).netIncomeHalere == 187_110_700)
-        #expect(try #require(model.data).hero.amountKc == 110_844)
+        #expect(try #require(model.data).keyFigure.figure == CzechFormat.wholeKc(110_844))
     }
 
     /// A year before the oldest the app has rules for, 2021, has its point in the chart by years like any other, but
@@ -623,7 +654,7 @@ struct OverviewModelTests {
             // 2025 is over: its page is there, and it has no card.
             app.selectYear(2025)
             await model.load()
-            #expect(model.data?.hero.head == "Odvody za rok 2025")
+            #expect(model.data?.levies.header == "Odvody za rok 2025")
             #expect(model.data?.prediction == nil)
 
             app.selectYear(2026)
@@ -633,7 +664,7 @@ struct OverviewModelTests {
             // On the last day of the year nothing is expected any more, and there is no estimate to show.
             app.handleDayChanged(civilDate("2026-12-31"))
             await model.load()
-            #expect(model.data?.hero.head == "Odvody z příjmů do 31.\u{00A0}12.")
+            #expect(model.data?.levies.header == "Odvody z příjmů do 31.\u{00A0}12.")
             #expect(model.data?.prediction == nil)
             #expect(model.errorText == nil)
         }
@@ -649,12 +680,12 @@ struct OverviewModelTests {
 
             app.pickAsOf(civilDate("2026-03-31"))
             await model.load()
-            #expect(model.data?.hero.head == "Odvody z příjmů do 31.\u{00A0}3.")
+            #expect(model.data?.levies.header == "Odvody z příjmů do 31.\u{00A0}3.")
             #expect(model.data?.prediction == card)
 
             app.pickAsOf(civilDate("2026-11-30"))
             await model.load()
-            #expect(model.data?.hero.head == "Odvody z příjmů do 17.\u{00A0}10.")
+            #expect(model.data?.levies.header == "Odvody z příjmů do 17.\u{00A0}10.")
             #expect(model.data?.prediction == card)
             #expect(card.sub == "z faktur do 17.\u{00A0}10.\u{00A0}2026 · co ještě do 31.\u{00A0}12. přijde")
         }
@@ -728,7 +759,7 @@ struct OverviewModelTests {
             let data = try #require(model.data)
             #expect(data.prediction == nil)
             #expect(model.errorText == nil)
-            #expect(data.hero.label == "Zbývá zaplatit")
+            #expect(data.keyFigure.eyebrow == "Zbývá zaplatit")
             #expect(data.latestReceipts.count == 5)
             #expect(data.columns.count == 12)
         }
@@ -767,7 +798,7 @@ struct OverviewModelTests {
         await older.value
         await newer.value
 
-        #expect(model.data?.hero.head == "Odvody z příjmů do 1.\u{00A0}1.")
+        #expect(model.data?.levies.header == "Odvody z příjmů do 1.\u{00A0}1.")
         #expect(model.data?.latestReceipts.isEmpty == true)
         #expect(model.rulesWarning != nil)
     }
@@ -793,7 +824,7 @@ struct OverviewModelTests {
         try await storeHealthExemptMonths("", in: database)
         await model.load()
 
-        #expect(model.data?.hero.amountKc == 110_844)
+        #expect(model.data?.keyFigure.figure == CzechFormat.wholeKc(110_844))
         #expect(model.errorText == nil)
     }
 

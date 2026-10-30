@@ -252,7 +252,8 @@ private nonisolated enum LevyBarMetrics {
 /// what follows the view in the stack the view is in, but a container of the view must itself be drawn over what
 /// follows it (a higher `zIndex`), and must not clip it, for the popover to show whole over the content under it. It
 /// does not take the pointer, and VoiceOver does not read it: each item of the legend reads what its popover shows.
-/// VoiceOver reads the bar as one picture named by its three parts.
+/// VoiceOver reads the bar as one picture named by its three parts, and the header, the picture and the legend as one
+/// section, "Odvody podle úřadů", on every screen that shows the bar.
 struct LevyBarView: View {
     let data: LevyBarData
 
@@ -285,6 +286,8 @@ struct LevyBarView: View {
             popover
         }
         .zIndex(1)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Odvody podle úřadů")
     }
 
     /// The authority whose popover shows and whose part keeps its colour: the one under the pointer, or else the one
