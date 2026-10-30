@@ -1,0 +1,216 @@
+# Builds the signed, notarized InvoicesTracker disk image on a GitHub-hosted Mac and, when asked to deploy, publishes
+# it as the Latest release together with the signed Sparkle update feed. It starts by hand only. The setup and the
+# use are in fastlane/README.md, under "Release from GitHub".
+name: Release
+
+run-name: >-
+  InvoicesTracker ${{ inputs.version }} (${{ inputs.build }}) from ${{ inputs.branch }},
+  ${{ inputs.deploy && 'with deploy' || 'build only' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build
+        type: string
+        required: true
+        default: main
+      version:
+        description: Marketing version, X.Y or X.Y.Z. It must be the MARKETING_VERSION of the branch
+        type: string
+        required: true
+      build:
+        description: Build number, a whole number. It must be the CURRENT_PROJECT_VERSION of the branch
+        type: string
+        required: true
+      changelog:
+        description: 'Release notes in Markdown, needed to deploy. This box is one line: type \n for a line break'
+        type: string
+        required: false
+      skip_tests:
+        description: Skip the unit tests
+        type: boolean
+        default: false
+      deploy:
+        description: Also publish the release and the update feed
+        type: boolean
+        default: false
+
+# One run at a time. A run started while another is going waits in the queue and is never cancelled.
+concurrency:
+  group: release
+  cancel-in-progress: false
+  queue: max
+
+# The token only reads unless a job asks for more.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the DMG
+    # GitHub's hosted macOS 27 runner with Xcode 27. Notarization waits for Apple, hence the long timeout.
+    runs-on: xcode-27
+    timeout-minutes: 120
+    # The secrets live in this environment, and it only accepts runs from main.
+    environment: release
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      # Gemfile.lock lists the platform of this runner. Frozen, Bundler fails instead of rewriting the lockfile,
+      # which the lane would refuse as a change in the working copy.
+      BUNDLE_FROZEN: "true"
+      # fastlane needs a UTF-8 locale.
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      # fastlane stops waiting for `xcodebuild -showBuildSettings` after 3 seconds, which a cold runner can exceed.
+      FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "60"
+    steps:
+      - name: Check the ref and who started the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Start this workflow from main. It was started from $GITHUB_REF." \
+              "The branch input chooses what is built."
+            exit 1
+          fi
+          if ! role=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq .role_name); then
+            echo "::error::Could not read the role of $GITHUB_ACTOR in $GITHUB_REPOSITORY."
+            exit 1
+          fi
+          case "$role" in
+            admin | maintain | write) ;;
+            *)
+              echo "::error::$GITHUB_ACTOR has the role $role in $GITHUB_REPOSITORY." \
+                "Only admin, maintain and write may start a release."
+              exit 1
+              ;;
+          esac
+
+      # No credentials stay in the working copy: the build runs the branch's own scripts and tests.
+      - name: Check out the branch
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
+          persist-credentials: false
+
+      # The Ruby is the one in .ruby-version.
+      - name: Set up Ruby and the bundle
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          bundler-cache: true
+
+      # Only this job can read the file, and the lane finds it through ASC_KEY_FILEPATH.
+      - name: Write the App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"
+          echo "ASC_KEY_FILEPATH=$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" >> "$GITHUB_ENV"
+
+      # The inputs and the secrets reach the lane through the environment only. The lane takes the secrets out of
+      # its own environment before it starts any tool. Only a deploy's preflight reads the Sparkle key, so a build
+      # without a deploy is not given it.
+      - name: Build the DMG
+        env:
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+          DEPLOY: ${{ inputs.deploy }}
+          SKIP_TESTS: ${{ inputs.skip_tests }}
+          RELEASE_CHANGELOG: ${{ inputs.changelog }}
+          GH_TOKEN: ${{ github.token }}
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ inputs.deploy && secrets.SPARKLE_PRIVATE_KEY || '' }}
+        run: bundle exec fastlane ci_dmg version:"$VERSION" build:"$BUILD" deploy:"$DEPLOY" skip_tests:"$SKIP_TESTS"
+
+      # Right after the lane, before any step of the feed, so a deploy that fails still leaves the DMG.
+      - name: Upload the DMG
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/InvoicesTracker-${{ inputs.version }}-${{ inputs.build }}.dmg
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Make the update feed
+        if: inputs.deploy
+        env:
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+          RELEASE_CHANGELOG: ${{ inputs.changelog }}
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: bundle exec fastlane sparkle_feed version:"$VERSION" build:"$BUILD"
+
+      - name: Upload the feed for the publish job
+        if: inputs.deploy
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-feed
+          path: build/feed/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+      # However the job ended. The lane removes the keychain itself; this is for a run that could not.
+      - name: Remove the API key and the temporary keychain
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/asc"
+          keychain="$RUNNER_TEMP/invoices-release.keychain-db"
+          if [[ -e "$keychain" ]]; then
+            security delete-keychain "$keychain" || rm -f "$keychain"
+          fi
+
+      - name: Write the summary
+        env:
+          COMMIT: ${{ steps.checkout.outputs.commit }}
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          {
+            echo "### InvoicesTracker $VERSION ($BUILD)"
+            echo
+            echo "- Commit: \`$COMMIT\`"
+            echo "- DMG artifact: \`InvoicesTracker-$VERSION-$BUILD.dmg\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish the release
+    # Only a deploy publishes, and only after a build that succeeded.
+    needs: build
+    if: inputs.deploy && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The one job that writes to the repository. It reads no secret and has no environment.
+    permissions:
+      contents: write
+    steps:
+      # The workflow's own commit on main, never code from the built branch.
+      - name: Check out the workflow's own commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download the feed
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-feed
+          path: feed
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: Scripts/ci/publish-release.sh feed
