@@ -9,8 +9,9 @@ module InvoicesTracker
   # the file is first encrypted again under a throwaway password, and only the
   # throwaway password reaches a command line. The commands that make the
   # keychain, fill it and remove it are built here as arrays to run without a
-  # shell. Pure apart from the OpenSSL work of encrypting the file again:
-  # callers run the commands.
+  # shell. Pure apart from the OpenSSL work of encrypting the file again, which
+  # may load OpenSSL's legacy provider into the process: callers run the
+  # commands.
   module CiKeychain
     # The OpenSSL name of the password-based encryption that the file made by
     # `rewrap_p12` uses for its key and for its certificate:
@@ -38,6 +39,27 @@ module InvoicesTracker
     # quotes, on a line of its own and indented.
     LISTED_KEYCHAIN = /\A\s*"(.+)"\s*\z/
 
+    # What OpenSSL reports when the integrity check of a .p12 file fails, which
+    # is what a wrong password does: the check comes before anything is decrypted.
+    MAC_FAILURE = /mac verify failure/i
+
+    # What OpenSSL 3 reports when a .p12 file uses an algorithm that no provider
+    # loaded so far implements. RC2, in which LibreSSL encrypts the certificate of
+    # a file, belongs to the legacy provider, which is not loaded by default.
+    UNSUPPORTED = /unsupported/i
+
+    # The message of the ArgumentError that `rewrap_p12` raises for a wrong
+    # password, and only for that.
+    WRONG_PASSWORD_MESSAGE = "the Developer ID .p12 cannot be opened with DEVELOPER_ID_P12_PASSWORD"
+
+    # The message for a file with an encryption that OpenSSL cannot read, even
+    # with the legacy provider.
+    UNREADABLE_ENCRYPTION_MESSAGE = "the Developer ID .p12 uses an encryption this Ruby's OpenSSL cannot read — " \
+                                    "export it again from Keychain Access"
+
+    # The message for data that is no .p12 file, or a damaged one.
+    DAMAGED_MESSAGE = "the Developer ID .p12 in DEVELOPER_ID_P12 is damaged or is not a .p12 file"
+
     module_function
 
     # The .p12 file `p12_der` (DER bytes), opened with `password` and encrypted
@@ -47,9 +69,17 @@ module InvoicesTracker
     # HMAC-SHA-256, which Ruby's OpenSSL gives no way to change and which macOS
     # releases before 15 may not read.
     #
-    # Raises ArgumentError when the file cannot be opened with `password`, and
-    # also when the data is no .p12 file at all. The message never contains a
-    # password.
+    # A file written the old way, as LibreSSL writes it, has its certificate
+    # encrypted with RC2, which OpenSSL 3 reads only through its legacy provider.
+    # When a file fails for that reason, the legacy provider is loaded into the
+    # process, where it stays, and the file is read once more.
+    #
+    # Raises ArgumentError when the file cannot be opened. No message contains a
+    # password, and each says what is wrong: `WRONG_PASSWORD_MESSAGE` for a wrong
+    # password, and only for that, `UNREADABLE_ENCRYPTION_MESSAGE` for an
+    # encryption that this OpenSSL cannot read even with its legacy provider (or
+    # that has no legacy provider), and `DAMAGED_MESSAGE` for data that is no
+    # .p12 file at all.
     def rewrap_p12(p12_der, password:, new_password:)
       opened = open_p12(p12_der, password)
       OpenSSL::PKCS12.create(new_password, FRIENDLY_NAME, opened.key, opened.certificate, opened.ca_certs,
@@ -97,14 +127,55 @@ module InvoicesTracker
       list_keychains_output.to_s.each_line.filter_map { |line| line[LISTED_KEYCHAIN, 1] }
     end
 
-    # The .p12 file opened with `password`. Raises ArgumentError, with a message
-    # that quotes no password, when it cannot be opened: the password is wrong or
-    # the data is no .p12 file.
+    # The .p12 file opened with `password`. A file that fails because OpenSSL has
+    # no implementation of an algorithm it uses is read once more after the
+    # legacy provider has been loaded, if this OpenSSL has one. Raises
+    # ArgumentError, with a message that quotes no password, when it cannot be
+    # opened: see `failure_message`.
     def open_p12(p12_der, password)
-      OpenSSL::PKCS12.new(p12_der, password)
-    rescue OpenSSL::PKCS12::PKCS12Error
-      raise ArgumentError, "the Developer ID .p12 cannot be opened with DEVELOPER_ID_P12_PASSWORD"
+      legacy_loaded = false
+      begin
+        OpenSSL::PKCS12.new(p12_der, password)
+      rescue OpenSSL::PKCS12::PKCS12Error => error
+        if !legacy_loaded && UNSUPPORTED.match?(error.message) && load_legacy_provider
+          legacy_loaded = true
+          retry
+        end
+        raise ArgumentError, failure_message(error)
+      end
     end
     private_class_method :open_p12
+
+    # Loads the default and the legacy provider of OpenSSL 3 into this process,
+    # which makes RC2 and the other old algorithms available to every OpenSSL
+    # call after it. The default provider is loaded as well because OpenSSL loads
+    # it on its own only while no provider has been loaded by name. Loading a
+    # provider that is loaded already does no harm. Gives true when both are
+    # loaded, and false when this OpenSSL has no providers (it is older than 3)
+    # or has no legacy provider.
+    def load_legacy_provider
+      return false unless defined?(OpenSSL::Provider)
+
+      OpenSSL::Provider.load("default")
+      OpenSSL::Provider.load("legacy")
+      true
+    rescue OpenSSL::Provider::ProviderError
+      false
+    end
+    private_class_method :load_legacy_provider
+
+    # The message of the ArgumentError for a .p12 file that OpenSSL failed to open
+    # with `error`. A failed integrity check, which is what a wrong password
+    # causes, gives `WRONG_PASSWORD_MESSAGE`; an algorithm without an
+    # implementation gives `UNREADABLE_ENCRYPTION_MESSAGE`; anything else gives
+    # `DAMAGED_MESSAGE`.
+    def failure_message(error)
+      case error.message
+      when MAC_FAILURE then WRONG_PASSWORD_MESSAGE
+      when UNSUPPORTED then UNREADABLE_ENCRYPTION_MESSAGE
+      else DAMAGED_MESSAGE
+      end
+    end
+    private_class_method :failure_message
   end
 end
