@@ -1,15 +1,19 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "minitest/autorun"
 require "open3"
+require "tmpdir"
 require "yaml"
+require "invoices_tracker/build_settings"
 require "invoices_tracker/ci_build"
+require "invoices_tracker/paths"
 
 # Reads .github/workflows/release.yml as data and pins what a review of it would look for: who can start a run and
 # with what, which job holds which permission and which secret, how the inputs and the secrets reach shell code, and
-# that every action is pinned. The workflow cannot start before it is on main, so these checks and actionlint are
-# what vouch for it until then.
+# that every action is pinned. The script of the first step is run as it is. The workflow cannot start before it is on
+# main, so these checks and actionlint are what vouch for it until then.
 class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   REPO_ROOT = File.expand_path("../..", __dir__)
   WORKFLOW = File.join(REPO_ROOT, ".github", "workflows", "release.yml")
@@ -33,6 +37,10 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   # What the lane step runs: the typed values reach the lane through the environment, as quoted variables.
   LANE_COMMAND = 'bundle exec fastlane ci_dmg version:"$VERSION" build:"$BUILD" ' \
                  'deploy:"$DEPLOY" skip_tests:"$SKIP_TESTS"'
+
+  # The version and the build as the first step of the build job hands them on, trimmed and checked.
+  CHECKED_VERSION = "${{ steps.check.outputs.version }}"
+  CHECKED_BUILD = "${{ steps.check.outputs.build }}"
 
   # --- the start of a run ------------------------------------------------------------------------------------
 
@@ -106,13 +114,38 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
   def test_only_a_collaborator_who_started_the_workflow_from_main_gets_past_the_first_step
     first = steps_of("build").first
 
-    assert_equal({ "GH_TOKEN" => "${{ github.token }}" }, first.fetch("env"))
+    assert_equal "${{ github.token }}", first.fetch("env")["GH_TOKEN"]
     run = first.fetch("run")
     assert_includes run, "refs/heads/main"
     assert_match(%r{gh api "?repos/\$GITHUB_REPOSITORY/collaborators/\$GITHUB_ACTOR/permission"? --jq \.role_name}, run)
     assert_match(/admin\s*\|\s*maintain\s*\|\s*write/, run)
     assert_includes run, "::error::"
     assert_includes run, "exit 1"
+  end
+
+  # The lanes trim the typed version and build and name the DMG after the trimmed ones. So the first step trims and
+  # checks them once, the only place that reads the inputs, and hands them on as its outputs; every later step uses
+  # those. A number typed with spaces around it then finds its DMG instead of failing after the whole build.
+  def test_the_typed_numbers_are_read_once_and_every_later_step_uses_the_checked_outputs
+    first = steps_of("build").first
+
+    assert_equal "check", first["id"]
+    assert_equal({ "TYPED_VERSION" => "${{ inputs.version }}", "TYPED_BUILD" => "${{ inputs.build }}" },
+                 first.fetch("env").slice("TYPED_VERSION", "TYPED_BUILD"))
+    assert_includes first.fetch("run"), '>> "$GITHUB_OUTPUT"'
+    (all_steps - [first]).each do |step|
+      refute_match(/inputs\.(version|build)\b/, JSON.generate(step),
+                   "the step #{step['name'].inspect} reads a typed number instead of the checked one")
+    end
+  end
+
+  def test_the_upload_path_is_where_the_lane_leaves_the_dmg
+    path = dmg_upload.dig("with", "path")
+    lane_dmg = InvoicesTracker::Paths.resolve(repo_root: "/work", version: "1.7.0", build: "10")[:final_dmg]
+
+    assert_includes path, CHECKED_VERSION
+    assert_includes path, CHECKED_BUILD
+    assert_equal lane_dmg, File.join("/work", path.sub(CHECKED_VERSION, "1.7.0").sub(CHECKED_BUILD, "10"))
   end
 
   def test_the_branch_is_checked_out_without_leaving_the_token_in_the_working_copy
@@ -145,8 +178,8 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
     assert_equal LANE_COMMAND, step.fetch("run").strip
     env = step.fetch("env")
-    assert_equal "${{ inputs.version }}", env["VERSION"]
-    assert_equal "${{ inputs.build }}", env["BUILD"]
+    assert_equal CHECKED_VERSION, env["VERSION"]
+    assert_equal CHECKED_BUILD, env["BUILD"]
     assert_equal "${{ inputs.deploy }}", env["DEPLOY"]
     assert_equal "${{ inputs.skip_tests }}", env["SKIP_TESTS"]
     assert_equal "${{ inputs.changelog }}", env["RELEASE_CHANGELOG"]
@@ -188,13 +221,11 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
   # The upload comes right after the lane, before any step of the feed, so a deploy that fails still leaves the DMG.
   def test_the_dmg_is_uploaded_as_the_file_it_is
-    uploads = steps_of("build").select { |step| step["uses"].to_s.start_with?("actions/upload-artifact@") }
-    dmg = uploads.select { |step| step.dig("with", "archive") == false }
+    dmg = dmg_upload
 
-    assert_equal 1, dmg.size
-    assert_equal "build/InvoicesTracker-${{ inputs.version }}-${{ inputs.build }}.dmg", dmg.first.dig("with", "path")
-    assert_equal "error", dmg.first.dig("with", "if-no-files-found")
-    refute dmg.first.key?("if"), "the DMG is uploaded whether or not the run deploys"
+    assert_equal "build/InvoicesTracker-#{CHECKED_VERSION}-#{CHECKED_BUILD}.dmg", dmg.dig("with", "path")
+    assert_equal "error", dmg.dig("with", "if-no-files-found")
+    refute dmg.key?("if"), "the DMG is uploaded whether or not the run deploys"
   end
 
   def test_the_feed_is_made_and_uploaded_only_when_deploying
@@ -203,6 +234,8 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
     assert_equal %q(bundle exec fastlane sparkle_feed version:"$VERSION" build:"$BUILD"), feed.fetch("run").strip
     assert_equal %w[BUILD GH_TOKEN RELEASE_CHANGELOG SPARKLE_PRIVATE_KEY VERSION], feed.fetch("env").keys.sort
+    assert_equal CHECKED_VERSION, feed.fetch("env")["VERSION"]
+    assert_equal CHECKED_BUILD, feed.fetch("env")["BUILD"]
     assert_equal "${{ secrets.SPARKLE_PRIVATE_KEY }}", feed.fetch("env")["SPARKLE_PRIVATE_KEY"]
     assert_equal "inputs.deploy", feed["if"]
     assert_match(%r{\Aactions/upload-artifact@}, upload["uses"])
@@ -225,8 +258,8 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     step = step_running("build", "GITHUB_STEP_SUMMARY")
 
     assert_equal "${{ steps.checkout.outputs.commit }}", step.fetch("env")["COMMIT"]
-    assert_equal "${{ inputs.version }}", step.fetch("env")["VERSION"]
-    assert_equal "${{ inputs.build }}", step.fetch("env")["BUILD"]
+    assert_equal CHECKED_VERSION, step.fetch("env")["VERSION"]
+    assert_equal CHECKED_BUILD, step.fetch("env")["BUILD"]
     assert_includes step.fetch("run"), "InvoicesTracker-$VERSION-$BUILD.dmg"
     assert_includes step.fetch("run"), "$COMMIT"
   end
@@ -250,6 +283,74 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     refute_includes positions, nil
     assert_equal positions.sort, positions
     assert_equal steps_of("build").size, positions.size, "a step that is not in the list"
+  end
+
+  # --- the first step, run as it is --------------------------------------------------------------------------
+
+  def test_the_first_step_hands_on_the_numbers_trimmed
+    outputs, log, status = run_first_step(version: " 1.7.0 ", build: "\t10\n")
+
+    assert status.success?, log
+    assert_equal %w[version=1.7.0 build=10], outputs
+  end
+
+  # The step takes the same numbers as the lanes, whose BuildSettings it is checked against, and the same trimmed text
+  # comes out of it that the lanes work with.
+  def test_the_first_step_accepts_and_refuses_the_numbers_the_lanes_do
+    samples = [
+      ["1.7.0", "10"], ["1.7", "1"], [" 1.7.0 ", " 10 "], ["\n1.7.0\n", "10\n"], ["\t1.7\v", "7\f"], ["01.7", "10"],
+      ["1.7.0.1", "10"], ["1", "10"], ["v1.7.0", "10"], ["1.7.", "10"], ["", "10"], ["1. 7", "10"], ["1.7.0\nx", "10"],
+      ["1.7.0", "010"], ["1.7.0", "0"], ["1.7.0", "-1"], ["1.7.0", "1 0"], ["1.7.0", ""], ["1.7.0", "10\nx"],
+      ["1.7.0", "1e3"], ["1.7.0", "+5"]
+    ]
+
+    samples.each do |version, build|
+      outputs, log, status = run_first_step(version: version, build: build)
+      accepted = InvoicesTracker::BuildSettings.typed_format_errors(version: version, build: build).empty?
+      what = "version #{version.inspect}, build #{build.inspect}"
+
+      assert_equal accepted, status.success?, "#{what}: #{log}"
+      if accepted
+        assert_equal ["version=#{version.strip}", "build=#{build.strip}"], outputs, what
+      else
+        assert_empty outputs, "#{what}: nothing may be handed on"
+        assert_match(/^::error::/, log, what)
+      end
+    end
+  end
+
+  # What was typed is not repeated in the log, where a line that starts with :: would be taken for a workflow command.
+  def test_the_first_step_does_not_repeat_the_typed_text_when_it_refuses_it
+    _outputs, log, status = run_first_step(version: "1.7.0\n::set-output name=x::y", build: "10")
+
+    refute status.success?
+    refute_includes log, "set-output"
+  end
+
+  def test_the_first_step_lets_an_admin_a_maintainer_and_a_writer_through
+    %w[admin maintain write].each do |role|
+      _outputs, log, status = run_first_step(role: role)
+
+      assert status.success?, "the role #{role} was stopped: #{log}"
+    end
+  end
+
+  def test_the_first_step_stops_every_other_role_every_ref_but_main_and_a_role_it_cannot_read
+    stopped = {
+      "the role triage" => { role: "triage" },
+      "the role read" => { role: "read" },
+      "a role that cannot be read" => { role: "unreadable" },
+      "the branch feature" => { ref: "refs/heads/feature" },
+      "a tag" => { ref: "refs/tags/v1.7.0-10" }
+    }
+
+    stopped.each do |what, options|
+      outputs, log, status = run_first_step(**options)
+
+      refute status.success?, "#{what} got through"
+      assert_empty outputs, "#{what}: nothing may be handed on"
+      assert_match(/^::error::/, log, what)
+    end
   end
 
   # --- the publish job ---------------------------------------------------------------------------------------
@@ -378,6 +479,39 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
 
   def run_texts
     all_steps.filter_map { |step| step["run"] }
+  end
+
+  # The step of the build job that uploads the DMG: the one upload that does not zip.
+  def dmg_upload
+    uploads = steps_of("build").select { |step| step["uses"].to_s.start_with?("actions/upload-artifact@") }
+    dmg = uploads.select { |step| step.dig("with", "archive") == false }
+    assert_equal 1, dmg.size, "expected one upload of the DMG, found #{dmg.size}"
+    dmg.first
+  end
+
+  # Runs the script of the first step of the build job as the runner would, with bash -e on a file, in a folder of its
+  # own. The gh it finds answers the question for the role of the starter with `role` ("unreadable" makes it fail like
+  # a request that GitHub refuses). Gives the lines the step wrote to GITHUB_OUTPUT, what it printed, and its status.
+  def run_first_step(version: "1.7.0", build: "10", role: "admin", ref: "refs/heads/main")
+    Dir.mktmpdir do |dir|
+      bin = File.join(dir, "bin")
+      FileUtils.mkdir_p(bin)
+      answer = role == "unreadable" ? "echo 'gh: Not Found (HTTP 404)' >&2\nexit 1" : "echo #{role}"
+      File.write(File.join(bin, "gh"), "#!/bin/sh\n#{answer}\n")
+      File.chmod(0o755, File.join(bin, "gh"))
+      script = File.join(dir, "step.sh")
+      File.write(script, steps_of("build").first.fetch("run"))
+      output = File.join(dir, "output")
+      File.write(output, "")
+
+      env = {
+        "PATH" => "#{bin}:#{ENV.fetch('PATH')}", "GITHUB_REF" => ref, "GITHUB_ACTOR" => "michal",
+        "GITHUB_REPOSITORY" => "Chlup/InvoicesTracker", "GITHUB_OUTPUT" => output, "GH_TOKEN" => "not-a-token",
+        "TYPED_VERSION" => version, "TYPED_BUILD" => build
+      }
+      log, status = Open3.capture2e(env, "bash", "-e", script, chdir: dir)
+      [File.readlines(output, chomp: true), log, status]
+    end
   end
 
   # The one step of the job for which the block is true.
