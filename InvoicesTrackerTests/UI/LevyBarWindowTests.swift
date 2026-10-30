@@ -48,8 +48,10 @@ struct LevyBarWindowTests {
                 let image = try #require(accessibilityElement(labelled: data.accessibilityLabel, in: window))
 
                 #expect(image.accessibilityRole?() == .image)
-                // The parts are no elements of their own.
-                #expect((image.accessibilityChildren?() ?? []).isEmpty)
+                // The parts are no elements of their own. The children are read outside the expectation, whose macro
+                // would otherwise type the `??` as optional and check nothing.
+                let children = image.accessibilityChildren?() ?? []
+                #expect(children.isEmpty, "The bar has \(children.count) children")
                 // The bar is 16 points tall and as wide as the panel.
                 let frame = try #require(image.accessibilityFrame?())
                 #expect(abs(frame.height - 16) < 0.5, "\(frame)")
