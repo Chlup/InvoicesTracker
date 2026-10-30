@@ -27,6 +27,10 @@ nonisolated enum ResultCardLayout {
 /// apart, where it has less. A part may follow under a hairline, over the whole width, such as a second figure or a row
 /// of tiles.
 ///
+/// What hangs out of a part, such as the popover of the levy bar (`LevyBarView`), is drawn over the hairline, the part
+/// under it and the edge of the card: the two parts are drawn above the rest, and the look of the card under all of its
+/// content. To cover what follows the card on a page as well, the page draws the card above it (a higher `zIndex`).
+///
 /// VoiceOver reads the card as a group under `label`.
 struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
     let label: String
@@ -57,6 +61,7 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
                     trailing
                 }
             }
+            .zIndex(1)
             if hasBelow {
                 Rectangle()
                     .fill(Palette.sep)
@@ -68,7 +73,12 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
         }
         .padding(DesignMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .card()
+        .background {
+            // The look of the card, with its ring, lies under the content rather than over it, as no content of the
+            // card reaches its edge but what hangs out of a part.
+            Color.clear
+                .card()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }

@@ -437,16 +437,3 @@ nonisolated enum InvoiceDetailBuilder {
         return why + " Faktura se nezapočítává do příjmů, dokud ji nevyřešíte – " + resolution
     }
 }
-
-// MARK: - Titles
-
-nonisolated extension Authority {
-    /// The name of the authority: "Daň z příjmů", "Sociální pojištění", "Zdravotní pojištění".
-    var title: String {
-        switch self {
-        case .tax: "Daň z příjmů"
-        case .social: "Sociální pojištění"
-        case .health: "Zdravotní pojištění"
-        }
-    }
-}

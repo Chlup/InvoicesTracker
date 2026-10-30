@@ -150,6 +150,10 @@ nonisolated enum Typography {
     /// The body style, semibold, for the text of a button and for what stands out in a row.
     static let bodySemibold = Font.body.weight(.semibold)
 
+    /// The body style, bold, for the name at the top of a popover, such as the authority in the popover of the levy
+    /// bar.
+    static let bodyBold = Font.body.bold()
+
     /// The callout style (12 points), for the line of detail under a figure.
     static let callout = Font.callout
 

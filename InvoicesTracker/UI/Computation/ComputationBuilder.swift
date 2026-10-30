@@ -199,12 +199,9 @@ nonisolated enum ComputationBuilder {
         return "\(count)\u{00A0}\(noun)"
     }
 
-    /// The name of an authority in a column or a tile: "Daň", "Sociální", "Zdravotní".
+    /// The name of an authority in a column or a tile, its short name (`Authority.shortTitle`): "Daň", "Sociální",
+    /// "Zdravotní".
     static func shortName(of authority: Authority) -> String {
-        switch authority {
-        case .tax: "Daň"
-        case .social: "Sociální"
-        case .health: "Zdravotní"
-        }
+        authority.shortTitle
     }
 }
