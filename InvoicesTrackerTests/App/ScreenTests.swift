@@ -21,7 +21,8 @@ struct ScreenTests {
 
         #expect(
             headers == [
-                ScreenHeader(title: "Přehled", subtitle: "Rok 2026 · příjmy od 1.\u{A0}1. do 30.\u{A0}10.\u{A0}2026"),
+                ScreenHeader(
+                    title: "Přehled", subtitle: "Rok 2026 · příjmy od 1.\u{00A0}1. do 30.\u{00A0}10.\u{00A0}2026"),
                 ScreenHeader(
                     title: "Faktury",
                     subtitle:
@@ -30,10 +31,11 @@ struct ScreenTests {
                     title: "Zálohy a odpočty", subtitle: "Rok 2026 · zálohy po měsících, odpočty a slevy na dani"),
                 ScreenHeader(
                     title: "Výpočet",
-                    subtitle: "Rok 2026 · k 30.\u{A0}10.\u{A0}2026 · verze 2026.1 · ověřeno 20.\u{A0}10.\u{A0}2026"),
+                    subtitle:
+                        "Rok 2026 · k 30.\u{00A0}10.\u{00A0}2026 · verze 2026.1 · ověřeno 20.\u{00A0}10.\u{00A0}2026"),
                 ScreenHeader(
                     title: "Odhad odvodů",
-                    subtitle: "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{A0}10.\u{A0}2026"),
+                    subtitle: "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{00A0}10.\u{00A0}2026"),
                 ScreenHeader(title: "Odběratelé", subtitle: "Výchozí údaje a šablony pro nové faktury"),
                 ScreenHeader(title: "Šablony faktur", subtitle: "Opakované faktury jedním klikem"),
                 ScreenHeader(title: "Simulátor", subtitle: "Kolik zaplatíte na odvodech při zvoleném příjmu"),
@@ -53,13 +55,16 @@ struct ScreenTests {
             year: 2027, asOf: civilDate("2027-01-01"), today: today, incomeFX: .cnbDaily)
 
         #expect(past.title == "Výpočet")
-        #expect(past.subtitle == "Rok 2024 · k 31.\u{A0}12.\u{A0}2024 · verze 2024.1 · ověřeno 20.\u{A0}10.\u{A0}2026")
+        #expect(
+            past.subtitle
+                == "Rok 2024 · k 31.\u{00A0}12.\u{00A0}2024 · verze 2024.1 · ověřeno 20.\u{00A0}10.\u{00A0}2026")
         #expect(estimate.title == "Výpočet")
         #expect(
-            estimate.subtitle == "Rok 2027 · k 1.\u{A0}1.\u{A0}2027 · verze 2026.1 · ověřeno 20.\u{A0}10.\u{A0}2026")
+            estimate.subtitle
+                == "Rok 2027 · k 1.\u{00A0}1.\u{00A0}2027 · verze 2026.1 · ověřeno 20.\u{00A0}10.\u{00A0}2026")
         #expect(
             Screen.overview.header(year: 2025, asOf: civilDate("2025-12-31"), today: today, incomeFX: .cnbDaily)
-                .subtitle == "Rok 2025 · příjmy od 1.\u{A0}1. do 31.\u{A0}12.\u{A0}2025")
+                .subtitle == "Rok 2025 · příjmy od 1.\u{00A0}1. do 31.\u{00A0}12.\u{00A0}2025")
     }
 
     /// Odhad odvodů names the day its estimate is made as of, which is today and never the day of "K datu": a year in
@@ -73,7 +78,7 @@ struct ScreenTests {
         #expect(inProgress.title == "Odhad odvodů")
         #expect(
             inProgress.subtitle
-                == "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{A0}10.\u{A0}2026")
+                == "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{00A0}10.\u{00A0}2026")
         #expect(past.title == "Odhad odvodů")
         #expect(past.subtitle == "Rok 2025 · skutečnost za celý rok")
     }
@@ -89,7 +94,7 @@ struct ScreenTests {
         #expect(header.subtitle == "Rok 2026 · skutečnost za celý rok")
         #expect(
             dayBefore.subtitle
-                == "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{A0}12.\u{A0}2026")
+                == "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{00A0}12.\u{00A0}2026")
     }
 
     /// The line under the title of Faktury names how the year converts its income in other currencies: the method it

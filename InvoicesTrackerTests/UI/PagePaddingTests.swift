@@ -38,20 +38,20 @@ struct PagePaddingTests {
     }
 
     @Test func aPageIsPaddedOnTheEdgesGivenAndOnNoOther() {
-        let cases: [(edges: Edge.Set, expected: CGRect)] = [
-            (.horizontal, CGRect(x: 24, y: 0, width: 360, height: 300)),
-            (.vertical, CGRect(x: 0, y: 16, width: 400, height: 260)),
-            ([.horizontal, .top], CGRect(x: 24, y: 16, width: 360, height: 284)),
-            ([.horizontal, .bottom], CGRect(x: 24, y: 0, width: 360, height: 276)),
-            (.leading, CGRect(x: 24, y: 0, width: 376, height: 300)),
-            (.trailing, CGRect(x: 0, y: 0, width: 384, height: 300)),
-            (.top, CGRect(x: 0, y: 16, width: 400, height: 284)),
-            (.bottom, CGRect(x: 0, y: 0, width: 400, height: 276)),
+        let cases: [(name: String, edges: Edge.Set, expected: CGRect)] = [
+            ("horizontal", .horizontal, CGRect(x: 24, y: 0, width: 360, height: 300)),
+            ("vertical", .vertical, CGRect(x: 0, y: 16, width: 400, height: 260)),
+            ("horizontal and top", [.horizontal, .top], CGRect(x: 24, y: 16, width: 360, height: 284)),
+            ("horizontal and bottom", [.horizontal, .bottom], CGRect(x: 24, y: 0, width: 360, height: 276)),
+            ("leading", .leading, CGRect(x: 24, y: 0, width: 376, height: 300)),
+            ("trailing", .trailing, CGRect(x: 0, y: 0, width: 384, height: 300)),
+            ("top", .top, CGRect(x: 0, y: 16, width: 400, height: 284)),
+            ("bottom", .bottom, CGRect(x: 0, y: 0, width: 400, height: 276)),
         ]
 
-        for (edges, expected) in cases {
+        for (name, edges, expected) in cases {
             let frame = contentFrame(of: content.pagePadding(edges))
-            #expect(isFrame(frame, expected), "\(edges): laid out as \(String(describing: frame))")
+            #expect(isFrame(frame, expected), "\(name): laid out as \(String(describing: frame))")
         }
     }
 }
