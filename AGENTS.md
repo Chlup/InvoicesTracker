@@ -25,8 +25,10 @@ xcodebuild build -project InvoicesTracker.xcodeproj -scheme InvoicesTracker -con
 
 # Release: a signed, notarized DMG of the checked-out commit in build/ (the working copy must be clean)
 ./Scripts/release.sh [--skip-tests]    # runs: bundle exec fastlane dmg [skip_tests:true]
-bundle exec rake test                  # tests of the fastlane helpers and of release.sh
+bundle exec rake test                  # tests of the fastlane helpers, the release scripts and the workflow file
 ```
+
+The "Release" workflow (`.github/workflows/release.yml`, started by hand) builds the DMG on GitHub and can publish it with the Sparkle update feed: see `fastlane/README.md`, "Release from GitHub".
 
 `fastlane/README.md` documents the release prerequisites. `fastlane/.env` and `*.p8` hold the App Store Connect key:
 - never read them (`.claude/settings.json` denies it);
