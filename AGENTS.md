@@ -51,7 +51,7 @@ The code is layered, bottom to top:
     - `InvoicesTracker.sqlite`;
     - `InvoicesTracker.keys`, the wrapped key (`Storage/Keys/`: Secure Enclave, recovery code);
     - `Backups/`.
-  - **Settings.** App settings are JSON rows in the database's `app_settings` table. UserDefaults holds only the idle-lock mirror.
+  - **Settings.** App settings are JSON rows in the database's `app_settings` table. UserDefaults holds only the idle-lock mirror and Sparkle's own settings (the daily-check switch and the last check time), because the updater starts before the data are unlocked.
 - **Domain** (`Domain/`), models and values:
   - money is `Int64` haléře, or whole Kč where the name says so;
   - dates are `CivilDate`, which has no time zone;
@@ -67,10 +67,12 @@ The code is layered, bottom to top:
   - `Import/`: Fakturoid CSV import;
   - `Invoices/`: numbering, PDF and the QR payment code;
   - `Search/`.
-- **Updates.** Sparkle 2 updates the app from the feed `https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml`:
+- **Updates** (`Updates/`). Sparkle 2 updates the app from the feed `https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml`:
   - the feed URL must keep working for every installed version, so it never moves, and only the release workflow publishes releases;
   - the public key (`SUPublicEDKey`) is committed. The appcast and every archive must be signed with its private half, which is never committed (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`);
-  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`.
+  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`;
+  - `AppUpdater` starts Sparkle's updater once at launch, never under the test host, and is its delegate. It is the only code that imports Sparkle: the app reaches the updater through `AppModel.updates` (nil in tests, which use `FakeUpdater`), an `UpdatesModel` that mirrors an `AppUpdating`;
+  - Debug builds refuse the updater's daily check in the background (`UpdateCheckPolicy`). A check the person asks for runs in every build.
 - **App** (`App/`):
   - `AppModel` is `@MainActor @Observable`, split across `AppModel+*.swift`. It holds:
     - the unlocked database and the selected screen;

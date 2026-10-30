@@ -4,10 +4,24 @@ import SwiftUI
 struct TaxesTrackerApp: App {
     /// The model of the app, made once. Nil while the app hosts the unit tests, which must not touch the data, and when
     /// the folder of the data cannot be made.
-    @State private var model: AppModel? = Self.makeModel()
+    @State private var model: AppModel?
+
+    /// Sparkle's updater, made and started once, whether or not the model could be made. Nil while the app hosts the
+    /// unit tests, which must not check for updates.
+    @State private var updater: AppUpdater?
 
     /// Asks before a quit throws away the invoice that is being written.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    /// Makes the updater and the model of the app, once, at launch, and gives the model what the updater shows
+    /// (`AppModel.updates`) before the window shows.
+    init() {
+        let updater = AppUpdater.forLaunch()
+        let model = Self.makeModel()
+        model?.updates = updater?.model
+        _model = State(initialValue: model)
+        _updater = State(initialValue: updater)
+    }
 
     var body: some Scene {
         WindowGroup {
