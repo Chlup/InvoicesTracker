@@ -215,6 +215,32 @@ struct DesignControlsTests {
         }
     }
 
+    @Test func aLinkIsPressedAndADisabledOneIsNot() async throws {
+        var pressed: [String] = []
+        let links = HStack(spacing: 16) {
+            Button("Odebrat dítě") { pressed.append("Odebrat dítě") }
+                .buttonStyle(TextLinkButtonStyle(.destructive))
+            Button("Pravidla v Nastavení") { pressed.append("Pravidla v Nastavení") }
+                .buttonStyle(TextLinkButtonStyle())
+                .disabled(true)
+        }
+        .padding(20)
+
+        try await withHostedView(links, size: CGSize(width: 420, height: 100)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Odebrat dítě", in: window) != nil }
+                let enabled = try #require(accessibilityButton(labelled: "Odebrat dítě", in: window))
+                let disabled = try #require(accessibilityButton(labelled: "Pravidla v Nastavení", in: window))
+                #expect(enabled.isAccessibilityEnabled?() != false)
+                #expect(disabled.isAccessibilityEnabled?() == false)
+
+                #expect(enabled.accessibilityPerformPress?() == true)
+                _ = disabled.accessibilityPerformPress?()
+                #expect(pressed == ["Odebrat dítě"])
+            }
+        }
+    }
+
     // MARK: The notes in a window
 
     @Test func aWarningIsReadAsOnePhrase() async throws {

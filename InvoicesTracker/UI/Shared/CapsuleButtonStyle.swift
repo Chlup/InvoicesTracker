@@ -170,12 +170,12 @@ extension LinkTone {
 /// button is given from outside, so a link in a card can be set in the callout size.
 ///
 ///     Button("Odebrat dítě", action: remove)
-///         .buttonStyle(LinkButtonStyle(.destructive))
+///         .buttonStyle(TextLinkButtonStyle(.destructive))
 ///
-/// SwiftUI has a `LinkButtonStyle` of its own (`.buttonStyle(.link)`). In the app this one shadows it, so a bare
-/// `LinkButtonStyle()` is this style. Code that imports both modules, such as a test, gets SwiftUI's for a bare
-/// `LinkButtonStyle()` and has to write `InvoicesTracker.LinkButtonStyle()` to get this one.
-struct LinkButtonStyle: ButtonStyle {
+/// SwiftUI has a `LinkButtonStyle` of its own (`.buttonStyle(.link)`), so this style has another name: a type of the
+/// same name in the app would shadow SwiftUI's in the app, and in a test, which imports both modules, a bare
+/// `LinkButtonStyle()` would silently be SwiftUI's.
+struct TextLinkButtonStyle: ButtonStyle {
     let tone: LinkTone
 
     /// A style of `tone`, the blue one unless the link leads to something that cannot be undone.
@@ -184,12 +184,12 @@ struct LinkButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
-        LinkButtonBody(configuration: configuration, tone: tone)
+        TextLinkButtonBody(configuration: configuration, tone: tone)
     }
 }
 
 /// The view a link is made of, a view of its own for the same reason as `CapsuleButtonBody`.
-private struct LinkButtonBody: View {
+private struct TextLinkButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let tone: LinkTone
 
