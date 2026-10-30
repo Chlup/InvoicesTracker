@@ -27,6 +27,11 @@ module InvoicesTracker
       end
     end
 
+    # The Homebrew formula to install for a tool whose formula is not named like
+    # the tool: python3 comes from `python`. Every other tool is installed by its
+    # own name.
+    FORMULAE = { "python3" => "python" }.freeze
+
     module_function
 
     # The errors come in a fixed order: the working copy, missing tools, missing
@@ -38,7 +43,9 @@ module InvoicesTracker
         errors << "uncommitted changes — commit or stash them first: #{WorkingCopy.list_paths(ctx.dirty_paths)}"
       end
 
-      ctx.missing_tools.each { |tool| errors << "#{tool} is not installed — brew install #{tool}" }
+      ctx.missing_tools.each do |tool|
+        errors << "#{tool} is not installed — brew install #{FORMULAE.fetch(tool, tool)}"
+      end
 
       settings = ctx.api_key_settings
       settings.missing.each do |setting|

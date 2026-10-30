@@ -18,7 +18,9 @@ published anywhere.
 
 - Ruby 4.0.5 through rbenv (`.ruby-version`), then `bundle install` in the
   repository root.
-- `brew install create-dmg xcbeautify`
+- `brew install python xcbeautify`. Python 3.10 or newer runs dmgbuild, which
+  makes the disk image; the lane installs dmgbuild into `build/dmg-env` on its
+  first run (see [The first run](#the-first-run)).
 - The Developer ID Application certificate of team 3VN358756R, with its private
   key, in the login keychain.
 - `fastlane/.env`, copied from `fastlane/.env.example` and filled in, with the
@@ -50,7 +52,10 @@ bury the lane's result.
 `build/InvoicesTracker-1.0-1.dmg`. A DMG of that name is deleted when a run
 starts, and the new one appears only once it has passed verification, so a
 failed run leaves none. The archive, the exported app and the other
-intermediate files are in `build/release/`.
+intermediate files are in `build/release/`. The Python environment with dmgbuild
+is in `build/dmg-env/`, outside `build/release/`, so that it outlasts the runs.
+The window of the disk image (its size, the icon positions and the link to
+`/Applications`) is laid out by `fastlane/dmg_settings.py`.
 
 The lane names the commit it builds, as the seven-character short SHA: in the
 `Building <short sha> …` line after the preflight, and at the end in
@@ -63,13 +68,15 @@ export).
 
 ## The first run
 
-macOS may ask:
+The lane installs dmgbuild with pip into a virtual environment in
+`build/dmg-env`, from `fastlane/requirements-dmg.txt`, which pins dmgbuild and
+what it needs to exact versions with their hashes. That needs network access to
+PyPI, and happens again only when that file changes. Delete `build/dmg-env` to
+have it installed again, for example after the Python it was made with was
+removed.
 
-- whether `codesign` may use the Developer ID key in the login keychain. Enter
-  the login password and choose Always Allow.
-- whether the app that runs the lane (Terminal, iTerm, ...) may control Finder,
-  which create-dmg uses to lay out the disk image window. Allow it; it can be
-  changed later in System Settings → Privacy & Security → Automation.
+macOS may ask whether `codesign` may use the Developer ID key in the login
+keychain. Enter the login password and choose Always Allow.
 
 A run that has to create or renew the profile shows two `get_provisioning_profile`
 steps in fastlane's summary, the first marked 💥: that is the attempt to reuse

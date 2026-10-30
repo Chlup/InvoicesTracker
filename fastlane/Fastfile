@@ -13,6 +13,7 @@ require_relative "lib/invoices_tracker/api_key_settings"
 require_relative "lib/invoices_tracker/release"
 require_relative "lib/invoices_tracker/paths"
 require_relative "lib/invoices_tracker/dmg"
+require_relative "lib/invoices_tracker/dmg_tool"
 require_relative "lib/invoices_tracker/signing_identity"
 require_relative "lib/invoices_tracker/build_settings"
 require_relative "lib/invoices_tracker/verification"
@@ -41,7 +42,13 @@ CONFIGURATION = "Release"
 # failing test would scroll past without a word.
 XCODEBUILD_FORMATTER = "xcbeautify"
 
-REQUIRED_TOOLS = %w[create-dmg xcbeautify].freeze
+# python3 makes the virtual environment that holds dmgbuild, the tool that makes
+# the DMG.
+REQUIRED_TOOLS = %w[python3 xcbeautify].freeze
+
+# What dmgbuild is installed from, and the layout it gives the disk image.
+DMG_REQUIREMENTS = File.join(FASTLANE_DIR, "requirements-dmg.txt")
+DMG_SETTINGS = File.join(FASTLANE_DIR, "dmg_settings.py")
 
 desc "Builds the signed, notarized DMG of the checked-out commit: build/InvoicesTracker-<version>-<build>.dmg."
 desc "The version and build number come from the Xcode project. skip_tests:true skips the unit tests."
@@ -61,6 +68,11 @@ lane :dmg do |options|
   UI.message("Build:    #{versions.build}")
   UI.message("Identity: #{identity.name}")
   UI.message("DMG:      #{paths[:final_dmg]}")
+
+  # The first run, and a run after the requirements changed, install dmgbuild
+  # from PyPI. That comes right after the preflight, so that a failure costs
+  # seconds and not the whole build.
+  dmgbuild = ensure_dmgbuild
 
   # A DMG of the same name is gone as soon as the build starts, so a run that
   # fails cannot leave an older DMG behind that looks like its result.
@@ -108,13 +120,14 @@ lane :dmg do |options|
   UI.message("Notarizing #{File.basename(paths[:app])}...")
   notarize(package: paths[:app], api_key: api_key, print_log: true)
 
-  # create-dmg turns its whole source folder into the volume, so the folder
-  # holds the app alone. ditto keeps the signature, the stapled ticket and the
+  # The image gets a copy of the notarized app from the staging folder, which
+  # holds nothing else. ditto keeps the signature, the stapled ticket and the
   # extended attributes.
   app_bundle = File.basename(paths[:app])
+  staged_app = File.join(paths[:staging], app_bundle)
   FileUtils.rm_rf(paths[:staging])
   FileUtils.mkdir_p(paths[:staging])
-  run_argv(["ditto", paths[:app], File.join(paths[:staging], app_bundle)])
+  run_argv(["ditto", paths[:app], staged_app])
 
   volicon = volume_icon(paths[:app])
   UI.important("The app has no icon — the DMG gets no volume icon") unless volicon
@@ -123,16 +136,17 @@ lane :dmg do |options|
   # DMG that passed verification is moved to the final path.
   deleting_on_failure(paths[:work_dmg]) do
     UI.message("Creating the DMG...")
-    create_dmg = InvoicesTracker::Dmg.create_dmg_command(
-      app_bundle: app_bundle, source_dir: paths[:staging], dmg_path: paths[:work_dmg],
+    make_dmg = InvoicesTracker::Dmg.dmgbuild_command(
+      dmgbuild: dmgbuild, settings: DMG_SETTINGS, app: staged_app, dmg_path: paths[:work_dmg],
       volname: InvoicesTracker::Release::APP_NAME, volicon: volicon
     )
-    # create-dmg retries hdiutil's "Resource busy" by itself. This one retry is
-    # for the step it does not retry: Finder laying out the window, which now
-    # and then fails with "Can't get disk", or times out while macOS asks
-    # whether Finder may be controlled. create-dmg refuses to overwrite an image
-    # that a failed attempt left, so that image is deleted before the retry.
-    run_argv(create_dmg, retries: 1) { FileUtils.rm_f(paths[:work_dmg]) }
+    # dmgbuild writes the window layout into the image itself and never drives
+    # Finder. What can still fail now and then is hdiutil, which it runs to make,
+    # mount, detach and compress the image, for instance with "Resource busy"
+    # while macOS still holds the volume. dmgbuild retries the detach by itself;
+    # this one retry is for the other steps. A failed attempt can leave a partly
+    # written image, so that image is deleted before the retry.
+    run_argv(make_dmg, retries: 1) { FileUtils.rm_f(paths[:work_dmg]) }
 
     UI.message("Signing the DMG...")
     run_argv(InvoicesTracker::Dmg.codesign_command(path: paths[:work_dmg], identity: identity.sha1))
@@ -233,6 +247,34 @@ def project_versions
   [versions, InvoicesTracker::BuildSettings.errors(versions)]
 rescue ArgumentError, JSON::ParserError, KeyError, SystemCallError => e
   [nil, ["cannot read the version from the project: #{e.message}"]]
+end
+
+# --- dmgbuild ----------------------------------------------------------------
+
+# Makes sure the Python environment with dmgbuild exists in build/dmg-env, was
+# installed from the current fastlane/requirements-dmg.txt, and returns the path
+# of its dmgbuild. An environment that is missing, has no dmgbuild or has a
+# stamp that does not match the requirements is deleted and made again with
+# pip. The stamp is written last, so an install that fails or is interrupted
+# leaves none, and the next run starts over. Only an install needs the network.
+def ensure_dmgbuild
+  venv_dir = InvoicesTracker::DmgTool.venv_dir(REPO_ROOT)
+  dmgbuild = InvoicesTracker::DmgTool.dmgbuild_path(venv_dir)
+  stamp_file = InvoicesTracker::DmgTool.stamp_path(venv_dir)
+  requirements = File.read(DMG_REQUIREMENTS)
+  stamp = File.file?(stamp_file) ? File.read(stamp_file) : nil
+
+  if File.executable?(dmgbuild) && InvoicesTracker::DmgTool.up_to_date?(stamp, requirements)
+    UI.message("dmgbuild is installed in #{venv_dir}")
+    return dmgbuild
+  end
+
+  UI.message("Installing dmgbuild into #{venv_dir} (the first run, or the requirements changed)...")
+  FileUtils.rm_rf(venv_dir)
+  setup = InvoicesTracker::DmgTool.setup_commands(python: "python3", venv_dir: venv_dir, requirements: DMG_REQUIREMENTS)
+  setup.each { |argv| run_argv(argv) }
+  File.write(stamp_file, InvoicesTracker::DmgTool.requirements_digest(requirements))
+  dmgbuild
 end
 
 # --- the developer portal ----------------------------------------------------
