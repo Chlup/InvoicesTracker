@@ -84,8 +84,8 @@ struct InvoiceTableView: View {
                     .multilineTextAlignment(.center)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .screenCard()
+        .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
+        .card()
         .focusable(interactions: .edit)
         .focused($hasFocus)
         .focusEffectDisabled()

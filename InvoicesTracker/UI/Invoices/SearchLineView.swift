@@ -12,6 +12,8 @@ struct SearchLineView: View {
     let clear: () -> Void
 
     var body: some View {
+        // The line is a panel on the window, not a card: the corners of a panel, with the elevation of a card.
+        let shape = RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 found
@@ -26,7 +28,8 @@ struct SearchLineView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard(cornerRadius: 12)
+        .background(Palette.bgCard, in: shape)
+        .elevation(.card, in: shape)
         .accessibilityElement(children: .contain)
     }
 

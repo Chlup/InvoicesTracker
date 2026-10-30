@@ -58,7 +58,7 @@ private struct ProfileCard: View {
     let showAdvances: () -> Void
 
     var body: some View {
-        SettingsCard(title: "Profil", spacing: 6) {
+        Card(title: "Profil", spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsRow(label: "Výdaje") {
                     Button(model.expenseText, action: showAdvances)
@@ -101,7 +101,7 @@ private struct ActivityCard: View {
     let settings: YearSettings
 
     var body: some View {
-        SettingsCard(title: "Činnost") {
+        Card(title: "Činnost") {
             HStack(alignment: .center, spacing: 12) {
                 monthPicker("od", selection: from)
                 monthPicker("do", selection: to)

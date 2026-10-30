@@ -39,7 +39,7 @@ struct AdvancePlanTable: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Zálohy")
     }

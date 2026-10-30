@@ -29,7 +29,7 @@ struct ImportProgressCard: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Průběh importu")
     }

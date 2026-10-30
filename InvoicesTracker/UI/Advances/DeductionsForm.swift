@@ -27,7 +27,7 @@ struct DeductionsForm: View {
     // MARK: Interest
 
     private var mortgage: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Card(label: "Úroky z hypotéky") {
             HStack(alignment: .center, spacing: 8) {
                 Text("Odpočty · úroky z úvěru na bydlení")
                     .font(.system(size: 15, weight: .semibold))
@@ -45,13 +45,12 @@ struct DeductionsForm: View {
                 MortgageClaimSummary(hints: hints)
             }
         }
-        .card(label: "Úroky z hypotéky")
     }
 
     // MARK: Savings and insurance for old age
 
     private var retirement: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Card(spacing: 10, label: "Spoření a pojištění na stáří") {
             Text("Odpočty · spoření a pojištění na stáří")
                 .font(.system(size: 15, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -61,7 +60,6 @@ struct DeductionsForm: View {
             RetirementFieldGrid(fields: retirementFieldList, inputs: inputs)
             RetirementNote(year: model.year, allowed: model.deductionHints?.retirementAllowed)
         }
-        .card(label: "Spoření a pojištění na stáří")
     }
 
     /// The fields of the retirement products: DIP and long-term care insurance only from the year they exist in.
@@ -80,7 +78,7 @@ struct DeductionsForm: View {
     // MARK: Gifts and credits
 
     private var giftsAndCredits: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Card(spacing: 0, label: "Dary a slevy") {
             Text("Dary a slevy na dani")
                 .font(.system(size: 15, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -90,7 +88,6 @@ struct DeductionsForm: View {
             Divider()
             TaxpayerCreditRow(year: model.year, isOn: taxpayerCredit)
         }
-        .card(label: "Dary a slevy", verticalPadding: 14)
     }
 
     // MARK: Bindings
@@ -129,17 +126,5 @@ struct DeductionsForm: View {
         Binding(
             get: { model.settings?.taxpayerCredit ?? false },
             set: { model.setTaxpayerCredit($0) })
-    }
-}
-
-private extension View {
-    /// A card of the deductions, which VoiceOver reads under `label`.
-    func card(label: String, verticalPadding: CGFloat = 18) -> some View {
-        padding(.horizontal, 20)
-            .padding(.vertical, verticalPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
     }
 }

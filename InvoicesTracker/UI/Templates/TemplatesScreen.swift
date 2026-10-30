@@ -140,7 +140,7 @@ private struct TemplateCardView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
     }
 }

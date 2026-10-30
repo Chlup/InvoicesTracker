@@ -1,0 +1,299 @@
+import AppKit
+import SwiftUI
+import Testing
+@testable import InvoicesTracker
+
+/// The shared card and the figures that stand in it: how VoiceOver reads a card, how the card pads its content, how the
+/// sentence of a key figure is split at its emphasis, where the share of a key figure stands, and how a figure tile is
+/// read.
+@Suite(.serialized)
+@MainActor
+struct CardAndFigureTests {
+    // MARK: The card
+
+    @Test func aCardIsReadAsAGroupUnderItsTitle() async throws {
+        let card = Card(title: "Vzhled", subtitle: "Světlý nebo tmavý vzhled aplikace") {
+            Text(verbatim: "Obsah karty")
+        }
+
+        try await withHostedView(card.padding(24), size: CGSize(width: 600, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Vzhled", in: window) != nil }
+                // The heading and the subtitle are read inside the group, which the card holds (`.contain`).
+                let group = try #require(accessibilityElement(labelled: "Vzhled", in: window))
+                let readings = accessibilityReadings(under: group)
+                #expect(readings.contains("Světlý nebo tmavý vzhled aplikace"), "read as \(readings)")
+                #expect(readings.contains("Obsah karty"), "read as \(readings)")
+            }
+        }
+    }
+
+    @Test func aCardIsReadUnderItsLabelWhenItHasOneAndNotUnderItsTitle() async throws {
+        let card = Card(title: "Děti · daňové zvýhodnění", label: "Děti") {
+            Text(verbatim: "Obsah karty")
+        }
+
+        try await withHostedView(card.padding(24), size: CGSize(width: 600, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Děti", in: window) != nil }
+                // The title is the heading inside the card; no group of the window is read under it.
+                #expect(frameOfCard(labelled: "Děti · daňové zvýhodnění", in: window) == nil)
+            }
+        }
+    }
+
+    @Test func aCardWithoutATitleIsReadUnderItsLabel() async throws {
+        let card = Card(label: "Rok a příjem") {
+            Text(verbatim: "Obsah karty")
+        }
+
+        try await withHostedView(card.padding(24), size: CGSize(width: 600, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Rok a příjem", in: window) != nil }
+            }
+        }
+    }
+
+    /// The frames of the named parts of `view`, hosted in a room of `width` points.
+    private func frames(of view: some View, width: CGFloat) -> (frames: [String: CGRect], size: CGSize) {
+        let hosting = NSHostingView(rootView: view.frame(width: width, alignment: .topLeading))
+        let size = hosting.fittingSize
+        hosting.frame = CGRect(origin: .zero, size: size)
+        hosting.layoutSubtreeIfNeeded()
+        return (framesOfParts(in: hosting), size)
+    }
+
+    @Test func aCardPadsItsContentBy20AndGivesItTheWholeWidthInside() throws {
+        let card = Card {
+            LayoutPart(name: "content")
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+        }
+        let placed = frames(of: card, width: 400)
+
+        let content = CGRect(x: 20, y: 20, width: 360, height: 50)
+        #expect(placed.frames["content"] == content, "laid out as \(placed.frames)")
+        #expect(placed.size == CGSize(width: 400, height: 90))
+    }
+
+    /// The part under the header of a card with a title, 50 points high.
+    private func contentPart() -> some View {
+        LayoutPart(name: "content")
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+    }
+
+    @Test func theContentOfACardIsLowerThanItsHeaderByTheSpacingOfTheCard() throws {
+        func contentTop(of card: some View) throws -> CGFloat {
+            try #require(frames(of: card, width: 400).frames["content"]).minY
+        }
+
+        // The header is a line of the title; the content is lower by the spacing asked for, 12 points unless told so.
+        let usual = try contentTop(of: Card(title: "Vzhled") { contentPart() })
+        let twelve = try contentTop(of: Card(title: "Vzhled", spacing: 12) { contentPart() })
+        let twenty = try contentTop(of: Card(title: "Vzhled", spacing: 20) { contentPart() })
+        #expect(usual > 20 + 12, "the content starts at \(usual)")
+        #expect(twelve == usual)
+        #expect(twenty - usual == 8)
+    }
+
+    @Test func theTitleOfACardIsAHeadingAndItsAccessoryIsReadInIt() async throws {
+        let card = Card(title: "Pravidla výpočtu", accessory: "verze 2026.1") {
+            Text(verbatim: "Obsah karty")
+        }
+
+        try await withHostedView(card.padding(24), size: CGSize(width: 600, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Pravidla výpočtu", in: window) != nil }
+                let group = try #require(accessibilityElement(labelled: "Pravidla výpočtu", in: window))
+                // The title is a heading of the group, and the accessory is read in it as text.
+                let heading = (group.accessibilityChildren?() ?? []).map { $0 as AnyObject }.first { element in
+                    element.accessibilityRole?()?.rawValue == "AXHeading"
+                }
+                #expect(heading?.accessibilityLabel?() == "Pravidla výpočtu")
+                let readings = accessibilityReadings(under: group)
+                #expect(readings.contains("verze 2026.1"), "read as \(readings)")
+            }
+        }
+    }
+
+    @Test func aCardTakesTheHeightItIsOfferedOnlyWhereItIsToFillIt() async throws {
+        @MainActor func heightOfCard(fillsHeight: Bool) async throws -> CGFloat {
+            var height: CGFloat = 0
+            let card = Card(label: "Mezní odvod", fillsHeight: fillsHeight) {
+                Text(verbatim: "Obsah karty")
+            }
+            try await withHostedView(card.padding(24), size: CGSize(width: 600, height: 400)) { window in
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfCard(labelled: "Mezní odvod", in: window) != nil }
+                    height = try #require(frameOfCard(labelled: "Mezní odvod", in: window)).height
+                }
+            }
+            return height
+        }
+
+        // A card of one line of text is as high as the line and its padding. Asked to fill the height, it has the 400
+        // points of the window less the 24 around it, so that the cards of a row of equal heights are of one height.
+        let hugging = try await heightOfCard(fillsHeight: false)
+        let filling = try await heightOfCard(fillsHeight: true)
+        #expect(hugging < 100, "a card that does not fill is \(hugging) high")
+        #expect(abs(filling - 352) < 0.5, "a card that fills is \(filling) high")
+    }
+
+    @Test func aResultCardIsReadAsAGroupUnderItsLabel() async throws {
+        let card = ResultCard(label: "Výsledek") {
+            Text(verbatim: "Vlevo")
+        } trailing: {
+            Text(verbatim: "Vpravo")
+        }
+
+        try await withHostedView(card.padding(24), size: CGSize(width: 1_000, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
+                let group = try #require(accessibilityElement(labelled: "Výsledek", in: window))
+                let readings = accessibilityReadings(under: group)
+                #expect(readings.contains("Vlevo"), "read as \(readings)")
+                #expect(readings.contains("Vpravo"), "read as \(readings)")
+            }
+        }
+    }
+
+    // MARK: The key figure
+
+    /// The sentence of the second figure of Odhad odvodů, in the three parts it is set in: before the amount, the
+    /// amount that stands out, and after it.
+    private let beforeAmount = "Tolik si odložte stranou – navíc k zálohám "
+    private let amount = "252\u{00A0}720\u{00A0}Kč"
+    private let afterAmount = ", které platíte průběžně. Platí se po skončení roku."
+    private var sentence: String {
+        beforeAmount + amount + afterAmount
+    }
+
+    @Test func theSentenceOfAKeyFigureIsSplitAtItsEmphasis() {
+        let data = KeyFigureData(
+            eyebrow: "Odhad doplatku odvodů bez záloh", figure: "197\u{00A0}148\u{00A0}Kč", sentence: sentence,
+            sentenceEmphasis: amount)
+
+        #expect(
+            data.sentenceParts == [
+                KeyFigureSentencePart(text: beforeAmount, isEmphasised: false),
+                KeyFigureSentencePart(text: amount, isEmphasised: true),
+                KeyFigureSentencePart(text: afterAmount, isEmphasised: false),
+            ])
+    }
+
+    @Test func aSentenceWithoutAnEmphasisIsOnePlainPart() {
+        let plain = KeyFigureData(eyebrow: "Zbývá zaplatit", figure: "42\u{00A0}159\u{00A0}Kč", sentence: sentence)
+        let empty = KeyFigureData(
+            eyebrow: "Zbývá zaplatit", figure: "42\u{00A0}159\u{00A0}Kč", sentence: sentence, sentenceEmphasis: "")
+        let missing = KeyFigureData(
+            eyebrow: "Zbývá zaplatit", figure: "42\u{00A0}159\u{00A0}Kč", sentence: sentence,
+            sentenceEmphasis: "999\u{00A0}Kč")
+
+        for data in [plain, empty, missing] {
+            #expect(data.sentenceParts == [KeyFigureSentencePart(text: sentence, isEmphasised: false)])
+        }
+        #expect(KeyFigureData(eyebrow: "Zbývá zaplatit", figure: "0\u{00A0}Kč").sentenceParts == [])
+    }
+
+    @Test func theEmphasisMayBeTheWholeSentenceOrItsEnds() {
+        func parts(of sentence: String, emphasis: String) -> [KeyFigureSentencePart] {
+            KeyFigureData(eyebrow: "E", figure: "1", sentence: sentence, sentenceEmphasis: emphasis).sentenceParts
+        }
+
+        #expect(parts(of: "Celé.", emphasis: "Celé.") == [KeyFigureSentencePart(text: "Celé.", isEmphasised: true)])
+        #expect(
+            parts(of: "Začátek věty.", emphasis: "Začátek")
+                == [
+                    KeyFigureSentencePart(text: "Začátek", isEmphasised: true),
+                    KeyFigureSentencePart(text: " věty.", isEmphasised: false),
+                ])
+        #expect(
+            parts(of: "Konec věty", emphasis: "věty")
+                == [
+                    KeyFigureSentencePart(text: "Konec ", isEmphasised: false),
+                    KeyFigureSentencePart(text: "věty", isEmphasised: true),
+                ])
+    }
+
+    /// The height of the key figure `data` in a room of `width` points.
+    private func height(of data: KeyFigureData, width: CGFloat) -> CGFloat {
+        let view = KeyFigureView(data).frame(width: width, alignment: .leading)
+        return NSHostingView(rootView: view).fittingSize.height
+    }
+
+    @Test func theShareStandsOnTheBaselineOfTheFigureAndGoesUnderItWhenTheRoomIsNarrow() {
+        let figure = "449\u{00A0}868\u{00A0}Kč"
+        let withShare = KeyFigureData(
+            eyebrow: "Odhad odvodů za celý rok 2026", figure: figure, share: "16,7\u{00A0}% z příjmů",
+            sentence: "Odvody z odhadovaného příjmu.")
+        let withoutShare = KeyFigureData(
+            eyebrow: "Odhad odvodů za celý rok 2026", figure: figure, sentence: "Odvody z odhadovaného příjmu.")
+
+        // Where there is room the share adds no height: it is on the line of the figure.
+        #expect(height(of: withShare, width: 700) == height(of: withoutShare, width: 700))
+        // Where there is none, it is a line of its own under the figure.
+        #expect(height(of: withShare, width: 300) > height(of: withoutShare, width: 300) + 10)
+    }
+
+    @Test func aKeyFigureIsReadAsOnePhrase() async throws {
+        let data = KeyFigureData(
+            eyebrow: "Odhad odvodů za celý rok 2026", figure: "449\u{00A0}868\u{00A0}Kč",
+            share: "16,7\u{00A0}% z příjmů", sentence: "Odvody z odhadovaného příjmu.")
+
+        try await withHostedView(KeyFigureView(data).padding(24), size: CGSize(width: 800, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { !accessibilityReadings(in: window).isEmpty }
+                // One element: the eyebrow as it is written (the capitals are only how it is drawn), the figure, the
+                // share and the sentence, in the order they are drawn in.
+                #expect(
+                    accessibilityReadings(in: window) == [
+                        "Odhad odvodů za celý rok 2026, 449\u{00A0}868\u{00A0}Kč, 16,7\u{00A0}% z příjmů,"
+                            + " Odvody z odhadovaného příjmu."
+                    ])
+            }
+        }
+    }
+
+    // MARK: The figure tile
+
+    @Test func aFigureTileIsReadAsOnePhraseWithoutItsDot() async throws {
+        @MainActor func readings(marksNetIncome: Bool) async throws -> [String] {
+            var found: [String] = []
+            let tile = FigureTile(
+                FigureTileData(
+                    label: "Čistý příjem průměrně za měsíc", figure: "190\u{00A0}037\u{00A0}Kč",
+                    share: "83,3\u{00A0}%", note: "průměr za leden–říjen", marksNetIncome: marksNetIncome))
+            try await withHostedView(tile.padding(24), size: CGSize(width: 480, height: 160)) { window in
+                try await withAccessibilityElements {
+                    try await waitUntil { !accessibilityReadings(in: window).isEmpty }
+                    found = accessibilityReadings(in: window)
+                }
+            }
+            return found
+        }
+
+        // One element: the label, the figure, the share and the note, in the order they are drawn in.
+        let plain = try await readings(marksNetIncome: false)
+        #expect(
+            plain == [
+                "Čistý příjem průměrně za měsíc, 190\u{00A0}037\u{00A0}Kč, 83,3\u{00A0}%, průměr za leden–říjen"
+            ])
+        // The green dot of the net income is only for the eyes.
+        #expect(try await readings(marksNetIncome: true) == plain)
+    }
+
+    @Test func aFigureTileStacksItsLabelItsFigureAndItsNoteWith2PointsBetween() throws {
+        // Three lines of text, one above the other: the tile is as high as they are and the two gaps of 2 points. A
+        // tile without a note is shorter by the note and the gap before it.
+        func height(note: String?) -> CGFloat {
+            let tile = FigureTile(FigureTileData(label: "Doplatek", figure: "5\u{00A0}371\u{00A0}Kč", note: note))
+            return NSHostingView(rootView: tile).fittingSize.height
+        }
+
+        let with = height(note: "s přiznáním a přehledy")
+        let without = height(note: nil)
+        #expect(with - without > 2 + 10, "with a note \(with), without \(without)")
+        #expect(with - without < 2 + 20, "with a note \(with), without \(without)")
+    }
+}

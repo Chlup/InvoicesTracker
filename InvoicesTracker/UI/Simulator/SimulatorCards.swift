@@ -10,14 +10,13 @@ struct SimulatorYearAndIncomeCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Card(spacing: 14, label: "Rok a příjem") {
             year
             Divider()
             income
             Divider()
             assumptions
         }
-        .simulatorCard(label: "Rok a příjem")
     }
 
     private var year: some View {
@@ -242,14 +241,13 @@ struct SimulatorMortgageCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Card(label: "Úroky z úvěru na bydlení") {
             SimulatorCardTitle(text: "Úroky z úvěru na bydlení")
             MortgageInterestFields(inputs: model.deductionInputs, cap: capChoice)
             if let hints = model.page?.hints {
                 MortgageClaimSummary(hints: hints)
             }
         }
-        .simulatorCard(label: "Úroky z úvěru na bydlení")
     }
 
     private var capChoice: Binding<MortgageCap> {
@@ -263,7 +261,7 @@ struct SimulatorRetirementCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Card(spacing: 10, label: "Spoření a pojištění na stáří") {
             SimulatorCardTitle(text: "Spoření a pojištění na stáří")
             if let hints = model.page?.hints {
                 RetirementLimitBars(limits: hints.retirementLimits)
@@ -271,7 +269,6 @@ struct SimulatorRetirementCard: View {
             RetirementFieldGrid(fields: fieldList, inputs: model.deductionInputs)
             RetirementNote(year: model.year, allowed: model.page?.hints.retirementAllowed)
         }
-        .simulatorCard(label: "Spoření a pojištění na stáří")
     }
 
     private var fieldList: [(field: DeductionField, title: String)] {
@@ -293,7 +290,7 @@ struct SimulatorGiftsCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Card(spacing: 0, label: "Dary a slevy na dani") {
             SimulatorCardTitle(text: "Dary a slevy na dani")
                 .padding(.bottom, 6)
             Divider()
@@ -301,7 +298,6 @@ struct SimulatorGiftsCard: View {
             Divider()
             TaxpayerCreditRow(year: model.year, isOn: creditChoice)
         }
-        .simulatorCard(label: "Dary a slevy na dani", verticalPadding: 14)
     }
 
     private var creditChoice: Binding<Bool> {
@@ -382,16 +378,6 @@ extension SimulatorModel {
 }
 
 extension View {
-    /// A card of the Simulátor, which VoiceOver reads under `label`.
-    fileprivate func simulatorCard(label: String, verticalPadding: CGFloat = 18) -> some View {
-        padding(.horizontal, 20)
-            .padding(.vertical, verticalPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
-    }
-
     /// A line of the Simulátor in small secondary type that breaks where it has to.
     func simulatorNote() -> some View {
         font(.callout)

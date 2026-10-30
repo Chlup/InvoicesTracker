@@ -35,8 +35,8 @@ struct InvoiceDetailCard: View {
         }
         .frame(width: Self.width)
         .frame(maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .screenCard()
+        .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Detail faktury")
     }

@@ -26,7 +26,7 @@ struct PredictionCard: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(card.head)
     }

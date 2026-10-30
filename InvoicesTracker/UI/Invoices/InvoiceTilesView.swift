@@ -39,7 +39,7 @@ private struct TileView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .screenCard(cornerRadius: 14)
+        .card()
         .accessibilityElement(children: .combine)
     }
 }

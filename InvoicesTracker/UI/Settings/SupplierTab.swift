@@ -44,7 +44,7 @@ struct SupplierTab: View {
     // MARK: Vaše údaje
 
     private var detailsCard: some View {
-        SettingsCard(title: "Vaše údaje", subtitle: "Tisknou se jako dodavatel na každé faktuře", spacing: 14) {
+        Card(title: "Vaše údaje", subtitle: "Tisknou se jako dodavatel na každé faktuře", spacing: 14) {
             VStack(alignment: .leading, spacing: 12) {
                 field(.name, "Jméno nebo název")
                 field(.street, "Ulice a číslo", prompt: "např. Dlouhá 12")
@@ -83,7 +83,7 @@ struct SupplierTab: View {
     // MARK: Bankovní účty
 
     private var accountsCard: some View {
-        SettingsCard(
+        Card(
             title: "Bankovní účty", subtitle: "Faktura vytiskne účet ve své měně a z něj se dělá i QR platba",
             spacing: 14
         ) {

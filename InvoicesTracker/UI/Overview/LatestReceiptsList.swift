@@ -44,7 +44,7 @@ struct LatestReceiptsList: View {
         .padding(.top, 18)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .screenCard()
+        .card()
     }
 
     /// The client in bold and the number of the invoice after it, as one line that is cut at its end when it is long.

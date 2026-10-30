@@ -91,7 +91,7 @@ private struct ChooseFilesCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Výběr souborů")
     }

@@ -45,8 +45,8 @@ struct ClientTableView: View {
         } action: { width in
             visibleWidth = width
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .screenCard()
+        .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Seznam odběratelů")
     }

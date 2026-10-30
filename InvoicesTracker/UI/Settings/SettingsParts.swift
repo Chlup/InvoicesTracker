@@ -1,59 +1,8 @@
 import SwiftUI
 
-/// A card of Nastavení: its title with a line under it and, on the right of the title, a value of its own (the version
-/// of the rules, the sum of the adjustments), then its content. It is made of semantic colours, so it follows the
-/// appearance of the window.
-struct SettingsCard<Content: View>: View {
-    let title: String
-    var subtitle: String?
-    var accessory: String?
-
-    /// Whether the value beside the title is an amount, in the colour of the text, rather than a note.
-    var accessoryIsAmount = false
-    var spacing: CGFloat = 12
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            header
-            content
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(title)
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .accessibilityAddTraits(.isHeader)
-                if let subtitle {
-                    Text(verbatim: subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 8)
-            if let accessory {
-                Text(verbatim: accessory)
-                    .font(accessoryIsAmount ? .body : .callout)
-                    .fontWeight(accessoryIsAmount ? .semibold : .regular)
-                    .monospacedDigit()
-                    .foregroundStyle(accessoryIsAmount ? .primary : .secondary)
-            }
-        }
-    }
-}
-
 /// A row of a card under a hairline: the label on the left, the value on the right, and a line under both. The value
-/// can be a control, such as a menu, which VoiceOver keeps as a control of its own.
+/// can be a control, such as a menu, which VoiceOver keeps as a control of its own. The hairline is the one of the
+/// design, the label is in secondary text and the detail under it in callout and tertiary text.
 struct SettingsRow<Value: View>: View {
     let label: String
     var detail: String?
@@ -61,11 +10,13 @@ struct SettingsRow<Value: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Divider()
+            Rectangle()
+                .fill(Palette.sep)
+                .frame(height: 1)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(verbatim: label)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     value
@@ -73,8 +24,8 @@ struct SettingsRow<Value: View>: View {
                 }
                 if let detail, !detail.isEmpty {
                     Text(verbatim: detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

@@ -14,7 +14,7 @@ struct UniformRateCard: View {
     @Bindable var model: YearTabModel
 
     var body: some View {
-        SettingsCard(title: "Jednotný kurz \(model.year)", spacing: 10) {
+        Card(title: "Jednotný kurz \(model.year)", spacing: 10) {
             if let page = model.unreadablePage {
                 SettingsBox(kind: .warning) {
                     Text(
@@ -147,7 +147,7 @@ struct RulesCard: View {
     let model: YearTabModel
 
     var body: some View {
-        SettingsCard(title: "Pravidla výpočtu", accessory: model.rulesVersion, spacing: 6) {
+        Card(title: "Pravidla výpočtu", accessory: model.rulesVersion, spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(model.ruleRows, id: \.label) { row in
                     Divider()
@@ -194,7 +194,7 @@ struct AdjustmentsCard: View {
     let timeZone: TimeZone
 
     var body: some View {
-        SettingsCard(
+        Card(
             title: "Úpravy příjmů",
             subtitle:
                 "Příjmy mimo faktury – dobropis, vrácená platba, platba v Kč mimo fakturu. Počítají se do příjmů roku ke"

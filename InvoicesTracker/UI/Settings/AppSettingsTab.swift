@@ -37,7 +37,7 @@ struct AppSettingsTab: View {
     // MARK: Vzhled
 
     private var appearanceCard: some View {
-        SettingsCard(title: "Vzhled", subtitle: "Světlý nebo tmavý vzhled aplikace", spacing: 16) {
+        Card(title: "Vzhled", subtitle: "Světlý nebo tmavý vzhled aplikace", spacing: 16) {
             HStack(alignment: .top, spacing: 20) {
                 ForEach([Appearance.system, .light, .dark], id: \.self) { appearance in
                     AppearanceChoice(appearance: appearance, isChosen: model.appearance == appearance) {
@@ -55,7 +55,7 @@ struct AppSettingsTab: View {
     // MARK: Kurzy
 
     private var ratesCard: some View {
-        SettingsCard(
+        Card(
             title: "Kurzy", subtitle: "Aplikace je stahuje sama, dokud běží. Nic jiného se neodesílá.", spacing: 6
         ) {
             VStack(alignment: .leading, spacing: 0) {
@@ -115,7 +115,7 @@ struct AppSettingsTab: View {
     // MARK: Licence
 
     private var licencesCard: some View {
-        SettingsCard(title: "Licence", spacing: 6) {
+        Card(title: "Licence", spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(AppTabModel.licences) { licence in
                     Divider()

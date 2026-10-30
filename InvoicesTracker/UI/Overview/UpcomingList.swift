@@ -49,7 +49,7 @@ struct UpcomingList: View {
         .padding(.top, 18)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .screenCard()
+        .card()
     }
 
     /// The badge with the day, what is due with a dot that tells an advance from a VAT return, and the amount.

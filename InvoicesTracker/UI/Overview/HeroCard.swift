@@ -21,7 +21,7 @@ struct HeroCard: View {
         }
         .padding(.horizontal, 26)
         .padding(.vertical, 24)
-        .screenCard(cornerRadius: 18)
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Kolik zbývá zaplatit")
     }

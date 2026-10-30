@@ -29,7 +29,7 @@ struct EquationCard: View {
     let equation: ComputationEquation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        Card(spacing: 16, label: "Zbývá zaplatit") {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     heading
@@ -49,7 +49,6 @@ struct EquationCard: View {
             Text(verbatim: equation.split)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .cardOfTheScreen(label: "Zbývá zaplatit", horizontalPadding: 22, verticalPadding: 20)
     }
 
     private var heading: some View {
@@ -110,7 +109,7 @@ struct MarginalCard: View {
     let marginal: ComputationMarginal
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Card(label: "Mezní odvod", fillsHeight: true) {
             Text("Mezní odvod")
                 .font(.system(size: 15, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -123,7 +122,6 @@ struct MarginalCard: View {
             Text(verbatim: marginal.text)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .cardOfTheScreen(label: "Mezní odvod")
     }
 }
 
@@ -158,7 +156,7 @@ struct ThresholdsCard: View {
     let thresholds: ComputationThresholds
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Card(label: "Hranice roku", fillsHeight: true) {
             Text(verbatim: thresholds.heading)
                 .font(.system(size: 15, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -166,7 +164,6 @@ struct ThresholdsCard: View {
                 ThresholdLine(bar: bar)
             }
         }
-        .cardOfTheScreen(label: "Hranice roku")
     }
 }
 
@@ -212,7 +209,7 @@ struct AssumptionsCard: View {
     let showSettings: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Card(spacing: 10, label: "Předpoklady", fillsHeight: true) {
             Text("Předpoklady výpočtu")
                 .font(.system(size: 15, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -231,23 +228,5 @@ struct AssumptionsCard: View {
                 .buttonStyle(.link)
                 .font(.callout)
         }
-        .cardOfTheScreen(label: "Předpoklady")
-    }
-}
-
-// MARK: - The look of a card
-
-extension View {
-    /// A card of the screen, which VoiceOver reads under `label`. It takes the height it is offered, so that the cards
-    /// of a row of equal heights (`AdaptiveColumns`) are of one height; offered none, it is as high as its content.
-    fileprivate func cardOfTheScreen(label: String, horizontalPadding: CGFloat = 20, verticalPadding: CGFloat = 18)
-        -> some View
-    {
-        padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
     }
 }

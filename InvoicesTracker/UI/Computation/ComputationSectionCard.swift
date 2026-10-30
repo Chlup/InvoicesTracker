@@ -41,7 +41,7 @@ struct ComputationCard: View {
         .padding(.top, 18)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
     }
 

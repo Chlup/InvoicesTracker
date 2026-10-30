@@ -111,7 +111,7 @@ struct InvoiceEditorView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard(cornerRadius: 14)
+        .card()
     }
 
     /// "Upravujete fakturu <number>" with its state, and for an invoice that is issued the warning.
@@ -145,7 +145,7 @@ struct InvoiceEditorView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard(cornerRadius: 14)
+        .card()
     }
 
     // MARK: Sections
@@ -217,7 +217,7 @@ struct InvoiceEditorView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Odběratel a doklad")
     }
@@ -261,7 +261,7 @@ struct InvoiceEditorView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Platba, měna a DPH")
     }
@@ -291,7 +291,7 @@ struct InvoiceEditorView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
     }
 

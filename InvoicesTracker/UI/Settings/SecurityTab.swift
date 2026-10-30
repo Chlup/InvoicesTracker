@@ -89,7 +89,7 @@ struct SecurityTab: View {
     // MARK: Odemykání
 
     private var unlockingCard: some View {
-        SettingsCard(title: "Odemykání") {
+        Card(title: "Odemykání") {
             Toggle(isOn: Binding(get: { model.touchIDOn }, set: { model.chooseTouchID($0) })) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Odemykat přes Touch ID")
@@ -161,7 +161,7 @@ struct SecurityTab: View {
     // MARK: Kód pro obnovení
 
     private var codeCard: some View {
-        SettingsCard(title: "Kód pro obnovení") {
+        Card(title: "Kód pro obnovení") {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Platný kód")
                     .foregroundStyle(.secondary)
@@ -196,7 +196,7 @@ struct SecurityTab: View {
     // MARK: Zálohy
 
     private var backupsCard: some View {
-        SettingsCard(
+        Card(
             title: "Zálohy", subtitle: "Šifrované – otevře je tento Mac, nebo kód pro obnovení platný v době zálohy",
             spacing: 6
         ) {

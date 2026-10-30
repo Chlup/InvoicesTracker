@@ -156,7 +156,7 @@ struct IncomeChart: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Příjmy")
     }

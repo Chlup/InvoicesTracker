@@ -21,7 +21,7 @@ struct ChildrenCard: View {
     let open: (FamilyChild?) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Card(spacing: 0, label: "Děti") {
             FamilyCardHeader(title: "Děti · daňové zvýhodnění", total: content.total, totalCounts: true)
             Text(verbatim: content.rates)
                 .font(.callout)
@@ -57,7 +57,6 @@ struct ChildrenCard: View {
             addRow
                 .padding(.top, 10)
         }
-        .familyCard(label: "Děti")
     }
 
     /// Přidat dítě, with the note of the card at the other end of its line, or under it where the line is too narrow
@@ -165,7 +164,7 @@ struct SpouseCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Card(spacing: 0, label: "Manžel nebo manželka") {
             FamilyCardHeader(
                 title: "Manžel / manželka · sleva na dani", total: content.total, totalCounts: content.totalCounts
             )
@@ -191,7 +190,6 @@ struct SpouseCard: View {
                 }
             }
         }
-        .familyCard(label: "Manžel nebo manželka")
     }
 
     // MARK: The rows
@@ -387,18 +385,5 @@ private struct FamilyCardHeader: View {
                     .fixedSize()
             }
         }
-    }
-}
-
-private extension View {
-    /// A card of the family, which VoiceOver reads under `label`.
-    func familyCard(label: String) -> some View {
-        padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
     }
 }
