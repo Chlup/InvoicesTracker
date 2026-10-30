@@ -21,86 +21,6 @@ struct ComputationBanner: View {
     }
 }
 
-// MARK: - Zbývá zaplatit
-
-/// The equation of what is left to pay: the shares of the three authorities in boxes, added up in a dark one, with the
-/// sentence under them about where the sum goes.
-struct EquationCard: View {
-    let equation: ComputationEquation
-
-    var body: some View {
-        Card(spacing: 16, label: "Zbývá zaplatit") {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    heading
-                    Spacer(minLength: 8)
-                    caption
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    heading
-                    caption
-                }
-            }
-            FlowLayout(spacing: 10) {
-                ForEach(equation.tiles) { tile in
-                    EquationTile(tile: tile)
-                }
-            }
-            Text(verbatim: equation.split)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var heading: some View {
-        Text(verbatim: equation.heading)
-            .font(.system(size: 15, weight: .semibold))
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private var caption: some View {
-        Text(verbatim: equation.caption)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// A box of the equation with the sign in front of it. The sum is set apart: the colour of the text on the colour of
-/// the background, the other way round.
-private struct EquationTile: View {
-    let tile: ComputationTile
-
-    private var inverse: Color {
-        Color(nsColor: .windowBackgroundColor)
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if tile.sign != .blank {
-                Text(verbatim: tile.sign.rawValue)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: tile.label)
-                    .font(.callout)
-                    .foregroundStyle(tile.isResult ? AnyShapeStyle(inverse.opacity(0.8)) : AnyShapeStyle(.secondary))
-                Text(verbatim: tile.value)
-                    .fontWeight(.bold)
-                    .monospacedDigit()
-                    .foregroundStyle(tile.isResult ? AnyShapeStyle(inverse) : AnyShapeStyle(.primary))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                tile.isResult ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                in: RoundedRectangle(cornerRadius: 12))
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
 // MARK: - Mezní odvod
 
 /// The sizes and gaps of the marginal levy, in points.
@@ -290,30 +210,95 @@ private struct ThresholdLine: View {
 
 // MARK: - Předpoklady výpočtu
 
-/// What the computation takes for granted, with the way to the rules in Nastavení.
-struct AssumptionsCard: View {
+/// The sizes and gaps of the footnote of the assumptions, in points.
+private nonisolated enum FootnoteMetrics {
+    /// The space between the heading, the bullets and the link.
+    static let spacing: CGFloat = 6
+
+    /// The space around the footnote at its sides and above it. Under it there is none.
+    static let inset: CGFloat = 4
+
+    /// How far the list is set in from the left edge of the footnote: the dots of the bullets hang in it.
+    static let indent: CGFloat = 16
+
+    /// The space between a dot and the text of its bullet, which hangs out at the left of it.
+    static let dotGap: CGFloat = 6
+
+    /// The space under a bullet.
+    static let bulletGap: CGFloat = 3
+
+    /// The least width of a column of bullets, and the space between two columns. Two columns and their gap take 632
+    /// points of the list; with less, the bullets stand in one.
+    static let minimumColumnWidth: CGFloat = 300
+    static let columnGap: CGFloat = 32
+}
+
+/// What the computation takes for granted, as the footnote of the page. It is not a card but small text in the grey of
+/// secondary text: "Předpoklady výpočtu" in callout semibold, the assumptions as bullets under it, and the link
+/// "Pravidla v Nastavení" under them, which opens the rules of the year. The bullets stand in two columns of at least
+/// 300 points with 32 between them where the list has the 632 points that takes, the first half in the left column and
+/// the rest in the right one, and in one column where it has less. VoiceOver reads the footnote as a group under its
+/// heading, and the bullets one by one, without their dots.
+struct AssumptionsFootnote: View {
     let assumptions: ComputationAssumptions
     let showSettings: () -> Void
 
     var body: some View {
-        Card(spacing: 10, label: "Předpoklady", fillsHeight: true) {
+        VStack(alignment: .leading, spacing: FootnoteMetrics.spacing) {
             Text("Předpoklady výpočtu")
-                .font(.system(size: 15, weight: .semibold))
+                .font(Typography.calloutSemibold)
                 .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(assumptions.items, id: \.self) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(verbatim: "•")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        Text(verbatim: item)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
+            bullets
+                .padding(.leading, FootnoteMetrics.indent)
             Button("Pravidla v Nastavení", action: showSettings)
-                .buttonStyle(.link)
-                .font(.callout)
+                .buttonStyle(TextLinkButtonStyle())
         }
+        .font(Typography.callout)
+        .foregroundStyle(Palette.text2)
+        .padding(.horizontal, FootnoteMetrics.inset)
+        .padding(.top, FootnoteMetrics.inset)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Předpoklady výpočtu")
+    }
+
+    /// The bullets in two columns that come to one where the room is short, the first half of them (the larger one,
+    /// when there is an odd number) on the left. The bullets touch, as the lines of a list do, also where the columns
+    /// have come to one.
+    private var bullets: some View {
+        let split = (assumptions.items.count + 1) / 2
+        return TwoColumnStack(
+            minimumColumnWidth: FootnoteMetrics.minimumColumnWidth, spacing: FootnoteMetrics.columnGap,
+            stackedSpacing: 0
+        ) {
+            column(Array(assumptions.items[..<split]))
+        } right: {
+            column(Array(assumptions.items[split...]))
+        }
+    }
+
+    /// The bullets of `items` one under the other.
+    private func column(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items, id: \.self) { item in
+                bullet(item)
+            }
+        }
+    }
+
+    /// A bullet: its text, 3 points of room under it, and its dot hanging out at the left of the text, in the indent of
+    /// the list or in the gap between the columns. The dot is only for the eyes.
+    private func bullet(_ text: String) -> some View {
+        Text(verbatim: text)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, FootnoteMetrics.bulletGap)
+            .overlay(alignment: .topLeading) {
+                Text(verbatim: "•")
+                    .alignmentGuide(.leading) { dot in
+                        dot[.trailing] + FootnoteMetrics.dotGap
+                    }
+                    .accessibilityHidden(true)
+            }
     }
 }

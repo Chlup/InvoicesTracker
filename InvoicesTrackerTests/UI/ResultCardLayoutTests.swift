@@ -118,6 +118,69 @@ struct ResultCardLayoutTests {
         #expect(wideRight == CGRect(x: 428, y: 20, width: 380, height: 60))
     }
 
+    /// The same card with the gap between its rows set to `rowGap` points, with a part under the hairline unless
+    /// `withBelow` is false.
+    private func resultCard(rowGap: CGFloat, withBelow: Bool = true) -> some View {
+        Group {
+            if withBelow {
+                ResultCard(label: "Výsledek", rowGap: rowGap) {
+                    part("left", height: 100)
+                } trailing: {
+                    part("right", height: 60)
+                } below: {
+                    part("below", height: 40)
+                }
+            } else {
+                ResultCard(label: "Výsledek", rowGap: rowGap) {
+                    part("left", height: 100)
+                } trailing: {
+                    part("right", height: 60)
+                }
+            }
+        }
+    }
+
+    @Test func theRowGapOfACardIs20PointsUnlessItIsGiven() {
+        let byDefault = place(resultCard(), innerWidth: 780)
+        let given = place(resultCard(rowGap: ResultCardLayout.rowGap), innerWidth: 780)
+
+        #expect(ResultCardLayout.rowGap == 20)
+        #expect(byDefault.frames == given.frames)
+        #expect(byDefault.size == given.size)
+    }
+
+    @Test func aRowGapOf28PutsThe28PointsBetweenTheStackedPartsAndAboveTheHairline() throws {
+        // Výpočet has the gap of 28 on both axes: the parts that do not fit side by side are 28 points apart, and so
+        // are the parts and the hairline that follows them.
+        let stacked = place(resultCard(rowGap: 28), innerWidth: 780)
+        let left = try #require(stacked.frames["left"])
+        let right = try #require(stacked.frames["right"])
+        let below = try #require(stacked.frames["below"])
+
+        #expect(left == CGRect(x: 20, y: 20, width: 780, height: 100))
+        #expect(right == CGRect(x: 20, y: 148, width: 780, height: 60))
+        // The second part ends at 208; 28 points of room, the hairline of 1 point, 16 points, then the part under it.
+        #expect(below == CGRect(x: 20, y: 253, width: 780, height: 40))
+        #expect(stacked.size == CGSize(width: 820, height: 313))
+
+        // Side by side the gap between the columns is the 28 points it is anyway, and the taller column, the room and
+        // the hairline follow.
+        let beside = place(resultCard(rowGap: 28), innerWidth: 900)
+        #expect(beside.frames["left"] == CGRect(x: 20, y: 20, width: 436, height: 100))
+        #expect(beside.frames["right"] == CGRect(x: 484, y: 20, width: 436, height: 60))
+        #expect(beside.frames["below"] == CGRect(x: 20, y: 165, width: 900, height: 40))
+    }
+
+    @Test func aRowGapOf28WithNothingUnderTheHairlineIsOnlyBetweenTheStackedParts() {
+        let stacked = place(resultCard(rowGap: 28, withBelow: false), innerWidth: 780)
+        let beside = place(resultCard(rowGap: 28, withBelow: false), innerWidth: 900)
+
+        #expect(stacked.size == CGSize(width: 820, height: 20 + 100 + 28 + 60 + 20))
+        #expect(stacked.frames["right"] == CGRect(x: 20, y: 148, width: 780, height: 60))
+        // Side by side the card is as high as the taller column and its padding, whatever the gap between rows is.
+        #expect(beside.size == CGSize(width: 940, height: 140))
+    }
+
     @Test func aCardWithNothingUnderTheHairlineEndsWithItsColumns() throws {
         let placed = place(resultCardWithoutBelow(), innerWidth: 900)
 

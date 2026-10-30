@@ -186,7 +186,7 @@ struct OverviewModelTests {
     // MARK: Income converted provisionally
 
     private let provisionalLine =
-        "≈ Část příjmů je zatím přepočtená předběžným kurzem. Přepočte se sama, až budou kurzy ČNB k dispozici."
+        "Část příjmů je zatím přepočtená předběžným kurzem. Přepočte se sama, až budou kurzy ČNB k dispozici."
 
     @Test func aProvisionalReceiptUpToTheDayShownBringsTheLineThatTheIncomeIsProvisional() async throws {
         let directory = try makeTemporaryDirectory()

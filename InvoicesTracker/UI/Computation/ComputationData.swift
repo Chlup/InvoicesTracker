@@ -74,33 +74,7 @@ nonisolated struct ComputationSection: Identifiable, Sendable, Hashable {
     }
 }
 
-// MARK: - The cards under the sections
-
-/// A box of the equation of what is left to pay: one authority's share, or the sum.
-nonisolated struct ComputationTile: Identifiable, Sendable, Hashable {
-    /// The sign in front of the box: none for the first, "+" between the shares, "=" before the sum.
-    var sign: ComputationSign
-    var label: String
-    var value: String
-
-    /// Whether the box is the sum, which is set apart.
-    var isResult: Bool
-
-    var id: String {
-        label
-    }
-}
-
-/// "Zbývá zaplatit": what each authority still has to get, added up, and where the sum goes.
-nonisolated struct ComputationEquation: Sendable, Hashable {
-    var heading: String
-    var caption: String
-    var tiles: [ComputationTile]
-
-    /// The sentence under the tiles: what leaves with the planned advances and what is paid after the return, or for a
-    /// year that is over what the advances paid.
-    var split: String
-}
+// MARK: - The cards under the result
 
 /// What one authority takes, as a part of a bar of the three authorities.
 nonisolated struct MarginalShare: Identifiable, Sendable, Hashable {
@@ -167,16 +141,23 @@ nonisolated struct ComputationAssumptions: Sendable, Hashable {
 
 // MARK: - The page
 
-/// Everything the screen shows for a year as of a day: the result, the cards between it and the banner, the banner
-/// and the sections of the breakdown.
+/// Everything the screen shows for a year as of a day: the result, which is the key figure of what is left to pay and
+/// the bar of the levies, the cards under it, the note and the sections of the breakdown.
 nonisolated struct ComputationPage: Sendable, Hashable {
     /// The year it was built for.
     var year: Int
 
-    /// What the computation counts up to the day shown.
+    /// What the computation counts up to the day shown, in the note under the cards.
     var banner: String
     var sections: [ComputationSection]
-    var equation: ComputationEquation
+
+    /// "Zbývá zaplatit": what each authority still has to get, added up, and where the sum goes. It stands at the left
+    /// of the result card.
+    var keyFigure: KeyFigureData
+
+    /// The levies of the three authorities with their total, as Přehled shows them. It stands at the right of the
+    /// result card, which has the total here because the key figure beside it is what is left to pay, not the levies.
+    var levies: LevyBarData
     var marginal: ComputationMarginal
     var thresholds: ComputationThresholds
     var assumptions: ComputationAssumptions

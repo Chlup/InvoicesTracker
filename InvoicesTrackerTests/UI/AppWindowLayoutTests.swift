@@ -8,32 +8,33 @@ import Testing
 /// layout that does not settle stops the app with an exception), and every part of them is inside the window. Faktury
 /// is shown with the detail closed and open, with and without a search, on the data of `EditorFixture` and an invoice
 /// of 2025 for Alfa, so that the search for "alfa" links another year too. Two screens also keep what their layout
-/// promises: Výpočet has its result card above its banner, and the tiles of Faktury in one row are of one height. The
-/// detail of an invoice is a card beside the table, level with it, and the window does not grow for it; the table
-/// follows the width of the window both ways down to its least width, below which it scrolls sideways; a click on a row
-/// opens it and the arrow keys open the rows around it. The search of Faktury is a field of its page, at the end of the
-/// filter row, not in the toolbar: Hledat (⌘F) focuses it, Esc and its × clear it, and it stays the same field with its
-/// focus when the row wraps. The toolbar offers the reporting year and no date or simulation controls. Reporting
-/// follows month end automatically while income headings and new income adjustments keep the real cash cutoff.
-/// Every item of the toolbar fits it
-/// at the least room on every screen. The page of Nastavení stands still while a tab loads: the switcher of the tabs
-/// does not move, and the tabs that have no cards until they have read their data say "Načítám…". Odběratelé is a
-/// table of rows of one height that fits the least window and scrolls sideways below its least width, and a click on
-/// a row, anywhere but on its Nová faktura, opens the form of its client. Zálohy a odpočty fits with the note about
-/// rent (§ 9) under the menu of its rate of 30 %, whole and clear of the box of the reduced base, and with the cards of
-/// a family whose texts are the longest, every text whole, and so does the dialog of a child, a sheet with the lock
-/// after inactivity over it. Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the
-/// family as tall as its texts need and the bar of the tax whole. The Simulátor fits with the cards of the family after
-/// its deductions, empty and with the sample family copied into them, and with a secondary activity chosen and the rate
-/// of 30 % taken from the settings of the year, whose box of the health minimum and its line are whole, and so is the
-/// note of the expenses under the choices, with the sentence about rent (§ 9) after the one about the settings; in a
-/// large window the three choices of its assumptions stand in one row, and the net income ends its result card, whether
-/// the levies are more than the income or not. The breakdown of Výpočet and of the Simulátor stands in two columns in a
-/// large window and in one at the least room, and Výpočet has its three small cards, of one height in a row, between
-/// its result and its banner. Odhad odvodů fits with the months of its clients folded and unfolded, its breakdown in
-/// the same two columns and the texts of its cells whole, and so does the page of a year without rules of its own,
-/// which has a warning above its summary and the sign "≈" before the sum of its levies. One window at a time, so that
-/// what a test sees settle is its own window.
+/// promises: Výpočet runs from its result card through its two cards and its note to the breakdown and the footnote,
+/// and the tiles of Faktury in one row are of one height. The detail of an invoice is a card beside the table, level
+/// with it, and the window does not grow for it; the table follows the width of the window both ways down to its least
+/// width, below which it scrolls sideways; a click on a row opens it and the arrow keys open the rows around it. The
+/// search of Faktury is a field of its page, at the end of the filter row, not in the toolbar: Hledat (⌘F) focuses it,
+/// Esc and its × clear it, and it stays the same field with its focus when the row wraps. The toolbar offers the
+/// reporting year and no date or simulation controls. Reporting follows month end automatically while income headings
+/// and new income adjustments keep the real cash cutoff. Every item of the toolbar fits it at the least room on every
+/// screen. The page of Nastavení stands still while a tab loads: the switcher of the tabs does not move, and the tabs
+/// that have no cards until they have read their data say "Načítám…". Odběratelé is a table of rows of one height that
+/// fits the least window and scrolls sideways below its least width, and a click on a row, anywhere but on its Nová
+/// faktura, opens the form of its client. Zálohy a odpočty fits with the note about rent (§ 9) under the menu of its
+/// rate of 30 %, whole and clear of the box of the reduced base, and with the cards of a family whose texts are the
+/// longest, every text whole, and so does the dialog of a child, a sheet with the lock after inactivity over it.
+/// Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the family as tall as its texts
+/// need and the bar of the tax whole. The Simulátor fits with the cards of the family after its deductions, empty and
+/// with the sample family copied into them, and with a secondary activity chosen and the rate of 30 % taken from the
+/// settings of the year, whose box of the health minimum and its line are whole, and so is the note of the expenses
+/// under the choices, with the sentence about rent (§ 9) after the one about the settings; in a large window the three
+/// choices of its assumptions stand in one row, and the net income ends its result card, whether the levies are more
+/// than the income or not. The breakdown of Výpočet and of the Simulátor stands in two columns in a large window and in
+/// one at the least room, and the key figure and the levy bar of the result card of Výpočet stand side by side where
+/// the card has the room of two columns and one above the other where it has not, with its two cards of one height in a
+/// row under it. Odhad odvodů fits with the months of its clients folded and unfolded, its breakdown in the same two
+/// columns and the texts of its cells whole, and so does the page of a year without rules of its own, which has a
+/// warning above its summary and the sign "≈" before the sum of its levies. One window at a time, so that what a test
+/// sees settle is its own window.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct AppWindowLayoutTests {
@@ -72,13 +73,14 @@ struct AppWindowLayoutTests {
             f.app.screen = .computation
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
+                    // The key figure is read as one phrase that starts with its eyebrow.
                     let octoberHeading = "Zbývá zaplatit k 28.\u{00A0}10.\u{00A0}2026"
-                    try await waitUntil { accessibilityElement(labelled: octoberHeading, in: window) != nil }
+                    try await waitUntil { frameOfText(startingWith: octoberHeading, in: window) != nil }
                     #expect(f.app.asOf.asOf == civilDate("2026-10-31"))
 
                     f.app.handleDayChanged(civilDate("2026-11-01"))
                     let novemberHeading = "Zbývá zaplatit k 1.\u{00A0}11.\u{00A0}2026"
-                    try await waitUntil { accessibilityElement(labelled: novemberHeading, in: window) != nil }
+                    try await waitUntil { frameOfText(startingWith: novemberHeading, in: window) != nil }
                     #expect(f.app.today == civilDate("2026-11-01"))
                     #expect(f.app.asOf.asOf == civilDate("2026-11-30"))
                 }
@@ -2209,10 +2211,11 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// Výpočet opens with its result and goes on in this order, at the least room and in a large window: the card of
-    /// what is left to pay, the three small cards (Mezní odvod, Hranice roku and Předpoklady výpočtu), the banner about
-    /// the day the computation counts up to, and the breakdown, which starts with Příjmy a zisk.
-    @Test func vypocetPutsTheSmallCardsBetweenTheResultAndTheBanner() async throws {
+    /// Výpočet opens with its result and goes on in this order, at the least room and in a large window: the result
+    /// card, the cards Mezní odvod and Hranice roku, the note about the day the computation counts up to, "Rozpis
+    /// výpočtu" with the breakdown, which starts with Příjmy a zisk, and the footnote "Předpoklady výpočtu". Nothing of
+    /// the page is laid out beyond the window.
+    @Test func theVypocetPageRunsResultMarginalThresholdsNoteBreakdownFootnote() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .computation
@@ -2221,17 +2224,21 @@ struct AppWindowLayoutTests {
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
-                    try await expectSettled(window) { problems(ofTheOrderOfVýpočetIn: window) }
-                    window.setContentSize(AppWindowSize.large)
-                    try await expectSettled(window) { problems(ofTheOrderOfVýpočetIn: window) }
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofTheOrderOfVýpočetIn: window) + problems(ofPageIn: window)
+                        }
+                    }
+                    #expect(viewsOutside(window) == [])
                 }
             }
         }
     }
 
-    /// The three small cards of Výpočet are cards of one height in a row: all three in one row in a large window, and
-    /// two and one at the least room, where the two of the first row are of one height and the third is on its own.
-    @Test func theSmallCardsOfVypocetAreInRowsOfOneHeight() async throws {
+    /// The two cards under the result of Výpočet, Mezní odvod and Hranice roku, are cards of one height in one row at
+    /// the least room (2 × 380 and the gap of 16 are 776 points, and the page has 828) and in a large window.
+    @Test func theMarginalAndTheThresholdsCardsOfVypocetAreInOneRowOfOneHeight() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .computation
@@ -2239,9 +2246,127 @@ struct AppWindowLayoutTests {
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
-                    for (size, rows) in [(AppWindowSize.minimum, [2, 1]), (AppWindowSize.large, [3])] {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
                         window.setContentSize(size)
-                        try await expectSettled(window) { problems(ofTheSmallCardsIn: window, inRowsOf: rows) }
+                        try await expectSettled(window) { problems(ofTheSmallCardsIn: window, inRowsOf: [2]) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The key figure and the levy bar of the result card of Výpočet stand side by side, in two columns of one width
+    /// and level at the top, where the card has the 788 points inside its padding that two columns of 380 and the gap
+    /// of 28 take, such as in a large window, and the bar stands under the key figure, in the whole width, where it has
+    /// less, such as at the least room with the sidebar as wide as it goes. At the least room itself the page has 828
+    /// points, the card exactly the 788 inside its padding, and the parts stand wherever the room puts them.
+    @Test func theKeyFigureAndTheLevyBarStandSideBySideInALargeWindowAndOneAboveTheOtherInANarrowOne() async throws {
+        try await EditorFixture.with { f in
+            let levies = CzechFormat.wholeKc(try await f.app.computeSelectedYear().liabilityTotal)
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == "Výpočet" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) {
+                        problems(ofTheResultOfVýpočetIn: window, levies: levies, beside: true)
+                    }
+                    // Whatever the room, the parts stand as the width of the card says: side by side from 788 points
+                    // inside its padding.
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(ofTheResultOfVýpočetIn: window, levies: levies, beside: nil)
+                    }
+                    widenSidebar(of: window)
+                    try await expectSettled(window) {
+                        problems(ofTheResultOfVýpočetIn: window, levies: levies, beside: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Pravidla v Nastavení", the link of the footnote of Výpočet, opens Nastavení on its tab Rok, where the rules of
+    /// the year are.
+    @Test func theLinkOfTheFootnoteOpensTheRulesOfTheYearInNastaveni() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == "Výpočet" }
+                try await withAccessibilityElements {
+                    try await waitUntil { accessibilityButton(labelled: "Pravidla v Nastavení", in: window) != nil }
+                    #expect(f.app.settingsTab != .year)
+
+                    _ = try #require(accessibilityButton(labelled: "Pravidla v Nastavení", in: window))
+                        .accessibilityPerformPress?()
+
+                    try await waitUntil { window.title == "Nastavení" }
+                    #expect(f.app.screen == .settings)
+                    #expect(f.app.settingsTab == .year)
+                }
+            }
+        }
+    }
+
+    /// The popover of the levy bar hangs out of the result card of Výpočet, over the edge of the card and the card
+    /// under it, and is drawn above both: the card is drawn above what follows it, and nothing clips the popover. The
+    /// pointer is moved over the part of the tax, and then over its item of the legend, as a mouse moves it. A strip
+    /// down the popover, 6 points inside its leading edge, shows nothing but the colour of the popover while it is
+    /// open, where the edges of the two cards cross it while it is closed.
+    @Test func thePopoverOfTheLevyBarIsDrawnOverTheCardsUnderTheResult() async throws {
+        try await EditorFixture.with { f in
+            let result = try await f.app.computeSelectedYear()
+            let weights = Authority.allCases.map { result.balance($0).liability }
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == "Výpočet" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    try await expectSettled(window) { problems(ofTheOrderOfVýpočetIn: window) }
+                    let content = try #require(window.contentView)
+                    let bar = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window)?
+                                .accessibilityFrame?()))
+                    let legend = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: "Daň z příjmů: odvody z příjmů", in: window)?
+                                .accessibilityFrame?()))
+                    // The popover of the tax: 8 points under the legend, centred on its part and held in the panel.
+                    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
+                    let centre = LevyBarLayout.partCentres(widths: widths)[0]
+                    let left = bar.minX + LevyBarLayout.popoverX(centredOn: centre, panelWidth: bar.width)
+                    let top = content.bounds.height - legend.minY + LevyBarLayout.popoverGap
+
+                    /// The points of the strip down the popover, from 4 to 100 points under its top, whose colour is
+                    /// not that of the top of the strip: what is drawn over the popover while it is open.
+                    @MainActor func strayPoints() throws -> [CGPoint] {
+                        let picture = try WindowPicture(of: window)
+                        let strip = stride(from: top + 4, to: top + 100, by: 0.5).map { CGPoint(x: left + 6, y: $0) }
+                        let colour = picture.bytes(at: strip[0])
+                        return strip.filter { point in
+                            zip(picture.bytes(at: point), colour).contains { abs($0 - $1) > 6 }
+                        }
+                    }
+
+                    // With no popover the edges of the cards cross the strip: the test can tell the two states apart.
+                    let corner = CGPoint(x: 4, y: 4)
+                    try await expectSettled(window) {
+                        ((try? strayPoints()) ?? []).isEmpty ? ["No edge of a card crosses the strip"] : []
+                    }
+
+                    let overPart = CGPoint(x: bar.minX + 10, y: bar.midY)
+                    let overLegend = CGPoint(x: legend.minX + 10, y: legend.midY)
+                    for (name, pointer) in [("part", overPart), ("item of the legend", overLegend)] {
+                        try movePointer(to: pointer, in: window)
+                        try await waitUntil { ((try? strayPoints()) ?? [CGPoint.zero]).isEmpty }
+                        #expect(try strayPoints() == [], "Drawn over the popover of the \(name)")
+
+                        try movePointer(to: corner, in: window)
+                        try await waitUntil { !((try? strayPoints()) ?? []).isEmpty }
                     }
                 }
             }
@@ -2444,8 +2569,9 @@ struct AppWindowLayoutTests {
             .fittingSize.height
     }
 
-    /// The small cards of Výpočet by the labels VoiceOver reads them under, in the order they stand in.
-    private static let vypocetSmallCards = ["Mezní odvod", "Hranice roku", "Předpoklady"]
+    /// The cards under the result of Výpočet by the labels VoiceOver reads them under, in the order they stand in. The
+    /// card of the thresholds is read under "Hranice roku", and its heading is "Hranice roku 2026".
+    private static let vypocetSmallCards = ["Mezní odvod", "Hranice roku"]
 
     /// The cards of the breakdown of Výpočet by the headings they read, the left stack and then the right one: the
     /// income and the tax, and the social and the health insurance with the net income under them.
@@ -2467,14 +2593,14 @@ struct AppWindowLayoutTests {
         (size: AppWindowSize.minimum, beside: false),
     ]
 
-    /// What is wrong with the order of the page of Výpočet in `window`, in words: a card or the banner is missing, or
-    /// one of them is not above the next in this order: the card Zbývá zaplatit, the three small cards, the banner
-    /// about the day the computation counts up to, and the first card of the breakdown, Příjmy a zisk. The small cards
-    /// are also in the order they are named in, a row at a time and each row from the left. Empty when the page runs in
-    /// that order.
+    /// What is wrong with the order of the page of Výpočet in `window`, in words: a part is missing, or one of them is
+    /// not above the next in this order: the result card, the two small cards (Mezní odvod and Hranice roku, in the
+    /// order they are named in, a row at a time and each row from the left), the note about the day the computation
+    /// counts up to, "Rozpis výpočtu" with the first card of its breakdown, Příjmy a zisk, inside it, and the footnote
+    /// "Předpoklady výpočtu". Empty when the page runs in that order.
     private func problems(ofTheOrderOfVýpočetIn window: NSWindow) -> [String] {
-        guard let result = frameOfCard(labelled: "Zbývá zaplatit", in: window) else {
-            return ["No card Zbývá zaplatit"]
+        guard let result = frameOfCard(labelled: "Výsledek", in: window) else {
+            return ["No card Výsledek"]
         }
         var small: [CGRect] = []
         for label in Self.vypocetSmallCards {
@@ -2483,20 +2609,32 @@ struct AppWindowLayoutTests {
             }
             small.append(frame)
         }
-        guard let banner = frameOfText(startingWith: "Počítáno jen ze skutečně přijatých plateb", in: window) else {
-            return ["No banner about the day the computation counts up to"]
+        guard let thresholds = frameOfCard(headed: "Hranice roku 2026", in: window) else {
+            return ["No card headed Hranice roku 2026"]
+        }
+        guard let note = frameOfText(startingWith: "Počítáno jen ze skutečně přijatých plateb", in: window) else {
+            return ["No note about the day the computation counts up to"]
+        }
+        guard let breakdown = frameOfCard(labelled: "Rozpis výpočtu", in: window) else {
+            return ["No group Rozpis výpočtu"]
         }
         guard let income = frameOfCard(headed: "Příjmy a zisk", in: window) else {
             return ["No card Příjmy a zisk"]
         }
-        // The cards by the band of the page they belong to, the first band the highest.
-        let landmarks: [(band: Int, name: String, frame: CGRect)] =
-            [(0, "Zbývá zaplatit", result)] + zip(Self.vypocetSmallCards, small).map { (1, $0, $1) }
-            + [(2, "the banner", banner), (3, "Příjmy a zisk", income)]
+        guard let footnote = frameOfCard(labelled: "Předpoklady výpočtu", in: window) else {
+            return ["No footnote Předpoklady výpočtu"]
+        }
         var found: [String] = []
+        if (thresholds.minY - small[1].minY).magnitude > 0.5 || (thresholds.maxY - small[1].maxY).magnitude > 0.5 {
+            found.append("The card headed Hranice roku 2026 is not the card Hranice roku: \(thresholds), \(small[1])")
+        }
+        // The parts by the band of the page they belong to, the first band the highest.
+        let landmarks: [(band: Int, name: String, frame: CGRect)] =
+            [(0, "Výsledek", result)] + zip(Self.vypocetSmallCards, small).map { (1, $0, $1) }
+            + [(2, "the note", note), (3, "Rozpis výpočtu", breakdown), (4, "the footnote", footnote)]
         for upper in landmarks {
             // The origin of the screen is at the bottom left, so what stands above has the larger y.
-            for lower in landmarks where upper.band < lower.band && upper.frame.minY < lower.frame.maxY {
+            for lower in landmarks where upper.band < lower.band && upper.frame.minY < lower.frame.maxY - 0.5 {
                 found.append("\(upper.name) is not above \(lower.name): \(upper.frame) and \(lower.frame)")
             }
         }
@@ -2506,6 +2644,68 @@ struct AppWindowLayoutTests {
             let isBeside = (before.maxY - after.maxY).magnitude <= 1 && before.maxX <= after.minX
             if !isAbove && !isBeside {
                 found.append("\(Self.vypocetSmallCards[index]) does not follow \(Self.vypocetSmallCards[index - 1])")
+            }
+        }
+        // The first card of the breakdown is inside its group, under the heading that the group starts with.
+        if !breakdown.insetBy(dx: -0.5, dy: -0.5).contains(income) {
+            found.append("Příjmy a zisk is not inside Rozpis výpočtu: \(income) and \(breakdown)")
+        }
+        if income.maxY > breakdown.maxY - 10 {
+            found.append("Příjmy a zisk does not start under the heading of Rozpis výpočtu: \(income) and \(breakdown)")
+        }
+        return found
+    }
+
+    /// What is wrong with the result card of Výpočet in `window`, in words: the key figure or the levy bar is missing
+    /// or not inside the card; the key figure and the levy bar do not stand side by side, in columns of one width 28
+    /// points apart, level at the top; or they do not stand one above the other, 28 points apart, the bar in the whole
+    /// width. `levies` is the total of the levies that the bar has in its header, beside the words of the header or
+    /// under them. `beside` says which of the two they should do, and nil that they should do what the width of the
+    /// card says: side by side from 788 points inside its padding of 20. Empty when they stand so.
+    private func problems(ofTheResultOfVýpočetIn window: NSWindow, levies: String, beside: Bool?) -> [String] {
+        guard let card = frameOfCard(labelled: "Výsledek", in: window) else {
+            return ["No card Výsledek"]
+        }
+        guard let key = frameOfText(startingWith: "Zbývá zaplatit k", in: window) else {
+            return ["No key figure"]
+        }
+        guard let bar = accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window)?.accessibilityFrame?()
+        else {
+            return ["No levy bar"]
+        }
+        guard let header = frameOfText(startingWith: "Odvody z příjmů do", in: window) else {
+            return ["No header of the levy bar"]
+        }
+        guard let total = frameOfText(startingWith: levies, in: window) else {
+            return ["No total of the levies \(levies)"]
+        }
+        // The top of the levy bar is that of its header, or of its total where it stands on the line of the header and
+        // is the taller of the two.
+        let barTop = max(header.maxY, total.maxY)
+        var found: [String] = []
+        for (name, frame) in [("The key figure", key), ("The levy bar", bar)]
+        where !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+            found.append("\(name) is not inside the card: \(frame) and \(card)")
+        }
+        // The origin of the screen is at the bottom left: what is at the top has the largest y. The padding is 20.
+        let inner = card.width - 40
+        if (card.maxY - 20 - key.maxY).magnitude > 1 || (key.minX - card.minX - 20).magnitude > 1 {
+            found.append("The key figure is not at the top left of the card: \(key) and \(card)")
+        }
+        if beside ?? ResultCardLayout.standsSideBySide(innerWidth: inner) {
+            let column = (inner - 28) / 2
+            if (bar.minX - (card.minX + 20 + column + 28)).magnitude > 1 || (bar.width - column).magnitude > 1 {
+                found.append("The levy bar is not the second column of \(column) points, 28 from the first: \(bar)")
+            }
+            if (card.maxY - 20 - barTop).magnitude > 1 {
+                found.append("The levy bar is not level at the top with the key figure: \(header), \(total), \(card)")
+            }
+        } else {
+            if (key.minY - barTop - 28).magnitude > 1 {
+                found.append("The levy bar is not 28 points under the key figure: \(header), \(total), \(key)")
+            }
+            if (bar.minX - key.minX).magnitude > 1 || (bar.width - inner).magnitude > 1 {
+                found.append("The levy bar does not have the whole width of the card, from its left edge: \(bar)")
             }
         }
         return found

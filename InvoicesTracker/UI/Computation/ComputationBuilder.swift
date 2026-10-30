@@ -4,10 +4,10 @@ import Foundation
 
 /// Turns the result of the tax engine for a year into the page of Výpočet, so that each number of the tax return and of
 /// the overviews can be checked: the five cards of the breakdown (here, in `+Tax`, `+Social`, `+Authorities` and
-/// `+NetIncome`), the banner and the cards under them in `+Cards`. Nothing of the levies is worked out again: every
-/// figure comes from the result. What the result does not hold as a number is derived from it for the rows and notes
-/// alone (the shares and bases of the rows of a year with both main and secondary activity, the day the cap of the
-/// expenses was reached), and the tests check that these add up to what the engine worked out.
+/// `+NetIncome`), and the result, the cards under it and the note in `+Cards`. Nothing of the levies is worked out
+/// again: every figure comes from the result. What the result does not hold as a number is derived from it for the rows
+/// and notes alone (the shares and bases of the rows of a year with both main and secondary activity, the day the cap
+/// of the expenses was reached), and the tests check that these add up to what the engine worked out.
 ///
 /// A card is one calculation from the top down: each row has the sign of what it does to the rows above, a subtracted
 /// value carries its minus, and an amount has no currency except the amount left to pay and the average per month of

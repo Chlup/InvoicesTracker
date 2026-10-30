@@ -8,7 +8,8 @@ nonisolated enum ResultCardLayout {
     /// The space between the two columns.
     static let columnGap: CGFloat = 28
 
-    /// The space between the two parts where they stand one above the other, and between them and the hairline.
+    /// The space between the rows of a card unless it is given another (`ResultCard.rowGap`): between the two parts
+    /// where they stand one above the other, and between them and the hairline.
     static let rowGap: CGFloat = 20
 
     /// The space between the hairline and the part under it.
@@ -27,6 +28,9 @@ nonisolated enum ResultCardLayout {
 /// apart, where it has less. A part may follow under a hairline, over the whole width, such as a second figure or a row
 /// of tiles.
 ///
+/// The rows of the card are `rowGap` points apart, 20 unless the card is given another gap: Výpočet sets its parts 28
+/// apart both ways, as far as its columns are.
+///
 /// What hangs out of a part, such as the popover of the levy bar (`LevyBarView`), is drawn over the hairline, the part
 /// under it and the edge of the card: the two parts are drawn above the rest, and the look of the card under all of its
 /// content. To cover what follows the card on a page as well, the page draws the card above it (a higher `zIndex`).
@@ -34,17 +38,22 @@ nonisolated enum ResultCardLayout {
 /// VoiceOver reads the card as a group under `label`.
 struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
     let label: String
+
+    /// The space between the two parts where they stand one above the other, and between them and the hairline.
+    let rowGap: CGFloat
     private let leading: Leading
     private let trailing: Trailing
     private let below: Below
     private let hasBelow: Bool
 
-    /// A card named `label` with `leading` and `trailing` side by side, and `below` under a hairline.
+    /// A card named `label` with `leading` and `trailing` side by side, and `below` under a hairline, its rows `rowGap`
+    /// points apart.
     init(
-        label: String, @ViewBuilder leading: () -> Leading, @ViewBuilder trailing: () -> Trailing,
-        @ViewBuilder below: () -> Below
+        label: String, rowGap: CGFloat = ResultCardLayout.rowGap, @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing, @ViewBuilder below: () -> Below
     ) {
         self.label = label
+        self.rowGap = rowGap
         self.leading = leading()
         self.trailing = trailing()
         self.below = below()
@@ -53,7 +62,7 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ResultColumns {
+            ResultColumns(rowGap: rowGap) {
                 VStack(alignment: .leading, spacing: DesignMetrics.innerSpacing) {
                     leading
                 }
@@ -66,7 +75,7 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
                 Rectangle()
                     .fill(Palette.sep)
                     .frame(height: 1)
-                    .padding(.top, ResultCardLayout.rowGap)
+                    .padding(.top, rowGap)
                 below
                     .padding(.top, ResultCardLayout.belowGap)
             }
@@ -81,9 +90,14 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
 
 /// A result card with nothing under its two parts.
 extension ResultCard where Below == EmptyView {
-    /// A card named `label` with `leading` and `trailing` side by side, and no part under a hairline.
-    init(label: String, @ViewBuilder leading: () -> Leading, @ViewBuilder trailing: () -> Trailing) {
+    /// A card named `label` with `leading` and `trailing` side by side, and no part under a hairline, its rows `rowGap`
+    /// points apart.
+    init(
+        label: String, rowGap: CGFloat = ResultCardLayout.rowGap, @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
         self.label = label
+        self.rowGap = rowGap
         self.leading = leading()
         self.trailing = trailing()
         below = EmptyView()
@@ -92,9 +106,11 @@ extension ResultCard where Below == EmptyView {
 }
 
 /// Places the two parts of a result card, its two subviews: side by side in columns of one width, aligned at the top,
-/// or the first one above the second in the whole width. The layout is as high as the taller of the two side by side,
-/// or as the two and the gap between them.
+/// or the first one above the second in the whole width, `rowGap` points apart. The layout is as high as the taller of
+/// the two side by side, or as the two and the gap between them.
 private struct ResultColumns: Layout {
+    let rowGap: CGFloat
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard subviews.count == 2 else { return .zero }
         let width = availableWidth(proposal)
@@ -102,7 +118,7 @@ private struct ResultColumns: Layout {
         if ResultCardLayout.standsSideBySide(innerWidth: width) {
             return CGSize(width: width, height: max(sizes.leading.height, sizes.trailing.height))
         }
-        return CGSize(width: width, height: sizes.leading.height + ResultCardLayout.rowGap + sizes.trailing.height)
+        return CGSize(width: width, height: sizes.leading.height + rowGap + sizes.trailing.height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -121,7 +137,7 @@ private struct ResultColumns: Layout {
                 at: CGPoint(x: bounds.minX, y: bounds.minY), anchor: .topLeading,
                 proposal: ProposedViewSize(width: bounds.width, height: nil))
             subviews[1].place(
-                at: CGPoint(x: bounds.minX, y: bounds.minY + heightOfLeading + ResultCardLayout.rowGap),
+                at: CGPoint(x: bounds.minX, y: bounds.minY + heightOfLeading + rowGap),
                 anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: nil))
         }
     }

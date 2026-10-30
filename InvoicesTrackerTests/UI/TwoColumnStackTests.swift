@@ -100,6 +100,50 @@ struct TwoColumnStackTests {
         #expect(placed.frames["left 1"] == CGRect(x: 0, y: 0, width: 420, height: 100))
     }
 
+    // MARK: The gap of the stacked columns
+
+    /// The stack of a card of 60 points on each side, in columns of at least 300 points with 32 between them and
+    /// `stackedSpacing` between the sides where they come one under the other, laid out in a room of `width` points.
+    private func place(columnsOf300 stackedSpacing: CGFloat?, in width: CGFloat) -> Placed {
+        let stack = TwoColumnStack(minimumColumnWidth: 300, spacing: 32, stackedSpacing: stackedSpacing) {
+            card("left", height: 60)
+        } right: {
+            card("right", height: 60)
+        }
+        let hosting = NSHostingView(rootView: stack.frame(width: width, alignment: .topLeading))
+        let size = hosting.fittingSize
+        hosting.frame = CGRect(origin: .zero, size: size)
+        hosting.layoutSubtreeIfNeeded()
+        return Placed(frames: framesOfParts(in: hosting), size: size)
+    }
+
+    @Test func columnsOfTheLeastWidthAndTheirGapStandSideBySideFromTheirSum() {
+        // Two columns of 300 points and the gap of 32 are 632 points, whatever is given for the stacked columns.
+        for stackedSpacing in [nil, 0, 3] as [CGFloat?] {
+            let placed = place(columnsOf300: stackedSpacing, in: 632)
+
+            #expect(placed.frames["left"] == CGRect(x: 0, y: 0, width: 300, height: 60), "\(placed.frames)")
+            #expect(placed.frames["right"] == CGRect(x: 332, y: 0, width: 300, height: 60), "\(placed.frames)")
+            #expect(placed.size == CGSize(width: 632, height: 60))
+        }
+    }
+
+    @Test func stackedColumnsAreAsFarApartAsTheyAreGivenAndByDefaultAsTheGapBetweenColumns() {
+        // One point short of the sum, the columns come one under the other. By default they are 32 points apart, the
+        // gap between columns; given 0 they touch, as the lines of one list do.
+        let byDefault = place(columnsOf300: nil, in: 631)
+        let touching = place(columnsOf300: 0, in: 631)
+        let apart = place(columnsOf300: 5, in: 631)
+
+        #expect(byDefault.frames["right"] == CGRect(x: 0, y: 92, width: 631, height: 60), "\(byDefault.frames)")
+        #expect(byDefault.size == CGSize(width: 631, height: 152))
+        #expect(touching.frames["left"] == CGRect(x: 0, y: 0, width: 631, height: 60), "\(touching.frames)")
+        #expect(touching.frames["right"] == CGRect(x: 0, y: 60, width: 631, height: 60), "\(touching.frames)")
+        #expect(touching.size == CGSize(width: 631, height: 120))
+        #expect(apart.frames["right"] == CGRect(x: 0, y: 65, width: 631, height: 60), "\(apart.frames)")
+        #expect(apart.size == CGSize(width: 631, height: 125))
+    }
+
     // MARK: The room asked for
 
     /// Asks its one subview for its size, for `proposal` (as a parent layout does), and tells the answer to `report`.

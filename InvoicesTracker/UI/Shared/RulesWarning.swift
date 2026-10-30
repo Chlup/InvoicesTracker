@@ -15,9 +15,10 @@ struct RulesWarning: View {
     }
 
     /// The text for a year with a receipt up to the day shown that is converted at a provisional rate, until the ČNB
-    /// rate of its day or the uniform rate of its year is there.
+    /// rate of its day or the uniform rate of its year is there. It starts with words and not with the sign "≈", which
+    /// is for a lone estimate among actual figures: the warning icon of the note says that it needs attention.
     nonisolated static let provisionalIncome =
-        "≈ Část příjmů je zatím přepočtená předběžným kurzem. Přepočte se sama, až budou kurzy ČNB k dispozici."
+        "Část příjmů je zatím přepočtená předběžným kurzem. Přepočte se sama, až budou kurzy ČNB k dispozici."
 
     var body: some View {
         Note(.attention, icon: .warning, text: text)

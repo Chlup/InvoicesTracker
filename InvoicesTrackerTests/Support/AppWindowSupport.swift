@@ -260,6 +260,54 @@ func accessibilityElement(labelled label: String, in window: NSWindow) -> AnyObj
     }
 }
 
+/// The first element of `window` whose label VoiceOver reads starts with `prefix`, whatever its role: the picture of
+/// the levy bar, whose label starts with what the bar shows and goes on with its three parts. Nil when `window` has no
+/// such element, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func accessibilityElement(labelStartingWith prefix: String, in window: NSWindow) -> AnyObject? {
+    firstElement(among: window.accessibilityChildren() ?? []) { element in
+        // The label is asked for as an optional of an optional, as the elements of SwiftUI answer by name.
+        let label: String? = element.accessibilityLabel?() ?? nil
+        return label?.hasPrefix(prefix) == true
+    }
+}
+
+/// Moves the pointer over `point` in `window`, given in the coordinates of the window (the origin at its bottom left),
+/// as a mouse does for the views of SwiftUI that follow it (`onHover`): SwiftUI hears of the pointer on its hosting
+/// view, the one that has the tracking area, as the pointer coming in and moving. The window does not pass a synthetic
+/// event on to it (`NSWindow.sendEvent(_:)` changes nothing), so the events are handed to the view itself. A point
+/// outside what follows the pointer, such as the corner of the window, takes the pointer away again. The real cursor
+/// does not move.
+@MainActor
+func movePointer(to point: CGPoint, in window: NSWindow) throws {
+    let view = try #require(hostingViewTrackingThePointer(in: window.contentView), "No view follows the pointer")
+    let entered = try #require(
+        NSEvent.enterExitEvent(
+            with: .mouseEntered, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+    let moved = try #require(
+        NSEvent.mouseEvent(
+            with: .mouseMoved, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+    view.mouseEntered(with: entered)
+    view.mouseMoved(with: moved)
+}
+
+/// The hosting view of SwiftUI under `view` that has a tracking area, which is where SwiftUI follows the pointer.
+@MainActor
+private func hostingViewTrackingThePointer(in view: NSView?) -> NSView? {
+    guard let view else { return nil }
+    if !view.trackingAreas.isEmpty, String(describing: type(of: view)).contains("NSHostingView") {
+        return view
+    }
+    for subview in view.subviews {
+        if let found = hostingViewTrackingThePointer(in: subview) {
+            return found
+        }
+    }
+    return nil
+}
+
 /// The element of `window` that carries the accessibility identifier `identifier`: a group that a test measures or
 /// looks into (`accessibilityChildren()`) and that VoiceOver reads nothing for, as it has no label. Nil when `window`
 /// has no such element, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).
