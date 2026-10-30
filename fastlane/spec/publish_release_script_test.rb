@@ -655,12 +655,26 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     end
   end
 
+  # What the comment of with_scratch says: every path the script is given or reads from its environment has a space in
+  # it, so a script that leaves one unquoted fails the tests above.
+  def test_every_path_the_script_handles_has_a_space_in_it
+    with_scratch do |scratch|
+      { feed: scratch.feed, working_directory: scratch.work, TMPDIR: scratch.tmp, GH: scratch.gh,
+        log_of_the_fake_gh: scratch.log, GITHUB_STEP_SUMMARY: scratch.summary }.each do |what, path|
+        assert_includes path, " ", "the path of #{what} has no space in it: #{path}"
+      end
+    end
+  end
+
   private
 
   # Yields the folders of one test, in a scratch directory that is removed afterwards. The name of the directory
-  # has a space, so that every path the script handles has to be quoted.
+  # has a space, so that every path the script handles has to be quoted. Dir.mktmpdir drops a space from the prefix it
+  # is given, so the folder with the space is made inside the one it makes.
   def with_scratch
-    Dir.mktmpdir("publish release ") do |root|
+    Dir.mktmpdir("publish-release-") do |parent|
+      root = File.join(parent, "publish release")
+      Dir.mkdir(root)
       scratch = Scratch.new(root: root, feed: File.join(root, "feed"), work: File.join(root, "work"),
                             tmp: File.join(root, "tmp"), gh: File.join(root, "gh"), log: File.join(root, "gh.log"),
                             summary: File.join(root, "summary.md"))
