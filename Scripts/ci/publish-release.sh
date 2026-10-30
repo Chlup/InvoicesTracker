@@ -17,7 +17,10 @@ and only then published and marked Latest, the moment installed apps are
 offered the update. The script stops before it creates anything when a file
 does not match its SHA-256 in release.json, when a release or a git tag of that
 name exists, or when the Latest release is not the one the build saw. A run
-that fails after the draft was created deletes that draft, and nothing else.
+that fails or is stopped after the draft was created asks GitHub whether the
+release is still a draft, and deletes it only if the answer is yes. A release
+that is not a draft any more, or that cannot be asked about, is left alone and
+reported, and the run still fails.
 
 Environment:
   GITHUB_REPOSITORY    the repository as owner/name (required)
@@ -27,8 +30,9 @@ Environment:
 EOF
 }
 
-# The exit trap deletes the draft release when CREATE_ATTEMPTED is set and
-# PUBLISHED is not: the draft may exist, and nobody has seen it.
+# The exit trap deals with the release when CREATE_ATTEMPTED is set and
+# PUBLISHED is not: a draft may exist, or the release may be published
+# although the script has not seen the edit that did it succeed.
 CREATE_ATTEMPTED=false
 PUBLISHED=false
 
@@ -47,8 +51,9 @@ fail() {
   exit 1
 }
 
-# Runs on every exit. When the draft release may exist and was not published,
-# deletes it, and keeps the status the run ends with.
+# Runs on every exit. When the release may exist and the script has not seen it
+# published, discards it if it is a draft, and keeps the status the run ends
+# with.
 cleanup() {
   local status=$?
   if [[ $CREATE_ATTEMPTED == true && $PUBLISHED != true ]]; then
@@ -60,17 +65,42 @@ cleanup() {
   exit "$status"
 }
 
-# Deletes the release of the tag, which is the draft this run made: the checks
-# before it found no release of that name. A draft that cannot be deleted is
-# reported with where to delete it by hand, because the next run stops at it.
+# Deletes the release of the tag when it is still a draft, and only then. The
+# checks before the create found no release of that name, so a draft of that
+# name is this run's. But a run that fails or is stopped after the create may
+# have published it all the same: `gh release edit` can fail after GitHub
+# applied the change, and a signal can end the script when gh is done with an
+# edit that went through. A published release is the Latest one, and deleting
+# it would take the update away from every app and leave the git tag behind.
+# So the release is asked whether it is a draft first. Only an answer of
+# exactly true from a call that succeeded lets the delete follow; what a failed
+# call printed is not an answer. A release that is not a draft, that is not
+# there, or that cannot be asked about is left alone and reported.
 discard_draft() {
+  local status=0 releases="https://github.com/$REPO/releases"
+  call_gh release view "$TAG" --repo "$REPO" --json isDraft --jq .isDraft || status=$?
+  if [[ $status -eq 0 && $GH_OUT == true ]]; then
+    delete_draft
+  elif [[ $status -eq 0 && $GH_OUT == false ]]; then
+    echo "error: the release $TAG is not a draft any more, so it was not deleted." \
+      "It may be published and Latest. Check $releases" >&2
+  elif [[ $status -ne 0 && $GH_ERR == *"release not found"* ]]; then
+    echo "There is no release $TAG on GitHub, so no draft was left behind. Check $releases"
+  else
+    echo "error: could not tell whether the release $TAG is a draft$(http_status), so it was not deleted." \
+      "Check $releases and delete the draft there if one was left behind." >&2
+  fi
+}
+
+# Deletes the release of the tag, which discard_draft found to be a draft. A
+# draft that cannot be deleted is reported with where to delete it by hand,
+# because the next run stops at it.
+delete_draft() {
   local status=0
   echo "Deleting the draft release $TAG, which was not published..."
   call_gh release delete "$TAG" --repo "$REPO" --yes || status=$?
   if [[ $status -eq 0 ]]; then
     echo "Deleted the draft release $TAG."
-  elif [[ $GH_ERR == *"release not found"* ]]; then
-    echo "There was no draft release $TAG to delete."
   else
     echo "error: could not delete the draft release $TAG$(http_status)." \
       "Delete it at https://github.com/$REPO/releases before the next run." >&2

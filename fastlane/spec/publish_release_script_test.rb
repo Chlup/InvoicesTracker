@@ -32,24 +32,29 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   TAG_REF_CALL = "api repos/Chlup/InvoicesTracker/git/ref/tags/v1.7.0-10"
   LATEST_CALL = "api repos/Chlup/InvoicesTracker/releases/latest --jq .tag_name"
   EDIT_CALL = "release edit v1.7.0-10 --repo Chlup/InvoicesTracker --draft=false --latest"
+  IS_DRAFT_CALL = "release view v1.7.0-10 --repo Chlup/InvoicesTracker --json isDraft --jq .isDraft"
   DELETE_CALL = "release delete v1.7.0-10 --repo Chlup/InvoicesTracker --yes"
   CHECKS = [VIEW_CALL, TAG_REF_CALL, LATEST_CALL].freeze
 
   # What the fake answers unless a test says otherwise: no release and no tag yet, the Latest release is the one
-  # the feed was made against, and every write works.
+  # the feed was made against, every write works, and a release that is asked about is a draft.
   DEFAULT_ANSWERS = {
     "FAKE_GH_RELEASE_VIEW" => "missing",
     "FAKE_GH_TAG_REF" => "404",
     "FAKE_GH_LATEST" => "v1.6.0-9",
     "FAKE_GH_CREATE" => "ok",
     "FAKE_GH_EDIT" => "ok",
+    "FAKE_GH_IS_DRAFT" => "true",
     "FAKE_GH_DELETE" => "ok"
   }.freeze
 
   # A stand-in for gh that answers the way the real tool does: `release view` and `release delete` say
   # "release not found" for a release that is not there, and a failed `gh api` call prints the body of the error on
-  # standard output and its status on standard error. A call or an answer it does not know ends with status 99, so
-  # a typo in a test cannot pass quietly.
+  # standard output and its status on standard error. The question whether a release is a draft
+  # (`release view ... --json isDraft --jq .isDraft`) is answered from FAKE_GH_IS_DRAFT: true, false, null (an answer
+  # that is none of the two), missing, or error, which prints true on standard output although the call fails, as a
+  # failed gh call may. A call or an answer it does not know ends with status 99, so a typo in a test cannot pass
+  # quietly.
   FAKE_GH = <<~'SH'
     #!/bin/sh
     printf '%s\n' "$*" >> "$FAKE_GH_LOG"
@@ -64,14 +69,30 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       exit 99
     }
     api=https://api.github.com/repos/Chlup/InvoicesTracker
+    web=https://github.com/Chlup/InvoicesTracker
+
+    release_view() {
+      case "$FAKE_GH_RELEASE_VIEW" in
+        found) echo "title: InvoicesTracker 1.7.0 (10)" ;;
+        missing) echo "release not found" >&2 ; exit 1 ;;
+        error) echo "HTTP 502: Bad Gateway ($api/releases/tags/v1.7.0-10)" >&2 ; exit 1 ;;
+        *) unknown FAKE_GH_RELEASE_VIEW "$FAKE_GH_RELEASE_VIEW" ;;
+      esac
+    }
+    release_is_draft() {
+      case "$FAKE_GH_IS_DRAFT" in
+        true|false|null) echo "$FAKE_GH_IS_DRAFT" ;;
+        missing) echo "release not found" >&2 ; exit 1 ;;
+        error) echo true ; echo "HTTP 502: Bad Gateway ($api/releases/tags/v1.7.0-10)" >&2 ; exit 1 ;;
+        *) unknown FAKE_GH_IS_DRAFT "$FAKE_GH_IS_DRAFT" ;;
+      esac
+    }
 
     case "$1 $2" in
       "release view")
-        case "$FAKE_GH_RELEASE_VIEW" in
-          found) echo "title: InvoicesTracker 1.7.0 (10)" ;;
-          missing) echo "release not found" >&2 ; exit 1 ;;
-          error) echo "HTTP 502: Bad Gateway ($api/releases/tags/v1.7.0-10)" >&2 ; exit 1 ;;
-          *) unknown FAKE_GH_RELEASE_VIEW "$FAKE_GH_RELEASE_VIEW" ;;
+        case "$*" in
+          *" --json isDraft --jq .isDraft") release_is_draft ;;
+          *) release_view ;;
         esac ;;
       "api repos/"*"/git/ref/tags/"*)
         case "$FAKE_GH_TAG_REF" in
@@ -89,21 +110,21 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         esac ;;
       "release create")
         case "$FAKE_GH_CREATE" in
-          ok) echo "https://github.com/Chlup/InvoicesTracker/releases/tag/untagged-0123456789abcdef" ;;
+          ok) echo "$web/releases/tag/untagged-0123456789abcdef" ;;
           fail) echo "error uploading the asset: connection reset" >&2 ; exit 1 ;;
           signal:*) kill -"${FAKE_GH_CREATE#signal:}" "$PPID" ;;
           *) unknown FAKE_GH_CREATE "$FAKE_GH_CREATE" ;;
         esac ;;
       "release edit")
         case "$FAKE_GH_EDIT" in
-          ok) echo "https://github.com/Chlup/InvoicesTracker/releases/tag/v1.7.0-10" ;;
+          ok) echo "$web/releases/tag/v1.7.0-10" ;;
           fail) echo "HTTP 500: Server Error ($api/releases/1)" >&2 ; exit 1 ;;
+          signal:*) kill -"${FAKE_GH_EDIT#signal:}" "$PPID" ; echo "$web/releases/tag/v1.7.0-10" ;;
           *) unknown FAKE_GH_EDIT "$FAKE_GH_EDIT" ;;
         esac ;;
       "release delete")
         case "$FAKE_GH_DELETE" in
           ok) echo "Deleted release v1.7.0-10" ;;
-          missing) echo "release not found" >&2 ; exit 1 ;;
           fail) echo "HTTP 500: Server Error ($api/releases/1)" >&2 ; exit 1 ;;
           *) unknown FAKE_GH_DELETE "$FAKE_GH_DELETE" ;;
         esac ;;
@@ -378,14 +399,15 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     end
   end
 
+  # The release is asked whether it is a draft, and only an answer of true lets the delete follow.
   def test_a_failed_publish_deletes_only_its_draft
     with_scratch do |scratch|
       write_feed(scratch)
 
-      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_EDIT" => "fail" })
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_EDIT" => "fail", "FAKE_GH_IS_DRAFT" => "true" })
 
       refute_equal 0, status.exitstatus
-      assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, DELETE_CALL], calls(scratch)
+      assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
       assert_includes stderr, "gh release edit failed"
       assert_includes stdout, "Deleted the draft release v1.7.0-10"
       assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
@@ -399,20 +421,23 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_CREATE" => "fail" })
 
       refute_equal 0, status.exitstatus
-      assert_equal [*CHECKS, create_call(scratch), DELETE_CALL], calls(scratch)
+      assert_equal [*CHECKS, create_call(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
       assert_includes stderr, "gh release create failed"
     end
   end
 
-  def test_a_failed_create_that_left_no_draft_says_so
+  def test_a_failed_create_that_left_no_draft_deletes_nothing_and_says_so
     with_scratch do |scratch|
       write_feed(scratch)
 
-      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_CREATE" => "fail", "FAKE_GH_DELETE" => "missing" })
+      stdout, stderr, status = publish(scratch,
+                                       answers: { "FAKE_GH_CREATE" => "fail", "FAKE_GH_IS_DRAFT" => "missing" })
 
       refute_equal 0, status.exitstatus
-      assert_includes stdout, "There was no draft release v1.7.0-10 to delete"
-      refute_includes stderr, "could not delete"
+      assert_equal [*CHECKS, create_call(scratch), IS_DRAFT_CALL], calls(scratch)
+      assert_includes stdout, "There is no release v1.7.0-10 on GitHub, so no draft was left behind"
+      assert_includes stdout, "Check https://github.com/Chlup/InvoicesTracker/releases"
+      refute_includes stderr, "could not"
     end
   end
 
@@ -423,13 +448,76 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_EDIT" => "fail", "FAKE_GH_DELETE" => "fail" })
 
       refute_equal 0, status.exitstatus
-      assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, DELETE_CALL], calls(scratch)
+      assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
       assert_includes stderr, "could not delete the draft release v1.7.0-10 (HTTP 500)"
       assert_includes stderr, "https://github.com/Chlup/InvoicesTracker/releases"
     end
   end
 
-  # A cancelled job ends the script with a signal. The draft is deleted all the same, and the run ends with the
+  # gh can fail to edit a release that GitHub did edit (a timeout, a server error after the change was made), and
+  # then the release is published and Latest. It must be left alone: deleting it would withdraw the update from every
+  # app and leave the git tag behind.
+  def test_a_release_that_is_no_longer_a_draft_is_never_deleted
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_EDIT" => "fail", "FAKE_GH_IS_DRAFT" => "false" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, IS_DRAFT_CALL], calls(scratch)
+      assert_includes stderr, "gh release edit failed"
+      assert_includes stderr, "the release v1.7.0-10 is not a draft any more, so it was not deleted"
+      assert_includes stderr, "Check https://github.com/Chlup/InvoicesTracker/releases"
+      refute_includes stdout, "Deleting"
+      assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+    end
+  end
+
+  # A cancelled job can end the script while `gh release edit` runs and goes through: the signal is dealt with when
+  # gh is done, and by then the release is published.
+  %w[HUP INT TERM].each do |signal|
+    define_method("test_a_run_stopped_by_#{signal}_while_the_release_is_published_leaves_it_alone") do
+      skip "#{signal} is ignored in this environment, so no shell can trap it" if signal_ignored?(signal)
+
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_EDIT" => "signal:#{signal}",
+                                                             "FAKE_GH_IS_DRAFT" => "false" })
+
+        assert_equal 128 + Signal.list.fetch(signal), status.exitstatus
+        assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, IS_DRAFT_CALL], calls(scratch)
+        assert_includes stderr, "the release v1.7.0-10 is not a draft any more, so it was not deleted"
+        refute_includes stdout, "Deleting"
+        assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+      end
+    end
+  end
+
+  # Only an answer of exactly true from a call that succeeded counts. gh prints the body of an error on standard
+  # output for some calls that fail, so what a failed call printed is not read at all.
+  def test_a_release_that_is_not_known_to_be_a_draft_is_never_deleted
+    {
+      "a question that failed after printing true" => ["error", "could not tell whether the release v1.7.0-10 is a " \
+                                                                 "draft (HTTP 502), so it was not deleted"],
+      "an answer that is neither true nor false" => ["null", "could not tell whether the release v1.7.0-10 is a " \
+                                                             "draft, so it was not deleted"]
+    }.each do |label, (answer, message)|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_EDIT" => "fail", "FAKE_GH_IS_DRAFT" => answer })
+
+        assert_equal 1, status.exitstatus, label
+        assert_equal [*CHECKS, create_call(scratch), EDIT_CALL, IS_DRAFT_CALL], calls(scratch), label
+        assert_includes stderr, message, label
+        assert_includes stderr, "Check https://github.com/Chlup/InvoicesTracker/releases", label
+        refute_includes stdout, "Deleting", label
+      end
+    end
+  end
+
+  # A cancelled job ends the script with a signal. A draft is deleted all the same, and the run ends with the
   # status of the signal, never with success.
   %w[HUP INT TERM].each do |signal|
     define_method("test_a_run_stopped_by_#{signal}_after_the_draft_was_made_deletes_it") do
@@ -441,7 +529,7 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         _stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_CREATE" => "signal:#{signal}" })
 
         assert_equal 128 + Signal.list.fetch(signal), status.exitstatus
-        assert_equal [*CHECKS, create_call(scratch), DELETE_CALL], calls(scratch)
+        assert_equal [*CHECKS, create_call(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
         assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
       end
     end
