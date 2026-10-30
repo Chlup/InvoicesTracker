@@ -43,13 +43,6 @@ nonisolated struct InvoiceDetailInput: Sendable {
 
 // MARK: - Output
 
-/// A line of the facts under the amount: a label with its value, and a smaller line under the value.
-nonisolated struct DetailFact: Sendable, Hashable {
-    var label: String
-    var value: String
-    var note: String?
-}
-
 /// What one authority takes of a payment: its name, the colour of it is the view's, and the amount with its sign.
 nonisolated struct EffectRow: Sendable, Hashable, Identifiable {
     var authority: Authority

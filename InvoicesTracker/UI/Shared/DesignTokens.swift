@@ -141,6 +141,9 @@ nonisolated enum Typography {
     /// The title 3 style (15 points), semibold, for the heading of a card.
     static let title3 = Font.title3.weight(.semibold)
 
+    /// The title 3 style, bold, for a total in the summary of a table.
+    static let title3Bold = Font.title3.bold()
+
     /// The headline style (13 points), semibold, for the name of a row.
     static let headline = Font.headline.weight(.semibold)
 
