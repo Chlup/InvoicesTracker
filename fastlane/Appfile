@@ -1,0 +1,4 @@
+# frozen_string_literal: true
+
+app_identifier "info.chlup.InvoicesTracker"
+team_id "3VN358756R"

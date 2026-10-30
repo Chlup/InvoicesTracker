@@ -1,0 +1,17 @@
+# Use workspace writes and automatic approval review while keeping credential files blocked.
+# Select invoices-secrets in the app's permissions menu for existing tasks.
+# Legacy sandbox_mode settings and --sandbox override default_permissions.
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+default_permissions = "invoices-secrets"
+
+[permissions.invoices-secrets]
+description = "Workspace writes and automatic approval review with .p8 and .env files blocked."
+extends = ":workspace"
+
+[permissions.invoices-secrets.filesystem]
+"/**/*.p8" = "deny"
+"/**/.env" = "deny"
+
+[permissions.invoices-secrets.network]
+enabled = true

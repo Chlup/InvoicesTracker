@@ -1,0 +1,3741 @@
+import AppKit
+import SwiftUI
+import Testing
+@testable import InvoicesTracker
+
+/// The screens in the window of the app, made as the app makes it, with the content under the unified toolbar: at the
+/// least room the app allows and in a large window, laid out a few times and resized. AppKit settles their layout (a
+/// layout that does not settle stops the app with an exception), and every part of them is inside the window. Faktury
+/// is shown with the detail closed and open, with and without a search, on the data of `EditorFixture` and an invoice
+/// of 2025 for Alfa, so that the search for "alfa" links another year too. Two screens also keep what their layout
+/// promises: Výpočet has its result card above its banner, and the tiles of Faktury in one row are of one height. The
+/// detail of an invoice is a card beside the table, level with it, and the window does not grow for it; the table
+/// follows the width of the window both ways down to its least width, below which it scrolls sideways; a click on a row
+/// opens it and the arrow keys open the rows around it. The search of Faktury is a field of its page, at the end of the
+/// filter row, not in the toolbar: Hledat (⌘F) focuses it, Esc and its × clear it, and it stays the same field with its
+/// focus when the row wraps. The toolbar offers the reporting year and no date or simulation controls. Reporting
+/// follows month end automatically while income headings and new income adjustments keep the real cash cutoff.
+/// Every item of the toolbar fits it
+/// at the least room on every screen. The page of Nastavení stands still while a tab loads: the switcher of the tabs
+/// does not move, and the tabs that have no cards until they have read their data say "Načítám…". Odběratelé is a
+/// table of rows of one height that fits the least window and scrolls sideways below its least width, and a click on
+/// a row, anywhere but on its Nová faktura, opens the form of its client. Zálohy a odpočty fits with the note about
+/// rent (§ 9) under the menu of its rate of 30 %, whole and clear of the box of the reduced base, and with the cards of
+/// a family whose texts are the longest, every text whole, and so does the dialog of a child, a sheet with the lock
+/// after inactivity over it. Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the
+/// family as tall as its texts need and the bar of the tax whole. The Simulátor fits with the cards of the family after
+/// its deductions, empty and with the sample family copied into them, and with a secondary activity chosen and the rate
+/// of 30 % taken from the settings of the year, whose box of the health minimum and its line are whole, and so is the
+/// note of the expenses under the choices, with the sentence about rent (§ 9) after the one about the settings; in a
+/// large window the three choices of its assumptions stand in one row, and the net income ends its result card, whether
+/// the levies are more than the income or not. The breakdown of Výpočet and of the Simulátor stands in two columns in a
+/// large window and in one at the least room, and Výpočet has its three small cards, of one height in a row, between
+/// its result and its banner. Odhad odvodů fits with the months of its clients folded and unfolded, its breakdown in
+/// the same two columns and the texts of its cells whole, and so does the page of a year without rules of its own,
+/// which has a warning above its summary and the sign "≈" before the sum of its levies. One window at a time, so that
+/// what a test sees settle is its own window.
+@Suite(.serialized, .settlesBackups)
+@MainActor
+struct AppWindowLayoutTests {
+    /// What a page needs is measured in the font it is set in, so the fonts are registered before any test, as the app
+    /// does at its launch.
+    init() {
+        InvoiceFonts.register()
+    }
+
+    // MARK: The toolbar
+
+    /// The toolbar offers the year, currency conversion and a new invoice without editable reporting-date controls.
+    @Test func theToolbarHasNoReportingDateOrSimulationControls() async throws {
+        try await EditorFixture.with(clock: ManualClock(localNoon(2026, 10, 28))) { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await layOut(window)
+                let toolbarViews = (window.toolbar?.items ?? []).compactMap(\.view)
+                #expect(!toolbarViews.isEmpty)
+                #expect(toolbarViews.flatMap { datePickers(in: $0) }.isEmpty)
+                try await withAccessibilityElements {
+                    try await waitUntil { accessibilityButton(labelled: "Nová faktura", in: window) != nil }
+                    #expect(yearMenu(in: window) != nil)
+                    #expect(accessibilityButton(labelled: "Dnes", in: window) == nil)
+                    #expect(accessibilityButton(labelled: "K datu 31.\u{00A0}10.\u{00A0}2026", in: window) == nil)
+                    #expect(accessibilityElement(labelled: "simulace budoucnosti", in: window) == nil)
+                    #expect(f.app.today == civilDate("2026-10-28"))
+                    #expect(f.app.asOf.asOf == civilDate("2026-10-31"))
+                }
+            }
+        }
+    }
+
+    /// The automatic reporting month changes without turning future payments into received income in the heading.
+    @Test func theComputationHeadingUsesRealTodayWhileReportingFollowsMonthEnd() async throws {
+        try await EditorFixture.with(clock: ManualClock(localNoon(2026, 10, 28))) { f in
+            f.app.screen = .computation
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    let octoberHeading = "Zbývá zaplatit k 28.\u{00A0}10.\u{00A0}2026"
+                    try await waitUntil { accessibilityElement(labelled: octoberHeading, in: window) != nil }
+                    #expect(f.app.asOf.asOf == civilDate("2026-10-31"))
+
+                    f.app.handleDayChanged(civilDate("2026-11-01"))
+                    let novemberHeading = "Zbývá zaplatit k 1.\u{00A0}11.\u{00A0}2026"
+                    try await waitUntil { accessibilityElement(labelled: novemberHeading, in: window) != nil }
+                    #expect(f.app.today == civilDate("2026-11-01"))
+                    #expect(f.app.asOf.asOf == civilDate("2026-11-30"))
+                }
+            }
+        }
+    }
+
+    /// Changing years reloads the settings tab and keeps a new income adjustment on the real received-through day.
+    @Test func returningToTheCurrentYearKeepsTheIncomeAdjustmentOnRealToday() async throws {
+        try await EditorFixture.with(clock: ManualClock(localNoon(2026, 10, 28))) { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(.year)
+                try await waitUntil { window.title == "Nastavení" }
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfText(startingWith: "Platí jen pro rok 2026", in: window) != nil }
+                    f.app.selectYear(2025)
+                    try await waitUntil { frameOfText(startingWith: "Platí jen pro rok 2025", in: window) != nil }
+                    #expect(f.app.asOf.asOf == civilDate("2025-12-31"))
+
+                    f.app.selectYear(2026)
+                    try await waitUntil { frameOfText(startingWith: "Platí jen pro rok 2026", in: window) != nil }
+                    try await layOut(window)
+                    #expect(f.app.today == civilDate("2026-10-28"))
+                    #expect(f.app.asOf.asOf == civilDate("2026-10-31"))
+                    #expect(f.app.asOf.followsToday)
+                    let frame = try #require(window.contentView?.superview)
+                    let timeZone = f.app.dependencies.timeZone()
+                    let shown = datePickers(in: frame).map { CivilDate.today(now: $0.dateValue, timeZone: timeZone) }
+                    #expect(!shown.isEmpty, "the Datum of a new income adjustment")
+                    #expect(shown.allSatisfy { $0 == civilDate("2026-10-28") }, "the days shown: \(shown)")
+                }
+            }
+        }
+    }
+
+    /// The date pickers under `view`.
+    private func datePickers(in view: NSView) -> [NSDatePicker] {
+        if let picker = view as? NSDatePicker {
+            return [picker]
+        }
+        return view.subviews.flatMap { datePickers(in: $0) }
+    }
+
+    // MARK: The toolbar at the least room
+
+    /// Every toolbar item remains visible on every screen, including the longer uniform-rate capsule.
+    @Test func theToolbarFitsEveryItemAtTheMinimumWindow() async throws {
+        try await EditorFixture.with { f in
+            // Rates of 2026 entered by hand, and the year switched to them.
+            let typed = [("USD", "21.50"), ("EUR", "24.50")].map { code, rate in
+                UniformRate(
+                    year: 2026, currency: CurrencyCode(code)!, amount: 1, rate: decimal(rate), instruction: "",
+                    sourceURL: nil, confirmedAt: nil, origin: .manual)
+            }
+            try await f.database.saveUniformRates(typed, year: 2026)
+            #expect(await f.app.setFXMethod(.uniform, year: 2026) == .saved)
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.pickAsOf(civilDate("2026-12-15"))
+                try await withAccessibilityElements {
+                    let capsule = "Přepočet cizích měn v roce 2026: jednotný kurz"
+                    try await waitUntil { accessibilityButton(labelled: capsule, in: window) != nil }
+                    for screen in Screen.allCases {
+                        f.app.screen = screen
+                        let title = screen.header(
+                            year: 2026, asOf: f.app.asOf.asOf, today: f.app.today, incomeFX: .uniform
+                        ).title
+                        try await waitUntil { window.title == title }
+                        try await expectSettled(window) {
+                            toolbarProblems(of: window).map { "\(screen): \($0)" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The year menu, rate capsule and new-invoice button all fit without an overflow menu.
+    private func toolbarProblems(of window: NSWindow) -> [String] {
+        guard let toolbar = window.toolbar else { return ["The window has no toolbar"] }
+        let shown = Set((toolbar.visibleItems ?? []).map { ObjectIdentifier($0) })
+        let problems = toolbar.items.enumerated().compactMap { index, item in
+            shown.contains(ObjectIdentifier(item)) ? nil : "Item \(index + 1) '\(item.label)' does not fit"
+        }
+        guard toolbar.items.count == 3 else {
+            return problems + ["The toolbar has \(toolbar.items.count) items, not 3"]
+        }
+        return problems
+    }
+
+    // MARK: Faktury
+
+    /// The invoice of `EditorFixture` that the tests of Faktury open, as Přehled opens an invoice: 2026-03-01 for Alfa,
+    /// which the search for "alfa" finds too.
+    private static let alfaInvoiceID: Int64 = 3
+
+    @Test(arguments: [false, true], [nil, "alfa"] as [String?])
+    func fakturyFitsTheWindowAtTheLeastRoomAndAtALargeSize(detailOpen: Bool, search: String?) async throws {
+        try await EditorFixture.with { f in
+            try await f.database.saveInvoice(SearchFixtures.earlierCrownInvoice(clientID: f.alfaID))
+            await f.app.didWrite()
+            f.app.searchText = search ?? ""
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    if detailOpen {
+                        // As Přehled opens an invoice: Faktury shows it with its detail beside the table.
+                        f.app.openInvoice(Self.alfaInvoiceID)
+                    } else {
+                        f.app.screen = .invoices
+                    }
+                    // The eleven invoices of 2026, or the five of them that "alfa" finds.
+                    let rows = search == nil ? 11 : 5
+                    try await waitUntil { invoiceRows(in: window).count == rows }
+
+                    try await expectSettled(window) { problems(of: window, detailOpen: detailOpen) }
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) { problems(of: window, detailOpen: detailOpen) }
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) { problems(of: window, detailOpen: detailOpen) }
+                }
+            }
+        }
+    }
+
+    /// The detail of an invoice is a card of the page beside the table: it starts where the table starts, under the
+    /// filters and the tiles, and ends where the table ends, at the bottom margin of the page; it is 320 points wide
+    /// and stands at the right margin of the page, the table ending 16 points before it. The window has no inspector
+    /// beside the page: its split views hold the sidebar and the page alone.
+    @Test func theDetailCardStandsBesideTheTableAndStartsWithIt() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(Self.alfaInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+
+                    try await expectSettled(window) { problems(of: window, detailOpen: true) }
+                    #expect(openRowNumber(in: window) == "2026-03-01")
+                    #expect(splitViewItemBehaviors(in: window) == [.sidebar, .default])
+                }
+            }
+        }
+    }
+
+    /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
+    /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
+    /// the least window, while the detail is closed, the card holds the table at its least width (820 points).
+    @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.screen = .invoices
+                    try await waitUntil { invoiceList(in: window) != nil }
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
+                    }
+                    let large = try tableWidth(in: window)
+
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
+                    }
+                    #expect(try tableWidth(in: window) < large)
+
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
+                    }
+                    #expect((try tableWidth(in: window) - large).magnitude <= 1)
+                }
+            }
+        }
+    }
+
+    /// Below its least width the table keeps that width and scrolls sideways in its card. In the least window with the
+    /// detail open it is that wide, the least widths of its columns (724 points) with 8 points between each two and 20
+    /// at either end, 820 points, which is more than its card shows, and the card has a horizontal scroller.
+    @Test func aTableBelowItsMinimumScrollsSideways() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(Self.alfaInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await expectSettled(window) { problems(of: window, detailOpen: true) }
+
+                    let scrollView = try #require(tableScrollView(in: window))
+                    let table = try tableWidth(in: window)
+                    #expect((table - 820).magnitude < 0.5)
+                    #expect(table > scrollView.contentView.bounds.width + 0.5)
+                    #expect(scrollView.hasHorizontalScroller)
+                    #expect(scrollView.horizontalScroller?.isHidden == false)
+                }
+            }
+        }
+    }
+
+    /// The detail opens in the window as it is: when a click on a row opens it, the window does not grow to make room
+    /// for it, though the screen has room, as it did for the inspector the detail was before.
+    @Test func theWindowDoesNotWidenWhenTheDetailOpens() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    try await waitUntil { invoiceRows(in: window).count == 11 }
+                    try await layOut(window)
+                    let size = window.frame.size
+
+                    press(try #require(invoiceRows(in: window).first))
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await expectSettled(window) { problems(of: window, detailOpen: true) }
+
+                    #expect(window.frame.size == size)
+                }
+            }
+        }
+    }
+
+    /// A click on a row opens its invoice (VoiceOver presses the row as a click does) and gives the table the focus of
+    /// the keyboard, which the list of the sidebar had: ↓ then opens the invoice of the row under the open one and ↑
+    /// the one above it, and the table scrolls to show a row that the keys open under the part of it the window shows.
+    /// A click on the open row closes the detail, and so does the × of the detail.
+    @Test func aClickOnARowOpensItsInvoiceAndTheArrowKeysOpenTheRowsAroundIt() async throws {
+        // The table takes the focus of the keyboard, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    window.makeKeyAndOrderFront(nil)
+                    f.app.screen = .invoices
+                    try await withAccessibilityElements {
+                        try await waitUntil { invoiceRows(in: window).count == 11 }
+
+                        // A person clicks in the key window, though a test of another suite may have made its own
+                        // window the key one meanwhile.
+                        window.makeKeyAndOrderFront(nil)
+                        press(try #require(invoiceRows(in: window).first))
+                        try await waitUntil { openRowNumber(in: window) == "20260902" }
+                        #expect(detailCardFrame(in: window) != nil)
+                        try await waitUntil { tableHasTheFocus(in: window) }
+
+                        try pressArrow(.down, in: window)
+                        try await waitUntil { openRowNumber(in: window) == "20260901" }
+                        try pressArrow(.up, in: window)
+                        try await waitUntil { openRowNumber(in: window) == "20260902" }
+
+                        // Down to 2026-02-01, under the rows that the least window shows, one row a key.
+                        let below = [
+                            "20260901", "20260802", "20260801", "20260701", "20260601", "2026-05-01", "2026-04-01",
+                            "2026-03-01", "2026-02-01",
+                        ]
+                        for number in below {
+                            try pressArrow(.down, in: window)
+                            try await waitUntil { openRowNumber(in: window) == number }
+                        }
+                        try await expectSettled(window) { problems(ofTheOpenRowShownIn: window) }
+
+                        press(try #require(openRow(in: window)))
+                        try await waitUntil { detailCardFrame(in: window) == nil }
+                        #expect(openRow(in: window) == nil)
+
+                        press(try #require(invoiceRows(in: window).last))
+                        try await waitUntil { detailCardFrame(in: window) != nil }
+                        press(try #require(accessibilityButton(labelled: "Zavřít detail", in: window)))
+                        try await waitUntil { detailCardFrame(in: window) == nil }
+                        #expect(openRow(in: window) == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the page of Faktury in `window`, in words: the views that stick out of the window, and where
+    /// the card of the table is not where it belongs, which is under the toolbar and down to the bottom margin of the
+    /// page (20 points). With the detail closed the table reaches the right margin of the page (24 points); with the
+    /// detail open the card of the detail is there (`problems(ofTheDetail:besideTheTable:in:)`) and a row is open.
+    /// Empty when the page is laid out so. Needs the accessibility elements (`withAccessibilityElements(_:)`).
+    private func problems(of window: NSWindow, detailOpen: Bool) -> [String] {
+        var problems = viewsOutside(window).map { "Outside the window: \($0)" }
+        guard let scrollView = tableScrollView(in: window) else {
+            return problems + ["The page has no table"]
+        }
+        let room = window.contentLayoutRect
+        let table = frameInWindow(scrollView)
+        if table.maxY > room.maxY + 0.5 {
+            problems.append("The table reaches under the toolbar: \(table)")
+        }
+        if (table.minY - 20).magnitude >= 0.5 {
+            problems.append("The table does not end at the bottom margin of the page: \(table)")
+        }
+        let detail = detailCardFrame(in: window)
+        if detailOpen {
+            guard let detail else {
+                return problems + ["The detail is not open"]
+            }
+            problems += self.problems(ofTheDetail: detail, besideTheTable: table, in: room)
+            if openRow(in: window) == nil {
+                problems.append("No row of the table is open")
+            }
+        } else {
+            if let detail {
+                problems.append("The detail is open: \(detail)")
+            }
+            if (table.maxX - (room.maxX - 24)).magnitude >= 0.5 {
+                problems.append("The table does not reach the right margin of the page: \(table)")
+            }
+        }
+        return problems
+    }
+
+    /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
+    /// page `room`, all in the coordinates of the window: the detail is 320 points wide at the right margin of the page
+    /// (24 points), starts and ends at the height of the table (to a point), and the table ends 16 points before it.
+    private func problems(ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
+        var problems: [String] = []
+        if (detail.width - 320).magnitude >= 0.5 {
+            problems.append("The detail is not 320 points wide: \(detail)")
+        }
+        if (detail.maxX - (room.maxX - 24)).magnitude >= 0.5 {
+            problems.append("The detail does not stand at the right margin of the page: \(detail)")
+        }
+        // The origin of the window is at the bottom left: the top is the largest y.
+        if (detail.maxY - table.maxY).magnitude > 1 {
+            problems.append("The detail does not start where the table does: \(detail), \(table)")
+        }
+        if (detail.minY - table.minY).magnitude > 1 {
+            problems.append("The detail does not end where the table does: \(detail), \(table)")
+        }
+        if (detail.minX - 16 - table.maxX).magnitude >= 0.5 {
+            problems.append("The table does not end 16 points before the detail: \(table), \(detail)")
+        }
+        return problems
+    }
+
+    /// What is wrong with the width of the table of Faktury in `window`: it is wider than its card shows, or a scroller
+    /// says that there is more of it to the side, or it is narrower than its card. Empty when the table is as wide as
+    /// its card.
+    private func problems(ofTheTableFillingItsCardIn window: NSWindow) -> [String] {
+        guard let scrollView = tableScrollView(in: window), let table = scrollView.documentView else {
+            return ["The page has no table"]
+        }
+        var problems: [String] = []
+        let shown = scrollView.contentView.bounds.width
+        if (table.frame.width - shown).magnitude >= 0.5 {
+            problems.append("The table is \(table.frame.width) points wide in a card that shows \(shown)")
+        }
+        if scrollView.horizontalScroller?.isHidden == false {
+            problems.append("The card of the table shows a horizontal scroller")
+        }
+        return problems
+    }
+
+    /// What is wrong with where the open row is in `window`: it is not wholly within the part of the rows that the
+    /// table shows. Empty when it is. Needs the accessibility elements.
+    private func problems(ofTheOpenRowShownIn window: NSWindow) -> [String] {
+        guard let row = openRow(in: window)?.accessibilityFrame?(), let shown = shownRows(in: window) else {
+            return ["No row is open, or the table shows no rows"]
+        }
+        if row.minY < shown.minY - 0.5 || row.maxY > shown.maxY + 0.5 {
+            return ["The open row \(row) is not within the rows that the table shows, \(shown)"]
+        }
+        return []
+    }
+
+    /// The table of Faktury in `window` as VoiceOver reads it, "Seznam faktur". Nil while the page has no table, and
+    /// while the views make no accessibility elements.
+    private func invoiceList(in window: NSWindow) -> AnyObject? {
+        accessibilityElement(labelled: "Seznam faktur", in: window)
+    }
+
+    /// The rows of the table of Faktury in `window`, from the top: the buttons in it that VoiceOver reads with the
+    /// number of an invoice and the rest of its row. (The arrows of a scroller are buttons too, with no label.) Empty
+    /// while the views make no accessibility elements.
+    private func invoiceRows(in window: NSWindow) -> [AnyObject] {
+        guard let list = invoiceList(in: window) else { return [] }
+        return descendants(of: list).filter { element in
+            element.accessibilityRole?() == .button && !(element.accessibilityLabel?() ?? "").isEmpty
+        }
+    }
+
+    /// The row of the open invoice in the table of Faktury in `window`: the one VoiceOver reads as selected.
+    private func openRow(in window: NSWindow) -> AnyObject? {
+        invoiceRows(in: window).first { $0.isAccessibilitySelected?() == true }
+    }
+
+    /// The number of the open invoice in the table of Faktury in `window`: what VoiceOver reads for its row up to the
+    /// first comma. Nil when no row is open.
+    private func openRowNumber(in window: NSWindow) -> String? {
+        guard let label = openRow(in: window)?.accessibilityLabel?() else { return nil }
+        return String(label.prefix { $0 != "," })
+    }
+
+    /// The part of the rows of the table of Faktury that the table shows in `window`, in the coordinates of the screen:
+    /// the frame of the scroll area of the rows, under the names of the columns.
+    private func shownRows(in window: NSWindow) -> CGRect? {
+        guard let list = invoiceList(in: window) else { return nil }
+        let rows = descendants(of: list).first { $0.accessibilityRole?() == .scrollArea }
+        return rows?.accessibilityFrame?()
+    }
+
+    /// The elements under `element`, in the order of the tree.
+    private func descendants(of element: AnyObject) -> [AnyObject] {
+        let children = (element.accessibilityChildren?() ?? []).map { $0 as AnyObject }
+        return children.flatMap { [$0] + descendants(of: $0) }
+    }
+
+    /// The frame of the card of the detail of Faktury in `window`, which VoiceOver reads as "Detail faktury", in the
+    /// coordinates of the window. Nil while the detail is closed, and while the views make no accessibility elements.
+    private func detailCardFrame(in window: NSWindow) -> CGRect? {
+        guard let frame = accessibilityElement(labelled: "Detail faktury", in: window)?.accessibilityFrame?() else {
+            return nil
+        }
+        return window.convertFromScreen(frame)
+    }
+
+    /// The scroll view that the table of Faktury scrolls sideways in, in `window`: the one scroll view of the page with
+    /// a horizontal scroller. Its frame is the card of the table, and what it scrolls is the table.
+    private func tableScrollView(in window: NSWindow) -> NSScrollView? {
+        guard let content = window.contentView else { return nil }
+        return scrollViews(in: content).first { $0.hasHorizontalScroller }
+    }
+
+    /// How wide the table of Faktury is in `window`: what its card scrolls.
+    private func tableWidth(in window: NSWindow) throws -> CGFloat {
+        try #require(tableScrollView(in: window)?.documentView).frame.width
+    }
+
+    /// The behaviours of the items of the split views of `window`, from the leading side: the sidebar and the page, and
+    /// an inspector where a page has one beside it.
+    private func splitViewItemBehaviors(in window: NSWindow) -> [NSSplitViewItem.Behavior] {
+        guard let frameView = window.contentView?.superview else { return [] }
+        return splitViews(in: frameView)
+            .compactMap { $0.delegate as? NSSplitViewController }
+            .flatMap { $0.splitViewItems.map(\.behavior) }
+    }
+
+    private func splitViews(in view: NSView) -> [NSSplitView] {
+        if let splitView = view as? NSSplitView {
+            return [splitView] + view.subviews.flatMap { splitViews(in: $0) }
+        }
+        return view.subviews.flatMap { splitViews(in: $0) }
+    }
+
+    /// Presses `element` as VoiceOver presses a button, which is what a click on it does.
+    private func press(_ element: AnyObject) {
+        #expect(element.accessibilityPerformPress?() == true)
+    }
+
+    /// Whether the table of Faktury has the focus of the keyboard in `window`: SwiftUI gives a view of its own the
+    /// focus by making the view that hosts the window's content the first responder, where the list of the sidebar or a
+    /// text field is the first responder otherwise.
+    private func tableHasTheFocus(in window: NSWindow) -> Bool {
+        window.firstResponder === window.contentView
+    }
+
+    /// The arrow keys that move in the table.
+    private enum Arrow {
+        case up
+        case down
+    }
+
+    /// Presses ↑ or ↓ as the keyboard does: a key-down event of the arrow key, handed to `window` as the application
+    /// hands it the keys (`pressEscape(in:)`).
+    private func pressArrow(_ arrow: Arrow, in window: NSWindow) throws {
+        let key = arrow == .down ? NSDownArrowFunctionKey : NSUpArrowFunctionKey
+        let characters = String(Character(try #require(UnicodeScalar(UInt32(key)))))
+        try sendKeyDown(
+            characters: characters, keyCode: arrow == .down ? 125 : 126, modifierFlags: [.numericPad, .function],
+            to: window)
+    }
+
+    /// The tiles above the table are as high as the highest of their row, though one of them says more than the others:
+    /// all three stand in one row in a large window, and so they do at the least room with the detail open, as the
+    /// detail stands beside the table, not beside the tiles.
+    @Test func theFakturyTilesOfOneRowHaveEqualHeights() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    try await waitUntil { invoiceRows(in: window).count == 11 }
+                    try await expectSettled(window) { problems(ofTilesIn: window, rows: [3]) }
+
+                    // As Přehled opens an invoice: its detail stands beside the table.
+                    f.app.openInvoice(Self.alfaInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: true) + problems(ofTilesIn: window, rows: [3])
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the three tiles of Faktury in `window`, in words: a tile that is missing, tiles that are not
+    /// in rows of `expectedRows` tiles from the top, and a row whose tiles are not of one height (to half a point).
+    /// Empty when the tiles are laid out so.
+    private func problems(ofTilesIn window: NSWindow, rows expectedRows: [Int]) -> [String] {
+        var tiles: [CGRect] = []
+        for title in ["Počet faktur", "Celkem bez DPH v Kč", "Celkem bez DPH jednotným kurzem"] {
+            guard let frame = frameOfText(startingWith: title, in: window) else {
+                return ["No tile \(title)"]
+            }
+            tiles.append(frame)
+        }
+        // The tiles of a row share their top, the largest y: the origin of the screen is at the bottom left.
+        var rows: [[CGRect]] = []
+        for tile in tiles {
+            if let top = rows.last?.first?.maxY, (top - tile.maxY).magnitude < 0.5 {
+                rows[rows.count - 1].append(tile)
+            } else {
+                rows.append([tile])
+            }
+        }
+        var problems: [String] = []
+        if rows.map(\.count) != expectedRows {
+            problems.append("The tiles are in rows of \(rows.map(\.count)), not of \(expectedRows): \(tiles)")
+        }
+        for row in rows {
+            let heights = row.map(\.height)
+            if let tallest = heights.max(), let lowest = heights.min(), tallest - lowest > 0.5 {
+                problems.append("The tiles of a row are not of one height: \(heights)")
+            }
+        }
+        return problems
+    }
+
+    // MARK: The search of Faktury
+
+    /// What VoiceOver reads for the search field of Faktury and for the × in it.
+    private static let searchLabel = "Hledat ve fakturách"
+    private static let crossLabel = "Zrušit hledání"
+
+    /// The identifier of the group that holds the search field and its ×, which is the capsule of the search. The group
+    /// has no label, as the field has its own.
+    private static let searchGroup = InvoiceSearchField.accessibilityID
+
+    /// The search of Faktury is a field on the page, not in the toolbar: it stands at the end of the filter row, after
+    /// the scope and the chips, 220 to 300 points wide and ending at the right margin of the page. Where the row has no
+    /// room for all three, it wraps, the field still at the right margin: at the least room the chips go on to a line
+    /// under the scope and the field stands after them, with the detail open too, as the detail stands beside the
+    /// table and leaves the filter row the width of the page.
+    @Test func theFakturySearchSitsAtTheEndOfTheFilterRow() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    try await waitUntil { invoiceRows(in: window).count == 11 }
+                    // A large window: the scope, the chips and the field are one line, in this order.
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: false)
+                            + problems(ofTheFilterRowIn: window, arrangedAs: .oneLine)
+                    }
+                    // The toolbar is the one of every other screen: Faktury puts nothing in it.
+                    #expect(searchFields(inTheToolbarOf: window) == [])
+                    // The field is read as "Hledat ve fakturách", and it shows the same words while it is empty.
+                    #expect(searchChild(role: .textField, labelled: Self.searchLabel, in: window) != nil)
+                    #expect(searchTextField(in: window)?.placeholderString == Self.searchLabel)
+
+                    // As Přehled opens an invoice, in the least window.
+                    f.app.openInvoice(Self.alfaInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: true)
+                            + problems(ofTheFilterRowIn: window, arrangedAs: .chipsUnderTheScope)
+                    }
+                    #expect(searchFields(inTheToolbarOf: window) == [])
+                }
+            }
+        }
+    }
+
+    /// Hledat (⌘F) puts the focus in the search field of the page: `AppModel.focusSearch()` is what the menu item
+    /// calls, and the field is the first responder of the window after it, though the focus was elsewhere before.
+    @Test func commandFFocusesTheSearchField() async throws {
+        // The field takes the focus, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    window.makeKeyAndOrderFront(nil)
+                    f.app.screen = .invoices
+                    try await withAccessibilityElements {
+                        try await waitUntil { invoiceRows(in: window).count == 11 }
+                        try await waitUntil { searchTextField(in: window) != nil }
+                        let field = try #require(searchTextField(in: window))
+                        #expect(!hasFocus(field, in: window))
+
+                        f.app.focusSearch()
+
+                        try await waitUntil { hasFocus(field, in: window) }
+                        #expect(hasFocus(field, in: window))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Esc in the search field clears the search: Hledat puts the focus in the field, "acme" is typed as a person types
+    /// it, and Esc, sent to the window as the keyboard sends it once the × shows that the field has taken the text in,
+    /// leaves the app with no search text, and the focus in the empty field.
+    @Test func escapeClearsTheSearch() async throws {
+        // The field takes the focus, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    window.makeKeyAndOrderFront(nil)
+                    f.app.screen = .invoices
+                    try await withAccessibilityElements {
+                        try await waitUntil { invoiceRows(in: window).count == 11 }
+                        try await waitUntil { searchTextField(in: window) != nil }
+                        let field = try #require(searchTextField(in: window))
+                        f.app.focusSearch()
+                        try await waitUntil { hasFocus(field, in: window) }
+
+                        try type("acme", into: field, in: window)
+                        #expect(f.app.searchText == "acme")
+                        // A key that comes in the same turn of the run loop as the text, which a person's cannot, is
+                        // not given to the field: SwiftUI has not taken the text in yet. It has when the × shows.
+                        try await waitUntil { searchChild(role: .button, labelled: Self.crossLabel, in: window) != nil }
+                        try pressEscape(in: window)
+
+                        try await waitUntil { f.app.searchText == "" && field.stringValue == "" }
+                        #expect(f.app.searchText == "")
+                        #expect(field.stringValue == "")
+                        #expect(hasFocus(field, in: window))
+                    }
+                }
+            }
+        }
+    }
+
+    /// The × is in the search field only while there is text in it. Pressed, as VoiceOver presses a button that it
+    /// reads as "Zrušit hledání", it clears the search and leaves the focus in the field, to type another search in.
+    @Test func theCrossInTheSearchClearsItAndIsThereOnlyWhileThereIsText() async throws {
+        // The field takes the focus, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    window.makeKeyAndOrderFront(nil)
+                    f.app.screen = .invoices
+                    try await withAccessibilityElements {
+                        try await waitUntil { invoiceRows(in: window).count == 11 }
+                        try await waitUntil { searchTextField(in: window) != nil }
+                        let field = try #require(searchTextField(in: window))
+                        // The line under the filters that says what the search found has a button of the same name.
+                        let cross = { searchChild(role: .button, labelled: Self.crossLabel, in: window) }
+                        #expect(cross() == nil)
+
+                        try type("acme", into: field, in: window)
+                        try await waitUntil { cross() != nil }
+                        #expect(try #require(cross()).accessibilityPerformPress?() == true)
+
+                        try await waitUntil { f.app.searchText == "" && field.stringValue == "" && cross() == nil }
+                        #expect(f.app.searchText == "")
+                        #expect(field.stringValue == "")
+                        #expect(cross() == nil)
+                        #expect(hasFocus(field, in: window))
+                    }
+                }
+            }
+        }
+    }
+
+    /// The search field that has the focus is the same field, with the focus, when the filter row wraps: a window made
+    /// narrower puts it on a line of its own, and wider again takes it back. (A field made anew by each way the row
+    /// can wrap would lose the focus in the middle of a word when the window is resized, or when the chips narrow as
+    /// the search narrows the list.)
+    @Test func theSearchKeepsItsFocusWhenTheFilterRowWraps() async throws {
+        // The field takes the focus, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    window.makeKeyAndOrderFront(nil)
+                    f.app.screen = .invoices
+                    try await withAccessibilityElements {
+                        try await waitUntil { invoiceRows(in: window).count == 11 }
+                        try await waitUntil { searchTextField(in: window) != nil }
+                        let field = try #require(searchTextField(in: window))
+                        f.app.focusSearch()
+                        try await waitUntil { hasFocus(field, in: window) }
+                        // The line of the field under the line of the scope picker: 0 in one line, below it in two.
+                        let drop = { () -> CGFloat? in
+                            guard let row = filterRowFrames(in: window) else { return nil }
+                            return row.scope.midY - row.search.midY
+                        }
+                        #expect(try #require(drop()).magnitude < 1)
+
+                        window.setContentSize(AppWindowSize.minimum)
+                        try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                        try await waitUntil { (drop() ?? 0) > 10 }
+                        #expect(searchTextField(in: window) === field)
+                        #expect(hasFocus(field, in: window))
+
+                        window.setContentSize(AppWindowSize.large)
+                        try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                        try await waitUntil { (drop() ?? 10).magnitude < 1 }
+                        #expect(searchTextField(in: window) === field)
+                        #expect(hasFocus(field, in: window))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Where the parts of the filter row of Faktury are, in the coordinates of the screen, whose origin is at the
+    /// bottom left.
+    private struct FilterRowFrames {
+        var scope: CGRect
+        var firstChip: CGRect
+        var lastChip: CGRect
+
+        /// The capsule of the search, and the text field in it.
+        var search: CGRect
+        var field: CGRect
+
+        /// Where the page ends on the right: its right margin, 24 points before the edge of the window.
+        var pageEnd: CGFloat
+    }
+
+    /// How the filter row of Faktury wraps: in one line, or with the chips on a line under the scope and the search
+    /// after them on their line.
+    private enum FilterRowArrangement {
+        case oneLine
+        case chipsUnderTheScope
+    }
+
+    /// The filter row of Faktury in `window` as the fixture shows it: the scope picker, the chips "Vše 11" to
+    /// "Uhrazené 11", and the search. Nil while a part of it is missing, and while the views make no accessibility
+    /// elements (`withAccessibilityElements(_:)`).
+    private func filterRowFrames(in window: NSWindow) -> FilterRowFrames? {
+        guard let content = window.contentView, let scope = segmentedControls(in: content).first,
+            let firstChip = accessibilityButton(labelled: "Vše 11", in: window)?.accessibilityFrame?(),
+            let lastChip = accessibilityButton(labelled: "Uhrazené 11", in: window)?.accessibilityFrame?(),
+            let search = accessibilityElement(identifiedBy: Self.searchGroup, in: window)?.accessibilityFrame?(),
+            let field = searchTextField(in: window)
+        else {
+            return nil
+        }
+        let onScreen = { (view: NSView) in window.convertToScreen(frameInWindow(view)) }
+        return FilterRowFrames(
+            scope: onScreen(scope), firstChip: firstChip, lastChip: lastChip, search: search, field: onScreen(field),
+            pageEnd: window.convertToScreen(window.contentLayoutRect).maxX - 24)
+    }
+
+    /// What is wrong with the filter row of Faktury in `window`, in words: the search is not 220 to 300 points wide, it
+    /// has not the field in it, it does not end at the right margin of the page, or it is not where `arrangement` puts
+    /// it. That is after the scope and the chips and on their line, or with the chips under the scope, after the chips
+    /// and on their line. Empty when the row is laid out so.
+    private func problems(
+        ofTheFilterRowIn window: NSWindow, arrangedAs arrangement: FilterRowArrangement
+    ) -> [String] {
+        guard let row = filterRowFrames(in: window) else {
+            return ["The filter row lacks the scope picker, the chip \"Vše 11\" or \"Uhrazené 11\", or the search"]
+        }
+        var problems: [String] = []
+        if row.search.width < 219.5 || row.search.width > 300.5 {
+            problems.append("The search is not 220 to 300 points wide: \(row.search)")
+        }
+        if !row.search.insetBy(dx: -0.5, dy: -0.5).contains(row.field) {
+            problems.append("The field is not inside the search: \(row.field) in \(row.search)")
+        }
+        if (row.search.maxX - row.pageEnd).magnitude > 1 {
+            problems.append("The search does not end at the right margin of the page (\(row.pageEnd)): \(row.search)")
+        }
+        if row.search.minX < row.lastChip.maxX {
+            problems.append("The search is not after the chips: \(row.search), \(row.lastChip)")
+        }
+        switch arrangement {
+        case .oneLine:
+            if row.firstChip.minX < row.scope.maxX {
+                problems.append("The chips are not after the scope: \(row.firstChip), \(row.scope)")
+            }
+            if (row.search.midY - row.scope.midY).magnitude > 1 {
+                problems.append("The search is not on the line of the scope: \(row.search), \(row.scope)")
+            }
+        case .chipsUnderTheScope:
+            // The origin of the screen is at the bottom left: under means a smaller y.
+            if row.firstChip.maxY > row.scope.minY + 0.5 {
+                problems.append("The chips are not under the scope: \(row.firstChip), \(row.scope)")
+            }
+            if (row.search.midY - row.lastChip.midY).magnitude > 1 {
+                problems.append("The search is not on the line of the chips: \(row.search), \(row.lastChip)")
+            }
+        }
+        return problems
+    }
+
+    /// Whether `field` has the keyboard focus in `window`: its field editor is the first responder.
+    private func hasFocus(_ field: NSTextField, in window: NSWindow) -> Bool {
+        field.currentEditor() != nil && window.firstResponder === field.currentEditor()
+    }
+
+    /// The text field of the search of Faktury in `window`: the one whose placeholder is "Hledat ve fakturách". (Its
+    /// accessibility element is no guide to it: the element spans the capsule, and the field is a plain one, a little
+    /// smaller than its element.)
+    private func searchTextField(in window: NSWindow) -> NSTextField? {
+        guard let content = window.contentView else { return nil }
+        return editableTextFields(in: content).first { $0.placeholderString == Self.searchLabel }
+    }
+
+    /// The element with `role` and `label` that VoiceOver reads in the search of Faktury in `window`: inside its group,
+    /// so that the × is not taken for the button of the same name in the line that says what the search found. Nil
+    /// when the search has none, and while the views make no accessibility elements (`withAccessibilityElements(_:)`).
+    private func searchChild(role: NSAccessibility.Role, labelled label: String, in window: NSWindow) -> AnyObject? {
+        let group = accessibilityElement(identifiedBy: Self.searchGroup, in: window)
+        let children: [Any] = group?.accessibilityChildren?() ?? []
+        return children.map { $0 as AnyObject }.first { child in
+            child.accessibilityRole?() == role && child.accessibilityLabel?() == label
+        }
+    }
+
+    /// The search fields in the toolbar of `window`, each as the name of its type: the toolbar items that are search
+    /// fields, and the search fields among the views around the content of the window, which are those of its title bar
+    /// and toolbar. Empty when the toolbar has none.
+    private func searchFields(inTheToolbarOf window: NSWindow) -> [String] {
+        var found = (window.toolbar?.items ?? []).filter { $0 is NSSearchToolbarItem }.map { "\(Swift.type(of: $0))" }
+        for view in window.contentView?.superview?.subviews ?? [] where view !== window.contentView {
+            found += searchFields(in: view).map { "\(Swift.type(of: $0))" }
+        }
+        return found
+    }
+
+    private func searchFields(in view: NSView) -> [NSSearchField] {
+        if let field = view as? NSSearchField {
+            return [field]
+        }
+        return view.subviews.flatMap { searchFields(in: $0) }
+    }
+
+    /// Presses Esc as the keyboard does: a key-down event of the Escape key, handed to `window` as the application
+    /// hands it the keys. (The application gives keys to its key window, and a window of a test run is not that: the
+    /// run is not the active application.)
+    private func pressEscape(in window: NSWindow) throws {
+        try sendKeyDown(characters: "\u{1B}", keyCode: 53, modifierFlags: [], to: window)
+    }
+
+    /// Hands `window` a key-down event of the key with `keyCode`, which types `characters`.
+    private func sendKeyDown(
+        characters: String, keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, to window: NSWindow
+    ) throws {
+        let event = try #require(
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: modifierFlags,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
+        window.sendEvent(event)
+    }
+
+    // MARK: Přehled and the editor
+
+    @Test func prehledFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                // The page scrolls; with the data it is far taller than while it loads.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await expectSettled(window) { viewsOutside(window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { viewsOutside(window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { viewsOutside(window) }
+            }
+        }
+    }
+
+    @Test func theEditorFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.startNewInvoice(templateID: f.dollarTemplate.id)
+                try await waitUntil { window.subtitle == "Ze šablony Software development" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await expectSettled(window) { viewsOutside(window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { viewsOutside(window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { viewsOutside(window) }
+                #expect(window.title == "Nová faktura")
+            }
+        }
+    }
+
+    // MARK: The estimate of the whole year on Přehled
+
+    /// Přehled on the prediction sample, as of Saturday 17. 10. 2026 with "K datu" on another day: the card of the
+    /// estimate stands under the chart, which stands under the card of what is left to pay, one card under the other at
+    /// the width of the page, at the least room, at a large size and at the least room again.
+    @Test func theCardStandsUnderTheChart() async throws {
+        try await PredictionSample.withStoredSample { app in
+            app.pickAsOf(civilDate("2026-07-15"))
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { problems(ofTheOrderOfTheCardsIn: window) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The page fits the window with the card of the estimate, and the card holds its parts: the title with its pill
+    /// and the line under it, the button to the right of them, under them the four figures (the income, the levies,
+    /// the settlement and the net income), none of them beyond the card or on another, and under the figures the chart
+    /// of the year, whose months VoiceOver reads within the card. At the least room (820 points of page, 780 with the
+    /// sidebar as wide as it goes) the figures stand in two rows, the first three side by side and the net income under
+    /// the income; in a large window all four stand side by side in one row.
+    @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await PredictionSample.withStoredSample { app in
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+
+                    for (size, figureRows) in [
+                        (AppWindowSize.minimum, [3, 1]), (AppWindowSize.large, [4]), (AppWindowSize.minimum, [3, 1]),
+                    ] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window)
+                                + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: figureRows)
+                        }
+                    }
+
+                    // The detail of the least window with the sidebar as wide as it goes: 780 points.
+                    widenSidebar(of: window)
+                    try await expectSettled(window) {
+                        problems(ofPageIn: window)
+                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 1])
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func thePredictionButtonOpensTheScreen() async throws {
+        try await PredictionSample.withStoredSample { app in
+            app.pickAsOf(civilDate("2026-07-15"))
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+                    let button = try #require(accessibilityButton(labelled: "Odhad odvodů", in: window))
+
+                    _ = button.accessibilityPerformPress?()
+
+                    try await waitUntil { window.title == "Odhad odvodů" }
+                    #expect(app.screen == .prediction)
+                    // Nothing else is changed: the year and the day of "K datu" stay as they were.
+                    #expect(app.asOf.year == 2026)
+                    #expect(app.asOf.asOf == civilDate("2026-07-15"))
+                }
+            }
+        }
+    }
+
+    /// A real day change rebuilds the estimate without a write, even when the internal reporting day stays fixed.
+    @Test func theCardIsBuiltAgainForTheNextDayWithoutAnyWrite() async throws {
+        try await PredictionSample.withStoredSample { app in
+            app.pickAsOf(civilDate("2026-07-15"))
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+                    let on17th = "z faktur do 17.\u{00A0}10.\u{00A0}2026 ·"
+                    let on18th = "z faktur do 18.\u{00A0}10.\u{00A0}2026 ·"
+                    try await waitUntil { frameOfText(startingWith: on17th, in: window) != nil }
+                    let key = app.reloadKey
+                    let version = app.dataVersion
+
+                    app.handleDayChanged(civilDate("2026-10-18"))
+
+                    #expect(app.reloadKey != key)
+                    #expect(app.reloadKey.asOf == key.asOf)
+                    #expect(app.reloadKey.today == civilDate("2026-10-18"))
+                    #expect(app.dataVersion == version)
+                    try await waitUntil { frameOfText(startingWith: on18th, in: window) != nil }
+                    #expect(frameOfText(startingWith: on17th, in: window) == nil)
+                    #expect(app.dataVersion == version)
+                    #expect(app.asOf.asOf == civilDate("2026-07-15"))
+                }
+            }
+        }
+    }
+
+    /// Shows Přehled in `window` and waits until the card of the estimate and the chart are there. Needs the
+    /// accessibility elements.
+    private func showOverviewWithTheEstimate(of app: AppModel, in window: NSWindow) async throws {
+        app.screen = .overview
+        try await waitUntil { window.title == "Přehled" }
+        try await waitUntil { frameOfCard(labelled: "Odhad za celý rok 2026", in: window) != nil }
+        try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
+        try await layOut(window)
+    }
+
+    /// What is wrong with the order of the cards of Přehled in `window`, in words: the card of what is left to pay, the
+    /// chart and the card of the estimate are not one under the other, with the gap of 16 points of the page between
+    /// them, and as wide as the page. The origin of the screen is at the bottom left, so what is under has the smaller
+    /// y. Needs the accessibility elements.
+    private func problems(ofTheOrderOfTheCardsIn window: NSWindow) -> [String] {
+        let titles = ["Kolik zbývá zaplatit", "Příjmy", "Odhad za celý rok 2026"]
+        let frames = titles.compactMap { frameOfCard(labelled: $0, in: window) }
+        guard frames.count == titles.count else {
+            return titles.filter { frameOfCard(labelled: $0, in: window) == nil }.map { "No card \($0)" }
+        }
+        var found: [String] = []
+        for index in 1..<frames.count {
+            let above = frames[index - 1]
+            let below = frames[index]
+            let gap = above.minY - below.maxY
+            if (gap - 16).magnitude > 1 {
+                found.append("\(titles[index]) is \(gap) points under \(titles[index - 1]), not 16: \(below), \(above)")
+            }
+            if (below.minX - above.minX).magnitude > 1 || (below.width - above.width).magnitude > 1 {
+                found.append("\(titles[index]) is not as wide as \(titles[index - 1]): \(below), \(above)")
+            }
+        }
+        return found
+    }
+
+    /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the pill, the line
+    /// under the title, the four figures, the button or the months of the chart are not there, are beyond the card, lie
+    /// on one another, or are not arranged as the card arranges them. The button stands to the right of the title, the
+    /// pill and the line, in a row level with the title's: its middle is within the height of the title and the line.
+    /// The figures stand under the title and the button, in rows of `figureRows` figures from the top; the figures of a
+    /// row are level and side by side in the order income, levies, settlement, net income, and each row is under the
+    /// one before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
+    /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
+    /// has the smaller y. Needs the accessibility elements.
+    private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
+        guard let card = accessibilityElement(labelled: "Odhad za celý rok 2026", in: window),
+            let cardFrame = card.accessibilityFrame?()
+        else {
+            return ["No card Odhad za celý rok 2026"]
+        }
+        // What VoiceOver reads for each part of the card, which starts with the words that find it.
+        let parts = [
+            (name: "the title", reading: "Odhad za celý rok 2026"), (name: "the pill", reading: "odhad"),
+            (name: "the line under the title", reading: "z faktur do "), (name: "the income", reading: "Příjmy za rok"),
+            (name: "the levies", reading: "Daň a pojistné"), (name: "the settlement", reading: "Doplatek s přiznáním"),
+            (name: "the net income", reading: "Čistý příjem průměrně za měsíc"),
+            (name: "the button", reading: "Odhad odvodů"),
+        ]
+        let children = (card.accessibilityChildren?() ?? []).map { $0 as AnyObject }
+        var frames: [String: CGRect] = [:]
+        var found: [String] = []
+        for (name, reading) in parts {
+            let part = children.first { child in
+                let value: (() -> Any?)? = child.accessibilityValue
+                let words = (value?() ?? nil) as? String ?? child.accessibilityLabel?() ?? ""
+                return words.hasPrefix(reading)
+            }
+            guard let frame = part?.accessibilityFrame?() else {
+                found.append("No \(name) in the card")
+                continue
+            }
+            frames[name] = frame
+            if !cardFrame.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                found.append("\(name) is not within the card: \(frame), the card \(cardFrame)")
+            }
+        }
+        guard found.isEmpty, let title = frames["the title"], let pill = frames["the pill"],
+            let line = frames["the line under the title"], let button = frames["the button"]
+        else {
+            return found
+        }
+        // The figures in the order they stand in.
+        let figures = ["the income", "the levies", "the settlement", "the net income"].compactMap { frames[$0] }
+        let names = parts.map(\.name)
+        for (index, name) in names.enumerated() {
+            for other in names[(index + 1)...] {
+                guard let one = frames[name], let two = frames[other] else { continue }
+                if one.intersection(two).width > 0.5 && one.intersection(two).height > 0.5 {
+                    found.append("\(name) lies on \(other): \(one), \(two)")
+                }
+            }
+        }
+        // The button is to the right of the title, the pill and the line, in a row level with the title's.
+        let titleRight = max(title.maxX, pill.maxX, line.maxX)
+        let titleTop = max(title.maxY, pill.maxY, line.maxY)
+        let titleBottom = min(title.minY, pill.minY, line.minY)
+        if button.minX < titleRight - 0.5 {
+            found.append("The button is not to the right of the title: \(button), the title ends at \(titleRight)")
+        }
+        if button.midY > titleTop + 0.5 || button.midY < titleBottom - 0.5 {
+            found.append(
+                "The button is not level with the title: \(button), the title spans \(titleBottom)–\(titleTop)")
+        }
+        // Every figure is under the title and the button.
+        let headBottom = min(titleBottom, button.minY)
+        if figures.contains(where: { $0.maxY > headBottom + 0.5 }) {
+            found.append("The figures are not under the title and the button: \(figures), they end at \(headBottom)")
+        }
+        // The figures of a row share their top, the largest y.
+        var rows: [[CGRect]] = []
+        for figure in figures {
+            if let top = rows.last?.first?.maxY, (top - figure.maxY).magnitude < 0.5 {
+                rows[rows.count - 1].append(figure)
+            } else {
+                rows.append([figure])
+            }
+        }
+        if rows.map(\.count) != figureRows {
+            found.append("The figures are in rows of \(rows.map(\.count)), not of \(figureRows): \(figures)")
+        }
+        for row in rows {
+            for (left, right) in zip(row, row.dropFirst()) where left.maxX > right.minX + 0.5 {
+                found.append("The figures of a row are not side by side in their order: \(row)")
+            }
+        }
+        for (above, below) in zip(rows, rows.dropFirst()) {
+            if let bottom = above.map(\.minY).min(), let top = below.map(\.maxY).max(), top > bottom + 0.5 {
+                found.append("A row of figures is not under the row before it: \(below), \(above)")
+            }
+        }
+        // A month of the chart, found by the words VoiceOver starts it with: a past one, the one of today and one to
+        // come. The chart of Příjmy reads its months as well, and September with the same words, so they are looked
+        // for in the card.
+        let figuresBottom = figures.map(\.minY).min() ?? cardFrame.maxY
+        let elements = descendants(of: card)
+        for start in ["Září 2026:", "Říjen 2026 · do", "Listopad 2026 · odhad:"] {
+            let month = elements.first { ($0.accessibilityLabel?() ?? "").hasPrefix(start) }
+            guard let frame = month?.accessibilityFrame?() else {
+                found.append("No month '\(start)' of the chart in the card")
+                continue
+            }
+            if !cardFrame.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                found.append("The month '\(start)' is not within the card: \(frame), the card \(cardFrame)")
+            }
+            if frame.maxY > figuresBottom + 0.5 {
+                found.append("The month '\(start)' is not under the figures: \(frame), they end at \(figuresBottom)")
+            }
+        }
+        return found
+    }
+
+    // MARK: The net income above the chart on Přehled
+
+    /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today: the strip of the net income stands in the
+    /// card "Příjmy" above the legend of the chart, the net income of the year so far and its average per month side by
+    /// side, level, at the least room, at a large size and at the least room again, with the page fitting the window.
+    @Test func theNetIncomeStripStandsInThePrijmyCardAboveTheChart() async throws {
+        try await PredictionSample.withStoredSample { app in
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window) + problems(ofTheNetIncomeStripIn: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the strip of the net income in the card "Příjmy" of Přehled in `window`, in words: the net
+    /// income of the year so far, its average per month or the legend of the chart is not there or is beyond the card,
+    /// VoiceOver does not read a figure as one phrase with its words and the line under it, the two figures do not
+    /// stand level side by side in that order, they are not above the legend, or the legend of the chart by months has
+    /// the key of the net income line of the chart by years. The origin of the screen is at the bottom left, so what is
+    /// above has the larger y. Needs the accessibility elements.
+    private func problems(ofTheNetIncomeStripIn window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
+            return ["No card Příjmy"]
+        }
+        var found: [String] = []
+        // Each figure is one element that VoiceOver reads as one phrase: its words, the figure and the line under it.
+        let phrases = [
+            (
+                words: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.", figure: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
+                line: "88,2\u{00A0}% příjmů bez DPH po dani a pojistném"
+            ),
+            (
+                words: "Čistý příjem průměrně za měsíc", figure: "193\u{00A0}347\u{00A0}Kč",
+                line: "průměr za leden–říjen"
+            ),
+        ]
+        // The card of the estimate below it has a figure with the words of the average per month, so a phrase is found
+        // by its words and its figure, which VoiceOver reads one after the other with a comma between them.
+        let readings = accessibilityReadings(in: window)
+        for (words, figure, line) in phrases {
+            let reading = readings.first { $0.hasPrefix(words + ", " + figure) } ?? ""
+            if !reading.contains(figure) || !reading.hasSuffix(line) {
+                found.append("'\(words)' is not read with its figure and its line as one phrase: '\(reading)'")
+            }
+        }
+        // What VoiceOver reads for each part, which starts with the words that find it.
+        let parts = [
+            (name: "the net income of the year", reading: phrases[0].words),
+            (name: "the average per month", reading: phrases[1].words + ", " + phrases[1].figure),
+            (name: "the legend of the chart", reading: "Vystaveno (podle data vystavení)"),
+        ]
+        var frames: [CGRect] = []
+        for (name, reading) in parts {
+            guard let frame = frameOfText(startingWith: reading, in: window) else {
+                found.append("Cannot find \(name) in the window")
+                continue
+            }
+            frames.append(frame)
+            if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                found.append("\(name) is not within the card: \(frame), the card \(card)")
+            }
+        }
+        guard frames.count == parts.count else { return found }
+        let (year, average, legend) = (frames[0], frames[1], frames[2])
+        if (year.maxY - average.maxY).magnitude > 1 {
+            found.append("The net income and its average are not level: \(year), \(average)")
+        }
+        if year.maxX > average.minX + 0.5 {
+            found.append("The net income is not to the left of its average: \(year), \(average)")
+        }
+        if min(year.minY, average.minY) < legend.maxY - 0.5 {
+            found.append("The net income and its average are not above the legend: \(year), \(average), \(legend)")
+        }
+        // The net income line of the chart by months is not that of the chart by years, so its key is another.
+        if frameOfText(startingWith: Self.netIncomeKeyByYears, in: window) != nil {
+            found.append("The legend of the chart by months has the key of the net income line of the chart by years")
+        }
+        return found
+    }
+
+    /// What the legend of the chart by years says of the line of the net income, the third key of the legend.
+    private static let netIncomeKeyByYears = "Čistý příjem za rok (po dani a pojistném, vždy bez DPH)"
+
+    /// What the legend of the chart by months says of the line of the net income, the third key of the legend.
+    private static let netIncomeKeyByMonths = "Čistý příjem (součet za faktury zaplacené v měsíci, bez DPH)"
+
+    /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today, with the chart by years: the legend has the
+    /// key of the net income line, which stands in the card "Příjmy" below the strip of the net income, the columns of
+    /// the chart tell the net income of their years, and the page fits the window, at the least room, at a large size
+    /// and at the least room again.
+    @Test func theChartByYearsShowsTheNetIncomeKeyAndFitsTheWindow() async throws {
+        try await PredictionSample.withStoredSample { app in
+            await app.updateAppSettings { $0.chartMode = .years }
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+                    try await waitUntil { frameOfText(startingWith: Self.netIncomeKeyByYears, in: window) != nil }
+
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window) + problems(ofTheNetIncomeInTheChartByYearsIn: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the net income in the chart by years of Přehled in `window`, in words: the key of its line in
+    /// the legend is not there, is beyond the card "Příjmy" or does not stand below the average per month of the strip
+    /// above the chart; or a column of the chart for 2025 or 2026 does not read out the net income of its year and its
+    /// average per month, as the engine works them out for the prediction sample. The origin of the screen is at the
+    /// bottom left, so what is below has the smaller y. Needs the accessibility elements.
+    private func problems(ofTheNetIncomeInTheChartByYearsIn window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
+            return ["No card Příjmy"]
+        }
+        guard let key = frameOfText(startingWith: Self.netIncomeKeyByYears, in: window) else {
+            return ["Cannot find the key of the net income line in the window"]
+        }
+        // The card of the estimate below it has a figure with the same words, so the average of the strip is found by
+        // its figure as well.
+        let averageStart = "Čistý příjem průměrně za měsíc, 193\u{00A0}347\u{00A0}Kč"
+        guard let average = frameOfText(startingWith: averageStart, in: window) else {
+            return ["Cannot find the average per month of the strip in the window"]
+        }
+        var found: [String] = []
+        if !card.insetBy(dx: -0.5, dy: -0.5).contains(key) {
+            found.append("The key of the net income line is not within the card: \(key), the card \(card)")
+        }
+        if key.maxY > average.minY + 0.5 {
+            found.append("The key of the net income line is not below the strip: \(key), the average \(average)")
+        }
+        // Each column is one element that VoiceOver reads from the title of the year to the end of its average.
+        let readings = accessibilityReadings(in: window)
+        let years = [
+            (
+                title: "Rok 2025:", net: "2\u{00A0}393\u{00A0}295,00\u{00A0}Kč",
+                average: "Průměrný čistý příjem za měsíc v roce 2025 199\u{00A0}441\u{00A0}Kč"
+            ),
+            (
+                title: "Rok 2026:", net: "1\u{00A0}933\u{00A0}471,00\u{00A0}Kč",
+                average: "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) 193\u{00A0}347\u{00A0}Kč"
+            ),
+        ]
+        for (title, net, average) in years {
+            let reading = readings.first { $0.hasPrefix(title) } ?? ""
+            if !reading.hasSuffix("; čistý příjem " + net + "; " + average) {
+                found.append("'\(title)' does not read out its net income and its average: '\(reading)'")
+            }
+        }
+        return found
+    }
+
+    /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today, with the chart by months, which the app
+    /// starts with: the legend has the key of the net income line, which stands in the card "Příjmy" below the strip of
+    /// the net income, the columns of the chart tell the net income of their months, and the page fits the window, at
+    /// the least room, at a large size and at the least room again.
+    @Test func theChartByMonthsShowsTheNetIncomeKeyAndFitsTheWindow() async throws {
+        try await PredictionSample.withStoredSample { app in
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+                    try await waitUntil { frameOfText(startingWith: Self.netIncomeKeyByMonths, in: window) != nil }
+
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window) + problems(ofTheNetIncomeInTheChartByMonthsIn: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the net income in the chart by months of Přehled in `window`, in words: the key of its line
+    /// in the legend is not there, is beyond the card "Příjmy" or does not stand below the average per month of the
+    /// strip above the chart; or a column of the chart for February, October or November does not read out the net
+    /// income of the invoices paid in its month and the average per month of the year, as the engine works them out for
+    /// the prediction sample (November is after the day shown, so it has nothing). The origin of the screen is at the
+    /// bottom left, so what is below has the smaller y. Needs the accessibility elements.
+    private func problems(ofTheNetIncomeInTheChartByMonthsIn window: NSWindow) -> [String] {
+        guard let cardElement = accessibilityElement(labelled: "Příjmy", in: window),
+            let card = cardElement.accessibilityFrame?()
+        else {
+            return ["No card Příjmy"]
+        }
+        guard let key = frameOfText(startingWith: Self.netIncomeKeyByMonths, in: window) else {
+            return ["Cannot find the key of the net income line in the window"]
+        }
+        // The card of the estimate below it has a figure with the same words, so the average of the strip is found by
+        // its figure as well.
+        let averageStart = "Čistý příjem průměrně za měsíc, 193\u{00A0}347\u{00A0}Kč"
+        guard let average = frameOfText(startingWith: averageStart, in: window) else {
+            return ["Cannot find the average per month of the strip in the window"]
+        }
+        var found: [String] = []
+        if !card.insetBy(dx: -0.5, dy: -0.5).contains(key) {
+            found.append("The key of the net income line is not within the card: \(key), the card \(card)")
+        }
+        if key.maxY > average.minY + 0.5 {
+            found.append("The key of the net income line is not below the strip: \(key), the average \(average)")
+        }
+        // Each column is one element that VoiceOver reads from the title of the month to the end of its average. The
+        // chart of the card of the estimate has an element for each month too, and a past month there starts with the
+        // same words ("Únor 2026:"), so the columns are looked for in the card "Příjmy" alone.
+        let readings = accessibilityReadings(under: cardElement)
+        let months = [
+            (title: "Únor 2026:", net: "253\u{00A0}401,00\u{00A0}Kč"),
+            (title: "Říjen 2026:", net: "219\u{00A0}810,75\u{00A0}Kč"),
+            (title: "Listopad 2026:", net: "0,00\u{00A0}Kč"),
+        ]
+        let average2026 = "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) 193\u{00A0}347\u{00A0}Kč"
+        for (title, net) in months {
+            let reading = readings.first { $0.hasPrefix(title) } ?? ""
+            if !reading.hasSuffix("; čistý příjem " + net + "; " + average2026) {
+                found.append("'\(title)' does not read out its net income and its average: '\(reading)'")
+            }
+        }
+        return found
+    }
+
+    // MARK: Zálohy a odpočty
+
+    @Test func zalohyAOdpoctyFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .advances
+                try await waitUntil { window.title == "Zálohy a odpočty" }
+                // The page scrolls; with the data it is far taller than while it loads.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+            }
+        }
+    }
+
+    /// Zálohy a odpočty with 30 % chosen, which puts a note about rent under the menu of the rate. At the least room,
+    /// where the rate stands over the box of the reduced base, at a large size, where the two stand side by side, and
+    /// at the least room again, the page fits the window and the note is whole: within the card, as tall as its text
+    /// needs at its width, under the menu of the rate and over the box where that stands under the menu.
+    @Test func zalohyAOdpoctyWithTheNoteOfTheRateOf30PercentFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await EditorFixture.with { f in
+            try await f.database.updateYearSettings(2026) { $0.expensePercent = 30 }
+            await f.app.didWriteAndBackUp()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .advances
+                try await waitUntil { window.title == "Zálohy a odpočty" }
+                // The page scrolls; with the data it is far taller than while it loads.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfText(startingWith: Self.rentNote, in: window) != nil }
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window) + problems(ofTheNoteUnderTheRateIn: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The menu of the rate of the flat-rate expenses in Zálohy a odpočty, and the box of the reduced base of the
+    /// social insurance, by the labels VoiceOver reads them under.
+    private static let rateMenuLabel = "Sazba paušálních výdajů"
+    private static let reducedBaseLabel = "Snížený vyměřovací základ pro sociální pojištění"
+
+    /// What is wrong with the note of the rate of 30 % in Zálohy a odpočty of `window`, which has 30 % chosen, in
+    /// words: the note is missing or not within the card "Zálohy", is lower than its whole text needs at its width, as
+    /// a text cut short would be, is not under the menu of the rate, lies over the menu or the box of the reduced base,
+    /// or, where that box stands under the menu, is not over the box. Empty when it fits. Needs the accessibility
+    /// elements.
+    private func problems(ofTheNoteUnderTheRateIn window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Zálohy", in: window) else { return ["No card Zálohy"] }
+        guard let note = frameOfText(startingWith: Self.rentNote, in: window) else {
+            return ["No note \(Self.rentNote)"]
+        }
+        guard let menu = accessibilityElement(labelled: Self.rateMenuLabel, in: window)?.accessibilityFrame?() else {
+            return ["No menu \(Self.rateMenuLabel)"]
+        }
+        guard let box = accessibilityElement(labelled: Self.reducedBaseLabel, in: window)?.accessibilityFrame?() else {
+            return ["No box \(Self.reducedBaseLabel)"]
+        }
+        var found = problems(ofText: Self.rentNote, frame: note, font: .callout, within: card, in: window)
+        // The origin of the screen is at the bottom left, so what is under has the smaller y.
+        if note.maxY > menu.minY + 0.5 {
+            found.append("The note is not under the menu of the rate: \(note), the menu \(menu)")
+        }
+        for (name, part) in [("the menu of the rate", menu), ("the box of the reduced base", box)]
+        where note.insetBy(dx: 0.5, dy: 0.5).intersects(part) {
+            found.append("The note lies over \(name): \(note) and \(part)")
+        }
+        if box.maxY <= menu.minY + 0.5 && box.maxY > note.minY + 0.5 {
+            found.append("The box of the reduced base is under the menu but not under the note: \(box), \(note)")
+        }
+        return found
+    }
+
+    /// Zálohy a odpočty with a family whose cards say the most: a child of mine, one of the other parent, one for each
+    /// reason of counting in no month, a spouse with ZTP/P and without a child under three, and as of 31. 1. 2026, when
+    /// no income has come yet, a benefit that is not paid as a bonus. At the least room, where the impact panel is
+    /// under the cards, at the room where it first stands beside them and they are at their narrowest, at a large size
+    /// and at the least room again, every text of the cards is whole: within its card, and as tall as the text needs at
+    /// its width. So are the rows of the children, as their rows draw them, and the box of ZTP/P with its label.
+    @Test func zalohyAOdpoctyWithTheFamilyFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await EditorFixture.with { f in
+            try await Self.storeFamilyWithTheLongestTexts(in: f.database)
+            await f.app.didWriteAndBackUp()
+            f.app.pickAsOf(civilDate("2026-01-31"))
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .advances
+                try await waitUntil { window.title == "Zálohy a odpočty" }
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfText(startingWith: Self.familyTexts[1].prefix, in: window) != nil }
+
+                    for size in [
+                        AppWindowSize.minimum, Self.narrowestFamilyCards, AppWindowSize.large, AppWindowSize.minimum,
+                    ] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { problems(ofPageIn: window) + problems(ofFamilyIn: window) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The row of a child breaks its reason over more lines where it is narrow, rather than cut it: the row grows.
+    @Test func theRowOfAChildGrowsForItsReasonRatherThanCutIt() {
+        func height(at width: CGFloat) -> CGFloat {
+            let row = ChildRowButton(row: Self.rowWithReason) {}
+            return NSHostingView(rootView: row.frame(width: width).fixedSize(horizontal: false, vertical: true))
+                .fittingSize.height
+        }
+        let wide = height(at: 600)
+        let narrow = height(at: 160)
+
+        #expect(narrow > wide + 20, "The row is \(narrow) points tall at 160 points and \(wide) at 600")
+    }
+
+    /// The dialog of a child is a sheet of the window with the lock after inactivity over it, at the least room as
+    /// well: with every row it can have — ZTP/P and the studies with their months, and what the child comes to — and
+    /// with the question before a removal in place of its buttons, it is 620 points wide, no taller than the window,
+    /// and its texts are whole.
+    @Test func theDialogOfAChildFitsTheWindowAtTheLeastRoom() async throws {
+        // The sheet is the key window once it is shown, and its fields share the field editor of every window:
+        // the test takes the turn of the tests that type into a window.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await Self.storeFamilyWithTheLongestTexts(in: f.database)
+                await f.app.didWriteAndBackUp()
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    f.app.screen = .advances
+                    try await waitUntil { window.title == "Zálohy a odpočty" }
+                    try await withAccessibilityElements {
+                        let jan = Self.familyRows[3]
+                        try await waitUntil { accessibilityButton(labelled: jan, in: window) != nil }
+                        _ = try #require(accessibilityButton(labelled: jan, in: window)).accessibilityPerformPress?()
+                        try await waitUntil { window.attachedSheet != nil }
+                        let sheet = try #require(window.attachedSheet)
+                        #expect(IdleLockSheets.guarded.contains(sheet))
+
+                        for box in ["Průkaz ZTP/P – zvýhodnění dvojnásobné", "Po 18. narozeninách studuje"] {
+                            try await waitUntil { accessibilityElement(labelled: box, in: sheet) != nil }
+                            let checkbox = try #require(accessibilityElement(labelled: box, in: sheet))
+                            _ = checkbox.accessibilityPerformPress?()
+                        }
+                        try await waitUntil { frameOfText(startingWith: Self.janInTheDialog, in: sheet) != nil }
+                        try await expectSettled(window) { problems(ofDialog: sheet, in: window) }
+
+                        let remove = try #require(accessibilityButton(labelled: "Odebrat dítě", in: sheet))
+                        _ = remove.accessibilityPerformPress?()
+                        let question = ChildDialogModel.removalMessage(year: 2026)
+                        try await waitUntil { frameOfText(startingWith: question, in: sheet) != nil }
+                        try await expectSettled(window) { problems(ofDialog: sheet, in: window) }
+                        #expect(accessibilityButton(labelled: "Uložit dítě", in: sheet) == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// What Jan comes to in his dialog once he studies the whole year with ZTP/P: of the children who count in 2026,
+    /// Anna and Petr come before him.
+    private static let janInTheDialog = "V roce 2026: 12\u{00A0}měsíců jako 3. a další dítě (se ZTP/P dvojnásobek)"
+
+    /// Stores for 2026 a family whose cards say the most: Anna, mine; Petr, the other parent's; Eva, 26; Jan, an adult
+    /// who does not study; Kristýna, who does not live in the household; and a spouse with ZTP/P in three months.
+    private static func storeFamilyWithTheLongestTexts(in database: Database) async throws {
+        let children: [(name: String, born: String, household: MonthRange?, claimant: Claimant)] = [
+            ("Anna", "2019-09-03", MonthRange.wholeYear, .me),
+            ("Petr", "2012-05-01", MonthRange.wholeYear, .otherParent),
+            ("Eva", "2000-01-01", MonthRange.wholeYear, .me),
+            ("Jan", "2007-03-01", MonthRange.wholeYear, .me),
+            ("Kristýna Alžběta Nováková-Dvořáková", "2015-06-01", nil, .me),
+        ]
+        for (order, child) in children.enumerated() {
+            try await database.saveChild(
+                Child(id: nil, name: child.name, birthDate: civilDate(child.born)), year: 2026,
+                childYear: ChildYear(
+                    household: child.household, claimant: child.claimant, order: order + 1, ztpp: nil, studies: nil))
+        }
+        try await database.saveSpouse(
+            SpouseYear(claim: true, months: MonthRange.wholeYear, ownIncomeKc: 0, ztpp: MonthRange(from: 9, to: 11)),
+            year: 2026)
+    }
+
+    /// The texts of the family cards that say the most, by how each begins, with the card they are in and the font
+    /// they are set in. As of 31. 1. 2026 the benefit of Anna is not paid as a bonus yet.
+    private static let familyTexts: [(prefix: String, card: String, font: Font)] = [
+        ("Za každý měsíc, na jehož začátku", "Děti", .callout),
+        ("Pořadí dětí se s druhým rodičem dohodněte", "Děti", .callout),
+        ("24\u{00A0}840\u{00A0}Kč za rok – 2\u{00A0}070\u{00A0}Kč za každý měsíc", "Manžel nebo manželka", .callout),
+        ("Hrubé příjmy za celý rok", "Manžel nebo manželka", .callout),
+        ("Od roku 2024 se sleva uplatní jen za měsíce", "Manžel nebo manželka", .callout),
+        ("V roce 2026 se sleva neuplatní", "Manžel nebo manželka", .body.weight(.semibold)),
+    ]
+
+    /// What is wrong with the cards of the family in `window`, in words: a card that is missing, a text or a row of a
+    /// child that is missing or not within its card, and a text that is lower than it needs to be at its width, as a
+    /// text cut short would be. Empty when the cards fit. Needs the accessibility elements.
+    private func problems(ofFamilyIn window: NSWindow) -> [String] {
+        var found: [String] = []
+        for (prefix, label, font) in Self.familyTexts {
+            guard let card = frameOfCard(labelled: label, in: window) else {
+                return ["No card \(label)"]
+            }
+            guard let frame = frameOfText(startingWith: prefix, in: window) else {
+                found.append("No text \(prefix)")
+                continue
+            }
+            found += problems(ofText: prefix, frame: frame, font: font, within: card, in: window)
+        }
+        guard let children = frameOfCard(labelled: "Děti", in: window) else { return found + ["No card Děti"] }
+        for row in Self.familyRows {
+            guard let frame = accessibilityButton(labelled: row, in: window)?.accessibilityFrame?() else {
+                found.append("No row \(row)")
+                continue
+            }
+            if frame.minX < children.minX - 0.5 || frame.maxX > children.maxX + 0.5
+                || frame.minY < children.minY - 0.5
+            {
+                found.append("The row \(row) is not within its card: \(frame), the card \(children)")
+            }
+        }
+        // The row with a reason is as tall as the row needs at its width, as is the box of ZTP/P with its label.
+        if let frame = accessibilityButton(labelled: Self.rowWithReason.spokenText, in: window)?.accessibilityFrame?() {
+            let row = ChildRowButton(row: Self.rowWithReason) {}
+            found += problems(of: "the row of Jan", frame: frame, needing: row)
+        }
+        guard let spouse = frameOfCard(labelled: "Manžel nebo manželka", in: window) else {
+            return found + ["No card Manžel nebo manželka"]
+        }
+        guard let box = accessibilityElement(labelled: Self.spouseZTPPLabel, in: window)?.accessibilityFrame?() else {
+            return found + ["No box \(Self.spouseZTPPLabel)"]
+        }
+        if box.minX < spouse.minX - 0.5 || box.maxX > spouse.maxX + 0.5 {
+            found.append("The box \(Self.spouseZTPPLabel) is not within its card: \(box), the card \(spouse)")
+        }
+        let toggle = Toggle(Self.spouseZTPPLabel, isOn: .constant(true)).toggleStyle(.checkbox)
+        found += problems(of: Self.spouseZTPPLabel, frame: box, needing: toggle)
+        return found
+    }
+
+    /// What is wrong with `view` shown at `frame`, in the coordinates of the screen, in words: it is lower than `view`
+    /// needs at that width, as a view whose text is cut short would be.
+    private func problems<Content: View>(of what: String, frame: CGRect, needing view: Content) -> [String] {
+        let measured = view.frame(width: frame.width).fixedSize(horizontal: false, vertical: true)
+        let needed = NSHostingView(rootView: measured).fittingSize.height
+        return frame.height + 1 < needed ? ["\(what) is \(frame.height) points tall, it needs \(needed)"] : []
+    }
+
+    /// The room at which the impact panel of Zálohy a odpočty first stands beside the cards, a little wider than the
+    /// least: the cards are at their narrowest there, 520 points and a little more.
+    private static let narrowestFamilyCards = CGSize(
+        width: AppWindowSize.minimum.width + 20, height: AppWindowSize.minimum.height)
+
+    /// The label of the box of ZTP/P of the spouse, with the months beside it while it is ticked.
+    private static let spouseZTPPLabel = "Průkaz ZTP/P – sleva dvojnásobná"
+
+    /// A row of a child that counts in no month, with its longest reason, as the card shows it.
+    private static let rowWithReason = ChildCardRow(
+        member: FamilyChild(
+            child: Child(id: nil, name: "Jan", birthDate: civilDate("2007-03-01")),
+            year: ChildYear(household: MonthRange.wholeYear, claimant: .me, order: 4, ztpp: nil, studies: nil),
+            isStored: true),
+        name: "Jan", birth: "nar. 1.\u{00A0}3.\u{00A0}2007", status: "zletilé a nestuduje – zvýhodnění nelze uplatnit",
+        countsInNoMonth: true, amount: "—", hasAmount: false)
+
+    /// What VoiceOver reads for the rows of the children of `storeFamilyWithTheLongestTexts(in:)`.
+    private static let familyRows = [
+        "Anna · nar. 3.\u{00A0}9.\u{00A0}2019, 1. dítě · 12\u{00A0}měsíců, 15\u{00A0}204\u{00A0}Kč",
+        "Petr · nar. 1.\u{00A0}5.\u{00A0}2012, uplatňuje druhý rodič · 12\u{00A0}měsíců, —",
+        "Eva · nar. 1.\u{00A0}1.\u{00A0}2000, už 26 let – zvýhodnění nelze uplatnit, —",
+        "Jan · nar. 1.\u{00A0}3.\u{00A0}2007, zletilé a nestuduje – zvýhodnění nelze uplatnit, —",
+        "Kristýna Alžběta Nováková-Dvořáková · nar. 1.\u{00A0}6.\u{00A0}2015, v roce 2026 s vámi nežije, —",
+    ]
+
+    /// What is wrong with the dialog `sheet` of `window`, in words: it is not 620 points wide, it is taller than the
+    /// window, or one of its longer texts is missing, out of it, or lower than it needs to be at its width.
+    private func problems(ofDialog sheet: NSWindow, in window: NSWindow) -> [String] {
+        var found: [String] = []
+        if (sheet.frame.width - 620).magnitude > 1 {
+            found.append("The sheet is \(sheet.frame.width) points wide")
+        }
+        if sheet.frame.height > window.frame.height {
+            found.append("The sheet is \(sheet.frame.height) points tall, the window \(window.frame.height)")
+        }
+        let texts: [(prefix: String, font: Font)] = [
+            (ChildDialogModel.orderNote, .callout), (ChildDialogModel.studiesNote, .callout),
+            (Self.janInTheDialog, .body.weight(.semibold)),
+        ]
+        let room = sheet.frame
+        for (prefix, font) in texts {
+            guard let frame = frameOfText(startingWith: prefix, in: sheet) else {
+                found.append("No text \(prefix)")
+                continue
+            }
+            found += problems(ofText: prefix, frame: frame, font: font, within: room, in: sheet)
+        }
+        if let message = frameOfText(startingWith: ChildDialogModel.removalMessage(year: 2026), in: sheet) {
+            found += problems(
+                ofText: ChildDialogModel.removalMessage(year: 2026), frame: message, font: .callout, within: room,
+                in: sheet)
+        }
+        return found
+    }
+
+    /// What is wrong with the text that begins with `prefix`, at `frame` in the coordinates of the screen: it is not
+    /// within `room`, or it is lower than the whole text needs at its width in `font`.
+    private func problems(
+        ofText prefix: String, frame: CGRect, font: Font, within room: CGRect, in window: NSWindow
+    ) -> [String] {
+        var found: [String] = []
+        if frame.minX < room.minX - 0.5 || frame.maxX > room.maxX + 0.5 || frame.minY < room.minY - 0.5
+            || frame.maxY > room.maxY + 0.5
+        {
+            found.append("The text \(prefix) is not within its room: \(frame), the room \(room)")
+        }
+        let whole = wholeText(startingWith: prefix, in: window) ?? prefix
+        let text = Text(verbatim: whole).font(font).frame(width: frame.width)
+        let needed = NSHostingView(rootView: text.fixedSize(horizontal: false, vertical: true)).fittingSize.height
+        if frame.height + 1 < needed {
+            found.append("The text \(prefix) is \(frame.height) points tall, it needs \(needed)")
+        }
+        return found
+    }
+
+    /// The whole text that VoiceOver reads for the first text of `window` that begins with `prefix`.
+    private func wholeText(startingWith prefix: String, in window: NSWindow) -> String? {
+        accessibilityReadings(in: window).first { $0.hasPrefix(prefix) }
+    }
+
+    // MARK: Odběratelé and Šablony faktur
+
+    @Test func odberateleFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await expectCardsFit(on: .clients, titled: "Odběratelé")
+    }
+
+    @Test func sablonyFakturFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await expectCardsFit(on: .templates, titled: "Šablony faktur")
+    }
+
+    /// Shows the screen `screen` in the window at the least room, at a large size and at the least room again, on the
+    /// data of `EditorFixture`: three clients, which Odběratelé shows as the rows of a table, and two templates, which
+    /// make two or three columns of cards by the width of the window. Records an issue for every problem of the page.
+    private func expectCardsFit(on screen: Screen, titled title: String) async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = screen
+                try await waitUntil { window.title == title }
+                // The page scrolls; with the cards it is taller than the line over them and its margins, which is
+                // all it has while they load.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 150 }
+
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+            }
+        }
+    }
+
+    // MARK: The table of Odběratelé
+
+    /// The table of Odběratelé is as wide as its card, with nothing to scroll sideways, in a large window and in the
+    /// least window with the sidebar as wide as it starts. The page of the least window is 868 points wide, its card
+    /// 820, and the least width of the table is 814: the least widths of its columns, 590, with 14 points between each
+    /// two of them, the button Nová faktura with 16 points before it and 112 of its own, and 20 points at either end.
+    /// So the button of every row is whole there. Its rows are of one height, 60 points, whatever they say: among the
+    /// clients of the fixture stand one that says as little as can be and one whose name is far too long for its
+    /// column. Below its least width the table keeps it and scrolls sideways in its card: with the sidebar as wide as
+    /// it goes (320 points, the card 732).
+    @Test func theClientTableFitsAndScrollsBelowItsMinimum() async throws {
+        try await EditorFixture.with { f in
+            try await f.database.saveClient(Client(name: "Bez údajů", country: ""))
+            let longName = String(repeating: "Obchodní společnost s velmi dlouhým názvem ", count: 4)
+            try await f.database.saveClient(
+                Client(name: longName, city: "Hradec Králové", country: "SK", ico: "35709332"))
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.screen = .clients
+                    try await waitUntil { clientRows(in: window).count == 5 }
+
+                    // A large window: its page is 1 368 points wide, its card 1 320.
+                    try await expectSettled(window) {
+                        problems(ofTheClientRowsIn: window, count: 5)
+                            + problems(ofTheClientTableFillingItsCardIn: window)
+                            + problems(ofTheNovaFakturaButtonsOfTheClientTableIn: window, count: 5)
+                            + viewsOutside(window).map { "Outside the window: \($0)" }
+                    }
+                    let large = try #require(clientTableScrollView(in: window)?.documentView).frame.width
+                    #expect((large - 1_320).magnitude <= 1)
+
+                    // The least window: its card of 820 points holds the least width of the table, 814, so the table
+                    // is as wide as its card, nothing scrolls sideways, and every button Nová faktura is whole.
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(ofTheClientRowsIn: window, count: 5)
+                            + problems(ofTheClientTableFillingItsCardIn: window)
+                            + problems(ofTheNovaFakturaButtonsOfTheClientTableIn: window, count: 5)
+                            + viewsOutside(window).map { "Outside the window: \($0)" }
+                    }
+                    let card = try #require(clientTableScrollView(in: window)).contentView.bounds.width
+                    #expect((card - 820).magnitude <= 1)
+
+                    // The sidebar as wide as it goes: the card shrinks to 732 points, and the table keeps its least
+                    // width and scrolls sideways.
+                    widenSidebar(of: window)
+                    try await expectSettled(window) {
+                        problems(ofTheClientRowsIn: window, count: 5)
+                            + problems(ofTheClientTableScrollingSidewaysIn: window)
+                    }
+                    let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
+                    #expect((narrow - 732).magnitude <= 1)
+
+                    // A large window again: the table is as wide as its card, as it was.
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) {
+                        problems(ofTheClientRowsIn: window, count: 5)
+                            + problems(ofTheClientTableFillingItsCardIn: window)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A click on a row of the table of Odběratelé opens the form of its client, "Upravit odběratele", as a sheet, and
+    /// Zrušit closes it. Nová faktura of a row, which is a button of its own, opens the editor on a blank invoice for
+    /// that client, on Faktury, and no form. VoiceOver presses the buttons as a click does
+    /// (`aMouseClickAnywhereOnAClientRowButOnNovaFakturaOpensItsForm` clicks them).
+    @Test func aClickOnAClientRowOpensItsFormAndNovaFakturaStartsAnInvoiceForThatClient() async throws {
+        // The sheet takes the focus of the window, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    f.app.screen = .clients
+                    try await withAccessibilityElements {
+                        try await waitUntil { clientRows(in: window).count == 3 }
+
+                        press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                        try await waitUntil { window.attachedSheet != nil }
+                        let sheet = try #require(window.attachedSheet)
+                        // The title of the sheet is a heading, which VoiceOver reads by its label.
+                        try await waitUntil { accessibilityElement(labelled: "Upravit odběratele", in: sheet) != nil }
+                        #expect(showsText("Bravo Labs, Inc.", in: sheet))
+                        press(try #require(accessibilityButton(labelled: "Zrušit", in: sheet)))
+                        try await waitUntil { window.attachedSheet == nil }
+                        #expect(f.app.screen == .clients)
+
+                        let newInvoice = "Nová faktura pro Cetus Data s.r.o."
+                        press(try #require(accessibilityButton(labelled: newInvoice, in: window)))
+                        try await waitUntil { f.app.screen == .invoices }
+                        #expect(f.app.editorRequest == .new(templateID: nil, clientID: f.cetusID))
+                        #expect(window.attachedSheet == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A mouse click anywhere on a row of the table of Odběratelé but on its Nová faktura opens the form of its client:
+    /// on the name, on the chevron, between the chevron and the button, and in the margin at either end of the row.
+    /// A click on Nová faktura starts the invoice and opens no form: the button lies over the row, and the click is its
+    /// alone.
+    @Test func aMouseClickAnywhereOnAClientRowButOnNovaFakturaOpensItsForm() async throws {
+        // The sheet takes the focus of the window, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    f.app.screen = .clients
+                    try await withAccessibilityElements {
+                        try await waitUntil { clientRows(in: window).count == 3 }
+                        try await layOut(window)
+                        let row = try #require(clientRow(named: "Bravo Labs, Inc.", in: window))
+                        let rowFrame = try #require(row.accessibilityFrame?())
+                        let newInvoice = try #require(
+                            accessibilityButton(labelled: "Nová faktura pro Bravo Labs, Inc.", in: window))
+                        let buttonFrame = try #require(newInvoice.accessibilityFrame?())
+
+                        // Across the middle of the row: the name; the chevron, at its end; the room between the
+                        // chevron and the button; and the margins at the two ends of the row.
+                        let places: [(String, CGFloat)] = [
+                            ("the name", rowFrame.minX + 150), ("the chevron", rowFrame.maxX - 155),
+                            ("the room before the button", buttonFrame.minX - 8),
+                            ("the margin before the row", rowFrame.minX + 8),
+                            ("the margin after the button", rowFrame.maxX - 8),
+                        ]
+                        for (place, x) in places {
+                            try await click(atX: x, y: rowFrame.midY, in: window)
+                            try await waitUntil { window.attachedSheet != nil }
+                            let sheet = try #require(window.attachedSheet, "a click on \(place)")
+                            // The title of the sheet is a heading, which VoiceOver reads by its label.
+                            try await waitUntil {
+                                accessibilityElement(labelled: "Upravit odběratele", in: sheet) != nil
+                            }
+                            #expect(showsText("Bravo Labs, Inc.", in: sheet), "a click on \(place)")
+                            press(try #require(accessibilityButton(labelled: "Zrušit", in: sheet)))
+                            try await waitUntil { window.attachedSheet == nil }
+                        }
+                        #expect(f.app.screen == .clients)
+
+                        try await click(atX: buttonFrame.midX, y: buttonFrame.midY, in: window)
+                        try await waitUntil { f.app.screen == .invoices }
+                        #expect(f.app.editorRequest == .new(templateID: nil, clientID: f.bravoID))
+                        #expect(window.attachedSheet == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The table of Odběratelé stands in the scroll view of the page, which scrolls up and down, and scrolls sideways
+    /// in its card where it is wider than the card. A wheel over the table moves what can move: an up-and-down one
+    /// moves the page, as the table has nothing to scroll that way, and a sideways one moves the table and leaves the
+    /// page.
+    @Test func aWheelOverTheClientTableScrollsThePageUpAndDownAndTheTableSideways() async throws {
+        try await EditorFixture.with { f in
+            // Clients enough to make the page taller than the least window.
+            for number in 1...20 {
+                try await f.database.saveClient(Client(name: "Klient \(number)", city: "Brno"))
+            }
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 23 }
+                }
+                // The card of the least window holds the table, so the sidebar is widened until it does not.
+                widenSidebar(of: window)
+                try await expectSettled(window) { problems(ofTheClientTableScrollingSidewaysIn: window) }
+                let table = try #require(clientTableScrollView(in: window))
+                let page = try #require(table.enclosingScrollView)
+                let page0 = page.contentView.bounds.origin
+                #expect(table.contentView.bounds.origin == .zero)
+
+                table.scrollWheel(with: try wheelEvent(upAndDown: -80, sideways: 0))
+                try await waitUntil { page.contentView.bounds.origin != page0 }
+                let page1 = page.contentView.bounds.origin
+                #expect(page1.x == page0.x && page1.y != page0.y)
+                #expect(table.contentView.bounds.origin == .zero)
+
+                table.scrollWheel(with: try wheelEvent(upAndDown: 0, sideways: -80))
+                try await waitUntil { table.contentView.bounds.origin.x != 0 }
+                #expect(table.contentView.bounds.origin.y == 0)
+                #expect(page.contentView.bounds.origin == page1)
+            }
+        }
+    }
+
+    /// A client that the import created and nobody has edited since is a row like any other: nothing on the screen says
+    /// how it came into the app.
+    @Test func aClientCreatedByTheImportHasNoMarkOnItsRow() async throws {
+        try await EditorFixture.with { f in
+            try await f.database.saveClient(ClientsFixture.imported)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 4 }
+
+                    // Neither a text of its own nor a part of what VoiceOver reads for the row.
+                    let row = try #require(clientRow(named: "Delta Import GmbH", in: window))
+                    let said = row.accessibilityLabel?() ?? ""
+                    #expect(!said.localizedCaseInsensitiveContains("vytvořeno"), "\(said)")
+                    #expect(frameOfText(startingWith: "vytvořeno", in: window) == nil)
+                    #expect(!showsText("vytvořeno importem", in: window))
+                }
+            }
+        }
+    }
+
+    /// A wheel event of the mouse that scrolls by `upAndDown` points up and down and by `sideways` points sideways.
+    private func wheelEvent(upAndDown: Int32, sideways: Int32) throws -> NSEvent {
+        let event = try #require(
+            CGEvent(
+                scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: upAndDown, wheel2: sideways,
+                wheel3: 0))
+        return try #require(NSEvent(cgEvent: event))
+    }
+
+    /// Clicks the left mouse button at the point `x`, `y` of the screen, as the mouse does: a press and its release.
+    /// The window is made the key window first, as a person clicks in the key window, though a test of another suite
+    /// may have made its own window the key one meanwhile.
+    private func click(atX x: CGFloat, y: CGFloat, in window: NSWindow) async throws {
+        window.makeKeyAndOrderFront(nil)
+        let point = window.convertFromScreen(CGRect(x: x, y: y, width: 0, height: 0)).origin
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try #require(
+                NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                    pressure: type == .leftMouseDown ? 1 : 0))
+            window.sendEvent(event)
+            try await Task.sleep(for: .milliseconds(60))
+        }
+    }
+
+    /// The table of Odběratelé in `window` as VoiceOver reads it, "Seznam odběratelů". Nil while the page has no table,
+    /// and while the views make no accessibility elements.
+    private func clientList(in window: NSWindow) -> AnyObject? {
+        accessibilityElement(labelled: "Seznam odběratelů", in: window)
+    }
+
+    /// The rows of the table of Odběratelé in `window`, from the top: the buttons in it that VoiceOver reads with the
+    /// name of a client and the rest of its row. (Nová faktura of each row is a button of its own, which is not a row,
+    /// and the arrows of a scroller are buttons with no label.) Empty while the views make no accessibility elements.
+    private func clientRows(in window: NSWindow) -> [AnyObject] {
+        guard let list = clientList(in: window) else { return [] }
+        return descendants(of: list).filter { element in
+            guard element.accessibilityRole?() == .button, let label = element.accessibilityLabel?() else {
+                return false
+            }
+            return !label.isEmpty && !label.hasPrefix("Nová faktura pro ")
+        }
+    }
+
+    /// The row of the client called `name` in the table of Odběratelé in `window`.
+    private func clientRow(named name: String, in window: NSWindow) -> AnyObject? {
+        clientRows(in: window).first { ($0.accessibilityLabel?() ?? "").hasPrefix(name + ",") }
+    }
+
+    /// What is wrong with the `count` rows of the table of Odběratelé in `window`, in words: there are not so many, or
+    /// they are not of one height (to half a point), or a row is lower than 60 points. Empty when they are of one
+    /// height of 60 points or more. Needs the accessibility elements.
+    private func problems(ofTheClientRowsIn window: NSWindow, count: Int) -> [String] {
+        let heights = clientRows(in: window).compactMap { $0.accessibilityFrame?().height }
+        guard heights.count == count, let tallest = heights.max(), let lowest = heights.min() else {
+            return ["The table has \(heights.count) rows, not \(count)"]
+        }
+        var problems: [String] = []
+        if tallest - lowest > 0.5 {
+            problems.append("The rows are not of one height: \(heights)")
+        }
+        if lowest < 59.5 {
+            problems.append("A row is lower than 60 points: \(heights)")
+        }
+        return problems
+    }
+
+    /// The scroll view that the table of Odběratelé scrolls sideways in, in `window`: the one scroll view with a
+    /// horizontal scroller. It stands in the scroll view of the page, which scrolls up and down, so every scroll view
+    /// is looked at. Its frame is the card of the table, and what it scrolls is the table.
+    private func clientTableScrollView(in window: NSWindow) -> NSScrollView? {
+        guard let content = window.contentView else { return nil }
+        return allScrollViews(in: content).first { $0.hasHorizontalScroller }
+    }
+
+    private func allScrollViews(in view: NSView) -> [NSScrollView] {
+        let own = (view as? NSScrollView).map { [$0] } ?? []
+        return own + view.subviews.flatMap { allScrollViews(in: $0) }
+    }
+
+    /// What is wrong with the `count` buttons Nová faktura of the table of Odběratelé in `window`, in words: there are
+    /// not so many, or one is not wholly within the card that shows the table, to half a point. Empty when each of
+    /// them is whole. Needs the accessibility elements.
+    private func problems(ofTheNovaFakturaButtonsOfTheClientTableIn window: NSWindow, count: Int) -> [String] {
+        guard let scrollView = clientTableScrollView(in: window), let list = clientList(in: window) else {
+            return ["The page has no table"]
+        }
+        let card = window.convertToScreen(frameInWindow(scrollView))
+        let buttons = descendants(of: list).filter { element in
+            let label = element.accessibilityLabel?() ?? ""
+            return element.accessibilityRole?() == .button && label.hasPrefix("Nová faktura pro ")
+        }
+        guard buttons.count == count else {
+            return ["The table has \(buttons.count) buttons Nová faktura, not \(count)"]
+        }
+        return buttons.compactMap { button in
+            guard let frame = button.accessibilityFrame?() else { return "A button Nová faktura has no frame" }
+            if frame.minX < card.minX - 0.5 || frame.maxX > card.maxX + 0.5 {
+                return "A button Nová faktura is not whole in the card: \(frame), the card \(card)"
+            }
+            return nil
+        }
+    }
+
+    /// What is wrong with the width of the table of Odběratelé in `window`: it is not as wide as its card, or a
+    /// scroller says that there is more of it to the side. Empty when the table is as wide as its card.
+    private func problems(ofTheClientTableFillingItsCardIn window: NSWindow) -> [String] {
+        guard let scrollView = clientTableScrollView(in: window), let table = scrollView.documentView else {
+            return ["The page has no table"]
+        }
+        var problems: [String] = []
+        let shown = scrollView.contentView.bounds.width
+        if (table.frame.width - shown).magnitude >= 0.5 {
+            problems.append("The table is \(table.frame.width) points wide in a card that shows \(shown)")
+        }
+        if scrollView.horizontalScroller?.isHidden == false {
+            problems.append("The card of the table shows a horizontal scroller")
+        }
+        return problems
+    }
+
+    /// What is wrong with the width of the table of Odběratelé in `window` while its card is narrower than its least
+    /// width: it is not 814 points wide, or not wider than its card, or the card shows no horizontal scroller. Empty
+    /// when the table keeps its least width and scrolls sideways.
+    private func problems(ofTheClientTableScrollingSidewaysIn window: NSWindow) -> [String] {
+        guard let scrollView = clientTableScrollView(in: window), let table = scrollView.documentView else {
+            return ["The page has no table"]
+        }
+        var problems: [String] = []
+        let shown = scrollView.contentView.bounds.width
+        if (table.frame.width - 814).magnitude >= 0.5 {
+            problems.append("The table is \(table.frame.width) points wide, not 814")
+        }
+        if table.frame.width <= shown + 0.5 {
+            problems.append("The table is not wider than its card, which shows \(shown) points")
+        }
+        if scrollView.horizontalScroller?.isHidden != false {
+            problems.append("The card of the table shows no horizontal scroller")
+        }
+        return problems
+    }
+
+    /// Widens the sidebar of `window` to the widest it goes, 320 points, as dragging its edge does.
+    private func widenSidebar(of window: NSWindow) {
+        guard let frameView = window.contentView?.superview,
+            let splitView = splitViews(in: frameView).first(where: { $0.delegate is NSSplitViewController })
+        else {
+            return
+        }
+        splitView.setPosition(320, ofDividerAt: 0)
+    }
+
+    // MARK: Výpočet
+
+    @Test func vypocetFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await expectVypocetFits(inYear: nil)
+    }
+
+    /// A year that is over has no planned advances, and a year without rules has the orange warning above the cards.
+    @Test(arguments: [2025, 2027])
+    func vypocetOfAYearThatIsOverAndOfAnEstimateFitsTheWindowToo(year: Int) async throws {
+        try await expectVypocetFits(inYear: year)
+    }
+
+    /// Shows Výpočet in the window at the least room, at a large size and at the least room again, for `year` or, with
+    /// nil, the year of the app, and records an issue for every problem of the page.
+    private func expectVypocetFits(inYear year: Int?) async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                if let year {
+                    f.app.selectYear(year)
+                }
+                try await waitUntil { window.title == "Rozpis výpočtu" }
+                // The page scrolls; with the data it is far taller than while it loads.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+            }
+        }
+    }
+
+    /// Výpočet opens with its result and goes on in this order, at the least room and in a large window: the card of
+    /// what is left to pay, the three small cards (Mezní odvod, Hranice roku and Předpoklady výpočtu), the banner about
+    /// the day the computation counts up to, and the breakdown, which starts with Příjmy a zisk.
+    @Test func vypocetPutsTheSmallCardsBetweenTheResultAndTheBanner() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == "Rozpis výpočtu" }
+                // The page scrolls; with the data it is far taller than while it loads.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    try await expectSettled(window) { problems(ofTheOrderOfVýpočetIn: window) }
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) { problems(ofTheOrderOfVýpočetIn: window) }
+                }
+            }
+        }
+    }
+
+    /// The three small cards of Výpočet are cards of one height in a row: all three in one row in a large window, and
+    /// two and one at the least room, where the two of the first row are of one height and the third is on its own.
+    @Test func theSmallCardsOfVypocetAreInRowsOfOneHeight() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == "Rozpis výpočtu" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    for (size, rows) in [(AppWindowSize.minimum, [2, 1]), (AppWindowSize.large, [3])] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { problems(ofTheSmallCardsIn: window, inRowsOf: rows) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The breakdown of Výpočet has the income and the tax on the left and the social and the health insurance with the
+    /// net income under them on the right: all five in one column at the least room, where the detail has 820 points
+    /// and two columns need 856, and in two columns in a large window, whichever way the window goes.
+    @Test func theBreakdownIsOneColumnAtTheLeastRoomAndTwoInALargeWindow() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == "Rozpis výpočtu" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    for (size, beside) in Self.breakdownSizes {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofTheBreakdown: Self.vypocetBreakdown, beside: beside) { title in
+                                frameOfCard(headed: title, in: window)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Výpočet and Přehled with the family of the sample stored for 2026. As of 28. 2. the children's benefit is a
+    /// bonus: the tax card has every row of the family, the tax is negative with its note, the longest of the card,
+    /// "záporná daň je daňový bonus – vyplatí ho finanční úřad", and the tax comes back; the bar of the tax reads the
+    /// bonus with its share of the income, below zero. As of 31. 1. the bonus is not paid yet, and the row of the
+    /// children says why in its longest note. At the least room, at a large size and at the least room again, the
+    /// pages fit the window, each of these rows is within the page and as tall as its label and note need beside its
+    /// value, and both lines of the bar fit its width.
+    @Test func vypocetAndPrehledWithTheFamilyAndABonusFitTheWindow() async throws {
+        try await EditorFixture.with { f in
+            try await Self.storeTheSampleFamily(in: f.database)
+            await f.app.didWriteAndBackUp()
+            f.app.pickAsOf(civilDate("2026-02-28"))
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await expectFamilyRowsFit(Self.familyRowsWithABonus, in: window)
+
+                    f.app.screen = .overview
+                    try await waitUntil { window.title == "Přehled" }
+                    try await waitUntil { accessibilityElement(labelled: Self.taxBarWithABonus, in: window) != nil }
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { problems(ofPageIn: window) + problemsOfTheTaxBar(in: window) }
+                    }
+
+                    f.app.pickAsOf(civilDate("2026-01-31"))
+                    f.app.screen = .computation
+                    try await waitUntil { window.title == "Rozpis výpočtu" }
+                    try await expectFamilyRowsFit([Self.childRowBeforeTheBonus], in: window)
+                }
+            }
+        }
+    }
+
+    /// Waits until Výpočet in `window` shows `rows`, then checks them and the page at the least room, at a large size
+    /// and at the least room again.
+    private func expectFamilyRowsFit(_ rows: [ComputationRow], in window: NSWindow) async throws {
+        try await waitUntil { rows.allSatisfy { accessibilityElement(labelled: $0.spokenText, in: window) != nil } }
+        for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+            window.setContentSize(size)
+            try await expectSettled(window) {
+                problems(ofPageIn: window) + rows.flatMap { problems(ofRow: $0, in: window) }
+            }
+        }
+    }
+
+    /// Stores for 2026 the family of the engine's family tests: Anna (3. 9. 2019) and Tomáš (12. 4. 2024), the first
+    /// and the second child, and a spouse without income of her own, claimed the whole year.
+    private static func storeTheSampleFamily(in database: Database) async throws {
+        for (order, child) in [("Anna", "2019-09-03"), ("Tomáš", "2024-04-12")].enumerated() {
+            try await database.saveChild(
+                Child(id: nil, name: child.0, birthDate: civilDate(child.1)), year: 2026,
+                childYear: ChildYear(
+                    household: MonthRange.wholeYear, claimant: .me, order: order + 1, ztpp: nil, studies: nil))
+        }
+        try await database.saveSpouse(
+            SpouseYear(claim: true, months: MonthRange.wholeYear, ownIncomeKc: 0, ztpp: nil), year: 2026)
+    }
+
+    /// The rows of the tax card of the sample year with the sample family as of 28. 2. 2026: the income of 220 000 Kč
+    /// is past six minimum wages, the deductions take the whole profit, and the children's 37 524 Kč are a bonus.
+    private static let familyRowsWithABonus = [
+        ComputationRow(
+            label: "Sleva na manžela / manželku", value: "0",
+            note: "12\u{00A0}měsíců s dítětem do 3 let · daň už je nulová, sleva se neprojeví", sign: .minus),
+        ComputationRow(
+            label: "Daň po slevách", value: "0", note: "slevy snižují daň nejvýš na nulu", sign: .equals,
+            style: .strong),
+        ComputationRow(
+            label: "Daňové zvýhodnění na děti", value: "\u{2212}37\u{00A0}524",
+            note: "Anna 15\u{00A0}204 · Tomáš 22\u{00A0}320 · z toho daňový bonus 37\u{00A0}524", sign: .minus),
+        ComputationRow(
+            label: "Daň z dosavadních příjmů", value: "\u{2212}37\u{00A0}524",
+            note: "záporná daň je daňový bonus – vyplatí ho finanční úřad", sign: .equals, style: .strong),
+        ComputationRow(
+            label: "Zbývá", value: "vrátí se 37\u{00A0}524\u{00A0}Kč", note: "vrací se po podání přiznání, na žádost",
+            sign: .equals, style: .total),
+    ]
+
+    /// The row of the children as of 31. 1. 2026, before any income has come: the benefit is not paid as a bonus yet.
+    private static let childRowBeforeTheBonus = ComputationRow(
+        label: "Daňové zvýhodnění na děti", value: "0",
+        note: "Anna 15\u{00A0}204 · Tomáš 22\u{00A0}320 · bonus 37\u{00A0}524 se nevyplatí:"
+            + " příjmy pod 6× minimální mzdu (134\u{00A0}400)",
+        sign: .minus)
+
+    /// The part of the income that the tax takes in Přehled as of 28. 2. 2026 with the sample family: the tax is the
+    /// bonus of 37 524 Kč below zero, minus 17,0 % of the income of 220 000 Kč.
+    private static let taxShareWithABonus = "\u{2212}17,0\u{00A0}%"
+
+    /// What VoiceOver reads for the bar of the tax in Přehled as of 28. 2. 2026 with the sample family.
+    private static let taxBarWithABonus =
+        "Daň z příjmů bonus 37\u{00A0}524\u{00A0}Kč (\(taxShareWithABonus) z příjmů):"
+        + " zaplaceno zálohami 0\u{00A0}Kč, vrátí se 37\u{00A0}524\u{00A0}Kč"
+
+    /// What is wrong with `row` of a card of Výpočet in `window`, in words: VoiceOver does not find it, it is not
+    /// within the margins of the page, or it is lower than its label and its note need at the width they have beside
+    /// the sign and the value, as a text cut short would be. Empty when the row fits. Needs the accessibility elements.
+    private func problems(ofRow row: ComputationRow, in window: NSWindow) -> [String] {
+        guard let frame = accessibilityElement(labelled: row.spokenText, in: window)?.accessibilityFrame?() else {
+            return ["No row \(row.label)"]
+        }
+        var found: [String] = []
+        if let page = scrolledPage(in: window) {
+            let margins = window.convertToScreen(frameInWindow(page)).insetBy(dx: 24, dy: 0)
+            if frame.minX < margins.minX - 0.5 || frame.maxX > margins.maxX + 0.5 {
+                found.append("The row \(row.label) is not within the page: \(frame), the margins \(margins)")
+            }
+        }
+        // As the card sets a row: the sign 18 points wide, 10 points between it and the texts, the label with the note
+        // 2 points under it, and 10 points more before the value, which keeps its width. The frame VoiceOver has for
+        // the row is that of what it reads, without the 8 points above and below it.
+        let weight: Font.Weight =
+            switch row.style {
+            case .plain: .regular
+            case .strong: .semibold
+            case .total: .bold
+            }
+        let valueFont = row.style == .total ? Font.system(size: 17, weight: .bold) : Font.body.weight(weight)
+        let valueWidth = fittingSize(of: Text(verbatim: row.value).font(valueFont).monospacedDigit()).width
+        let signWidth = fittingSize(of: Text(verbatim: row.sign.rawValue).fontWeight(.bold)).width
+        // How far into the row the frame starts: where the sign is drawn, in the middle of its 18 points, or at the
+        // texts for a row with no sign.
+        let frameStartsAt: CGFloat = row.sign == .blank ? 18 + 10 : (18 - signWidth) / 2
+        let width = frame.width + frameStartsAt - 18 - 10 - 10 - valueWidth
+        var needed = height(of: Text(verbatim: row.label).fontWeight(weight), width: width)
+        if let note = row.note {
+            needed += 2 + height(of: Text(verbatim: note).font(.callout), width: width)
+        }
+        if frame.height + 1 < needed {
+            found.append("The row \(row.label) is \(frame.height) points tall, its texts need \(needed)")
+        }
+        return found
+    }
+
+    /// What is wrong with the bar of the tax with a bonus in Přehled, in `window`, in words: VoiceOver does not find
+    /// it, or one of its lines of text is wider than the bar, so that a text of it would be cut short. Empty when it
+    /// fits. Needs the accessibility elements.
+    private func problemsOfTheTaxBar(in window: NSWindow) -> [String] {
+        guard let frame = accessibilityElement(labelled: Self.taxBarWithABonus, in: window)?.accessibilityFrame?()
+        else {
+            return ["No bar of the tax with a bonus"]
+        }
+        // The dot of the authority, 10 points and 8 after it, the title, 8 points and the part of the income it takes,
+        // at least 8 points, and the bonus; under the bar what the advances paid, at least 12 points, and what comes
+        // back.
+        let title = Text(verbatim: "Daň z příjmů").fontWeight(.semibold)
+        let share = Text(verbatim: Self.taxShareWithABonus).font(.callout).monospacedDigit()
+        let bonus = Text(verbatim: "bonus 37\u{00A0}524\u{00A0}Kč").fontWeight(.bold).monospacedDigit()
+        let paid = Text(verbatim: "zaplaceno zálohami 0\u{00A0}Kč").font(.callout).monospacedDigit()
+        let back = Text(verbatim: "vrátí se 37\u{00A0}524\u{00A0}Kč").font(.callout.weight(.semibold)).monospacedDigit()
+        let top =
+            10 + 8 + fittingSize(of: title).width + 8 + fittingSize(of: share).width + 8 + fittingSize(of: bonus).width
+        let bottom = fittingSize(of: paid).width + 12 + fittingSize(of: back).width
+        return [("top", top), ("bottom", bottom)].compactMap { line, needed in
+            needed > frame.width + 0.5
+                ? "The \(line) line of the bar needs \(needed) points, it has \(frame.width)" : nil
+        }
+    }
+
+    /// The size `text` takes at its ideal width.
+    private func fittingSize(of text: some View) -> CGSize {
+        NSHostingView(rootView: text.fixedSize()).fittingSize
+    }
+
+    /// The height `text` takes at `width`, wrapped as it needs.
+    private func height(of text: some View, width: CGFloat) -> CGFloat {
+        NSHostingView(rootView: text.frame(width: max(0, width)).fixedSize(horizontal: false, vertical: true))
+            .fittingSize.height
+    }
+
+    /// The small cards of Výpočet by the labels VoiceOver reads them under, in the order they stand in.
+    private static let vypocetSmallCards = ["Mezní odvod", "Hranice roku", "Předpoklady"]
+
+    /// The cards of the breakdown of Výpočet by the headings they read, the left stack and then the right one: the
+    /// income and the tax, and the social and the health insurance with the net income under them.
+    private static let vypocetBreakdown = [
+        ["Příjmy a zisk", "Daň z příjmů"], ["Sociální pojištění", "Zdravotní pojištění", "Čistý příjem"],
+    ]
+
+    /// The cards of the breakdown of Odhad odvodů by the headings they read, the left stack and then the right one: the
+    /// income and the tax, and the social and the health insurance with the net income under them.
+    private static let predictionBreakdown = [
+        ["Příjmy a zisk", "Daň z příjmů"], ["Sociální pojištění", "Zdravotní pojištění", "Čistý příjem"],
+    ]
+
+    /// The sizes the breakdown of a screen is looked at in, and whether its two stacks stand beside each other in them:
+    /// the detail of the least window has 820 points, less than the 856 that two columns need, and a large window has
+    /// more. Back at the least room, the stacks come together again.
+    private static let breakdownSizes = [
+        (size: AppWindowSize.minimum, beside: false), (size: AppWindowSize.large, beside: true),
+        (size: AppWindowSize.minimum, beside: false),
+    ]
+
+    /// What is wrong with the order of the page of Výpočet in `window`, in words: a card or the banner is missing, or
+    /// one of them is not above the next in this order: the card Zbývá zaplatit, the three small cards, the banner
+    /// about the day the computation counts up to, and the first card of the breakdown, Příjmy a zisk. The small cards
+    /// are also in the order they are named in, a row at a time and each row from the left. Empty when the page runs in
+    /// that order.
+    private func problems(ofTheOrderOfVýpočetIn window: NSWindow) -> [String] {
+        guard let result = frameOfCard(labelled: "Zbývá zaplatit", in: window) else {
+            return ["No card Zbývá zaplatit"]
+        }
+        var small: [CGRect] = []
+        for label in Self.vypocetSmallCards {
+            guard let frame = frameOfCard(labelled: label, in: window) else {
+                return ["No card \(label)"]
+            }
+            small.append(frame)
+        }
+        guard let banner = frameOfText(startingWith: "Počítáno jen ze skutečně přijatých plateb", in: window) else {
+            return ["No banner about the day the computation counts up to"]
+        }
+        guard let income = frameOfCard(headed: "Příjmy a zisk", in: window) else {
+            return ["No card Příjmy a zisk"]
+        }
+        // The cards by the band of the page they belong to, the first band the highest.
+        let landmarks: [(band: Int, name: String, frame: CGRect)] =
+            [(0, "Zbývá zaplatit", result)] + zip(Self.vypocetSmallCards, small).map { (1, $0, $1) }
+            + [(2, "the banner", banner), (3, "Příjmy a zisk", income)]
+        var found: [String] = []
+        for upper in landmarks {
+            // The origin of the screen is at the bottom left, so what stands above has the larger y.
+            for lower in landmarks where upper.band < lower.band && upper.frame.minY < lower.frame.maxY {
+                found.append("\(upper.name) is not above \(lower.name): \(upper.frame) and \(lower.frame)")
+            }
+        }
+        for index in small.indices.dropFirst() {
+            let (before, after) = (small[index - 1], small[index])
+            let isAbove = before.minY >= after.maxY
+            let isBeside = (before.maxY - after.maxY).magnitude <= 1 && before.maxX <= after.minX
+            if !isAbove && !isBeside {
+                found.append("\(Self.vypocetSmallCards[index]) does not follow \(Self.vypocetSmallCards[index - 1])")
+            }
+        }
+        return found
+    }
+
+    /// What is wrong with the small cards of Výpočet in `window`, in words: a card is missing, the cards are not in
+    /// rows of `expectedRows` cards from the top, or the cards of a row are not of one height (to half a point). Empty
+    /// when the cards stand so.
+    private func problems(ofTheSmallCardsIn window: NSWindow, inRowsOf expectedRows: [Int]) -> [String] {
+        var cards: [CGRect] = []
+        for label in Self.vypocetSmallCards {
+            guard let frame = frameOfCard(labelled: label, in: window) else {
+                return ["No card \(label)"]
+            }
+            cards.append(frame)
+        }
+        // The cards of a row share their top, the largest y: the origin of the screen is at the bottom left.
+        var rows: [[CGRect]] = []
+        for card in cards {
+            if let top = rows.last?.first?.maxY, (top - card.maxY).magnitude < 0.5 {
+                rows[rows.count - 1].append(card)
+            } else {
+                rows.append([card])
+            }
+        }
+        var problems: [String] = []
+        if rows.map(\.count) != expectedRows {
+            problems.append("The cards are in rows of \(rows.map(\.count)), not of \(expectedRows): \(cards)")
+        }
+        for row in rows {
+            let heights = row.map(\.height)
+            if let tallest = heights.max(), let lowest = heights.min(), tallest - lowest > 0.5 {
+                problems.append("The cards of a row are not of one height: \(heights)")
+            }
+        }
+        return problems
+    }
+
+    /// What is wrong with how the cards of a breakdown stand in two stacks, in words. `stacks` are the names of the
+    /// cards of the left stack and of the right one, from the top, and `frameOf` finds the frame of a card by its name.
+    /// With `beside` each stack is a column of its own, the right one stands to the right of the left one, and their
+    /// tops are level and their widths equal; without it all the cards stand in one column, in the order of the names,
+    /// the left stack first. In a column every card is under the one before it, at its left edge and of its width.
+    /// Empty when the cards stand so.
+    private func problems(
+        ofTheBreakdown stacks: [[String]], beside: Bool, frameOf: (String) -> CGRect?
+    ) -> [String] {
+        var columns: [[(name: String, frame: CGRect)]] = []
+        for stack in stacks {
+            var column: [(name: String, frame: CGRect)] = []
+            for name in stack {
+                guard let frame = frameOf(name) else {
+                    return ["No card \(name)"]
+                }
+                column.append((name: name, frame: frame))
+            }
+            columns.append(column)
+        }
+        var found: [String] = []
+        for column in beside ? columns : [columns.flatMap { $0 }] {
+            for (index, card) in column.enumerated() {
+                if (card.frame.minX - column[0].frame.minX).magnitude > 1
+                    || (card.frame.width - column[0].frame.width).magnitude > 1
+                {
+                    found.append("\(card.name) is not in the column of \(column[0].name): \(card.frame)")
+                }
+                // The origin of the screen is at the bottom left, so a card under another has its top, the largest y,
+                // at or under the bottom of the other.
+                if index > 0, card.frame.maxY > column[index - 1].frame.minY + 0.5 {
+                    found.append("\(card.name) is not under \(column[index - 1].name): \(card.frame)")
+                }
+            }
+        }
+        if beside, let left = columns.first, let right = columns.last,
+            let leftTop = left.first, let rightTop = right.first
+        {
+            let leftEdge = left.map(\.frame.maxX).max() ?? 0
+            for card in right where card.frame.minX < leftEdge - 0.5 {
+                found.append("\(card.name) is not to the right of the left stack, which ends at \(leftEdge)")
+            }
+            if (leftTop.frame.maxY - rightTop.frame.maxY).magnitude > 1 {
+                found.append("\(rightTop.name) is not level with \(leftTop.name): \(rightTop.frame), \(leftTop.frame)")
+            }
+            if (leftTop.frame.width - rightTop.frame.width).magnitude > 1 {
+                found.append("\(rightTop.name) is not as wide as \(leftTop.name): \(rightTop.frame), \(leftTop.frame)")
+            }
+        }
+        return found
+    }
+
+    /// Výpočet and Přehled with the line that part of the income is converted at a provisional rate, which comes above
+    /// their cards when a payment of the year waits for its rate and goes once it is converted: the pages fit the
+    /// window with it at the least room and at a large size.
+    @Test func vypocetAndPrehledFitTheWindowWithTheLineOfProvisionalIncome() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                let without = try #require(scrolledPage(in: window)).frame.height
+                // The dollars that arrived on 2. 10. 2026 wait for the rate of their day.
+                try await f.database.markPaymentProvisional(ofInvoice: 10)
+                await f.app.didWrite()
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > without + 30 }
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+
+                // Converted at the rate of its day, the payment is no longer provisional, and the line goes.
+                let with = try #require(scrolledPage(in: window)).frame.height
+                var converted = try await f.stored(10)
+                converted.payment?.provisional = false
+                try await f.database.saveInvoice(converted)
+                await f.app.didWrite()
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) < with - 30 }
+            }
+        }
+    }
+
+    // MARK: Odhad odvodů
+
+    /// Odhad odvodů on the prediction sample, for the year in progress and for 2025, which is over, with the months of
+    /// the clients folded and unfolded (and the group of the other clients with them), at the least room, at a large
+    /// size and at the least room again, and at the least room with the sidebar as wide as it goes: the page fits the
+    /// window, its breakdown stands in one column where the detail has less than the 856 points that two columns need
+    /// (820 at the least room, 780 with the wide sidebar) and in two columns in a large window (the cards of Výpočet,
+    /// with the same headings), the net income of the summary is read as one phrase in the summary card, under the
+    /// parts of the income and above the note of the money of next year, and no text of a cell is cut or even shrunk:
+    /// the months stand in rows of six at the least room, in cells of more than 100 points. In the narrowest window
+    /// that holds all twelve in a row, in cells of 64 points, the texts shrink as far as the cell lets them and are not
+    /// cut.
+    @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
+        try await PredictionSample.withStoredSample { app in
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    app.screen = .prediction
+                    try await waitUntil { window.title == "Odhad odvodů" }
+                    // The page scrolls; with the data it is far taller than while it loads.
+                    try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                    for year in [2026, 2025] {
+                        let page = try PredictionSample.page(year: year)
+                        app.selectYear(year)
+                        try await waitUntil { frameOfCard(labelled: page.label, in: window) != nil }
+                        for isUnfolded in [false, true] {
+                            app.predictionMonthsOpen = isUnfolded
+                            app.predictionOthersOpen = isUnfolded
+                            for (size, beside) in Self.breakdownSizes {
+                                window.setContentSize(size)
+                                try await expectSettled(window) {
+                                    problems(ofThePredictionFor: page, beside: beside, unfolded: isUnfolded, in: window)
+                                }
+                            }
+                            window.setContentSize(Self.narrowestRoomForTwelveMonthsInARow)
+                            try await expectSettled(window) {
+                                problems(
+                                    ofThePredictionFor: page, beside: true, unfolded: isUnfolded,
+                                    shrinkingTextsTo: PredictionMonthCell.minimumTextScale, in: window)
+                            }
+                        }
+                    }
+
+                    // The detail of the least window with the sidebar as wide as it goes: 780 points.
+                    window.setContentSize(AppWindowSize.minimum)
+                    widenSidebar(of: window)
+                    let page = try PredictionSample.page(year: 2025)
+                    try await expectSettled(window) {
+                        problems(ofThePredictionFor: page, beside: false, unfolded: true, in: window)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The narrowest window whose card of the months holds twelve cells of 64 points and the gaps between them, 834
+    /// points: the detail is 232 points less than the window (the sidebar), the page 48 less than that and the card 44
+    /// less again, 1 158, and two more for the width the cells are measured in to be more than the least.
+    private static let narrowestRoomForTwelveMonthsInARow = CGSize(width: 1_160, height: 1_000)
+
+    /// What is wrong with Odhad odvodů in `window` for `page`, in words: the problems of a page that scrolls, the net
+    /// income of the summary, the cards of the breakdown not in the two stacks that stand `beside` each other or one
+    /// under the other, and, with the months `unfolded`, the cells of the clients, whose texts may shrink to `scale` of
+    /// their size (not at all unless told). Needs the accessibility elements.
+    private func problems(
+        ofThePredictionFor page: PredictionPage, beside: Bool, unfolded: Bool, shrinkingTextsTo scale: CGFloat = 1,
+        in window: NSWindow
+    ) -> [String] {
+        problems(ofPageIn: window)
+            + problems(ofTheNetIncomeOf: page, in: window)
+            + problems(ofTheBreakdown: Self.predictionBreakdown, beside: beside) { title in
+                frameOfCard(labelled: title, in: window)
+            }
+            + (unfolded ? problems(ofTheCellsOf: page, shrinkingTextsTo: scale, in: window) : [])
+    }
+
+    /// What is wrong with the net income in the summary card of Odhad odvodů for `page` in `window`, in words:
+    /// VoiceOver does not read its caption, the average per month and the line under them as one phrase, the phrase is
+    /// not within the card, it is not under the last part of the income, or it is not above the note of the money of
+    /// next year (which only a year with such money has). The origin of the screen is at the bottom left, so what is
+    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
+    private func problems(ofTheNetIncomeOf page: PredictionPage, in window: NSWindow) -> [String] {
+        let net = page.netIncome
+        let phrase = [net.label, net.amount, net.sub].joined(separator: ", ")
+        guard accessibilityReadings(in: window).contains(phrase) else {
+            return ["The net income is not read as one phrase: \(phrase)"]
+        }
+        guard let card = frameOfCard(labelled: page.label, in: window),
+            let frame = frameOfText(startingWith: phrase, in: window)
+        else {
+            return ["No summary card \(page.label), or no net income in it"]
+        }
+        var found: [String] = []
+        if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+            found.append("The net income is not within the summary card: \(frame), the card \(card)")
+        }
+        // What stands above it, the last part of the income as VoiceOver reads it, and what stands under it.
+        var neighbours: [(name: String, reading: String, isAbove: Bool)] = []
+        if let part = page.parts.last {
+            neighbours.append(
+                (name: "the last part of the income", reading: part.text + ", " + part.value, isAbove: true))
+        }
+        if let note = page.nextYearNote {
+            neighbours.append((name: "the note of the money of next year", reading: note, isAbove: false))
+        }
+        for (name, reading, isAbove) in neighbours {
+            guard let other = frameOfText(startingWith: reading, in: window) else {
+                found.append("Cannot find \(name) in the window")
+                continue
+            }
+            let isInOrder = isAbove ? other.minY >= frame.maxY - 0.5 : frame.minY >= other.maxY - 0.5
+            if !isInOrder {
+                found.append("The net income is not \(isAbove ? "under" : "above") \(name): \(frame), \(other)")
+            }
+        }
+        return found
+    }
+
+    /// What is wrong with the cells of the months of the clients of `page` in `window`, in words: the months of a
+    /// client are not there with all their cells, or a text of a cell needs more room than the cell gives it even when
+    /// it shrinks to `scale` of its size. The cells are the children of the group of their client. Empty when the cells
+    /// are whole. Needs the accessibility elements.
+    private func problems(ofTheCellsOf page: PredictionPage, shrinkingTextsTo scale: CGFloat, in window: NSWindow)
+        -> [String]
+    {
+        var found: [String] = []
+        for row in page.activeRows + page.otherRows {
+            guard let group = accessibilityElement(labelled: "Měsíce – \(row.name)", in: window) else {
+                found.append("No months of \(row.name)")
+                continue
+            }
+            let elements = group.accessibilityChildren?() ?? []
+            guard elements.count == row.cells.count else {
+                found.append("\(row.name) has \(elements.count) cells, not \(row.cells.count)")
+                continue
+            }
+            for (cell, element) in zip(row.cells, elements) {
+                guard let frame = (element as AnyObject).accessibilityFrame?() else {
+                    found.append("The cell \(cell.accessibilityLabel) has no frame")
+                    continue
+                }
+                // As the cell sets its texts: 8 points of room on either side, the label and the sub-text at 11 points,
+                // the value at 12 points in digits of one width.
+                let value = Text(verbatim: cell.value).font(.callout.weight(.semibold)).monospacedDigit()
+                let widest = [
+                    fittingSize(of: Text(verbatim: cell.label).font(.subheadline.weight(.semibold))).width,
+                    fittingSize(of: value).width,
+                    fittingSize(of: Text(verbatim: cell.sub).font(.subheadline)).width,
+                ].max() ?? 0
+                if widest * scale > frame.width - 16 + 0.5 {
+                    found.append(
+                        "The texts of \(cell.accessibilityLabel) need \(widest) points, even shrunk to \(scale)"
+                            + " of their size it has \(frame.width - 16)")
+                }
+            }
+        }
+        return found
+    }
+
+    /// Odhad odvodů of a year without rules of its own, 2027 as of 15. 1. 2027 on the prediction sample: the warning
+    /// that the page is an estimate with the rules of 2026 stands above the summary, and the sum of the levies, each
+    /// levy and the amount of the settlement have the sign "≈". At the least room the page fits the window, with the
+    /// months of the clients folded and unfolded, and the sum and the amount are neither cut nor shrunk.
+    @Test func thePredictionOfAYearWithoutItsOwnRulesFitsTheLeastRoom() async throws {
+        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+            // The page the screen shows. The sample stores no settings of 2027, so the levies are those of the
+            // defaults.
+            let page = PredictionBuilder.page(try await app.predictionOutcome(year: 2027))
+            #expect(page.hero.hasPrefix(PredictionBuilder.estimateSign))
+            #expect(page.levies.allSatisfy { $0.value.hasPrefix(PredictionBuilder.estimateSign) })
+            #expect(page.settlement.amount.hasPrefix(PredictionBuilder.estimateSign))
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    app.screen = .prediction
+                    try await waitUntil { window.title == "Odhad odvodů" }
+                    // The page scrolls; with the data it is far taller than while it loads.
+                    try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                    try await waitUntil { frameOfCard(labelled: page.label, in: window) != nil }
+                    #expect(showsText(RulesWarning.message(year: 2027, rulesYear: 2026), in: window))
+
+                    for isUnfolded in [false, true] {
+                        app.predictionMonthsOpen = isUnfolded
+                        app.predictionOthersOpen = isUnfolded
+                        try await expectSettled(window) {
+                            problems(ofThePredictionFor: page, beside: false, unfolded: isUnfolded, in: window)
+                                + problems(ofTheBigFiguresOf: page, in: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the two big figures of the summary of `page` in `window`, in words: the sum of the levies or
+    /// the amount of the settlement is not there, or is narrower than the text needs at its size of 52 points, as a
+    /// text that shrinks to fit the room or is cut would be. The sum is a text of its own. The amount is read with its
+    /// caption and its sentence as one element, as wide as the widest of the three; that is less than the amount needs
+    /// only if the amount is shrunk or cut, as the caption and the sentence take no more room than the amount has.
+    /// Needs the accessibility elements.
+    private func problems(ofTheBigFiguresOf page: PredictionPage, in window: NSWindow) -> [String] {
+        let settlement = page.settlement
+        let figures = [
+            (name: "sum of the levies", text: page.hero, reading: page.hero),
+            (
+                name: "amount of the settlement", text: settlement.amount,
+                reading: settlement.label + ", " + settlement.amount
+            ),
+        ]
+        return figures.flatMap { name, text, reading -> [String] in
+            guard let frame = frameOfText(startingWith: reading, in: window) else {
+                return ["No \(name) \(text)"]
+            }
+            let figure = Text(verbatim: text).font(.system(size: 52, weight: .bold, design: .rounded))
+                .monospacedDigit().tracking(-1)
+            let needed = fittingSize(of: figure).width
+            return frame.width + 1 < needed
+                ? ["The \(name) \(text) needs \(needed) points, it has \(frame.width)"] : []
+        }
+    }
+
+    // MARK: Nastavení
+
+    /// Each tab of Nastavení, on the data of `EditorFixture`: the supplier with the three accounts, the sample year and
+    /// a local backup.
+    @Test(arguments: SettingsTab.allCases)
+    func nastaveniFitsTheWindowAtTheLeastRoomAndAtALargeSize(tab: SettingsTab) async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(tab)
+                try await waitUntil { window.title == "Nastavení" }
+                // The page scrolls; with the cards of the tab it is far taller than the "Načítám…" that stands in
+                // their place while the tab loads.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 300 }
+
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+            }
+        }
+    }
+
+    /// Zabezpečení a zálohy with the notice of a change of the keys that a lock cut off, above its cards.
+    @Test func zabezpeceniWithTheNoticeOfACutOffChangeFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.securityNotice =
+                    "Nový kód č. 2 se nepodařilo použít – platí dál kód č. 1 z 17.\u{00A0}10.\u{00A0}2026. Nový kód"
+                    + " zahoďte."
+                f.app.showSettings(.security)
+                try await waitUntil { window.title == "Nastavení" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 300 }
+
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+            }
+        }
+    }
+
+    // MARK: Nastavení stands still while a tab loads
+
+    /// Aplikace, Moje údaje, Rok, Zabezpečení and Aplikace again, one after another. Moje údaje and Rok say "Načítám…"
+    /// where their cards will be until they have read their data, on a page that has at least 160 points for them. The
+    /// switcher of the tabs and the scroll view under it stay where they are on Aplikace: right after the switch,
+    /// before the tab has read anything, and once it is loaded. (A page whose tab had no cards yet narrowed to the
+    /// switcher and stood in the middle of the window until they came.)
+    ///
+    /// Right after the switch is not a matter of timing. The test is on the main actor and gives it up only at an
+    /// `await`, and the read of a tab is a task of the main actor that starts once the tab is on the screen, so no read
+    /// has run when the page is laid out and looked at in the same turn of the run loop.
+    @Test func theSettingsTabSwitcherStaysPutWhileATabLoads() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(.application)
+                try await waitUntil { window.title == "Nastavení" }
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfCard(labelled: "Vzhled", in: window) != nil }
+                    try await layOut(window)
+                    let home = try #require(settingsPageFrames(in: window))
+
+                    // Each tab, with the card that comes with its data and whether "Načítám…" stands in its place.
+                    let steps: [(tab: SettingsTab, card: String, loads: Bool)] = [
+                        (.supplier, "Vaše údaje", true), (.year, "Profil", true), (.security, "Odemykání", false),
+                        (.application, "Vzhled", false),
+                    ]
+                    for (tab, card, loads) in steps {
+                        let name = tab.title(year: f.app.asOf.year)
+                        let loading = { frameOfText(startingWith: "Načítám…", in: window) != nil }
+                        let hasCards = { frameOfCard(labelled: card, in: window) != nil }
+
+                        f.app.settingsTab = tab
+                        layOutAtOnce(window)
+                        #expect(problems(ofSettingsPageIn: window, comparedTo: home) == [], "right after \(name)")
+                        #expect(loading() == loads, "\(name) says it loads: \(loading())")
+                        #expect(hasCards() != loads, "\(name) shows its cards: \(hasCards())")
+                        if loads {
+                            let room = scrolledPage(in: window)?.frame.height ?? 0
+                            #expect(room >= 160, "\(name) keeps \(room) points for its cards")
+                        }
+
+                        try await waitUntil { hasCards() }
+                        try await layOut(window)
+                        #expect(problems(ofSettingsPageIn: window, comparedTo: home) == [], "once \(name) is loaded")
+                        #expect(!loading(), "\(name) says it loads once it is loaded")
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is typed in Moje údaje stays where it was typed through a reload of the tab, which a bump of the version of
+    /// the data brings: the field is the one that was typed in, with its text and the focus, not one made anew behind
+    /// "Načítám…", and the typed street is what is saved by itself. A field that was not typed in shows what the reload
+    /// has read.
+    @Test func typingInMojeÚdajeSurvivesAReload() async throws {
+        // The field takes the focus, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    window.makeKeyAndOrderFront(nil)
+                    f.app.showSettings(.supplier)
+                    try await waitUntil { window.title == "Nastavení" }
+                    try await withAccessibilityElements {
+                        try await waitUntil { textField(labelled: "Ulice a číslo", in: window) != nil }
+                        let street = try #require(textField(labelled: "Ulice a číslo", in: window))
+                        let city = { textField(labelled: "Město", in: window)?.stringValue }
+                        #expect(city() == "Praha")
+
+                        // The city is written behind the back of the tab, which does not know it until it reads again.
+                        let database = try #require(f.app.database)
+                        var elsewhere = try await database.supplier()
+                        elsewhere.city = "Plzeň"
+                        try await database.saveSupplier(elsewhere)
+
+                        // No `await` from the typing to the look: the tab has been told to read, and has not read.
+                        try type("Nová ulice 1", into: street, in: window)
+                        f.app.reloadScreens()
+                        layOutAtOnce(window)
+                        #expect(frameOfText(startingWith: "Načítám…", in: window) == nil)
+                        #expect(textField(labelled: "Ulice a číslo", in: window) === street)
+                        #expect(street.stringValue == "Nová ulice 1")
+                        #expect(city() == "Praha")
+
+                        try await waitUntil { city() == "Plzeň" }
+                        try await layOut(window)
+                        #expect(textField(labelled: "Ulice a číslo", in: window) === street)
+                        #expect(street.stringValue == "Nová ulice 1")
+                        #expect(window.firstResponder === street.currentEditor())
+                        try await waitUntil { try await database.supplier().street == "Nová ulice 1" }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The cards of Rok stay while the tab reads another year, which is chosen in the toolbar: the tab shows the year
+    /// it has until the one chosen is read, with no "Načítám…" between them.
+    @Test func theCardsOfRokStayWhileAnotherYearLoads() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(.year)
+                try await waitUntil { window.title == "Nastavení" }
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfCard(labelled: "Profil", in: window) != nil }
+                    try await layOut(window)
+
+                    f.app.selectYear(2025)
+                    layOutAtOnce(window)
+                    #expect(frameOfText(startingWith: "Načítám…", in: window) == nil)
+                    #expect(frameOfCard(labelled: "Profil", in: window) != nil)
+                    #expect(frameOfText(startingWith: "Platí jen pro rok 2026", in: window) != nil)
+
+                    try await waitUntil { frameOfText(startingWith: "Platí jen pro rok 2025", in: window) != nil }
+                    try await layOut(window)
+                    #expect(frameOfText(startingWith: "Načítám…", in: window) == nil)
+                    #expect(frameOfCard(labelled: "Profil", in: window) != nil)
+                }
+            }
+        }
+    }
+
+    /// The switcher of the tabs stands above what scrolls: with the page of each tab scrolled to its end, at the least
+    /// room the window gives, the switcher is where it was. (Some pages are barely longer than the window, and some
+    /// are hundreds of points longer, so at least one of them has to have scrolled a long way.)
+    @Test func theSettingsTabSwitcherDoesNotScrollWithThePage() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(.application)
+                try await waitUntil { window.title == "Nastavení" }
+                var farthest: CGFloat = 0
+                for tab in SettingsTab.allCases {
+                    let name = tab.title(year: f.app.asOf.year)
+                    f.app.settingsTab = tab
+                    // The page scrolls; with the cards of the tab it is far taller than the "Načítám…" that stands in
+                    // their place while the tab loads.
+                    try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 300 }
+                    try await layOut(window)
+                    let home = try #require(settingsPageFrames(in: window))
+                    let start = frameInWindow(try #require(scrolledPage(in: window)))
+
+                    scrollPage(in: window, toEnd: true)
+                    try await layOut(window)
+                    let end = frameInWindow(try #require(scrolledPage(in: window)))
+                    farthest = max(farthest, (end.minY - start.minY).magnitude)
+                    #expect(problems(ofSettingsPageIn: window, comparedTo: home) == [], "at the end of \(name)")
+
+                    scrollPage(in: window, toEnd: false)
+                    try await layOut(window)
+                }
+                #expect(farthest > 100, "the page that scrolled the farthest scrolled \(farthest) points")
+            }
+        }
+    }
+
+    /// A tab that cannot read its data says so, and does not say "Načítám…" beside it for ever.
+    @Test func aTabThatCannotReadItsDataSaysSoAndDoesNotKeepLoading() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(.application)
+                try await waitUntil { window.title == "Nastavení" }
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfCard(labelled: "Vzhled", in: window) != nil }
+                    // Every read of the data fails from now on.
+                    await f.database.close()
+
+                    let failures: [(tab: SettingsTab, text: String)] = [
+                        (.supplier, SupplierTabModel.loadFailureText), (.year, YearTabModel.loadFailureText),
+                    ]
+                    for (tab, text) in failures {
+                        f.app.settingsTab = tab
+                        try await waitUntil { frameOfText(startingWith: text, in: window) != nil }
+                        try await layOut(window)
+                        #expect(frameOfText(startingWith: "Načítám…", in: window) == nil, "\(tab) says: \(text)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Where the page of Nastavení stands: the switcher of the tabs and the scroll view under it, in the coordinates of
+    /// the window.
+    private struct SettingsPageFrames {
+        var switcher: CGRect
+        var scrollView: CGRect
+    }
+
+    /// The frames of the page of Nastavení in `window`, or nil while it has no switcher or no scroll view.
+    private func settingsPageFrames(in window: NSWindow) -> SettingsPageFrames? {
+        guard let content = window.contentView,
+            let switcher = segmentedControls(in: content).first,
+            let scrollView = scrollViews(in: content).first(where: { !($0.documentView is NSTableView) })
+        else {
+            return nil
+        }
+        return SettingsPageFrames(switcher: frameInWindow(switcher), scrollView: frameInWindow(scrollView))
+    }
+
+    /// What is wrong with the page of Nastavení in `window`, in words: the switcher of the tabs or the scroll view is
+    /// not where `home` has it. Empty while the page stands still.
+    private func problems(ofSettingsPageIn window: NSWindow, comparedTo home: SettingsPageFrames) -> [String] {
+        guard let frames = settingsPageFrames(in: window) else {
+            return ["The page has no switcher of the tabs or no scroll view"]
+        }
+        var problems: [String] = []
+        if !isSame(frames.switcher, as: home.switcher) {
+            problems.append("The switcher of the tabs is at \(frames.switcher), not at \(home.switcher)")
+        }
+        if !isSame(frames.scrollView, as: home.scrollView) {
+            problems.append("The scroll view of the page is at \(frames.scrollView), not at \(home.scrollView)")
+        }
+        return problems
+    }
+
+    /// Whether `frame` is `other` within half a point in its position and its size.
+    private func isSame(_ frame: CGRect, as other: CGRect) -> Bool {
+        (frame.minX - other.minX).magnitude < 0.5 && (frame.minY - other.minY).magnitude < 0.5
+            && (frame.width - other.width).magnitude < 0.5 && (frame.height - other.height).magnitude < 0.5
+    }
+
+    /// Lays `window` out once, at once: no turn of the run loop passes, so what the app does in tasks of its own, such
+    /// as the read of the data that a tab starts once it is on the screen, has not run when this returns.
+    /// `layOut(_:)` lets the run loop turn.
+    private func layOutAtOnce(_ window: NSWindow) {
+        window.contentView?.needsLayout = true
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+    }
+
+    /// Scrolls the page of Nastavení in `window` as far as it goes towards its end, or back to its start.
+    private func scrollPage(in window: NSWindow, toEnd: Bool) {
+        guard let page = scrolledPage(in: window) else { return }
+        // The bottom of the page is its larger y when the view is flipped, and its smaller y when it is not.
+        let bottom = page.isFlipped ? page.bounds.maxY - 1 : page.bounds.minY
+        let top = page.isFlipped ? page.bounds.minY : page.bounds.maxY - 1
+        page.scrollToVisible(NSRect(x: page.bounds.minX, y: toEnd ? bottom : top, width: 1, height: 1))
+    }
+
+    /// Types `text` into `field` as a person does: the field takes the focus and its text is replaced, and the change
+    /// reaches the binding as the keys do.
+    private func type(_ text: String, into field: NSTextField, in window: NSWindow) throws {
+        #expect(window.makeFirstResponder(field))
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        editor.selectAll(nil)
+        editor.insertText(text, replacementRange: editor.selectedRange())
+    }
+
+    /// The segmented controls under `view`.
+    private func segmentedControls(in view: NSView) -> [NSSegmentedControl] {
+        if let control = view as? NSSegmentedControl {
+            return [control]
+        }
+        return view.subviews.flatMap { segmentedControls(in: $0) }
+    }
+
+    // MARK: Import
+
+    /// What Import shows.
+    enum ImportScene: CaseIterable, Sendable {
+        /// Only the choice of files.
+        case choosing
+
+        /// Two files that are read, and the import that goes on.
+        case running
+
+        /// The summary of an import, with the lists of what is to check and not added, and the offer to fill the
+        /// supplier.
+        case done
+
+        /// A file that is no export, with the line that says nothing was imported.
+        case failed
+    }
+
+    /// Import in each of its states, at the least room, at a large size and at the least room again. The page holds the
+    /// card of the files and, below it, the card of the progress, which grow with what they list.
+    @Test(arguments: ImportScene.allCases)
+    func importFitsTheWindowAtTheLeastRoomAndAtALargeSize(scene: ImportScene) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let gate = Gate()
+        let yearly = try Data(contentsOf: fixtureURL("cnb_rok_2026", "txt"))
+        let server = StubHTTPClient([CNBEndpoints.yearly(2026): yearly])
+        let app = makeAppModel(in: directory, http: GatedHTTPClient(base: server, gate: gate))
+        try await startFresh(app)
+        let model = app.importModel
+        let sample = try fixtureURL("fakturoid_sample", "csv")
+        let reimport = try fixtureURL("fakturoid_reimport", "csv")
+        var running: Task<Void, Never>?
+        switch scene {
+        case .choosing:
+            break
+        case .running:
+            running = Task { await model.importFiles([sample, reimport]) }
+            await gate.untilARequestWaits()
+        case .done:
+            await gate.open()
+            // An invoice of the app has the number of one of the rows: a line of what could not be added.
+            try await #require(app.database).saveInvoice(Invoice.fixture(number: "20261008"))
+            await model.importFiles([sample])
+        case .failed:
+            await gate.open()
+            let bank = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
+            await model.importFiles([sample, bank])
+        }
+
+        do {
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                app.screen = .importer
+                try await waitUntil { window.title == "Import faktur" }
+                // The page scrolls; with its cards it is taller than the margins and the line over them.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 200 }
+
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+            }
+        } catch {
+            // An import that is held back must not outlive a test that failed.
+            await gate.open()
+            throw error
+        }
+        await gate.open()
+        await running?.value
+        switch scene {
+        case .done:
+            #expect(model.summary?.conflicts == 1 && model.canFillSupplier)
+        case .failed:
+            #expect(model.failure != nil)
+        case .running, .choosing:
+            break
+        }
+    }
+
+    // MARK: Simulátor
+
+    /// The cards of the Simulátor by the labels VoiceOver reads them under: the four of the inputs, the two of the
+    /// family after them, the result and the marginal levy of the year the app shows, and the four of the breakdown
+    /// below them, the last of which is the net income.
+    private static let simulatorCards = [
+        "Rok a příjem", "Úroky z úvěru na bydlení", "Spoření a pojištění na stáří", "Dary a slevy na dani", "Děti",
+        "Manžel nebo manželka", "Zaplatíte za rok 2026", "Mezní odvod", "Daň z příjmů", "Sociální pojištění",
+        "Zdravotní pojištění", "Čistý příjem",
+    ]
+
+    /// The Simulátor of the year the app shows, on the data of `EditorFixture`, whose stored settings of 2026 are what
+    /// the copy brings: at the least room, at a large size and at the least room again, every card is on the
+    /// page, none runs out of it sideways and none lies over another. So it is with the cards of the family empty, and
+    /// with the sample family copied into them, where the longer texts of the cards are whole within them: without
+    /// income the children's benefit is not paid as a bonus, and the box says why. Either way the card of the children
+    /// says beside Přidat dítě that nothing of the simulation is stored.
+    @Test(arguments: [false, true])
+    func theSimulatorFitsTheSmallestAndTheLargestWindow(withTheFamily: Bool) async throws {
+        try await EditorFixture.with { f in
+            if withTheFamily {
+                try await Self.storeTheSampleFamily(in: f.database)
+                await f.app.didWriteAndBackUp()
+            }
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                // The screen has the settings of its year read, which is when the copy is on offer.
+                try await waitUntil { f.app.simulatorModel.canCopyDeductionsAndFamily }
+                if withTheFamily {
+                    await f.app.simulatorModel.copyDeductionsAndFamily()
+                }
+                // The page scrolls; with its cards it is far taller than the banner over them.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    if withTheFamily {
+                        let hint = Self.simulatorFamilyTexts[0].prefix
+                        try await waitUntil { frameOfText(startingWith: hint, in: window) != nil }
+                    }
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofSimulatorIn: window)
+                                + (withTheFamily ? problems(ofSimulatorFamilyIn: window) : [])
+                                + problems(ofSimulationNoteIn: window)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The longer texts of the cards of the family in the Simulátor with the sample family and no income, by how each
+    /// begins, with the card they are in and the font they are set in.
+    private static let simulatorFamilyTexts: [(prefix: String, card: String, font: Font)] = [
+        ("Zvýhodnění převyšuje daň o 37\u{00A0}524\u{00A0}Kč, bonus se ale nevyplatí", "Děti", .callout),
+        ("Za každý měsíc, na jehož začátku", "Děti", .callout),
+        ("Dítě do 3 let ve společné domácnosti: Tomáš", "Manžel nebo manželka", .callout),
+        ("Hrubé příjmy za celý rok", "Manžel nebo manželka", .callout),
+        ("Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč – daň už je nulová", "Manžel nebo manželka",
+            .body.weight(.semibold)),
+    ]
+
+    /// What the card of the children of the Simulátor says beside Přidat dítě.
+    private static let simulationNote = "Jen pro simulaci – nic se neukládá."
+
+    /// What is wrong with the note beside Přidat dítě in the card of the children of the Simulátor in `window`, in
+    /// words: it is missing, not within its card, lower than it needs to be at its width, as a text cut short would be,
+    /// or not on the line of the button, after it. Empty when it is right. Needs the accessibility elements.
+    private func problems(ofSimulationNoteIn window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Děti", in: window) else { return ["No card Děti"] }
+        guard let note = frameOfText(startingWith: Self.simulationNote, in: window) else {
+            return ["No note \(Self.simulationNote)"]
+        }
+        guard let button = accessibilityButton(labelled: "Přidat dítě", in: window)?.accessibilityFrame?() else {
+            return ["No button Přidat dítě"]
+        }
+        var found = problems(ofText: Self.simulationNote, frame: note, font: .callout, within: card, in: window)
+        if note.minX < button.maxX || abs(note.midY - button.midY) > 2 {
+            found.append("The note \(note) is not beside the button \(button)")
+        }
+        return found
+    }
+
+    /// What VoiceOver reads for the rows of the sample family in the Simulátor.
+    private static let simulatorFamilyRows = [
+        "Anna · nar. 3.\u{00A0}9.\u{00A0}2019, 1. dítě · 12\u{00A0}měsíců, 15\u{00A0}204\u{00A0}Kč",
+        "Tomáš · nar. 12.\u{00A0}4.\u{00A0}2024, 2. dítě · 12\u{00A0}měsíců, 22\u{00A0}320\u{00A0}Kč",
+    ]
+
+    /// What is wrong with the cards of the family of the Simulátor in `window`, in words: a text or a row of a child
+    /// that is missing or not within its card, and a text that is lower than it needs to be at its width, as a text
+    /// cut short would be. Empty when the cards fit. Needs the accessibility elements.
+    private func problems(ofSimulatorFamilyIn window: NSWindow) -> [String] {
+        var found: [String] = []
+        for (prefix, label, font) in Self.simulatorFamilyTexts {
+            guard let card = frameOfCard(labelled: label, in: window) else {
+                return ["No card \(label)"]
+            }
+            guard let frame = frameOfText(startingWith: prefix, in: window) else {
+                found.append("No text \(prefix)")
+                continue
+            }
+            found += problems(ofText: prefix, frame: frame, font: font, within: card, in: window)
+        }
+        guard let children = frameOfCard(labelled: "Děti", in: window) else { return found + ["No card Děti"] }
+        for row in Self.simulatorFamilyRows {
+            guard let frame = accessibilityButton(labelled: row, in: window)?.accessibilityFrame?() else {
+                found.append("No row \(row)")
+                continue
+            }
+            if frame.minX < children.minX - 0.5 || frame.maxX > children.maxX + 0.5
+                || frame.minY < children.minY - 0.5
+            {
+                found.append("The row \(row) is not within its card: \(frame), the card \(children)")
+            }
+        }
+        return found
+    }
+
+    /// The assumptions of the Simulátor (the flat-rate expenses, the activity and its months) with the longest texts
+    /// they can show: the box of the health minimum with its line, which Vedlejší shows under the menu Činnost, and
+    /// the note of the expenses with both sentences that can follow its figures. The rate of 30 % is stored in the
+    /// settings of 2026 before the Simulátor reads them, so that it comes from there and is not picked: the note says
+    /// so ("Předvyplněno podle Nastavení roku 2026.") and then adds the sentence about rent that the rate of 30 %
+    /// brings. At the least room, at a large size and at the least room again, the box, its line and the note are
+    /// whole and within their card, the box in its place under the menu and the note under the choices, and none of
+    /// the parts of the assumptions lies over another, whichever way the three choices are arranged. At a large size
+    /// they stand in one row, the menu of the rate, the menu Činnost and the field of the months with their tops
+    /// level, though the line under the box is long: it breaks within a width of its own and does not widen the
+    /// column of the activity.
+    @Test func theSimulatorFitsTheLeastRoomWithTheLongestTextsOfItsAssumptions() async throws {
+        try await EditorFixture.with { f in
+            try await f.database.updateYearSettings(2026) { $0.expensePercent = 30 }
+            await f.app.didWriteAndBackUp()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                try await waitUntil { f.app.simulatorModel.canCopyDeductionsAndFamily }
+                f.app.simulatorModel.setActivity(.secondary)
+                let expenseNote = try #require(f.app.simulatorModel.page?.expenseNote)
+                #expect(expenseNote.hasSuffix(" Předvyplněno podle Nastavení roku 2026. " + Self.rentNote))
+                // The page scrolls; with its cards it is far taller than the banner over them.
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfText(startingWith: Self.healthSwitchNote, in: window) != nil }
+                    try await waitUntil { frameOfText(startingWith: expenseNote, in: window) != nil }
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofSimulatorIn: window) + problems(ofTheHealthSwitchIn: window)
+                                + problems(ofTheExpenseNote: expenseNote, in: window)
+                                + (size == AppWindowSize.large ? problems(ofTheChoicesInOneRowIn: window) : [])
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The sentence that the rate of 30 % adds to the note of the expenses of the Simulátor, and puts under the menu of
+    /// the rate in Zálohy a odpočty.
+    private static let rentNote = "Běžný pronájem podle § 9 aplikace nepočítá – není to příjem z podnikání."
+
+    /// What is wrong with the note of the expenses in the Simulátor of `window`, which has Vedlejší chosen, in words:
+    /// `note`, the whole text, is missing or not within the card "Rok a příjem", is lower than its whole text needs at
+    /// its width, as a text cut short would be, or is not under the choices: the menus of the rate and of the activity,
+    /// the box of the health minimum with its line, and the field of the months. Empty when it fits. Needs the
+    /// accessibility elements.
+    private func problems(ofTheExpenseNote note: String, in window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Rok a příjem", in: window) else { return ["No card Rok a příjem"] }
+        guard let frame = frameOfText(startingWith: note, in: window) else { return ["No note \(note)"] }
+        var found = problems(ofText: note, frame: frame, font: .callout, within: card, in: window)
+        // The origin of the screen is at the bottom left, so what is under has the smaller y.
+        for label in ["Výdaje paušálem", "Činnost", "Měsíců činnosti", Self.healthSwitchLabel] {
+            guard let part = accessibilityElement(labelled: label, in: window)?.accessibilityFrame?() else {
+                found.append("No \(label)")
+                continue
+            }
+            if frame.maxY > part.minY + 0.5 {
+                found.append("The note is not under \(label): \(frame), \(label) \(part)")
+            }
+        }
+        if let line = frameOfText(startingWith: Self.healthSwitchNote, in: window), frame.maxY > line.minY + 0.5 {
+            found.append("The note is not under the line of the box: \(frame), the line \(line)")
+        }
+        return found
+    }
+
+    /// The box of the health minimum that Vedlejší shows in the Simulátor, by the label VoiceOver reads it under, and
+    /// the line under it.
+    private static let healthSwitchLabel = "Bez minima zdravotního pojištění"
+    private static let healthSwitchNote =
+        "Po celé měsíce činnosti jste zároveň zaměstnaní s pojistným aspoň z minimální mzdy, studujete,"
+        + " pobíráte důchod, jste na rodičovské, máte průkaz ZTP/P a podobně."
+
+    /// What is wrong with the box of the health minimum in the Simulátor of `window`, which has Vedlejší chosen, in
+    /// words: the box or its line is missing or not within the card "Rok a příjem", the box is lower than it needs to
+    /// be at its width or the line lower than its whole text needs, as a text cut short would be, the box is not under
+    /// the menu Činnost or the line not under the box, or two parts of the assumptions lie over each other. Empty
+    /// when they fit. Needs the accessibility elements.
+    private func problems(ofTheHealthSwitchIn window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Rok a příjem", in: window) else { return ["No card Rok a příjem"] }
+        guard let box = accessibilityElement(labelled: Self.healthSwitchLabel, in: window)?.accessibilityFrame?()
+        else {
+            return ["No box \(Self.healthSwitchLabel)"]
+        }
+        guard let line = frameOfText(startingWith: Self.healthSwitchNote, in: window) else {
+            return ["No line \(Self.healthSwitchNote)"]
+        }
+        var found: [String] = []
+        if box.minX < card.minX - 0.5 || box.maxX > card.maxX + 0.5 {
+            found.append("The box \(Self.healthSwitchLabel) is not within its card: \(box), the card \(card)")
+        }
+        let toggle = Toggle(Self.healthSwitchLabel, isOn: .constant(false)).toggleStyle(.checkbox)
+        found += problems(of: Self.healthSwitchLabel, frame: box, needing: toggle)
+        found += problems(ofText: Self.healthSwitchNote, frame: line, font: .callout, within: card, in: window)
+
+        // The parts of the assumptions that stand near the box: the menus of the rate and of the activity, and the
+        // field of the months.
+        var parts: [(name: String, frame: CGRect)] = [("the box", box), ("the line under it", line)]
+        for label in ["Výdaje paušálem", "Činnost", "Měsíců činnosti"] {
+            guard let frame = accessibilityElement(labelled: label, in: window)?.accessibilityFrame?() else {
+                found.append("No \(label)")
+                continue
+            }
+            parts.append((name: label, frame: frame))
+            // The origin of the screen is at the bottom left, so what is under has the smaller y.
+            if label == "Činnost" && box.maxY > frame.minY + 0.5 {
+                found.append("The box is not under the menu Činnost: \(box), the menu \(frame)")
+            }
+        }
+        if line.maxY > box.minY + 0.5 {
+            found.append("The line is not under the box: \(line), the box \(box)")
+        }
+        for (index, first) in parts.enumerated() {
+            for second in parts[(index + 1)...] where first.frame.insetBy(dx: 0.5, dy: 0.5).intersects(second.frame) {
+                found.append("\(first.name) lies over \(second.name): \(first.frame) and \(second.frame)")
+            }
+        }
+        return found
+    }
+
+    /// What is wrong with how the three choices of the assumptions of the Simulátor stand in `window` if they are to
+    /// stand in one row, in words: the menu of the rate, the menu Činnost or the field of the months is missing, one
+    /// does not have its top level with the one before it, or it is not to the right of it. Empty when they stand so.
+    /// Needs the accessibility elements.
+    private func problems(ofTheChoicesInOneRowIn window: NSWindow) -> [String] {
+        var choices: [(name: String, frame: CGRect)] = []
+        for label in ["Výdaje paušálem", "Činnost", "Měsíců činnosti"] {
+            guard let frame = accessibilityElement(labelled: label, in: window)?.accessibilityFrame?() else {
+                return ["No \(label)"]
+            }
+            choices.append((name: label, frame: frame))
+        }
+        var found: [String] = []
+        for (index, choice) in choices.enumerated().dropFirst() {
+            let before = choices[index - 1]
+            // The origin of the screen is at the bottom left, so a top is the largest y.
+            if (choice.frame.maxY - before.frame.maxY).magnitude > 1 {
+                found.append("\(choice.name) is not level with \(before.name): \(choice.frame), \(before.frame)")
+            }
+            if choice.frame.minX < before.frame.maxX - 0.5 {
+                found.append("\(choice.name) is not to the right of \(before.name): \(choice.frame), \(before.frame)")
+            }
+        }
+        return found
+    }
+
+    /// At the least room the app allows, what the year costs stands to the right of the year and the income, its top
+    /// level with theirs, and not under the inputs.
+    @Test func theResultsStandBesideTheInputsAtTheSmallestWindow() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    try await expectSettled(window) { problems(ofResultsBesideInputsIn: window) }
+                }
+            }
+        }
+    }
+
+    /// The net income ends the result card of the Simulátor, at the least room, at a large size and at the least room
+    /// again, whether the levies are more than the income (the amount is then negative, as it is while the income is
+    /// 0) or not: VoiceOver reads its words, the average per month and the line under them as one phrase, which stands
+    /// within the card under the line of the health insurance. The card is 300 points wide beside the inputs, where
+    /// the amount stands under its words. With the sidebar as wide as it goes, the results come under the inputs, in a
+    /// card as wide as the page, and the amount stands beside its words: the net income is two lines of text tall, not
+    /// three.
+    @Test(arguments: [("0", true), ("2 500 000", false)])
+    func theNetIncomeEndsTheResultCardOfTheSimulatorWhetherOrNotTheLeviesAreMoreThanTheIncome(
+        income: String, isNegative: Bool
+    ) async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                let model = f.app.simulatorModel
+                model.setIncomeText(income)
+                model.readTypedTexts()
+                let summary = try #require(model.page?.summary)
+                #expect(summary.netIncome.isNegative == isNegative)
+
+                try await withAccessibilityElements {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { problems(ofTheNetIncomeOf: summary, in: window) }
+                    }
+                    widenSidebar(of: window)
+                    try await waitUntil { (frameOfCard(labelled: summary.heading, in: window)?.width ?? 0) > 600 }
+                    try await expectSettled(window) { problems(ofTheNetIncomeOf: summary, in: window) }
+                    let line = frameOfText(startingWith: reading(of: summary.netIncome), in: window)
+                    // Two lines of text are about 33 points tall, and three, with the amount under its words, 51.
+                    #expect((line?.height ?? .infinity) < 42, "The amount is not beside its words: \(line as Any)")
+                }
+            }
+        }
+    }
+
+    /// The cards of the breakdown of the Simulátor by the labels VoiceOver reads them under, the left stack and then
+    /// the right one: the tax, and the social and the health insurance with the net income under them.
+    private static let simulatorBreakdown = [
+        ["Daň z příjmů"], ["Sociální pojištění", "Zdravotní pojištění", "Čistý příjem"],
+    ]
+
+    /// The breakdown of the Simulátor has the tax on the left and the two insurances with the net income under them on
+    /// the right: all four in one column at the least room, where the detail has 820 points and two columns need 856,
+    /// and in two columns in a large window, whichever way the window goes.
+    @Test func theSimulatorBreakdownIsOneColumnAtTheLeastRoomAndTwoInALargeWindow() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    for (size, beside) in Self.breakdownSizes {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofTheBreakdown: Self.simulatorBreakdown, beside: beside) { label in
+                                frameOfCard(labelled: label, in: window)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the page of the Simulátor in `window`, in words: the problems of a page that scrolls, a card
+    /// that is missing, one that runs out of the page sideways, and two that overlap. Empty when the page fits.
+    private func problems(ofSimulatorIn window: NSWindow) -> [String] {
+        var problems = problems(ofPageIn: window)
+        guard let page = scrolledPage(in: window)?.enclosingScrollView else {
+            return problems + ["The page is not shown"]
+        }
+        let room = window.convertToScreen(frameInWindow(page))
+        var placed: [(label: String, frame: CGRect)] = []
+        for label in Self.simulatorCards {
+            guard let frame = frameOfCard(labelled: label, in: window) else {
+                problems.append("No card \(label)")
+                continue
+            }
+            if frame.minX < room.minX - 0.5 || frame.maxX > room.maxX + 0.5 {
+                problems.append("The card \(label) runs out of the page \(room): \(frame)")
+            }
+            for other in placed where frame.insetBy(dx: 0.5, dy: 0.5).intersects(other.frame) {
+                problems.append("The card \(label) lies over \(other.label): \(frame) and \(other.frame)")
+            }
+            placed.append((label: label, frame: frame))
+        }
+        return problems
+    }
+
+    /// What is wrong with where the result stands in `window`, in words: it is not to the right of the year and the
+    /// income, or its top is more than 40 points from theirs. Empty when it stands beside them.
+    private func problems(ofResultsBesideInputsIn window: NSWindow) -> [String] {
+        guard let inputs = frameOfCard(labelled: "Rok a příjem", in: window) else {
+            return ["No card Rok a příjem"]
+        }
+        guard let results = frameOfCard(labelled: "Zaplatíte za rok 2026", in: window) else {
+            return ["No card Zaplatíte za rok 2026"]
+        }
+        var problems: [String] = []
+        if results.minX < inputs.maxX - 0.5 {
+            problems.append("The result is not to the right of the inputs: \(results) and \(inputs)")
+        }
+        // The origin of the screen is at the bottom left, so a top is the largest y.
+        if (results.maxY - inputs.maxY).magnitude > 40 {
+            problems.append("The top of the result is \(inputs.maxY - results.maxY) points under that of the inputs")
+        }
+        return problems
+    }
+
+    /// What VoiceOver reads for `net` in the result card of the Simulátor: its words, the average per month and the
+    /// line under them, as one phrase.
+    private func reading(of net: SimulatorNetIncome) -> String {
+        [net.label, net.amount, net.sub].joined(separator: ", ")
+    }
+
+    /// What is wrong with the net income in the result card of the Simulátor in `window` for `summary`, in words:
+    /// VoiceOver does not read its words, the average per month and the line under them as one phrase, the phrase is
+    /// not within the card, or it is not under the line of the health insurance, the last of the levies. The origin of
+    /// the screen is at the bottom left, so what is above has the larger y. Empty when it stands so. Needs the
+    /// accessibility elements.
+    private func problems(ofTheNetIncomeOf summary: SimulatorSummary, in window: NSWindow) -> [String] {
+        let phrase = reading(of: summary.netIncome)
+        guard accessibilityReadings(in: window).contains(phrase) else {
+            return ["The net income is not read as one phrase: \(phrase)"]
+        }
+        guard let last = summary.lines.last, let card = frameOfCard(labelled: summary.heading, in: window),
+            let frame = frameOfText(startingWith: phrase, in: window),
+            let levy = frameOfText(
+                startingWith: [last.label, last.note, last.amount].compactMap { $0 }.joined(separator: ", "),
+                in: window)
+        else {
+            return ["No result card \(summary.heading), or no net income or last levy in it"]
+        }
+        var found: [String] = []
+        if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+            found.append("The net income is not within the result card: \(frame), the card \(card)")
+        }
+        if frame.maxY > levy.minY + 0.5 {
+            found.append("The net income is not under the line of \(last.label): \(frame), \(levy)")
+        }
+        return found
+    }
+
+    /// Přehled when the search for the uniform rate ends without finding it: the reminder comes above the cards, which
+    /// the page grows by, the page fits the window at the least room and at a large size, and the page is as it was
+    /// when the reminder goes.
+    @Test func prehledShowsTheReminderOfTheUniformRateAboveItsCardsAndFitsTheWindowWithIt() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                let without = try #require(scrolledPage(in: window)).frame.height
+
+                f.app.uniformRateReminderYear = 2026
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > without + 40 }
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.large)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+                window.setContentSize(AppWindowSize.minimum)
+                try await expectSettled(window) { problems(ofPageIn: window) }
+
+                f.app.uniformRateReminderYear = nil
+                try await waitUntil { ((scrolledPage(in: window)?.frame.height ?? 0) - without).magnitude < 1 }
+            }
+        }
+    }
+
+    /// The sheet that asks to confirm a uniform rate is a sheet of the window whichever screen it shows, 560 points
+    /// wide and not taller than the window, and it goes when the finding is put off.
+    @Test func theSheetThatConfirmsAUniformRateIsShownOverTheWindowAndGoesWhenItIsPutOff() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .invoices
+                try await waitUntil { window.title == "Faktury" }
+                #expect(window.attachedSheet == nil)
+
+                try await #require(f.app.database).execute("DELETE FROM uniform_rate WHERE year = 2025")
+                await f.app.offerUniformRate(try gfrFinding2025())
+                try await waitUntil { window.attachedSheet != nil }
+                let sheet = try #require(window.attachedSheet)
+                try await layOut(window)
+
+                #expect((sheet.frame.width - 560).magnitude < 1, "The sheet is \(sheet.frame.width) points wide")
+                let height = sheet.frame.height
+                #expect(height > 200 && height <= 700, "The sheet is \(height) points tall")
+                // Put off: the finding waits, and the window is as it was.
+                f.app.uniformRateOffer = nil
+                try await waitUntil { window.attachedSheet == nil }
+                #expect(f.app.pendingUniformRate != nil)
+            }
+        }
+    }
+
+    /// What is wrong with the page of a screen that scrolls in `window`, in words: the views that stick out of the
+    /// window, and a page that is wider than the window, which would make it scroll sideways. Empty when the page fits.
+    private func problems(ofPageIn window: NSWindow) -> [String] {
+        var problems = viewsOutside(window).map { "Outside the window: \($0)" }
+        if let page = scrolledPage(in: window), page.frame.width > window.contentLayoutRect.width + 0.5 {
+            problems.append("The page is wider than the window: \(page.frame.width) points")
+        }
+        return problems
+    }
+
+    /// What the page of the screen scrolls, in `window`: the content of the first scroll view that is not the list of
+    /// the sidebar.
+    private func scrolledPage(in window: NSWindow) -> NSView? {
+        guard let content = window.contentView else { return nil }
+        return scrollViews(in: content).lazy.compactMap(\.documentView).first { !($0 is NSTableView) }
+    }
+
+    private func scrollViews(in view: NSView) -> [NSScrollView] {
+        if let scrollView = view as? NSScrollView {
+            return [scrollView]
+        }
+        return view.subviews.flatMap { scrollViews(in: $0) }
+    }
+}

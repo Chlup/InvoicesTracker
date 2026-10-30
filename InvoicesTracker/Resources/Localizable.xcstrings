@@ -1,0 +1,957 @@
+{
+  "sourceLanguage" : "cs",
+  "strings" : {
+    "" : {
+
+    },
+    "(bez vlivu na výpočet)" : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ nad limit se neuplatní" : {
+
+    },
+    "%@: %@" : {
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
+    "%@." : {
+
+    },
+    "%@. Uplatníte %@." : {
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. Uplatníte %2$@."
+          }
+        }
+      }
+    },
+    "+ Přidat účet v eurech" : {
+
+    },
+    "32 znaků · velikost písmen, mezery a pomlčky nehrají roli" : {
+
+    },
+    "Akci se nepodařilo provést" : {
+
+    },
+    "aktuální krok" : {
+
+    },
+    "Aplikace se zeptá na Touch ID nebo heslo k Macu při spuštění a po nečinnosti." : {
+
+    },
+    "Bankovní účet" : {
+
+    },
+    "bez DPH" : {
+
+    },
+    "Bez DPH" : {
+
+    },
+    "Bez kódu se tato data otevřít nedají" : {
+
+    },
+    "bez minima" : {
+
+    },
+    "Bez minima zdravotního pojištění" : {
+
+    },
+    "Části nastavení" : {
+
+    },
+    "Částka v Kč" : {
+
+    },
+    "Celkem" : {
+
+    },
+    "Celkem za rok" : {
+
+    },
+    "Cena za MJ" : {
+
+    },
+    "Cena za MJ, položka %lld" : {
+
+    },
+    "Činnost" : {
+
+    },
+    "Činnost do" : {
+
+    },
+    "Činnost od" : {
+
+    },
+    "Číslo" : {
+
+    },
+    "Číslo faktury" : {
+
+    },
+    "Čistý příjem" : {
+
+    },
+    "Čistý příjem (součet za faktury zaplacené v měsíci, bez DPH)" : {
+
+    },
+    "Čistý příjem (součet za platby v měsíci)" : {
+
+    },
+    "Čistý příjem za rok (po dani a pojistném, vždy bez DPH)" : {
+
+    },
+    "další shody v letech" : {
+
+    },
+    "Dary a slevy na dani" : {
+
+    },
+    "Dary za rok" : {
+
+    },
+    "Data InvoicesTracker se na Macu, na kterém vznikla, odemykají přes Secure Enclave. Tento kód je jediný další klíč: otevře data na jiném Macu, po opravě Macu nebo ze zálohy." : {
+
+    },
+    "Data jsou zašifrovaná vždy; klíč k nim chrání Secure Enclave tohoto Macu. Zapnutí nebo vypnutí Touch ID dá datům nový klíč a hned uloží zálohu." : {
+
+    },
+    "Data se nedají otevřít" : {
+
+    },
+    "Data se odemknou přes Touch ID nebo heslem k tomuto Macu. Dokud je neodemknete, zůstávají zašifrovaná." : {
+
+    },
+    "Data TaxesTracker se na Macu, na kterém vznikla, odemykají přes Secure Enclave. Tento kód je jediný další klíč: otevře data na jiném Macu, po opravě Macu nebo ze zálohy." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data InvoicesTracker se na Macu, na kterém vznikla, odemykají přes Secure Enclave. Tento kód je jediný další klíč: otevře data na jiném Macu, po opravě Macu nebo ze zálohy."
+          }
+        }
+      }
+    },
+    "Datum" : {
+
+    },
+    "Datum přijetí" : {
+
+    },
+    "Detail faktury" : {
+
+    },
+    "Do tohoto dne nepřišla žádná platba." : {
+
+    },
+    "Dopad na daň" : {
+
+    },
+    "Dopad na odvody" : {
+
+    },
+    "Dopad odpočtů a slev na daň" : {
+
+    },
+    "Doplnit údaje dodavatele z exportu" : {
+
+    },
+    "Doporučeno. Aplikace se zeptá na Touch ID nebo heslo k Macu při spuštění a po 10 minutách nečinnosti (dobu změníte v Nastavení). Bez Touch ID se otevře bez ověření; data na disku zůstanou šifrovaná." : {
+
+    },
+    "Druhý rodič" : {
+
+    },
+    "E-mail, telefon, účet v USD nebo v eurech a patičku českých faktur doplníte v Nastavení › Moje údaje. Z importu Fakturoidu lze prázdné údaje doplnit automaticky." : {
+
+    },
+    "Evidence" : {
+
+    },
+    "Export faktur z Fakturoidu · lze vybrat víc souborů najednou" : {
+
+    },
+    "Exportovat zálohu…" : {
+
+    },
+    "Faktury, daň a pojištění na jednom místě. Data zůstávají jen v tomto Macu – aplikace je šifruje a klíč k nim chrání Secure Enclave tohoto Macu." : {
+
+    },
+    "Hlavní" : {
+
+    },
+    "Hledat" : {
+
+    },
+    "Hledat ve fakturách" : {
+
+    },
+    "hotovo" : {
+
+    },
+    "Importovat…" : {
+
+    },
+    "InvoicesTracker je zamčený" : {
+
+    },
+    "Já" : {
+
+    },
+    "Jak se to počítá" : {
+
+    },
+    "Jazyk faktury" : {
+
+    },
+    "Jednotky: %@" : {
+
+    },
+    "Jiný soubor…" : {
+
+    },
+    "Kč" : {
+
+    },
+    "Kód mám uložený mimo tento Mac" : {
+
+    },
+    "Kód nikam neposíláme a aplikace si ho nepamatuje. Kdo ztratí Mac i tento kód, data už neotevře – ani autor aplikace. Tento list schovejte mimo počítač." : {
+
+    },
+    "Kód nikam neposíláme a aplikace si ho nepamatuje. Kdo ztratí tento Mac i kód, data už neotevře – ani autor aplikace. Uložte ho do správce hesel nebo ho vytiskněte a schovejte mimo počítač." : {
+
+    },
+    "Kód pro obnovení dat InvoicesTracker" : {
+
+    },
+    "Kód pro obnovení dat TaxesTracker" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kód pro obnovení dat InvoicesTracker"
+          }
+        }
+      }
+    },
+    "Kolik zbývá zaplatit" : {
+
+    },
+    "Kopírovat" : {
+
+    },
+    "Kroky nastavení" : {
+
+    },
+    "Které faktury" : {
+
+    },
+    "kurz ČNB ke dni přijetí" : {
+
+    },
+    "Limit podle data pořízení bydlení" : {
+
+    },
+    "Manželé ve společné domácnosti" : {
+
+    },
+    "Měna" : {
+
+    },
+    "Měna a DPH" : {
+
+    },
+    "Měrná jednotka, položka %lld" : {
+
+    },
+    "Měsíc" : {
+
+    },
+    "Měsíce" : {
+
+    },
+    "Měsíce – %@" : {
+
+    },
+    "Měsíce bez minima zdravotního pojištění" : {
+
+    },
+    "Mezní odvod" : {
+
+    },
+    "Mimo tento Mac se už 30 dní nepodařilo uložit zálohu. Připojte disk se zvolenou složkou, nebo vyberte jinou." : {
+
+    },
+    "Minimum se nepočítá za měsíc, kdy jste po celý měsíc byli i zaměstnaní s pojistným aspoň z minimální mzdy, studovali, pobírali důchod, byli na rodičovské, měli průkaz ZTP/P a podobně (§ 3a zákona 592/1992). Vedlejší činnost pro sociální pojištění se nastavuje v Zálohách." : {
+
+    },
+    "MJ" : {
+
+    },
+    "Můžete přejít jinam, import poběží dál." : {
+
+    },
+    "Na anglické faktury se netiskne." : {
+
+    },
+    "Na fakturách" : {
+
+    },
+    "Nabídka měrných jednotek, položka %lld" : {
+
+    },
+    "Načítám…" : {
+
+    },
+    "Náhled PDF" : {
+
+    },
+    "Náhled se zobrazí, až bude faktura úplná." : {
+
+    },
+    "Náhled: %@" : {
+
+    },
+    "Např. platební instrukce – vytiskne se dole na faktuře" : {
+
+    },
+    "Nástroje" : {
+
+    },
+    "nebo ho sem přetáhněte" : {
+
+    },
+    "Nejbližší platby úřadům" : {
+
+    },
+    "Nejvýše %lld položek." : {
+
+    },
+    "Nic se nesmazalo ani nezměnilo. Máte-li zálohu, obnovte ji. Jinak můžete začít s prázdnými daty – dosavadní soubory se odloží do složky vedle dat, takže zůstanou na disku." : {
+
+    },
+    "Nikdo jiný kód nemá – ani autor aplikace. Máte-li zálohu, ke které kód máte (třeba starší kód), obnovte ji. Zašifrovaná data zůstanou na disku, takže když kód najdete, otevřete je i později." : {
+
+    },
+    "Nová faktura" : {
+
+    },
+    "Nová šablona" : {
+
+    },
+    "Nový kód mám uložený mimo tento Mac" : {
+
+    },
+    "Nový odběratel" : {
+
+    },
+    "Období" : {
+
+    },
+    "Obnovili jste celý Mac z Time Machine nebo jste data přenesli Průvodcem migrací? Pak je aplikace najde sama a zeptá se jen na kód pro obnovení." : {
+
+    },
+    "Obnovit" : {
+
+    },
+    "Obnovit ze zálohy…" : {
+
+    },
+    "Odběratel" : {
+
+    },
+    "Odběratel a doklad" : {
+
+    },
+    "Odběratel šablony" : {
+
+    },
+    "Odebrat" : {
+
+    },
+    "Odebrat dítě" : {
+
+    },
+    "Odebrat položku" : {
+
+    },
+    "Odebrat položku %lld" : {
+
+    },
+    "Odebrat účet v eurech" : {
+
+    },
+    "Odemknout" : {
+
+    },
+    "Odemknout kódem pro obnovení…" : {
+
+    },
+    "Odemykat přes Touch ID" : {
+
+    },
+    "odhad" : {
+
+    },
+    "odhad (šrafovaně a čárkovaně)" : {
+
+    },
+    "odhad do potvrzení banky" : {
+
+    },
+    "Odhad odvodů" : {
+
+    },
+    "Odpočty · spoření a pojištění na stáří" : {
+
+    },
+    "Odpočty · úroky z úvěru na bydlení" : {
+
+    },
+    "Odstranit…" : {
+
+    },
+    "Otevře data na jiném Macu, po opravě tohoto Macu nebo ze zálohy. Aplikace ho znovu neukáže – když ho ztratíte, vytvořte nový, dokud data ještě otevřete." : {
+
+    },
+    "Otevře úpravu odběratele." : {
+
+    },
+    "Otevřít Finanční zpravodaj" : {
+
+    },
+    "Označit i tady" : {
+
+    },
+    "Označit jako uhrazenou" : {
+
+    },
+    "PDF s tabulkou" : {
+
+    },
+    "PDF se nepodařilo uložit." : {
+
+    },
+    "plán" : {
+
+    },
+    "Plán záloh" : {
+
+    },
+    "Platba" : {
+
+    },
+    "Platba, měna a DPH" : {
+
+    },
+    "plátce · měsíčně" : {
+
+    },
+    "Platí od" : {
+
+    },
+    "Platný kód" : {
+
+    },
+    "plná část pruhu je zaplacená zálohami, světlá zbývá zaplatit" : {
+
+    },
+    "Po 18. narozeninách studuje" : {
+
+    },
+    "Po celé měsíce činnosti jste zároveň zaměstnaní s pojistným aspoň z minimální mzdy, studujete, pobíráte důchod, jste na rodičovské, máte průkaz ZTP/P a podobně." : {
+
+    },
+    "Po odemčení budete tam, kde jste skončili. Dobu do zamčení změníte v Nastavení › Zabezpečení a zálohy." : {
+
+    },
+    "Počet" : {
+
+    },
+    "Počet, položka %lld" : {
+
+    },
+    "Pokračovat" : {
+
+    },
+    "Položka %lld" : {
+
+    },
+    "Položky" : {
+
+    },
+    "Popis" : {
+
+    },
+    "Popis, položka %lld" : {
+
+    },
+    "Pořadí v domácnosti" : {
+
+    },
+    "Poslední přijaté platby" : {
+
+    },
+    "Použít" : {
+
+    },
+    "Použít šablonu %@" : {
+
+    },
+    "Později" : {
+
+    },
+    "Poznámka na faktuře" : {
+
+    },
+    "Pravidla v Nastavení" : {
+
+    },
+    "Předpoklady výpočtu" : {
+
+    },
+    "Předvyplnit" : {
+
+    },
+    "Přepočet cizích měn" : {
+
+    },
+    "Přeskočit" : {
+
+    },
+    "Přetáhněte CSV sem nebo klikněte a vyberte soubory" : {
+
+    },
+    "Převzít ze Záloh a odpočtů %@" : {
+
+    },
+    "Přidat" : {
+
+    },
+    "Přidat dítě" : {
+
+    },
+    "Přidat na fakturu QR kód pro platbu" : {
+
+    },
+    "Přidat položku" : {
+
+    },
+    "Přijato" : {
+
+    },
+    "Přijato (podle data platby – z toho se platí daň)" : {
+
+    },
+    "příjem pro daň" : {
+
+    },
+    "Příjem pro daň v Kč" : {
+
+    },
+    "Příjmy" : {
+
+    },
+    "Příjmy v cizí měně" : {
+
+    },
+    "Pro potvrzení napište číslo faktury %@" : {
+
+    },
+    "Průběh" : {
+
+    },
+    "Průběh importu" : {
+
+    },
+    "Průběh importu %@" : {
+
+    },
+    "Průkaz ZTP/P – sleva dvojnásobná" : {
+
+    },
+    "Průkaz ZTP/P – zvýhodnění dvojnásobné" : {
+
+    },
+    "Řada" : {
+
+    },
+    "Režim DPH" : {
+
+    },
+    "Rok" : {
+
+    },
+    "Rok %@" : {
+
+    },
+    "Roky" : {
+
+    },
+    "rozbaleno" : {
+
+    },
+    "Rozpis odhadu odvodů" : {
+
+    },
+    "Rozpis výpočtu" : {
+
+    },
+    "s DPH" : {
+
+    },
+    "S DPH" : {
+
+    },
+    "Šablona" : {
+
+    },
+    "Sazba paušálních výdajů" : {
+
+    },
+    "sbaleno" : {
+
+    },
+    "Seskupit" : {
+
+    },
+    "Seznam faktur" : {
+
+    },
+    "Seznam odběratelů" : {
+
+    },
+    "skutečnost" : {
+
+    },
+    "Sleva na poplatníka" : {
+
+    },
+    "Složku pro data se nepodařilo vytvořit." : {
+
+    },
+    "Smazání nejde vrátit zpět." : {
+
+    },
+    "Smazat" : {
+
+    },
+    "Smazat fakturu…" : {
+
+    },
+    "Smazat natrvalo" : {
+
+    },
+    "Smazat šablonu" : {
+
+    },
+    "Smazat úpravu" : {
+
+    },
+    "Snížený vyměřovací základ pro sociální pojištění" : {
+
+    },
+    "Současná data se nejdřív uloží jako záloha – nic se neztratí." : {
+
+    },
+    "Souhrn" : {
+
+    },
+    "Splatnost ve dnech" : {
+
+    },
+    "Spravovat šablony" : {
+
+    },
+    "Stav" : {
+
+    },
+    "Stav: %@" : {
+
+    },
+    "TaxesTracker je zamčený" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InvoicesTracker je zamčený"
+          }
+        }
+      }
+    },
+    "Time Machine zálohuje i data aplikace. S kódem pro obnovení z ní obnovíte data i na novém Macu." : {
+
+    },
+    "Typ účtu" : {
+
+    },
+    "Uhrazená faktura se nedá upravit, jen její platba." : {
+
+    },
+    "Uložit dítě" : {
+
+    },
+    "Uložit koncept" : {
+
+    },
+    "Uložit kurz" : {
+
+    },
+    "Uložit odběratele" : {
+
+    },
+    "Uložit PDF…" : {
+
+    },
+    "Uložit šablonu" : {
+
+    },
+    "Uplatnit slevu na manžela / manželku" : {
+
+    },
+    "Uplatníte" : {
+
+    },
+    "uplatníte %@ · ušetříte %@" : {
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "uplatníte %1$@ · ušetříte %2$@"
+          }
+        }
+      }
+    },
+    "Upravit" : {
+
+    },
+    "Upravit plán záloh" : {
+
+    },
+    "Upravit platbu" : {
+
+    },
+    "Upravit šablonu %@" : {
+
+    },
+    "Upravujete fakturu" : {
+
+    },
+    "V Kč" : {
+
+    },
+    "V Kč. Bez zaměstnání a jiných zdanitelných příjmů." : {
+
+    },
+    "V tomto Macu zatím žádná záloha není." : {
+
+    },
+    "V tomto roce už žádná další platba není." : {
+
+    },
+    "Vedlejší" : {
+
+    },
+    "Velikost písmen, mezery a pomlčky nehrají roli." : {
+
+    },
+    "Vítejte v InvoicesTracker" : {
+
+    },
+    "Vítejte v TaxesTracker" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vítejte v InvoicesTracker"
+          }
+        }
+      }
+    },
+    "Vrátit odhad aplikace" : {
+
+    },
+    "Všechny faktury" : {
+
+    },
+    "Výběr souborů" : {
+
+    },
+    "Vybrat jinou" : {
+
+    },
+    "Vybrat jiný soubor" : {
+
+    },
+    "Vybrat soubor zálohy…" : {
+
+    },
+    "Vybrat soubory…" : {
+
+    },
+    "Výchozí hodnoty odběratele se použijí při vystavení nové faktury." : {
+
+    },
+    "Výdaje paušálem" : {
+
+    },
+    "Vydání Finančního zpravodaje" : {
+
+    },
+    "vypnuto" : {
+
+    },
+    "Vystavené v roce %@" : {
+
+    },
+    "Vystaveno" : {
+
+    },
+    "Vystaveno (podle data vystavení)" : {
+
+    },
+    "Vystavit" : {
+
+    },
+    "Vytisknout nebo uložit jako PDF…" : {
+
+    },
+    "Vytvořit nový kód…" : {
+
+    },
+    "Vzhled" : {
+
+    },
+    "VZP (111)" : {
+
+    },
+    "Začít s prázdnými daty" : {
+
+    },
+    "Zadat ručně" : {
+
+    },
+    "Žádné úpravy." : {
+
+    },
+    "záloha se počítá jako zaplacená v měsíci, ke kterému patří · změny se ukládají hned" : {
+
+    },
+    "Zálohovat teď" : {
+
+    },
+    "Zálohy" : {
+
+    },
+    "Zálohy jsou zatím jen v tomto Macu. Když Mac přestane fungovat, pomůže jen záloha jinde – vyberte složku na externím disku, NAS nebo v iCloud Drive. Aplikace tam jednou denně uloží šifrovanou zálohu." : {
+
+    },
+    "Zálohy na rok %@" : {
+
+    },
+    "Zamčeno" : {
+
+    },
+    "Zamknout při nečinnosti" : {
+
+    },
+    "Zaplacené v roce %@" : {
+
+    },
+    "Zaplaceno" : {
+
+    },
+    "zapnuto" : {
+
+    },
+    "započteno" : {
+
+    },
+    "Zatím nemáte žádného odběratele." : {
+
+    },
+    "Zatím nemáte žádnou šablonu." : {
+
+    },
+    "Zavřít" : {
+
+    },
+    "Zavřít detail" : {
+
+    },
+    "Zdroj:" : {
+
+    },
+    "Země" : {
+
+    },
+    "Zkontrolovat teď" : {
+
+    },
+    "Zkopírováno ✓" : {
+
+    },
+    "Zkopírovat z roku %@" : {
+
+    },
+    "Zobrazit" : {
+
+    },
+    "Zobrazit – %@" : {
+
+    },
+    "Zobrazit dopad v Přehledu" : {
+
+    },
+    "Zobrazit faktury" : {
+
+    },
+    "Zobrazit licenci" : {
+
+    },
+    "Zobrazit licenci – %@" : {
+
+    },
+    "Zobrazit PDF" : {
+
+    },
+    "Zpět na faktury" : {
+
+    },
+    "Zrušit" : {
+
+    },
+    "Zrušit hledání" : {
+
+    },
+    "Zvýhodnění uplatňuje" : {
+
+    }
+  },
+  "version" : "1.0"
+}

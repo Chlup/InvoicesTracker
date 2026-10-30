@@ -1,0 +1,469 @@
+# frozen_string_literal: true
+
+require "fileutils"
+require "json"
+require "open3"
+require "shellwords"
+
+# require_relative rather than fastlane's intercepted `require`, so the local
+# files raise no "you have required a gem" notice. The lib directory is on the
+# load path as well, so the helpers can also require each other by name.
+$LOAD_PATH.unshift(File.expand_path("lib", __dir__))
+require_relative "lib/invoices_tracker/api_key_settings"
+require_relative "lib/invoices_tracker/release"
+require_relative "lib/invoices_tracker/paths"
+require_relative "lib/invoices_tracker/dmg"
+require_relative "lib/invoices_tracker/signing_identity"
+require_relative "lib/invoices_tracker/build_settings"
+require_relative "lib/invoices_tracker/verification"
+require_relative "lib/invoices_tracker/working_copy"
+require_relative "lib/invoices_tracker/preflight"
+
+# fastlane/README.md is written by hand; fastlane must not regenerate it.
+skip_docs
+
+# Gemfile.lock pins fastlane. Outside Bundler, whatever fastlane happens to be
+# installed would run the lane.
+UI.user_error!("Run through Bundler: bundle exec fastlane dmg, or ./Scripts/release.sh") unless ENV["BUNDLE_GEMFILE"]
+
+# fastlane evaluates this file under a relative name, so __dir__ is "." and
+# means the fastlane directory only while that is the working directory, as it
+# is while the file loads. Both directories are made absolute now: actions run
+# from the repository root, where a relative path would point elsewhere.
+FASTLANE_DIR = File.expand_path(__dir__)
+REPO_ROOT = File.expand_path("..", __dir__)
+
+# The app target. Its version and build number name the release.
+APP_TARGET = "InvoicesTracker"
+CONFIGURATION = "Release"
+
+# xcbeautify, not xcpretty: xcpretty swallows the output of Swift Testing, so a
+# failing test would scroll past without a word.
+XCODEBUILD_FORMATTER = "xcbeautify"
+
+REQUIRED_TOOLS = %w[create-dmg xcbeautify].freeze
+
+desc "Builds the signed, notarized DMG of the checked-out commit: build/InvoicesTracker-<version>-<build>.dmg."
+desc "The version and build number come from the Xcode project. skip_tests:true skips the unit tests."
+lane :dmg do |options|
+  skip_tests = [true, "true"].include?(options[:skip_tests])
+
+  # Nothing here contacts Apple, and every problem shows at once, before the
+  # tests or the build start.
+  versions, identity, key_settings, working_copy =
+    preflight.values_at(:versions, :identity, :key_settings, :working_copy)
+  paths = InvoicesTracker::Paths.resolve(
+    repo_root: REPO_ROOT, version: versions.marketing_version, build: versions.build
+  )
+  UI.success("Preflight passed")
+  UI.message("Building #{working_copy.short_head} …")
+  UI.message("Version:  #{versions.marketing_version}")
+  UI.message("Build:    #{versions.build}")
+  UI.message("Identity: #{identity.name}")
+  UI.message("DMG:      #{paths[:final_dmg]}")
+
+  # A DMG of the same name is gone as soon as the build starts, so a run that
+  # fails cannot leave an older DMG behind that looks like its result.
+  remove_previous_dmg(paths[:final_dmg])
+  FileUtils.rm_rf(paths[:work_dir])
+  FileUtils.mkdir_p(paths[:work_dir])
+
+  if skip_tests
+    UI.important("Skipping the unit tests (skip_tests:true)")
+  else
+    run_tests(
+      project: paths[:project],
+      scheme: InvoicesTracker::Release::SCHEME,
+      destination: "platform=macOS",
+      derived_data_path: paths[:test_derived_data],
+      xcodebuild_formatter: XCODEBUILD_FORMATTER,
+      xcargs: "-skipMacroValidation",
+      output_directory: File.join(REPO_ROOT, "build", "test_output"),
+      # The JUnit report only. The default also asks for an HTML report, which
+      # only xcpretty can write, so it would only add a warning to every run.
+      output_types: "junit"
+    )
+  end
+
+  api_key = app_store_connect_api_key(
+    key_id: key_settings.key_id,
+    issuer_id: key_settings.issuer_id,
+    key_filepath: key_settings.key_file
+  )
+
+  # The App ID and the profile come before the build, so a signing or
+  # permission problem fails within seconds instead of after the archive.
+  ensure_app_id(api_key)
+  ensure_profile(api_key, output_path: paths[:work_dir])
+
+  archive_and_export(paths: paths, identity: identity, key_settings: key_settings)
+
+  # The preflight's look at the working copy was minutes ago, before the tests
+  # and the archive. A branch switch, a stash pop or an editor's autosave since
+  # then is compiled into the app, and the DMG would pass every check below
+  # while matching no commit. No DMG exists yet, so there is nothing to clean up.
+  ensure_working_copy_unchanged(since: working_copy)
+
+  # notarize also staples the ticket to the app.
+  UI.message("Notarizing #{File.basename(paths[:app])}...")
+  notarize(package: paths[:app], api_key: api_key, print_log: true)
+
+  # create-dmg turns its whole source folder into the volume, so the folder
+  # holds the app alone. ditto keeps the signature, the stapled ticket and the
+  # extended attributes.
+  app_bundle = File.basename(paths[:app])
+  FileUtils.rm_rf(paths[:staging])
+  FileUtils.mkdir_p(paths[:staging])
+  run_argv(["ditto", paths[:app], File.join(paths[:staging], app_bundle)])
+
+  volicon = volume_icon(paths[:app])
+  UI.important("The app has no icon — the DMG gets no volume icon") unless volicon
+
+  # From here on a DMG exists at work_dmg. Any failure deletes it, and only a
+  # DMG that passed verification is moved to the final path.
+  deleting_on_failure(paths[:work_dmg]) do
+    UI.message("Creating the DMG...")
+    create_dmg = InvoicesTracker::Dmg.create_dmg_command(
+      app_bundle: app_bundle, source_dir: paths[:staging], dmg_path: paths[:work_dmg],
+      volname: InvoicesTracker::Release::APP_NAME, volicon: volicon
+    )
+    # create-dmg retries hdiutil's "Resource busy" by itself. This one retry is
+    # for the step it does not retry: Finder laying out the window, which now
+    # and then fails with "Can't get disk", or times out while macOS asks
+    # whether Finder may be controlled. create-dmg refuses to overwrite an image
+    # that a failed attempt left, so that image is deleted before the retry.
+    run_argv(create_dmg, retries: 1) { FileUtils.rm_f(paths[:work_dmg]) }
+
+    UI.message("Signing the DMG...")
+    run_argv(InvoicesTracker::Dmg.codesign_command(path: paths[:work_dmg], identity: identity.sha1))
+
+    UI.message("Notarizing the DMG...")
+    notarize(package: paths[:work_dmg], api_key: api_key, print_log: true)
+
+    UI.message("Verifying the DMG and the app...")
+    errors = verification_errors(dmg: paths[:work_dmg], app: paths[:app])
+    unless errors.empty?
+      FileUtils.rm_f(paths[:work_dmg])
+      UI.user_error!("The DMG failed verification and was deleted:\n#{bullet_list(errors)}")
+    end
+
+    FileUtils.mv(paths[:work_dmg], paths[:final_dmg])
+  end
+  UI.success("DMG ready: #{paths[:final_dmg]} (#{working_copy.short_head})")
+end
+
+# --- preflight ---------------------------------------------------------------
+
+# Gathers what decides whether the lane may build, and stops the lane with
+# every problem at once. Returns the versions, the signing identity, the API key
+# settings and the working copy (clean, and the commit the build starts from);
+# the settings are read here once, and the later steps use what this returns.
+def preflight
+  UI.message("Checking the working copy, the tools, the API key, the keychain and the project...")
+
+  working_copy = working_copy_snapshot
+  missing_tools = REQUIRED_TOOLS.select do |tool|
+    run("command -v #{tool.shellescape}", must_succeed: false).strip.empty?
+  end
+  # Only whether the key file is there is checked; the key itself is never read here.
+  key_settings = InvoicesTracker::ApiKeySettings.resolve(
+    ENV, fastlane_dir: FASTLANE_DIR, repo_root: REPO_ROOT, file_exists: File.method(:exist?)
+  )
+  identity_result = InvoicesTracker::SigningIdentity.developer_id(
+    run("security find-identity -v -p codesigning", must_succeed: true),
+    team_id: InvoicesTracker::Release::TEAM_ID
+  )
+  versions, version_errors = project_versions
+
+  report = InvoicesTracker::Preflight.check(
+    InvoicesTracker::Preflight::Context.new(
+      dirty_paths: working_copy.dirty_paths,
+      missing_tools: missing_tools,
+      api_key_settings: key_settings,
+      identity_result: identity_result,
+      version_errors: version_errors
+    )
+  )
+  UI.user_error!("Preflight failed:\n#{bullet_list(report.errors)}") unless report.ok?
+
+  { versions: versions, identity: identity_result.identity, key_settings: key_settings, working_copy: working_copy }
+end
+
+# The working copy as git reports it now: the commit HEAD points at, and the
+# paths with uncommitted changes. Untracked files that are not ignored count
+# too: the build could compile them into the app. The preflight takes one of
+# these and the lane takes another right after the archive; what to make of the
+# two is InvoicesTracker::WorkingCopy's decision.
+def working_copy_snapshot
+  git = "git -C #{REPO_ROOT.shellescape}"
+  InvoicesTracker::WorkingCopy.snapshot(
+    head_output: run("#{git} rev-parse HEAD", must_succeed: true),
+    status_output: run("#{git} status --porcelain --untracked-files=normal", must_succeed: true)
+  )
+end
+
+# Stops the lane when the working copy is no longer the one `since` saw: HEAD
+# moved, or something is uncommitted.
+def ensure_working_copy_unchanged(since:)
+  error = InvoicesTracker::WorkingCopy.error_since(since, working_copy_snapshot)
+  UI.user_error!(error) if error
+end
+
+# The version and build number of the app target, read from the project, and
+# the problems with them. Returns [versions, errors]; versions is nil when they
+# could not be read. Only the paths that do not depend on the version exist yet.
+def project_versions
+  paths = InvoicesTracker::Paths.base(repo_root: REPO_ROOT)
+  argv = [
+    "xcodebuild", "-showBuildSettings", "-json",
+    "-project", paths[:project],
+    "-scheme", InvoicesTracker::Release::SCHEME,
+    "-configuration", CONFIGURATION,
+    "-derivedDataPath", paths[:derived_data],
+    "-skipMacroValidation"
+  ]
+  # stdout only: xcodebuild prints its warnings on stderr, and they are not JSON.
+  json, stderr, status = Open3.capture3(*argv)
+  unless status.success?
+    return [nil, ["cannot read the version from the project: xcodebuild -showBuildSettings failed " \
+                  "(exit #{status.exitstatus}): #{error_line(stderr)}"]]
+  end
+
+  versions = InvoicesTracker::BuildSettings.versions(json, target: APP_TARGET)
+  [versions, InvoicesTracker::BuildSettings.errors(versions)]
+rescue ArgumentError, JSON::ParserError, KeyError, SystemCallError => e
+  [nil, ["cannot read the version from the project: #{e.message}"]]
+end
+
+# --- the developer portal ----------------------------------------------------
+
+# Registers the macOS App ID on the team when it is not registered yet.
+def ensure_app_id(api_key)
+  require "spaceship"
+  Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.from(hash: api_key)
+
+  bundle_id = InvoicesTracker::Release::BUNDLE_ID
+  if Spaceship::ConnectAPI::BundleId.find(bundle_id)
+    UI.message("App ID #{bundle_id} is registered")
+    return
+  end
+
+  Spaceship::ConnectAPI::BundleId.create(
+    name: InvoicesTracker::Release::APP_NAME,
+    platform: Spaceship::ConnectAPI::BundleIdPlatform::MAC_OS,
+    identifier: bundle_id
+  )
+  UI.success("Registered the App ID #{bundle_id}")
+end
+
+# Fetches the Developer ID profile and installs it where Xcode looks for
+# profiles; `output_path` gets a copy.
+#
+# The read-only pass reuses the profile without changing the portal. It
+# succeeds only when the profile is active, unexpired and made for a
+# certificate in the local keychain, which is what the export needs. The name
+# must match exactly, so a "<name> <timestamp>" duplicate is never adopted.
+#
+# Only when reuse fails is the profile renewed. It is first deleted by its
+# exact name through the API: sigh's own renewal deletes only profiles it could
+# fetch, and it never fetches one whose certificate is missing from the
+# keychain, so it would add a "<name> <timestamp>" duplicate on every run
+# instead. fail_on_name_taken turns any name collision that is left into an
+# error rather than another duplicate.
+def ensure_profile(api_key, output_path:)
+  name = InvoicesTracker::Release::PROFILE_NAME
+  options = {
+    api_key: api_key,
+    app_identifier: InvoicesTracker::Release::BUNDLE_ID,
+    provisioning_name: name,
+    platform: "macos",
+    developer_id: true,
+    ignore_profiles_with_different_name: true,
+    # sigh's default, ".", is the repository root.
+    output_path: output_path
+  }
+
+  begin
+    get_provisioning_profile(**options, readonly: true)
+    UI.success("Reusing profile '#{name}'")
+  rescue FastlaneCore::Interface::FastlaneError => e
+    UI.important("Cannot reuse profile '#{name}' (#{e.message.strip}) — renewing it")
+    # The name filter of the API also matches longer names; only the exact name goes.
+    stale = Spaceship::ConnectAPI::Profile.all(filter: { name: name }).select { |profile| profile.name == name }
+    stale.each(&:delete!)
+    UI.message("Deleted #{stale.size} profile(s) named '#{name}'")
+    get_provisioning_profile(**options, fail_on_name_taken: true)
+  end
+
+  # sigh records the profiles it fetched in the lane context, and build_app
+  # merges them into its export options. The export options name the profile
+  # explicitly, and nothing may override them.
+  lane_context.delete(SharedValues::SIGH_PROFILE_PATHS)
+  lane_context.delete(SharedValues::SIGH_PROFILE_PATH)
+  lane_context.delete(SharedValues::SIGH_PROFILE_TYPE)
+end
+
+# --- the build ---------------------------------------------------------------
+
+# Archives the app and exports it for Developer ID distribution.
+#
+# The archive keeps the project's automatic signing: signing settings forced on
+# the command line would reach the SQLCipher package target too, which takes no
+# profile. -allowProvisioningUpdates, authenticated with the API key, lets
+# xcodebuild reach the portal without the accounts in Xcode's settings. The
+# export signs manually: the team, the certificate by its SHA-1 (another team's
+# Developer ID is in the keychain too) and the profile by its name.
+def archive_and_export(paths:, identity:, key_settings:)
+  # xcargs is split like a shell command line, so every value is escaped.
+  xcargs = Shellwords.join([
+    "-skipMacroValidation",
+    "-allowProvisioningUpdates",
+    "-authenticationKeyPath", key_settings.key_file,
+    "-authenticationKeyID", key_settings.key_id,
+    "-authenticationKeyIssuerID", key_settings.issuer_id
+  ])
+
+  with_system_rsync_first do
+    build_app(
+      project: paths[:project],
+      scheme: InvoicesTracker::Release::SCHEME,
+      configuration: CONFIGURATION,
+      export_method: "developer-id",
+      destination: "generic/platform=macOS",
+      archive_path: paths[:archive],
+      output_directory: paths[:export_dir],
+      output_name: InvoicesTracker::Release::APP_NAME,
+      clean: true,
+      derived_data_path: paths[:derived_data],
+      xcodebuild_formatter: XCODEBUILD_FORMATTER,
+      xcargs: xcargs,
+      export_options: {
+        signingStyle: "manual",
+        teamID: InvoicesTracker::Release::TEAM_ID,
+        signingCertificate: identity.sha1,
+        provisioningProfiles: { InvoicesTracker::Release::BUNDLE_ID => InvoicesTracker::Release::PROFILE_NAME }
+      }
+    )
+  end
+
+  UI.user_error!("The export did not produce #{paths[:app]}") unless File.directory?(paths[:app])
+end
+
+# Runs a block with Apple's /usr/bin first in PATH, then restores PATH. The
+# export copies the app with `/usr/bin/rsync -8aPhhE`, where -E means extended
+# attributes. rsync forks a helper that it finds through PATH, and a Homebrew
+# rsync 3.x earlier in PATH reads -E as --executability and rejects the
+# arguments, so the export fails with "rsync error: syntax or usage error".
+# With /usr/bin first, both ends are Apple's rsync. Only the child processes
+# started inside the block see the changed PATH.
+def with_system_rsync_first
+  previous_path = ENV["PATH"]
+  ENV["PATH"] = "/usr/bin:#{previous_path}"
+  yield
+ensure
+  ENV["PATH"] = previous_path
+end
+
+# The icon for the disk image volume: the app's AppIcon.icns, else the first
+# .icns among its resources, or nil when it has none.
+def volume_icon(app)
+  resources = File.join(app, "Contents", "Resources")
+  icons = Dir.glob("*.icns", base: resources).sort
+  icon = icons.include?("AppIcon.icns") ? "AppIcon.icns" : icons.first
+  icon && File.join(resources, icon)
+end
+
+# Deletes the DMG that an earlier run left at `path`. One that cannot be deleted
+# stops the lane: it would stay at the final path, looking like this run's result.
+def remove_previous_dmg(path)
+  FileUtils.rm_f(path)
+  UI.user_error!("Cannot delete the previous DMG at #{path}; delete it and run the lane again") if File.exist?(path)
+end
+
+# Runs the steps that make the DMG at `path`. If one of them fails, or the run
+# is interrupted, the DMG is deleted before the error goes on, so a DMG that was
+# not verified is never left behind looking finished. Exception rather than
+# StandardError, so an interrupt cleans up as well; it is raised again as is.
+def deleting_on_failure(path)
+  yield
+rescue Exception
+  FileUtils.rm_f(path)
+  raise
+end
+
+# --- verification ------------------------------------------------------------
+
+# What Gatekeeper, the stapler and codesign say about the DMG and the app, as a
+# list of problems that is empty when all is well.
+def verification_errors(dmg:, app:)
+  team_id = InvoicesTracker::Release::TEAM_ID
+  spctl = combined_output("spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "-vvv", dmg)
+  errors = InvoicesTracker::Verification.gatekeeper_errors(spctl, path: dmg)
+  [dmg, app].each do |path|
+    errors += InvoicesTracker::Verification.staple_errors(
+      combined_output("xcrun", "stapler", "validate", path), path: path
+    )
+  end
+  [dmg, app].each do |path|
+    errors += InvoicesTracker::Verification.team_errors(
+      combined_output("codesign", "-dv", "--verbose=2", path), path: path, team_id: team_id
+    )
+  end
+  errors
+end
+
+# What a command printed, stdout and stderr together: spctl and codesign give
+# their verdicts on stderr, the stapler on stdout. The exit status is not used;
+# Verification reads the verdict from the text.
+def combined_output(*argv)
+  output, _status = Open3.capture2e(*argv)
+  output
+end
+
+# --- helpers -----------------------------------------------------------------
+
+# Runs a shell command without turning it into a fastlane step, and returns its
+# stdout. With must_succeed: true, a non-zero exit stops the lane with the
+# command's stderr.
+def run(command, must_succeed:)
+  stdout, stderr, status = Open3.capture3("/bin/sh", "-c", command)
+  if must_succeed && !status.success?
+    UI.user_error!("Command failed (exit #{status.exitstatus}): #{command}\n#{stderr.strip}")
+  end
+  stdout
+end
+
+# Runs an argument list without a shell and returns its stdout. A non-zero exit
+# stops the lane with the tool's stderr, or its stdout when stderr is empty,
+# once `retries` more attempts have failed as well. The block, if one is given,
+# runs before each retry to clear away what the failed attempt left.
+def run_argv(argv, retries: 0, &before_retry)
+  attempts = 0
+  begin
+    attempts += 1
+    stdout, stderr, status = Open3.capture3(*argv)
+    unless status.success?
+      raise "#{argv.first} failed (exit #{status.exitstatus}): #{stderr.strip.empty? ? stdout.strip : stderr.strip}"
+    end
+
+    stdout
+  rescue RuntimeError, SystemCallError => e
+    if attempts <= retries
+      UI.important("#{e.message} — trying again")
+      before_retry&.call
+      retry
+    end
+    UI.user_error!(e.message)
+  end
+end
+
+# The line of a tool's output that says what went wrong: the first one with
+# "error:" in it, else the last one.
+def error_line(output)
+  lines = output.lines.map(&:strip).reject(&:empty?)
+  lines.find { |line| line.include?("error:") } || lines.last || "no output"
+end
+
+def bullet_list(items)
+  items.map { |item| "  - #{item}" }.join("\n")
+end

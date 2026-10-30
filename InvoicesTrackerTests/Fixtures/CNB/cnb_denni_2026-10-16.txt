@@ -1,0 +1,7 @@
+16.10.2026 #200
+země|měna|množství|kód|kurz
+Austrálie|dolar|1|AUD|15,045
+EMU|euro|1|EUR|24,325
+Japonsko|jen|100|JPY|13,686
+USA|dolar|1|USD|21,622
+Velká Británie|libra|1|GBP|28,839

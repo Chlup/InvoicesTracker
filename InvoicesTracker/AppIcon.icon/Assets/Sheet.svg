@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="matrix(1.24272 0 0 1.24272 -124.272 -124.272)">
+    <g transform="rotate(-4 500 500)">
+      <path d="M 300 206 H 650 L 736 292 V 800 H 300 Z" fill="#FFFFFF"/>
+      <path d="M 650 206 V 292 H 736 Z" fill="#D6E2EE"/>
+      <rect x="350" y="266" width="190" height="40" rx="20" fill="#0071E3"/>
+      <rect x="350" y="350" width="300" height="24" rx="12" fill="#DDE4EC"/>
+      <rect x="350" y="398" width="240" height="24" rx="12" fill="#DDE4EC"/>
+      <rect x="350" y="468" width="336" height="8" rx="4" fill="#E7ECF2"/>
+      <rect x="350" y="512" width="200" height="22" rx="11" fill="#DDE4EC"/>
+      <rect x="606" y="512" width="80" height="22" rx="11" fill="#DDE4EC"/>
+      <rect x="350" y="560" width="170" height="22" rx="11" fill="#DDE4EC"/>
+      <rect x="606" y="560" width="80" height="22" rx="11" fill="#DDE4EC"/>
+      <rect x="350" y="636" width="140" height="32" rx="16" fill="#1D1D1F"/>
+      <rect x="566" y="636" width="120" height="32" rx="16" fill="#1D1D1F"/>
+    </g>
+  </g>
+</svg>
