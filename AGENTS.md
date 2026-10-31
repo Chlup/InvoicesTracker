@@ -51,7 +51,7 @@ The code is layered, bottom to top:
     - `InvoicesTracker.sqlite`;
     - `InvoicesTracker.keys`, the wrapped key (`Storage/Keys/`: Secure Enclave, recovery code);
     - `Backups/`.
-  - **Settings.** App settings are JSON rows in the database's `app_settings` table. UserDefaults holds only the idle-lock mirror and Sparkle's own settings (the daily-check switch and the last check time), because the updater starts before the data are unlocked.
+  - **Settings.** App settings are JSON rows in the database's `app_settings` table. UserDefaults holds only the idle-lock mirror and Sparkle's own state, such as the daily-check switch, the last check time and skipped versions, because the updater starts before the data are unlocked.
 - **Domain** (`Domain/`), models and values:
   - money is `Int64` haléře, or whole Kč where the name says so;
   - dates are `CivilDate`, which has no time zone;
@@ -67,12 +67,30 @@ The code is layered, bottom to top:
   - `Import/`: Fakturoid CSV import;
   - `Invoices/`: numbering, PDF and the QR payment code;
   - `Search/`.
-- **Updates** (`Updates/`). Sparkle 2 updates the app from the feed `https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml`:
-  - the feed URL must keep working for every installed version, so it never moves, and only the release workflow publishes releases;
-  - the public key (`SUPublicEDKey`) is committed. The appcast and every archive must be signed with its private half, which is never committed (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`);
-  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`;
-  - `AppUpdater` starts Sparkle's updater once at launch, never under the test host, and is its delegate. It is the only code that imports Sparkle: the app reaches the updater through `AppModel.updates` (nil in tests, which use `FakeUpdater`), an `UpdatesModel` that mirrors an `AppUpdating`;
-  - Debug builds refuse the updater's daily check in the background (`UpdateCheckPolicy`). A check the person asks for runs in every build.
+- **Updates** (`Updates/`). Sparkle 2 updates the app from the feed
+  `https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml`:
+  - the feed URL must keep working for every installed version, so it never moves, and only the release workflow
+    publishes releases;
+  - the public key (`SUPublicEDKey`) is committed. The appcast and every archive must be signed with its private half,
+    which is never committed (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`);
+  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the
+    generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into
+    the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`;
+  - `AppUpdater` starts Sparkle's updater once at launch, never under the test host, and is its delegate. It is the only
+    code that imports Sparkle. An `UpdatesModel` mirrors an `AppUpdating` (the tests use `FakeUpdater`), and the person
+    reaches it in two places:
+    - "Zkontrolovat aktualizace…" in the app menu: `TaxesTrackerApp` gives `AppUpdater.model` to `AppCommands` directly,
+      so the item works whether or not the data folder could be made;
+    - the card "Aktualizace" in Nastavení › Aplikace, which reads `AppModel.updates` (nil under the test host);
+  - Debug builds refuse the updater's daily check in the background (`UpdateCheckPolicy`). A check the person asks for
+    runs in every build;
+  - Debug and Release builds share the bundle identifier, so they share Sparkle's state in UserDefaults:
+    - a Debug build's refused daily check counts as that day's check for the installed copy;
+    - turning "Kontrolovat automaticky" off in a Debug build turns it off for the installed copy;
+    - a version skipped in a Debug build's update window is skipped by the installed copy too;
+    - a check started in a Debug build can offer to replace that Debug build with the release;
+  - the start line goes to the `Updates` log category. A failed update cycle goes through `AppModel.log` (category
+    `App`, domain and code only).
 - **App** (`App/`):
   - `AppModel` is `@MainActor @Observable`, split across `AppModel+*.swift`. It holds:
     - the unlocked database and the selected screen;
