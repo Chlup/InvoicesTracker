@@ -17,7 +17,10 @@ func withHostedView<Content: View>(
 ) async throws {
     try await whileTypingAlone {
         let controller = NSHostingController(rootView: view)
-        let window = TestWindow(content: controller, isClosedToTheRealPointer: ignoringTheRealPointer)
+        let window = TestWindow(contentViewController: controller)
+        if ignoringTheRealPointer {
+            window.closeToTheRealPointer()
+        }
         window.styleMask = [.titled, .closable, .resizable]
         window.tabbingMode = .disallowed
         window.setContentSize(size)

@@ -32,8 +32,10 @@ func withAppWindow(
     of app: AppModel, size: CGSize, ignoringTheRealPointer: Bool = false, _ body: (NSWindow) async throws -> Void
 ) async throws {
     app.screen = .overview
-    let window = TestWindow(
-        content: NSHostingController(rootView: RootView(model: app)), isClosedToTheRealPointer: ignoringTheRealPointer)
+    let window = TestWindow(contentViewController: NSHostingController(rootView: RootView(model: app)))
+    if ignoringTheRealPointer {
+        window.closeToTheRealPointer()
+    }
     window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
     window.tabbingMode = .disallowed
     window.toolbarStyle = .unified
