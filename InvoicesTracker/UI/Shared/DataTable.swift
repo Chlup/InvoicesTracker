@@ -16,6 +16,45 @@ nonisolated enum DataTableMetrics {
     static let gap: CGFloat = 8
 }
 
+/// How the columns of a table share its width, as the fractions of a CSS grid share the room of the grid. The tables of
+/// Faktury (`InvoiceTableColumns`) and of Odběratelé (`ClientTableColumns`) share their widths so.
+nonisolated enum TableColumnSharing {
+    /// The widths of the columns of a table that has `room` for its columns, the width of the table without the room
+    /// between the columns and at its ends, in the order of the columns. `minimums` are the least widths of the columns
+    /// and `fractions` their shares of the room, one of each for every column in its order; a column without a fraction
+    /// has a width of its own, its least width.
+    ///
+    /// The columns with a fraction share what the others leave of the room: each has its fraction of it in the
+    /// proportions of the fractions of the columns that share it. A column whose part is less than its least width
+    /// keeps that width and leaves the sharing, and the others share what is left, until every column that shares has
+    /// at least its least width, as the fractions of a CSS grid are worked out. Fractions that add up to less than 1
+    /// share as if they added up to 1, as in a CSS grid, and leave the rest of the room unused. Where the room is less
+    /// than the least widths take, every column has its least width.
+    static func widths(minimums: [CGFloat], fractions: [CGFloat?], room: CGFloat) -> [CGFloat] {
+        var widths = minimums
+        var sharing = fractions.enumerated().compactMap { index, fraction in
+            fraction.map { (index: index, fraction: $0) }
+        }
+        var left = room - zip(minimums, fractions).filter { $0.1 == nil }.map(\.0).reduce(0, +)
+        while !sharing.isEmpty {
+            // A CSS grid shares by fractions that add up to 1 at least, so fractions below that leave room unused.
+            let unit = left / max(1, sharing.map(\.fraction).reduce(0, +))
+            let tooNarrow = sharing.filter { unit * $0.fraction < minimums[$0.index] }
+            guard !tooNarrow.isEmpty else {
+                for column in sharing {
+                    widths[column.index] = unit * column.fraction
+                }
+                break
+            }
+            for column in tooNarrow {
+                left -= minimums[column.index]
+            }
+            sharing.removeAll { column in tooNarrow.contains { $0.index == column.index } }
+        }
+        return widths
+    }
+}
+
 /// The sizes of the summary row on top of a table and of the stripe of a selected row, in points.
 private nonisolated enum DataTableDetailMetrics {
     /// The space above the line of the summary.

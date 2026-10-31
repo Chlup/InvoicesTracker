@@ -50,27 +50,11 @@ nonisolated enum ClientTableColumns {
     }
 
     /// The widths of the columns in a table `width` points wide, in their order; below `minimumWidth` those of a table
-    /// of that width. Each column is its fraction of the room in the proportions of the fractions of the columns that
-    /// share it, and a column whose part is less than its least width keeps that width and leaves the sharing, until
-    /// every column that shares has at least its least width, as the fractions of a CSS grid are worked out.
+    /// of that width. The columns share the room by their fractions, as the fractions of a CSS grid are worked out
+    /// (`TableColumnSharing`).
     static func columnWidths(inTableOf width: CGFloat) -> [CGFloat] {
-        var widths = columns.map(\.minimum)
-        var sharing = Array(columns.indices)
-        var left = max(width, minimumWidth) - roomAroundColumns
-        while !sharing.isEmpty {
-            let share = left / sharing.map { columns[$0].fraction }.reduce(0, +)
-            let tooNarrow = sharing.filter { share * columns[$0].fraction < columns[$0].minimum }
-            guard !tooNarrow.isEmpty else {
-                for index in sharing {
-                    widths[index] = share * columns[index].fraction
-                }
-                break
-            }
-            for index in tooNarrow {
-                left -= columns[index].minimum
-            }
-            sharing.removeAll { tooNarrow.contains($0) }
-        }
-        return widths
+        TableColumnSharing.widths(
+            minimums: columns.map(\.minimum), fractions: columns.map { $0.fraction },
+            room: max(width, minimumWidth) - roomAroundColumns)
     }
 }

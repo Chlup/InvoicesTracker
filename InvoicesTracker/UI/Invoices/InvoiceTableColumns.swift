@@ -30,6 +30,14 @@ nonisolated struct InvoiceTableColumns: Sendable, Equatable {
             case .flexible(let minimum, _): minimum
             }
         }
+
+        /// The fraction of the room the column shares, or nil for a column of its own width.
+        var fraction: CGFloat? {
+            switch self {
+            case .fixed: nil
+            case .flexible(_, let fraction): fraction
+            }
+        }
     }
 
     /// The least width of the table on the board, which the least widths of the columns raised for their cells exceed.
@@ -69,42 +77,11 @@ nonisolated struct InvoiceTableColumns: Sendable, Equatable {
     }
 
     /// The widths of the columns in a table `width` points wide, in their order; below `minimumWidth` those of a table
-    /// of that width. A column of its own width has it. The flexible columns share the room left: each is its fraction
-    /// of the room in the proportions of the fractions of those that share it, and a column whose part is less than
-    /// its least width keeps that width and leaves the sharing, until every column that shares has at least its least
-    /// width, as the fractions of a CSS grid are worked out.
+    /// of that width. A column of its own width has it, and the flexible columns share the room left by their
+    /// fractions, as the fractions of a CSS grid are worked out (`TableColumnSharing`).
     func columnWidths(inTableOf width: CGFloat) -> [CGFloat] {
-        let room = max(width, minimumWidth) - roomAroundColumns
-        var columns = widths.map(\.minimum)
-        var sharing = widths.indices.filter { index in
-            if case .flexible = widths[index] { return true }
-            return false
-        }
-        var left = room - widths.indices.filter { !sharing.contains($0) }.map { columns[$0] }.reduce(0, +)
-        while !sharing.isEmpty {
-            // A CSS grid shares by fractions that add up to 1 at least, so fractions below that leave room unused.
-            let fractions = max(1, sharing.map { fraction(of: $0) }.reduce(0, +))
-            let share = left / fractions
-            let tooNarrow = sharing.filter { share * fraction(of: $0) < widths[$0].minimum }
-            guard !tooNarrow.isEmpty else {
-                for index in sharing {
-                    columns[index] = share * fraction(of: index)
-                }
-                break
-            }
-            for index in tooNarrow {
-                left -= widths[index].minimum
-            }
-            sharing.removeAll { tooNarrow.contains($0) }
-        }
-        return columns
-    }
-
-    /// The fraction of the column at `index`, or nothing for a column of its own width.
-    private func fraction(of index: Int) -> CGFloat {
-        if case .flexible(_, let fraction) = widths[index] {
-            return fraction
-        }
-        return 0
+        TableColumnSharing.widths(
+            minimums: widths.map(\.minimum), fractions: widths.map(\.fraction),
+            room: max(width, minimumWidth) - roomAroundColumns)
     }
 }

@@ -3,9 +3,10 @@ import SwiftUI
 import Testing
 @testable import InvoicesTracker
 
-/// The shared parts of a table in a card and of the panel beside it: the heights of the header and the rows, the
-/// summary row on top of the table, the background of a selected row, and the detail panel with its header, its
-/// actions, its facts and its figure, and the panel that scrolls what does not fit in its room.
+/// The shared parts of a table in a card and of the panel beside it: the heights of the header and the rows, how the
+/// columns share the width of a table, the summary row on top of the table, the background of a selected row, and the
+/// detail panel with its header, its actions, its facts and its figure, and the panel that scrolls what does not fit
+/// in its room.
 @Suite(.serialized)
 @MainActor
 struct DataTableTests {
@@ -79,6 +80,41 @@ struct DataTableTests {
                 #expect(picture.bytes(at: point) == card, "\(scheme): \(point) is not the card")
             }
         }
+    }
+
+    // MARK: The widths of the columns
+
+    /// A column of its own width keeps it, and the columns with a fraction share the rest of the room in the
+    /// proportions of their fractions: 40 points of 240 for the first, and 50 and 150 of the 200 left for the 1 : 3 of
+    /// the others.
+    @Test func theColumnsWithAFractionShareTheRoomInItsProportions() {
+        let widths = TableColumnSharing.widths(minimums: [40, 10, 10], fractions: [nil, 1, 3], room: 240)
+
+        #expect(widths == [40, 50, 150])
+    }
+
+    /// A column whose part is less than its least width keeps that width, and the others share what is left, until
+    /// each has at least its own: of 150 points the first would have 50, under its 70, so it keeps 70; of the 80 left
+    /// the second would then have 40, under its 45, so it keeps 45 too; and the third has the 35 that are left.
+    @Test func aColumnWhoseShareIsUnderItsLeastWidthKeepsItAndTheOthersShareTheRest() {
+        let widths = TableColumnSharing.widths(minimums: [70, 45, 0], fractions: [1, 1, 1], room: 150)
+
+        #expect(widths == [70, 45, 35])
+    }
+
+    /// Fractions that add up to less than 1 share the room as if they added up to 1, as in a CSS grid, and leave the
+    /// rest of it unused: a fifth and three tenths of 100 points.
+    @Test func fractionsThatAddUpToLessThanOneLeaveTheRestOfTheRoomUnused() {
+        let widths = TableColumnSharing.widths(minimums: [0, 0], fractions: [0.2, 0.3], room: 100)
+
+        #expect(widths == [20, 30])
+    }
+
+    /// Where the room is less than the least widths take, every column has its least width.
+    @Test func inTooLittleRoomEveryColumnHasItsLeastWidth() {
+        let widths = TableColumnSharing.widths(minimums: [30, 20, 10], fractions: [nil, 1, 2], room: 40)
+
+        #expect(widths == [30, 20, 10])
     }
 
     // MARK: The summary row
