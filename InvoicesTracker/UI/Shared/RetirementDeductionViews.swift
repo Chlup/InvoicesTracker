@@ -13,6 +13,7 @@ struct RetirementLimitBars: View {
         }
     }
 
+    /// One limit: its title and the claim of it in secondary text, and under them the bar of the use.
     private func bar(_ use: LimitUse) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
@@ -21,13 +22,37 @@ struct RetirementLimitBars: View {
                 Text(use.usedText)
                     .monospacedDigit()
             }
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            ProgressView(value: Double(use.usedPermille), total: 1_000)
-                .tint(Authority.tax.color)
-                .accessibilityHidden(true)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
+            LimitBar(permille: use.usedPermille)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The bar of a limit: a track 6 points tall in the grey fill, rounded at both ends, and over it from the start the use
+/// in the colour of the income tax, as wide as the claim is of the limit (`permille`, thousandths of it). The track
+/// clips the use, so it is rounded at the start and straight where it ends. VoiceOver does not read the bar: the line
+/// over it says the same in words.
+private struct LimitBar: View {
+    let permille: Int
+
+    /// The height of the track, in points.
+    private static let height: CGFloat = 6
+
+    var body: some View {
+        GeometryReader { proxy in
+            Capsule()
+                .fill(Palette.fill)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Palette.tax)
+                        .frame(width: proxy.size.width * CGFloat(min(max(permille, 0), 1_000)) / 1_000)
+                }
+                .clipShape(Capsule())
+        }
+        .frame(height: Self.height)
+        .accessibilityHidden(true)
     }
 }
 
@@ -62,7 +87,8 @@ struct RetirementFieldGrid: View {
 }
 
 /// What to enter for pension savings, with the contributions that count in `year`, and what the products allow
-/// together (`allowed`), once the computation of the year says so.
+/// together (`allowed`, in semibold text), once the computation of the year says so. The note is in callout and the
+/// grey of captions.
 struct RetirementNote: View {
     let year: Int
     let allowed: String?
@@ -71,13 +97,14 @@ struct RetirementNote: View {
         let advice = DeductionHints.pensionAdvice(year: year)
         Group {
             if let allowed {
-                Text("\(advice). Uplatníte \(Text(allowed).fontWeight(.semibold).foregroundStyle(.primary)).")
+                let amount = Text(allowed).font(Typography.calloutSemibold).foregroundStyle(Palette.text)
+                Text("\(advice). Uplatníte \(amount).")
             } else {
                 Text("\(advice).")
             }
         }
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(Typography.callout)
+        .foregroundStyle(Palette.text3)
         .fixedSize(horizontal: false, vertical: true)
     }
 }

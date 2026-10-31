@@ -295,6 +295,48 @@ struct AdvancesScreenTests {
         }
     }
 
+    /// "Zvýhodnění uplatňuje" in the dialog is the segmented control of the design: Já and Druhý rodič are two buttons
+    /// of one group, the chosen one is selected, and choosing the other changes what the dialog says the child comes
+    /// to and who the child is stored as the benefit of.
+    @Test func theClaimantOfAChildIsChosenInTheSegmentedControlOfTheDesign() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeAdvancesApp(in: directory)
+        let database = try #require(app.database)
+
+        try await withScreen(of: app, saveDelay: .seconds(3_600)) { window, _ in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Přidat dítě", in: window) != nil }
+                _ = try #require(accessibilityButton(labelled: "Přidat dítě", in: window)).accessibilityPerformPress?()
+                try await waitUntil { window.attachedSheet != nil }
+                let sheet = try #require(window.attachedSheet)
+                try await waitUntil { textField(labelled: "Datum narození", in: sheet) != nil }
+                try type("Anna", into: try #require(textField(labelled: "Jméno", in: sheet)), in: sheet)
+                try type("3. 9. 2019", into: try #require(textField(labelled: "Datum narození", in: sheet)), in: sheet)
+                let mine = "V roce 2026: 12\u{00A0}měsíců jako 1. dítě · 15\u{00A0}204\u{00A0}Kč"
+                try await waitUntil { showsText(mine, in: sheet) }
+
+                // The elements are asked for each time: the control makes new ones when its choice changes.
+                @MainActor func isSelected(_ title: String) -> Bool {
+                    accessibilityButton(labelled: title, in: sheet)?.isAccessibilitySelected?() == true
+                }
+                try await waitUntil { accessibilityButton(labelled: "Druhý rodič", in: sheet) != nil }
+                #expect(isSelected("Já"))
+                #expect(!isSelected("Druhý rodič"))
+
+                _ = try #require(accessibilityButton(labelled: "Druhý rodič", in: sheet)).accessibilityPerformPress?()
+                let theirs = "V roce 2026: 12\u{00A0}měsíců · uplatňuje druhý rodič, ve vašem výpočtu se nepočítá."
+                try await waitUntil { showsText(theirs, in: sheet) }
+                #expect(isSelected("Druhý rodič"))
+                #expect(!isSelected("Já"))
+
+                _ = try #require(accessibilityButton(labelled: "Uložit dítě", in: sheet)).accessibilityPerformPress?()
+                try await waitUntil { window.attachedSheet == nil }
+                #expect(try await database.family(year: 2026).children.map(\.year.claimant) == [.otherParent])
+            }
+        }
+    }
+
     /// A child that cannot be saved keeps its dialog open, with what is typed in it, and the dialog says so; nothing is
     /// stored. Once the data takes writes again, Uložit dítě saves the child and closes the sheet.
     @Test func aChildThatCannotBeSavedKeepsItsDialogOpenWithTheFailure() async throws {

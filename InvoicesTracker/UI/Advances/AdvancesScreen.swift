@@ -1,10 +1,29 @@
 import SwiftUI
 
+/// The sizes of the page of Zálohy a odpočty that its parts do not set themselves, in points.
+private nonisolated enum AdvancesScreenMetrics {
+    /// The least width of the column of the deductions and of the family beside the impact panel; where the page is
+    /// narrower than this and the panel together, the panel comes under the column.
+    static let cardColumnMinimumWidth: CGFloat = 520
+
+    /// The width of the content of the impact panel: the 300 points the prototype gives it as the basis of its width.
+    static let impactPanelContentWidth: CGFloat = 300
+
+    /// The width of the impact panel: 340 points. The prototype's panel is a box of `flex: 1 1 300px; padding: 20px`,
+    /// and nothing in the prototype makes a box hold its padding (`box-sizing`), so the 300 points are those of its
+    /// content, to which the padding of a card on either side adds. The detail panels of Faktury and Odběratelé are
+    /// the same width for the same reason (`DetailPanelMetrics.width`).
+    static let impactPanelWidth: CGFloat = impactPanelContentWidth + 2 * DesignMetrics.cardPadding
+}
+
 /// Zálohy a odpočty: the plan of advances of the selected year with its totals, the deductions, the taxpayer credit,
 /// the children and the spouse, and beside them, or under them in a narrow window, the impact of the deductions and the
 /// credits on the tax. Everything is saved by itself, a moment after the last key and when the person leaves a field or
 /// the screen; a child is saved in its dialog, a sheet. The title and the line under it are the shell's. The data is
 /// loaded again whenever what it depends on changes.
+///
+/// The impact panel is 340 points wide beside the column of the cards (`AdvancesScreenMetrics.impactPanelWidth`) and
+/// stands there as long as the column keeps 520 points; under the column it is as wide as the page.
 struct AdvancesScreen: View {
     let app: AppModel
     @State private var model: AdvancesModel
@@ -45,19 +64,23 @@ struct AdvancesScreen: View {
     @ViewBuilder
     private var content: some View {
         if model.settings != nil {
-            VStack(spacing: 16) {
+            VStack(spacing: DesignMetrics.cardSpacing) {
                 if let line = model.saveFailure ?? model.errorText {
-                    Notice(text: line)
+                    Note(.error, icon: .warning, text: line)
                 }
                 AdvancePlanTable(model: model)
-                SidePanelLayout(sideWidth: 300, mainMinimumWidth: 520, spacing: 16) {
+                SidePanelLayout(
+                    sideWidth: AdvancesScreenMetrics.impactPanelWidth,
+                    mainMinimumWidth: AdvancesScreenMetrics.cardColumnMinimumWidth, spacing: DesignMetrics.cardSpacing
+                ) {
                     DeductionsForm(model: model, openChild: openChild)
                     ImpactPanel(model: model, showOverview: { app.screen = .overview })
                 }
             }
         } else if let errorText = model.errorText {
-            Text(errorText)
-                .foregroundStyle(.secondary)
+            Text(verbatim: errorText)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         }
@@ -69,24 +92,5 @@ extension AdvancesScreen {
     private func openChild(_ member: FamilyChild?) {
         childDialog = ChildDialogModel(
             editing: model, year: model.family?.year ?? model.year, child: member, mode: .stored)
-    }
-}
-
-/// A line that says something went wrong next to the form.
-private struct Notice: View {
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-                .accessibilityHidden(true)
-            Text(verbatim: text)
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 }

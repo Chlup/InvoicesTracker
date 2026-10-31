@@ -2381,7 +2381,7 @@ struct AppWindowLayoutTests {
         ("Pořadí dětí se s druhým rodičem dohodněte", "Děti", .callout),
         ("24\u{00A0}840\u{00A0}Kč za rok – 2\u{00A0}070\u{00A0}Kč za každý měsíc", "Manžel nebo manželka", .callout),
         ("Hrubé příjmy za celý rok", "Manžel nebo manželka", .callout),
-        ("Od roku 2024 se sleva uplatní jen za měsíce", "Manžel nebo manželka", .callout),
+        ("Od roku 2024 se sleva uplatní jen za měsíce", "Manžel nebo manželka", .body),
         ("V roce 2026 se sleva neuplatní", "Manžel nebo manželka", .body.weight(.semibold)),
     ]
 
@@ -2440,9 +2440,9 @@ struct AppWindowLayoutTests {
     }
 
     /// The room at which the impact panel of Zálohy a odpočty first stands beside the cards, a little wider than the
-    /// least: the cards are at their narrowest there, 520 points and a little more.
+    /// least: the cards are at their narrowest there, 520 points and a little more, beside the panel of 340 points.
     private static let narrowestFamilyCards = CGSize(
-        width: AppWindowSize.minimum.width + 20, height: AppWindowSize.minimum.height)
+        width: AppWindowSize.minimum.width + 50, height: AppWindowSize.minimum.height)
 
     /// The label of the box of ZTP/P of the spouse, with the months beside it while it is ticked.
     private static let spouseZTPPLabel = "Průkaz ZTP/P – sleva dvojnásobná"
@@ -4916,7 +4916,7 @@ struct AppWindowLayoutTests {
     private static let simulatorFamilyTexts: [(prefix: String, card: String, font: Font)] = [
         ("Zvýhodnění převyšuje daň o 37\u{00A0}524\u{00A0}Kč, bonus se ale nevyplatí", "Děti", .callout),
         ("Za každý měsíc, na jehož začátku", "Děti", .callout),
-        ("Dítě do 3 let ve společné domácnosti: Tomáš", "Manžel nebo manželka", .callout),
+        ("Dítě do 3 let ve společné domácnosti: Tomáš", "Manžel nebo manželka", .body),
         ("Hrubé příjmy za celý rok", "Manžel nebo manželka", .callout),
         ("Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč – daň už je nulová", "Manžel nebo manželka",
             .body.weight(.semibold)),

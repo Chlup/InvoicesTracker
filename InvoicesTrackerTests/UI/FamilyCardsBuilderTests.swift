@@ -292,15 +292,15 @@ struct FamilyCardsBuilderTests {
         #expect(
             cards.spouse.youngChild
                 == YoungChildNote(
-                    text: "Dítě do 3 let ve společné domácnosti: Tomáš (12\u{00A0}měsíců). Od roku 2024 se sleva počítá"
-                        + " jen za tyto měsíce.",
+                    text: "Dítě do 3 let ve společné domácnosti: Tomáš (celý rok). Od roku 2024 se sleva počítá jen za"
+                        + " tyto měsíce.",
                     isMet: true))
         #expect(cards.spouse.result == "Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč")
         #expect(
             SpouseCardContent.incomeNote
                 == "Hrubé příjmy za celý rok: mzda, podnikání, nájem, důchod, nemocenská, peněžitá pomoc v mateřství,"
-                + " podpora v nezaměstnanosti, výživné pro manžela či manželku. Nepočítá se rodičovský příspěvek,"
-                + " porodné, přídavek na dítě, stipendium ani výživné na dítě.")
+                + " podpora v nezaměstnanosti. Nepočítá se rodičovský příspěvek, porodné, přídavek na dítě, stipendium"
+                + " ani výživné.")
     }
 
     /// The own income may be 68 000 Kč at most.
@@ -334,13 +334,14 @@ struct FamilyCardsBuilderTests {
     }
 
     /// Every child under three is named with its own months, which the engine counts for it: Ema, born 15. 6. 2026,
-    /// is under three from July. A child without a name is "dítě".
+    /// is under three from July. A child under three all twelve months has "celý rok" in place of its months, as the
+    /// design says it. A child without a name is "dítě".
     @Test func theBoxNamesEveryChildUnderThreeWithItsMonths() throws {
         let cards = try Self.content([Self.anna(), Self.tomas(), Self.ema(order: 3)])
         #expect(
             cards.spouse.youngChild?.text
-                == "Dítě do 3 let ve společné domácnosti: Tomáš (12\u{00A0}měsíců), Ema (6\u{00A0}měsíců). Od roku 2024"
-                + " se sleva počítá jen za tyto měsíce.")
+                == "Dítě do 3 let ve společné domácnosti: Tomáš (celý rok), Ema (6\u{00A0}měsíců). Od roku 2024 se"
+                + " sleva počítá jen za tyto měsíce.")
 
         let unnamed = try Self.content([Self.member("", born: "2026-06-15", id: 3, order: 1)])
         #expect(

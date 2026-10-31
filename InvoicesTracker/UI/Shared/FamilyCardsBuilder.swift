@@ -115,8 +115,8 @@ nonisolated struct SpouseCardContent: Sendable, Hashable {
     /// Under the field of the income: what counts in it.
     static let incomeNote =
         "Hrubé příjmy za celý rok: mzda, podnikání, nájem, důchod, nemocenská, peněžitá pomoc v mateřství,"
-        + " podpora v nezaměstnanosti, výživné pro manžela či manželku. Nepočítá se rodičovský příspěvek,"
-        + " porodné, přídavek na dítě, stipendium ani výživné na dítě."
+        + " podpora v nezaměstnanosti. Nepočítá se rodičovský příspěvek, porodné, přídavek na dítě, stipendium ani"
+        + " výživné."
 }
 
 /// The box of the spouse card about the children under three, from 2024.
@@ -296,8 +296,8 @@ nonisolated enum FamilyCardsBuilder {
     }
 
     /// The box about the children under three: each child under three in the household in a month of the year, with
-    /// its own months, or what the credit needs while there is none. A child's own months are the engine's months of a
-    /// child under three for a family of the spouse and that child alone.
+    /// its own months ("celý rok" for all twelve), or what the credit needs while there is none. A child's own months
+    /// are the engine's months of a child under three for a family of the spouse and that child alone.
     private static func youngChildNote(of family: FamilyYear, result: TaxResult) -> YoungChildNote {
         guard result.family.spouseYoungChildMonths > 0 else {
             return YoungChildNote(
@@ -312,7 +312,8 @@ nonisolated enum FamilyCardsBuilder {
                 rules: result.rules)
             guard alone.spouseYoungChildMonths > 0 else { return nil }
             let name = member.child.name.isEmpty ? "dítě" : member.child.name
-            return name + " (" + ComputationBuilder.months(alone.spouseYoungChildMonths) + ")"
+            let months = alone.spouseYoungChildMonths
+            return name + " (" + (months == 12 ? "celý rok" : ComputationBuilder.months(months)) + ")"
         }
         return YoungChildNote(
             text: "Dítě do 3 let ve společné domácnosti: " + children.joined(separator: ", ")

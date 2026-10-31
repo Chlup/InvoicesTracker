@@ -147,6 +147,17 @@ struct OffscreenPicture {
         }.map { CGFloat($0) / scale }
     }
 
+    /// The band that a panel of `colour` makes across the picture, as the rectangle from the first to the last pixel
+    /// row in which every pixel from `start` to `end` points from the left edge is within `margin` levels of `colour`,
+    /// or nil where there is none. The rows of text inside the panel are not such rows, but the padding over and under
+    /// it are, so the band is the panel, whereas the extent of the pixels near its colour (`extent(near:by:)`) takes
+    /// in the soft edges of any text on the card, which pass through every shade between the card and the text.
+    func band(near colour: [Int], from start: CGFloat, to end: CGFloat, by margin: Int) -> CGRect? {
+        let found = rows(near: colour, from: start, to: end, by: margin)
+        guard let first = found.first, let last = found.last else { return nil }
+        return CGRect(x: start, y: first, width: end - start, height: last + 0.5 - first)
+    }
+
     /// The red, green and blue bytes of the pixel in `row` and `column`, counted in pixels from the top left.
     private func pixel(row: Int, column: Int) -> [Int] {
         let start = (row * pixelsPerRow + column) * 4

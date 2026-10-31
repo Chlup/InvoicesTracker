@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The title and the line under it at the top of a sheet.
+/// The title of a sheet in title 2 and the line under it in secondary text, at its top.
 struct SheetHeader: View {
     let title: String
     let subtitle: String
@@ -8,16 +8,18 @@ struct SheetHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: title)
-                .font(.system(size: 17, weight: .bold))
+                .font(Typography.title2)
+                .foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
             Text(verbatim: subtitle)
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
         }
     }
 }
 
-/// A field of a form: its label in small type over the control. The control carries
-/// the label for VoiceOver (`labelsHidden()` keeps the label it was made with), so the text above it is not read twice.
+/// A field of a form: its label in callout and secondary text over the control. The control carries the label for
+/// VoiceOver (`labelsHidden()` keeps the label it was made with), so the text above it is not read twice.
 struct LabeledField<Content: View>: View {
     let label: String
     let content: Content
@@ -30,8 +32,8 @@ struct LabeledField<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(verbatim: label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .accessibilityHidden(true)
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,8 +65,8 @@ struct FormTextField: View {
     }
 }
 
-/// What is wrong with a form, in red over its buttons, one line each, and what went wrong with the last save. A form
-/// with many problems scrolls them within a few lines, so that the sheet stays no taller than the window.
+/// What is wrong with a form, in the red of text over its buttons, one line each, and what went wrong with the last
+/// save. A form with many problems scrolls them within a few lines, so that the sheet stays no taller than the window.
 struct FormProblems: View {
     /// The most points the problems take.
     static let maximumHeight: CGFloat = 64
@@ -83,7 +85,8 @@ struct FormProblems: View {
                         Text(verbatim: failure)
                     }
                 }
-                .foregroundStyle(.red)
+                .font(Typography.body)
+                .foregroundStyle(Palette.redText)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
