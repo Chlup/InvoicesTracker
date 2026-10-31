@@ -176,8 +176,9 @@ struct ClientNameCell: View {
 }
 
 /// The code of the currency of the client in a small chip, callout semibold on the grey fill, and after it the VAT mode
-/// in a few words, in body and secondary text, cut short at its end where the column is narrower. The least width of
-/// Měna a DPH holds the widest of them whole (`ClientTableColumns`).
+/// in a few words, in body and secondary text. Where the column is narrower than the two, as it can be at its least
+/// width (`ClientTableColumns`), the VAT text is cut at its tail on its one line and the chip stays whole, as the
+/// prototype draws the cell; VoiceOver reads the whole text with the row (`ClientRow.spokenText(receivedHeader:)`).
 struct ClientCurrencyCell: View {
     let currency: String
     let vat: String

@@ -6,11 +6,12 @@ import CoreGraphics
 /// their fractions, as a CSS grid shares it: a column whose share is less than its least width keeps that width, and
 /// the others share the rest. They have no greatest width.
 ///
-/// The least width of Měna a DPH is raised from the prototype's 130 points to 176, which holds the widest chip of a
-/// currency with the longest VAT text whole, "BGN" with "přenesená povinnost" (`ClientTableViewTests` measures it);
-/// the other least widths hold what their cells say as they are, and Odběratel gives way, its name cut short. So the
-/// least width of the table is 580 points, where the prototype's is 540, and below it the table keeps that width and
-/// scrolls sideways (`ClientTableView`), as it does in the least window with the detail open.
+/// The least widths are the prototype's. Šablony and Přijato Y hold what their cells say whole; Odběratel gives way,
+/// its name cut short, and so does the VAT text of Měna a DPH where the column is narrower than the chip of the
+/// currency with the text, as the prototype draws the cell: the text is cut at its tail and the chip stays whole
+/// (`ClientCurrencyCell`). The table is at least 540 points wide, as the prototype's is, which is a little more than
+/// its columns at their least widths take; below that it keeps that width and scrolls sideways (`ClientTableView`), as
+/// it does in the least window with the detail open.
 nonisolated enum ClientTableColumns {
     /// A column of a row.
     struct Column: Sendable, Equatable {
@@ -25,7 +26,7 @@ nonisolated enum ClientTableColumns {
     /// Odběratel, Měna a DPH, Šablony and Přijato Y.
     static let columns: [Column] = [
         Column(minimum: 150, fraction: 2),
-        Column(minimum: 176, fraction: 1.3),
+        Column(minimum: 130, fraction: 1.3),
         Column(minimum: 76, fraction: 0.8),
         Column(minimum: 110, fraction: 1),
     ]
@@ -33,9 +34,14 @@ nonisolated enum ClientTableColumns {
     /// The room between two columns: 12 points, as the grid of the prototype has it for this table.
     static let gap: CGFloat = 12
 
-    /// The least width of the table: the least widths of its columns, with the room between them and at its ends.
+    /// The least width of the table on the prototype: the `min-width` of the grid, 6 points more than its columns take
+    /// at their least widths with the room between them and at its ends.
+    static let prototypeMinimumWidth: CGFloat = 540
+
+    /// The least width of the table: that of the prototype, and never less than the least widths of its columns with
+    /// the room between them and at its ends.
     static var minimumWidth: CGFloat {
-        columns.map(\.minimum).reduce(0, +) + roomAroundColumns
+        max(prototypeMinimumWidth, columns.map(\.minimum).reduce(0, +) + roomAroundColumns)
     }
 
     /// The room a row takes besides its columns: between each two of them, and at its ends.
