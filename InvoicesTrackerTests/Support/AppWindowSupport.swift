@@ -274,6 +274,63 @@ func accessibilityElement(labelled label: String, in window: NSWindow) -> AnyObj
     }
 }
 
+/// The names VoiceOver reads for the containers of `window`, however deep they are: the label of every element that is
+/// not a control, a text, a heading or a link, such as a card, a section of a detail, a group of chips or the picture
+/// of a bar.
+/// Empty while the views of `window` make no accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func containerLabels(in window: NSWindow) -> Set<String> {
+    var labels: Set<String> = []
+    collectContainerLabels(among: window.accessibilityChildren() ?? [], into: &labels)
+    return labels
+}
+
+/// Adds the labels of the containers among `elements` and of their children to `labels`.
+@MainActor
+private func collectContainerLabels(among elements: [Any], into labels: inout Set<String>) {
+    let controls: Set<String> = [
+        "AXButton", "AXCheckBox", "AXComboBox", "AXDateTimeArea", "AXHeading", "AXIncrementor", "AXLink",
+        "AXMenuButton", "AXPopUpButton", "AXRadioButton", "AXSlider", "AXStaticText", "AXTextArea", "AXTextField",
+    ]
+    for item in elements {
+        let element = item as AnyObject
+        let role = element.accessibilityRole?()?.rawValue ?? ""
+        let label: String? = element.accessibilityLabel?() ?? nil
+        if let label, !label.isEmpty, !controls.contains(role) {
+            labels.insert(label)
+        }
+        collectContainerLabels(among: element.accessibilityChildren?() ?? [], into: &labels)
+    }
+}
+
+/// Expects `names` among the containers of `window` (`containerLabels(in:)`), giving the views a few seconds to show
+/// them. The missing ones are named in the failure, so that a table of names says which one a screen lacks.
+@MainActor
+func expectContainers(
+    _ names: [String], in window: NSWindow, _ screen: String, sourceLocation: SourceLocation = #_sourceLocation
+) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now + .seconds(5)
+    var missing = Set(names).subtracting(containerLabels(in: window))
+    while !missing.isEmpty && clock.now < deadline {
+        try await Task.sleep(for: .milliseconds(50))
+        missing = Set(names).subtracting(containerLabels(in: window))
+    }
+    let named = missing.sorted().map { "„\($0)“" }.joined(separator: ", ")
+    #expect(missing.isEmpty, "\(screen) has no container named \(named)", sourceLocation: sourceLocation)
+}
+
+/// The element of `window` that VoiceOver reads under `label` with `role`, such as the heading of a sheet whose title
+/// is also the name of the sheet: `accessibilityElement(labelled:in:)` finds the first element under that label, which
+/// is the sheet. Nil when `window` has no such element, and while its views make no accessibility elements
+/// (`withAccessibilityElements(_:)`).
+@MainActor
+func accessibilityElement(role: NSAccessibility.Role, labelled label: String, in window: NSWindow) -> AnyObject? {
+    firstElement(among: window.accessibilityChildren() ?? []) { element in
+        element.accessibilityRole?() == role && element.accessibilityLabel?() == label
+    }
+}
+
 /// The first element of `window` whose label VoiceOver reads starts with `prefix`, whatever its role: the picture of
 /// the levy bar, whose label starts with what the bar shows and goes on with its three parts. Nil when `window` has no
 /// such element, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).

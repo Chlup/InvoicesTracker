@@ -102,7 +102,7 @@ struct PredictionScreen: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Rozpis odhadu odvodů")
+        .accessibilityLabel("Rozpis odhadu")
     }
 
     /// A card of the breakdown, which VoiceOver reads under the title of its section.

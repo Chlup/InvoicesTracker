@@ -1765,7 +1765,7 @@ struct AppWindowLayoutTests {
     private func showOverviewWithTheEstimate(of app: AppModel, in window: NSWindow) async throws {
         app.screen = .overview
         try await waitUntil { window.title == "Přehled" }
-        try await waitUntil { frameOfCard(labelled: "Odhad za celý rok 2026", in: window) != nil }
+        try await waitUntil { frameOfCard(labelled: "Odhad za celý rok", in: window) != nil }
         try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
         try await layOut(window)
     }
@@ -1775,7 +1775,7 @@ struct AppWindowLayoutTests {
     /// them, and as wide as the page. The origin of the screen is at the bottom left, so what is under has the smaller
     /// y. Needs the accessibility elements.
     private func problems(ofTheOrderOfTheCardsIn window: NSWindow) -> [String] {
-        let titles = ["Kolik zbývá zaplatit", "Příjmy", "Odhad za celý rok 2026"]
+        let titles = ["Kolik zbývá zaplatit", "Příjmy", "Odhad za celý rok"]
         let frames = titles.compactMap { frameOfCard(labelled: $0, in: window) }
         guard frames.count == titles.count else {
             return titles.filter { frameOfCard(labelled: $0, in: window) == nil }.map { "No card \($0)" }
@@ -1806,10 +1806,10 @@ struct AppWindowLayoutTests {
     /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
     /// has the smaller y. Needs the accessibility elements.
     private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
-        guard let card = accessibilityElement(labelled: "Odhad za celý rok 2026", in: window),
+        guard let card = accessibilityElement(labelled: "Odhad za celý rok", in: window),
             let cardFrame = card.accessibilityFrame?()
         else {
-            return ["No card Odhad za celý rok 2026"]
+            return ["No card Odhad za celý rok"]
         }
         // What VoiceOver reads for each part of the card, which starts with the words that find it.
         let parts = [
@@ -4361,8 +4361,8 @@ struct AppWindowLayoutTests {
     }
 
     /// Odhad odvodů runs in this order, at the least room and in a large window: the result card, the card Příjmy, the
-    /// info note about what the estimate counts, the months of the clients ("Kdy čekám faktury") and "Rozpis odhadu
-    /// odvodů" with its breakdown, each above the next. Nothing of the page is laid out beyond the window.
+    /// info note about what the estimate counts, the months of the clients ("Kdy čekám faktury") and "Rozpis odhadu"
+    /// with its breakdown, each above the next. Nothing of the page is laid out beyond the window.
     @Test func thePredictionPageRunsResultPrijmyNoteMonthsBreakdown() async throws {
         try await PredictionSample.withStoredSample { app in
             let page = try PredictionSample.page(year: 2026)
@@ -4390,7 +4390,7 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the order of the page of Odhad odvodů in `window`, in words: a part is missing, or one of
     /// them is not above the next in this order: the result card, the card Příjmy, the note about what the estimate
-    /// counts, the card of the months, and "Rozpis odhadu odvodů" with the first card of its breakdown, Příjmy a zisk,
+    /// counts, the card of the months, and "Rozpis odhadu" with the first card of its breakdown, Příjmy a zisk,
     /// inside it. The cards are 16 points apart, and as wide as the page. Empty when the page runs in that order.
     /// Needs the accessibility elements.
     private func problems(ofTheOrderOfOdhadFor page: PredictionPage, in window: NSWindow) -> [String] {
@@ -4399,7 +4399,7 @@ struct AppWindowLayoutTests {
             ("Příjmy", frameOfCard(labelled: "Příjmy", in: window)),
             ("the note", frameOfText(startingWith: "Odhad vychází z faktur do", in: window)),
             (page.monthsHead, frameOfCard(labelled: page.monthsHead, in: window)),
-            ("Rozpis odhadu odvodů", frameOfCard(labelled: "Rozpis odhadu odvodů", in: window)),
+            ("Rozpis odhadu", frameOfCard(labelled: "Rozpis odhadu", in: window)),
         ]
         var found: [String] = []
         for landmark in landmarks where landmark.frame == nil {
@@ -4423,10 +4423,10 @@ struct AppWindowLayoutTests {
         }
         if let breakdown = frames.last?.frame, let income = frameOfCard(labelled: "Příjmy a zisk", in: window) {
             if !breakdown.insetBy(dx: -0.5, dy: -0.5).contains(income) {
-                found.append("Příjmy a zisk is not inside Rozpis odhadu odvodů: \(income) and \(breakdown)")
+                found.append("Příjmy a zisk is not inside Rozpis odhadu: \(income) and \(breakdown)")
             }
             if income.maxY > breakdown.maxY - 10 {
-                found.append("Příjmy a zisk does not start under the heading of Rozpis odhadu odvodů")
+                found.append("Příjmy a zisk does not start under the heading of Rozpis odhadu")
             }
         }
         return found

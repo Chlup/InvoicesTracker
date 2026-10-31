@@ -161,6 +161,8 @@ struct InvoiceEditorView: View {
                             }
                         }
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Odběratel")
                     if model.clients.isEmpty {
                         Text(verbatim: EditorText.noClients)
                             .font(Typography.callout)

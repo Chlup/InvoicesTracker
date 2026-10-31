@@ -285,18 +285,35 @@ struct DetailFigure: View {
 }
 
 /// A part of a detail that stands under a hairline, such as the payment of an invoice or the templates of a client:
-/// 14 points under the line, and then `content`, `spacing` points apart.
+/// 14 points under the line, and then `content`, `spacing` points apart. VoiceOver reads a section that has a `label`
+/// as a group under it, as the design names its sections; one without is a part of the detail with no name of its own.
 struct DetailSection<Content: View>: View {
     let spacing: CGFloat
+    let label: String?
     private let content: Content
 
-    /// A section of `content`, 8 points apart unless told otherwise.
-    init(spacing: CGFloat = DetailPanelMetrics.sectionSpacing, @ViewBuilder content: () -> Content) {
+    /// A section of `content`, 8 points apart unless told otherwise, read under `label` where there is one.
+    init(
+        spacing: CGFloat = DetailPanelMetrics.sectionSpacing, label: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
         self.spacing = spacing
+        self.label = label
         self.content = content()
     }
 
+    @ViewBuilder
     var body: some View {
+        if let label {
+            section
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(label)
+        } else {
+            section
+        }
+    }
+
+    private var section: some View {
         VStack(alignment: .leading, spacing: DetailPanelMetrics.sectionTopSpacing) {
             Hairline()
             VStack(alignment: .leading, spacing: spacing) {

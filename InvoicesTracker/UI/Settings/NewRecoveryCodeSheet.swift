@@ -30,6 +30,7 @@ struct NewRecoveryCodeSheet: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
         .frame(width: 560)
+        .dialogNamed("Nový kód pro obnovení")
     }
 
     /// The label of the code in force, which the new one replaces.

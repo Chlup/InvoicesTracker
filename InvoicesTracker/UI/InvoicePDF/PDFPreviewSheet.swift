@@ -44,6 +44,7 @@ struct PDFPreviewSheet: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
         .frame(width: Self.sheetSize.width, height: Self.sheetSize.height)
+        .dialogNamed("Faktura \(document.invoice.number)")
         .task(id: document) {
             overflowMessage = Self.overflowMessage(for: document)
         }

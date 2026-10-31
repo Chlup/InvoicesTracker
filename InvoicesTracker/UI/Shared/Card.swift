@@ -107,6 +107,20 @@ extension View {
         }
     }
 
+    /// Reads the view to VoiceOver as a group named `name` that holds one group of its own, as the aside of the design
+    /// holds its section: the Simulátor's column with the result is "Výsledek simulace" and the card in it "Kolik
+    /// zaplatíte". SwiftUI makes one element of a group that holds only a group and gives it the outer name, so the
+    /// view gets an empty overlay that VoiceOver never reads, which keeps the two apart and changes no layout.
+    func accessibilityAside(named name: String) -> some View {
+        overlay {
+            Color.clear
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(name)
+    }
+
     /// Reads the view to VoiceOver under `name`, or leaves it as it is where there is none.
     @ViewBuilder
     fileprivate func labelled(_ name: String?) -> some View {

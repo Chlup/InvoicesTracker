@@ -89,6 +89,7 @@ struct MarkPaidSheet: View {
         .padding(.bottom, 20)
         // The removal step is a narrower sheet than the payment, as the design draws it.
         .frame(width: model.removal == nil ? 620 : 520)
+        .dialogNamed(model.title)
         .task(id: Inputs(date: model.date, useBankCZK: model.useBankCZK, bankCZKText: model.bankCZKText)) {
             await model.recompute()
         }

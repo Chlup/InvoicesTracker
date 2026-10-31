@@ -41,6 +41,7 @@ struct TemplateForm: View {
         .padding(.bottom, 20)
         .frame(width: 620)
         .frame(maxHeight: Self.maximumHeight)
+        .dialogNamed(model.title)
         .defaultFocus($nameFocused, model.isNew)
         .task {
             await model.load()

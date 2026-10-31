@@ -41,7 +41,7 @@ struct PredictionCard: View {
     let showPrediction: () -> Void
 
     var body: some View {
-        Card(spacing: PredictionCardMetrics.spacing, label: card.head) {
+        Card(spacing: PredictionCardMetrics.spacing, label: "Odhad za celý rok") {
             header
             part {
                 FigureRow(

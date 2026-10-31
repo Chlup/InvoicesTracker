@@ -72,12 +72,7 @@ struct MarkPaidSheetWindowTests {
 
     /// The heading of the sheet in `window` that VoiceOver reads as `title`, or nil when the sheet has another one.
     private func heading(_ title: String, in window: NSWindow) -> AnyObject? {
-        guard let element = accessibilityElement(labelled: title, in: window),
-            element.accessibilityRole?() == NSAccessibility.Role(rawValue: "AXHeading")
-        else {
-            return nil
-        }
-        return element
+        accessibilityElement(role: NSAccessibility.Role(rawValue: "AXHeading"), labelled: title, in: window)
     }
 
     /// Whether "Odebrat platbu" in `window` can be pressed; nil when the window has no such button.

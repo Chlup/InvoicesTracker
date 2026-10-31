@@ -50,6 +50,7 @@ struct RestoreSheet: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
         .frame(width: 560)
+        .dialogNamed("Obnovit ze zálohy")
         .onAppear {
             model.load()
         }

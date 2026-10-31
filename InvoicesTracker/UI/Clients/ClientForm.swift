@@ -32,6 +32,7 @@ struct ClientForm: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
         .frame(width: 620)
+        .dialogNamed(model.title)
         .defaultFocus($nameFocused, model.isNew)
         .task {
             await model.load()

@@ -131,7 +131,7 @@ private struct PaymentSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
-            DetailSection {
+            DetailSection(label: "Platba") {
                 Text("Platba")
                     .font(Typography.bodySemibold)
                     .foregroundStyle(Palette.text)
@@ -205,7 +205,7 @@ private struct EffectSection: View {
     let effect: LevyEffectDetail
 
     var body: some View {
-        DetailSection(spacing: 10) {
+        DetailSection(spacing: 10, label: "Dopad na odvody") {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(verbatim: effect.heading)
                     .font(Typography.bodySemibold)
@@ -242,6 +242,5 @@ private struct EffectSection: View {
                 .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .contain)
     }
 }

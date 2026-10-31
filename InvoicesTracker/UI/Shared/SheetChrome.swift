@@ -13,4 +13,12 @@ extension View {
         idleLockCover()
             .presentationBackground(Palette.bgCard)
     }
+
+    /// Names the content of a sheet after its title, as the design names its dialog: VoiceOver reads the sheet as a
+    /// group under `title`, with the heading, the fields and the buttons in it. A sheet is a window of the system with
+    /// no title of its own, so the name is given to the root view of its content, with the title the sheet shows.
+    func dialogNamed(_ title: String) -> some View {
+        accessibilityElement(children: .contain)
+            .accessibilityLabel(title)
+    }
 }

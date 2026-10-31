@@ -72,6 +72,7 @@ struct SimulatorScreen: View {
                             SimulatorResultCard(summary: page.summary)
                         }
                     }
+                    .accessibilityAside(named: "Výsledek simulace")
                 }
                 if let page = model.page {
                     breakdown(page.sections)
@@ -119,6 +120,8 @@ struct SimulatorScreen: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Rozpis výpočtu simulace")
     }
 
     /// A card of the breakdown, which VoiceOver reads under the title of its section.

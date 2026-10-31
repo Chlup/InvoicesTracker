@@ -323,7 +323,7 @@ struct PredictionWindowTests {
                 try await withAccessibilityElements {
                     try await showPrediction(of: app, in: window)
 
-                    #expect(frameOfCard(labelled: "Rozpis odhadu odvodů", in: window) != nil)
+                    #expect(frameOfCard(labelled: "Rozpis odhadu", in: window) != nil)
                 }
             }
         }

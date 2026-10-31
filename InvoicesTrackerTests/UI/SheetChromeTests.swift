@@ -69,6 +69,29 @@ struct SheetChromeTests {
         }
     }
 
+    /// The sheets that the prototype draws are dialogs named by their titles (the `aria-label` of the dialog is the
+    /// title it shows): VoiceOver reads each as a group under the title of the form, of the chooser, of the payment, of
+    /// the invoice and so on. A sheet is a window of the system with no title of its own, so the group is the root of
+    /// its content. The sheets that only the app has, the licence and the uniform rate, are not in the table.
+    @Test(arguments: [
+        (Sheet.clientForm, "Nový odběratel"), (.templateForm, "Nová šablona"), (.payment, "Upravit platbu"),
+        (.pdf, "Faktura 20260901"), (.childOfAdvances, "Nové dítě"), (.childOfSimulator, "Nové dítě v simulaci"),
+        (.chooser, "Nová faktura"), (.newCode, "Nový kód pro obnovení"), (.restore, "Obnovit ze zálohy"),
+    ])
+    func everySheetOfThePrototypeIsNamedByItsTitle(sheet: Sheet, name: String) async throws {
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    try await withAccessibilityElements {
+                        let shown = try await open(sheet, of: f, in: window)
+                        try await layOut(shown)
+                        try await expectContainers([name], in: shown, "The sheet \(sheet)")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: Opening the sheets
 
     /// Opens `sheet` in `window` as a person does, and returns the sheet once it is there.
