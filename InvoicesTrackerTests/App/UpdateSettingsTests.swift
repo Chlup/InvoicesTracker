@@ -36,6 +36,25 @@ struct UpdateSettingsTests {
         #expect(info["SUSignedFeedFailureExpirationInterval"] == nil)
     }
 
+    /// The Info.plist of the app carries exactly these nine Sparkle keys and no other key that begins with SU, so a key
+    /// added later, such as SUEnableJavaScript or SUEnableDownloaderService, shows here and is decided on purpose.
+    @Test func theAppCarriesExactlyTheNineSparkleKeys() {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let keys = Set(info.keys.filter { $0.hasPrefix("SU") })
+        #expect(
+            keys == [
+                "SUFeedURL",
+                "SUPublicEDKey",
+                "SUEnableAutomaticChecks",
+                "SUScheduledCheckInterval",
+                "SUAllowsAutomaticUpdates",
+                "SUAutomaticallyUpdate",
+                "SURequireSignedFeed",
+                "SUVerifyUpdateBeforeExtraction",
+                "SUEnableInstallerLauncherService",
+            ])
+    }
+
     /// The sandboxed app may look up the two services Sparkle's installer answers on, which are named after the
     /// bundle identifier.
     @Test func theSandboxedAppMayReachSparklesInstaller() {
