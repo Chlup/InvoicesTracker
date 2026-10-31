@@ -128,8 +128,11 @@ nonisolated enum ClientsBuilder {
         }
         let selected = selectedClientID.flatMap { id in input.clients.first { $0.id == id } }
         return ClientsData(
-            countText: counted(input.clients.count, one: "odběratel", few: "odběratelé", many: "odběratelů"),
-            templatesText: " · " + counted(input.templates.count, one: "šablona", few: "šablony", many: "šablon")
+            countText: CzechCount.counted(
+                input.clients.count, one: "odběratel", few: "odběratelé", many: "odběratelů", separator: noBreakSpace),
+            templatesText: " · "
+                + CzechCount.counted(
+                    input.templates.count, one: "šablona", few: "šablony", many: "šablon", separator: noBreakSpace)
                 + " faktur",
             totalText: PredictionBuilder.kc(ofHalere: received),
             receivedHeader: "Přijato \(input.year)",
@@ -142,11 +145,9 @@ nonisolated enum ClientsBuilder {
             })
     }
 
-    /// `count` with the noun in the form Czech asks for the number, and a no-break space between them, which keeps
-    /// them on one line where the summary row wraps: "3 odběratelé", "1 šablona".
-    static func counted(_ count: Int, one: String, few: String, many: String) -> String {
-        WelcomeTexts.counted(count, one: one, few: few, many: many, separator: "\u{00A0}")
-    }
+    /// The space between a count and its noun in the texts of Odběratelé, which keeps them on one line where the
+    /// summary row wraps: "3 odběratelé", "1 šablona".
+    static let noBreakSpace = "\u{00A0}"
 
     // MARK: The detail
 
@@ -166,7 +167,8 @@ nonisolated enum ClientsBuilder {
     /// "4 faktury · poslední 30. 9.": the invoices issued in the year, counted in Czech with a no-break space, and the
     /// day the last of them was issued; "0 faktur" where there is none, as the last day is only said of the year.
     private static func context(of figures: ClientFigures) -> String {
-        let count = counted(figures.invoiceCount, one: "faktura", few: "faktury", many: "faktur")
+        let count = CzechCount.counted(
+            figures.invoiceCount, one: "faktura", few: "faktury", many: "faktur", separator: noBreakSpace)
         guard figures.invoiceCount > 0, let last = figures.lastIssueDate else { return count }
         return count + " · poslední " + CzechFormat.dayMonth(last)
     }

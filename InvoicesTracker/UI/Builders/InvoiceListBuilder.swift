@@ -469,13 +469,8 @@ nonisolated enum InvoiceListBuilder {
     private static func hintAboutInvoicesToCheck(in shown: [Entry], uniform: UniformSummary) -> String? {
         let toCheck = shown.filter { $0.invoice.review != nil }
         guard uniform == .hidden, toCheck.contains(where: { !$0.invoice.currency.isCZK }) else { return nil }
-        let word: String
-        switch toCheck.count {
-        case 1: word = "faktura"
-        case 2...4: word = "faktury"
-        default: word = "faktur"
-        }
-        return " · mimo součet: \(toCheck.count) \(word) ke kontrole"
+        return " · mimo součet: " + ComputationBuilder.counted(toCheck.count, "faktura", "faktury", "faktur")
+            + " ke kontrole"
     }
 
     /// The invoice in haléře at the ČNB rates: crowns as they are; money received at the amount the bank credited when

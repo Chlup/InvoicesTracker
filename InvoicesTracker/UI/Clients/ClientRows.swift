@@ -80,7 +80,8 @@ nonisolated enum ClientRowBuilder {
     /// "1 šablona", "2 šablony", "5 šablon" with a no-break space, as the summary row counts them, or "žádná" for none.
     private static func templatesText(count: Int) -> String {
         guard count > 0 else { return noTemplates }
-        return ClientsBuilder.counted(count, one: "šablona", few: "šablony", many: "šablon")
+        return CzechCount.counted(
+            count, one: "šablona", few: "šablony", many: "šablon", separator: ClientsBuilder.noBreakSpace)
     }
 
     /// The money received in whole Kč, rounded half up, or the dash where nothing came.

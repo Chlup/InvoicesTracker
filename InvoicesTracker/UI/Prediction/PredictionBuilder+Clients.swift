@@ -168,11 +168,8 @@ nonisolated extension PredictionBuilder {
     /// The invoices of a month as VoiceOver says them: "faktura 20260601" for one, "2 faktury" up to four, and
     /// "5 faktur" from five.
     private static func invoices(_ numbers: [String]) -> String {
-        switch numbers.count {
-        case 1: "faktura \(numbers[0])"
-        case 2...4: "\(numbers.count) faktury"
-        default: "\(numbers.count) faktur"
-        }
+        guard numbers.count != 1 else { return "faktura \(numbers[0])" }
+        return "\(numbers.count) " + CzechCount.noun(for: numbers.count, one: "faktura", few: "faktury", many: "faktur")
     }
 
     /// " (koncept 20261001)" for a month that has a draft, the first one when it has several.

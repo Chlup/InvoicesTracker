@@ -83,26 +83,12 @@ nonisolated enum WelcomeTexts {
 
     /// "13 faktur", "1 faktura", "2 faktury".
     static func invoiceCount(_ count: Int) -> String {
-        counted(count, one: "faktura", few: "faktury", many: "faktur")
+        CzechCount.counted(count, one: "faktura", few: "faktury", many: "faktur")
     }
 
     /// "3 odběratelé", "1 odběratel", "5 odběratelů".
     static func clientCount(_ count: Int) -> String {
-        counted(count, one: "odběratel", few: "odběratelé", many: "odběratelů")
-    }
-
-    /// `count` grouped in thousands, and after it the form of the noun that Czech asks for the number: `one` for 1,
-    /// `few` for 2 to 4 and `many` for any other number, 0 included. The two are apart by `separator`: a plain space,
-    /// as the lines of these screens have it ("13 faktur"), or a no-break space where the number must stay on the line
-    /// of its noun, as in the summary row of Odběratelé ("3 odběratelé", "1 šablona").
-    static func counted(_ count: Int, one: String, few: String, many: String, separator: String = " ") -> String {
-        let noun =
-            switch count {
-            case 1: one
-            case 2...4: few
-            default: many
-            }
-        return CzechFormat.grouped(Int64(count)) + separator + noun
+        CzechCount.counted(count, one: "odběratel", few: "odběratelé", many: "odběratelů")
     }
 
     /// "vytvořena 16. 10. 2026 ve 21:14 na Macu „Jméno“": the day and the time of the backup in `timeZone`, and the

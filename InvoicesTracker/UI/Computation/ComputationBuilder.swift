@@ -190,13 +190,7 @@ nonisolated enum ComputationBuilder {
     /// `count` with the noun in the form Czech wants and a no-break space between them: "1 měsíc", "2 měsíce",
     /// "5 měsíců".
     static func counted(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
-        let noun =
-            switch count {
-            case 1: one
-            case 2...4: few
-            default: many
-            }
-        return "\(count)\u{00A0}\(noun)"
+        "\(count)\u{00A0}" + CzechCount.noun(for: count, one: one, few: few, many: many)
     }
 
     /// The name of an authority in a column or a tile, its short name (`Authority.shortTitle`): "Daň", "Sociální",

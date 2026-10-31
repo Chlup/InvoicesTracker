@@ -292,7 +292,7 @@ struct InvoiceListBuilderTests {
         // The only invoice that is counted is in crowns, so there is no total at the uniform rate, and the row says
         // why the invoices in another currency are not in it.
         #expect(data.uniform == .hidden)
-        #expect(data.reviewHint == " · mimo součet: 2 faktury ke kontrole")
+        #expect(data.reviewHint == " · mimo součet: 2\u{00A0}faktury ke kontrole")
         // They stay in the category: in the rows, in the count and in the chips.
         #expect(data.rows.map(\.id) == [3, 2, 1])
         #expect(data.countText == "3\u{00A0}faktury")
@@ -603,7 +603,7 @@ struct InvoiceListBuilderTests {
 
         #expect(data.chipCounts[.review] == 1)
         #expect(data.uniform == .hidden)
-        #expect(data.reviewHint == " · mimo součet: 1 faktura ke kontrole")
+        #expect(data.reviewHint == " · mimo součet: 1\u{00A0}faktura ke kontrole")
         // The count counts what the table lists.
         #expect(data.countText == "2\u{00A0}faktury")
         #expect(data.categoryText == " · všechny stavy")
@@ -618,9 +618,10 @@ struct InvoiceListBuilderTests {
             crownInvoice(id: 5, number: "20261005", review: toCheck),
         ]
 
-        #expect(build(input(invoices: invoices)).reviewHint == " · mimo součet: 5 faktur ke kontrole")
+        #expect(build(input(invoices: invoices)).reviewHint == " · mimo součet: 5\u{00A0}faktur ke kontrole")
         #expect(
-            build(input(invoices: Array(invoices.prefix(2)))).reviewHint == " · mimo součet: 2 faktury ke kontrole")
+            build(input(invoices: Array(invoices.prefix(2)))).reviewHint
+                == " · mimo součet: 2\u{00A0}faktury ke kontrole")
     }
 
     @Test func noHintWhenTheTableListsNoForeignInvoiceToCheck() {
@@ -656,7 +657,7 @@ struct InvoiceListBuilderTests {
         #expect(data.countText == "1\u{00A0}faktura")
         #expect(data.categoryText == " · ke kontrole")
         #expect(data.totalText == "0\u{00A0}Kč")
-        #expect(data.reviewHint == " · mimo součet: 1 faktura ke kontrole")
+        #expect(data.reviewHint == " · mimo součet: 1\u{00A0}faktura ke kontrole")
     }
 
     // MARK: The chips

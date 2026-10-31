@@ -114,12 +114,8 @@ final class NewInvoiceChooserModel {
 
     /// "bez položek", "1 položka", "2 položky", "5 položek".
     private nonisolated static func positions(_ count: Int) -> String {
-        switch count {
-        case ..<1: "bez položek"
-        case 1: "1 položka"
-        case 2...4: "\(count) položky"
-        default: "\(count) položek"
-        }
+        guard count > 0 else { return "bez položek" }
+        return "\(count) " + CzechCount.noun(for: count, one: "položka", few: "položky", many: "položek")
     }
 
     /// The items of the template added up, rounded the way an invoice rounds them, or "—" where the amount is beyond
