@@ -225,13 +225,14 @@ nonisolated enum DesignMetrics {
     /// The space between the parts inside a card.
     static let innerSpacing: CGFloat = 12
 
-    /// The space between the leading edge of the window and the content of a page.
+    /// The space between the leading edge of the page, which is the edge of the sidebar, and its content.
     static let pageLeading: CGFloat = 24
 
     /// The space between the trailing edge of the window and the content of a page.
     static let pageTrailing: CGFloat = 16
 
-    /// The space between the top of the window and the content of a page.
+    /// The space between the top of the page, which is the bottom of the toolbar, and its content. The background of
+    /// the page runs under the toolbar, and the content does not.
     static let pageTop: CGFloat = 16
 
     /// The space between the bottom of the window and the content of a page.

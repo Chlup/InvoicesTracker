@@ -35,7 +35,8 @@ bundle exec rake test                  # tests of the fastlane helpers and of re
 ### Full-suite results that are not regressions
 
 - One expected failure in `WaitingHelperTests`.
-- `AppWindowLayoutTests.aWheelOverTheClientTableScrollsThePageUpAndDownAndTheTableSideways` fails whenever the Mac's screen is locked. Check with `ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked`.
+- `AppWindowLayoutTests.aWheelOverTheClientTableScrollsItsRowsUpAndDownAndTheTableSideways` fails whenever the Mac's
+  screen is locked. Check with `ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked`.
 - `InvoiceListPerformanceTests` is load-sensitive. Re-run it alone before believing a failure.
 
 ## Architecture
@@ -61,7 +62,9 @@ The code is layered, bottom to top:
   - The rules of each year are in `TaxRules+Years.swift`.
   - Call the engine through `AppModel.compute(_:asOf:)`, which validates the input first.
   - Minimum insurance counts the active months through the as-of month.
-- **Prediction** (`Prediction/`), pure. It predicts a year's whole income client by client, and feeds the predicted payments to the engine as synthetic receipts, computed as of 31 Dec. `AppModel.predictionOutcome(year:)` loads it, always from today's data and never from K datu.
+- **Prediction** (`Prediction/`), pure. It predicts a year's whole income client by client, and feeds the predicted
+  payments to the engine as synthetic receipts, computed as of 31 Dec. `AppModel.predictionOutcome(year:)` loads it,
+  always from today's data and never from the reporting cutoff (`asOf`).
 - **Feature services**, used by the models:
   - `ExchangeRates/`: ČNB daily rates, and the GFŘ uniform rate of a year;
   - `Import/`: Fakturoid CSV import;
@@ -70,7 +73,8 @@ The code is layered, bottom to top:
 - **App** (`App/`):
   - `AppModel` is `@MainActor @Observable`, split across `AppModel+*.swift`. It holds:
     - the unlocked database and the selected screen;
-    - `asOf`, the toolbar's "K datu": the year and day the screens compute as of (`AsOfState`);
+    - `asOf`, the reporting cutoff (`AsOfState`): the selected year and the day the screens compute as of, which is
+      the end of the current month for the current year and the end of any other year, never `today`;
     - `today`;
     - the app-wide state.
   - `AppDependencies` injects the clock, time zone, network and system services, so tests run at a fixed day.
@@ -88,6 +92,9 @@ Swift Testing, with sentence-style test names. Conventions that are easy to miss
 
 - **App-model suites** are `@Suite(.settlesBackups) @MainActor`. `.settlesBackups` waits for the backups a test's writes start, so no temporary folder is left behind.
 - **Window tests** host real windows (`withAppWindow`, `AppWindowSize.minimum` / `.large`), check layout through the accessibility tree, and are `.serialized`. A test that types into a field, or checks focus, runs inside `whileTypingAlone`.
+- **Pointer tests.** A test that moves the pointer by hand (`movePointer(to:in:)`) opens its window with
+  `ignoringTheRealPointer: true` (`TestWindow`). SwiftUI follows the pointer only while the window says it is inside,
+  so the test would otherwise pass or fail by where the person's own pointer is.
 - **No-break spaces** are spelled `\u{00A0}` in expectations.
 - **Golden tests** pin the engine (`TaxEngine*Tests`) and the prediction (`PredictionGoldenTests`, `PredictionSample`) to the haléř. Their figures come from an independent calculation, so a mismatch is a finding, not an expectation to update.
 
@@ -114,8 +121,8 @@ user before building.
 
 - **Screen types.** Each screen is one of three:
   - **List with detail** (Faktury, Odběratelé): one row above the table card (the filters on Faktury, the add button on
-    Odběratelé); the table card, with a summary row on top (count and totals); a detail panel on the right. A click on a
-    row opens the detail; a second click or ✕ closes it.
+    Odběratelé); the table card, with a summary row on top (count and totals); a detail panel on the right, 340
+    wide (`DetailPanelMetrics.width`). A click on a row opens the detail; a second click or ✕ closes it.
   - **Report** (Výpočet, Odhad odvodů, Simulátor):
     - a result card: the key figure on the left and the levy bar on the right, with any further figures in a
       full-width row under a hairline;
@@ -123,40 +130,63 @@ user before building.
     - a note on what the numbers are based on;
     - "Rozpis výpočtu", with the bill cards in two columns.
 
-    The Simulátor keeps its inputs on the left and the result on the right.
+    The Simulátor keeps its inputs on the left and one result card on the right, in a column 360 wide: the key
+    figure, the levy bar, the net income and the marginal levy one under the other. Its "Rozpis výpočtu" runs
+    under both.
   - **Dashboard** (Přehled), which starts with the same result card as the reports.
 
-  A screen's title is its sidebar label. The toolbar has no control for the day: the current year counts money received
-  through today and invoices issued through the end of the month, and another year is shown as a whole. The sidebar
-  shows the app version under Nastavení.
+  A screen's title is its sidebar label, except Import, whose title reads "Import faktur". The toolbar has no control
+  for the day: the current year counts money received through today and invoices issued through the end of the
+  month, and another year is shown as a whole. The sidebar shows the app version under Nastavení.
+
+  Every sheet is on the bg-card background with the dialog chrome (`sheetChrome()` on the root view of its content)
+  and ends in the 32-point capsules of a dialog. The sheets that the prototype draws as dialogs are read by VoiceOver
+  under their titles (`dialogNamed(_:)`). The sections, asides and groups of a screen are named as the prototype
+  names them (its `aria-label`); `ContainerNamesTests` lists them.
 - **Colour.**
-  - Views use only the colour tokens from the asset catalog, never literal colours:
+  - Views use only the colour tokens from the asset catalog (`Palette`), never literal colours:
     - text;
     - backgrounds;
     - separators;
     - accent;
     - green, orange and red, each with text and tint variants;
     - tax, social and health.
+  - Exempt: the printed pages (the invoice PDF and the recovery-code page) and the appearance thumbnails of
+    Nastavení › Aplikace, which draw a light and a dark window on purpose.
   - Each status colour has one meaning: blue is action and information, green is paid and your money, orange is an
     estimate or attention, and red is overdue or an error.
 - **Type.** Only the macOS text styles: largeTitle 26, title 22, title2 17, title3 15, headline 13, body 13, callout 12
-  and subheadline 11. The one exception is the display size (44, bold, rounded) for a screen's key figure. No other
-  `.font(.system(size:))`.
+  and subheadline 11, taken from `Typography`. The one exception is the display size (44, bold, rounded) for a screen's
+  key figure. No other `.font(.system(size:))`.
 - **Shape and spacing.**
   - Radii: card 16, panel 10, control 6, and a capsule for pills and every filled button.
   - A 4-point grid: cards are padded 20, sit 16 apart, and use 12 inside.
+  - A page is padded 24 on the leading side and 16 on the trailing side and above, and 24 below (`pagePadding`),
+    measured from the edge of the sidebar and from under the toolbar.
 - **Components.** Use the shared view for each job (in `UI/Shared/`):
-  - card;
+  - card (`Card`, with its title `CardTitle`);
   - key figure;
   - levy bar: one bar split into three solid parts in the authorities' colours, each as wide as its levy; short names
     and amounts under it. The advances and what is left to pay appear only in the popover on hover or focus;
   - figure tile: label, figure and note. Tiles sit next to each other with one gap and are never stretched into
     columns across the card;
   - table: a 32-point header and 40-point rows with one line of text each; further details belong in the detail panel;
+  - detail panel: 340 wide, with the title, a pill and ✕ at the top, a row of 28-point actions, and its parts under
+    hairlines (`DetailPanel`, `DetailSection`);
+  - inset panel: the bg-inset ground with the panel radius, for what a card sets apart without raising it
+    (`insetPanel(horizontal:vertical:)`);
+  - hairline: the 1-point separator between the parts of a card (`Hairline`; `isStrong` for the one above the
+    result of a bill);
+  - hatching: the 3-point stripes that mark an estimate in a bar or a chart (`Hatching`, `HatchedFill`);
   - pill;
   - note (info, estimate, success, warning);
   - bill row;
-  - buttons: 32 for page and toolbar actions, 28 inside cards, segments and filters.
+  - segmented control: a fill track with the selected segment on bg-card (`SegmentedControl`), for the few choices
+    of a screen, such as the scope of Faktury, the grouping of the charts and the tabs of Nastavení;
+  - filter chip: the accent when selected, bg-card otherwise, 28 tall (`FilterChip`);
+  - buttons: 32 for page and toolbar actions, 28 inside cards, segments and filters. A link is text in
+    accent-text (`TextLinkButtonStyle`, `calloutLink()` in the callout size), and a destructive entry point is a
+    red-text link ("Odebrat platbu…", "Odebrat dítě").
 
   Selection always uses the accent.
 - **Words.** Use these terms: Odvody (daň + sociální + zdravotní), Zálohy, Zbývá zaplatit, Doplatek / Přeplatek,
