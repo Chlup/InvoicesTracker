@@ -31,6 +31,11 @@ actor Gate {
         await untilRequestsWait(1)
     }
 
+    /// How many requests are held at the gate now, for a test that waits for them with a time limit (`waitUntil`).
+    var heldCount: Int {
+        held.count
+    }
+
     func open() {
         isOpen = true
         for continuation in held {

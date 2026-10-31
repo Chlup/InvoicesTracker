@@ -1186,11 +1186,12 @@ struct InvoicesModelTests {
 }
 
 /// "Vystavit" in the detail of a draft on Faktury, which issues the draft in one click without the editor: the rate of
-/// the DUZP fixed on it and the detail that stays on it, the reason of the editor where the draft cannot be issued and
-/// when that reason goes, a second press while the draft is being issued, and a draft that was issued or deleted
-/// meanwhile. The data is that of the tests of the editor (`EditorFixture`): the sample year 2026 with invented
-/// clients, the supplier and the accounts of the invoice page, and the ČNB rates of 2025 and 2026; the app is as of
-/// 17. 10. 2026.
+/// the DUZP fixed on it, also after the file of its year was asked of the ČNB, and the detail that stays on it; the
+/// reason the editor gives where the draft cannot be issued, in the words of the detail, and when that reason goes; a
+/// second press while the draft is being issued; and a draft that was changed, issued or deleted meanwhile. The data
+/// is that of the tests of the editor (`EditorFixture`): the sample year 2026 with invented clients, the supplier and
+/// the accounts of the invoice page, and the ČNB rates of 2025 and 2026; the app is as of 17. 10. 2026, and its server
+/// answers what each test says, nothing unless told.
 @Suite(.settlesBackups)
 @MainActor
 struct InvoicesModelIssuingTests {
@@ -1199,6 +1200,14 @@ struct InvoicesModelIssuingTests {
     init() {
         InvoiceFonts.register()
     }
+
+    /// What the detail says of a draft whose rate of the DUZP is not in the cache, also once the file of its year was
+    /// asked for: the reason of the editor, without its advice to save the draft, which is saved already.
+    private let rateNotDownloaded = "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou."
+
+    /// What the detail says of a draft that was changed while it was being issued: the reason of the editor, with the
+    /// advice that fits the detail, as each press loads the draft afresh.
+    private let changedMeanwhile = "Faktura se mezitím změnila. Zkuste ji vystavit znovu."
 
     // MARK: Helpers
 
@@ -1267,14 +1276,18 @@ struct InvoicesModelIssuingTests {
             #expect(f.app.screen == .invoices)
             #expect(f.app.pendingDetailInvoiceID == nil)
             #expect(f.app.dataVersion == version + 1)
+            // The rate of its DUZP is in the cache: nothing is asked of the ČNB.
+            #expect(f.http.requests.isEmpty)
         }
     }
 
-    /// A draft in dollars supplied on 31. 5. 2024, a day the cache of the ČNB has no rate of, cannot be issued: it
-    /// stays a draft with its detail open, and the detail keeps the reason the editor gives, which VoiceOver is told.
-    /// Nothing is written.
+    /// A draft in dollars supplied on 31. 5. 2024, a day the cache of the ČNB has no rate of, asks for the file of 2024
+    /// as the editor does once it shows the draft. Where the file does not come (the Mac is offline), the draft cannot
+    /// be issued: it stays a draft with its detail open, and the detail keeps the reason the editor gives, in its own
+    /// words, which VoiceOver is told. Nothing is written.
     @Test func aDraftThatCannotBeIssuedSaysWhyAndStaysADraft() async throws {
-        try await EditorFixture.with { f in
+        let offline = StubHTTPClient(failures: [CNBEndpoints.yearly(2024): URLError(.notConnectedToInternet)])
+        try await EditorFixture.with(http: offline) { f in
             let id = try await storeDollarDraft(number: "20240501", duzp: "2024-05-31", dueDate: "2024-06-30", in: f)
             let model = await model(withTheDetailOf: id, in: f)
             var announced: [String] = []
@@ -1283,9 +1296,10 @@ struct InvoicesModelIssuingTests {
 
             await model.issue(id)
 
+            #expect(f.http.requests == [CNBEndpoints.yearly(2024)])
             #expect(try await f.stored(id).status == .draft)
-            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
-            #expect(announced == [EditorText.ratesNotDownloaded])
+            #expect(model.issueProblem == rateNotDownloaded)
+            #expect(announced == [rateNotDownloaded])
             #expect(model.openInvoiceID == id)
             #expect(model.detail?.canIssue == true)
             #expect(model.isIssuing == false)
@@ -1302,7 +1316,7 @@ struct InvoicesModelIssuingTests {
             let id = try await storeDollarDraft(number: "20240501", duzp: "2024-05-31", dueDate: "2024-06-30", in: f)
             let model = await model(withTheDetailOf: id, in: f)
             await model.issue(id)
-            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+            #expect(model.issueProblem == rateNotDownloaded)
 
             model.click(10)
 
@@ -1311,7 +1325,7 @@ struct InvoicesModelIssuingTests {
 
             model.openInvoiceID = id
             await model.issue(id)
-            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+            #expect(model.issueProblem == rateNotDownloaded)
 
             model.closeDetail()
 
@@ -1321,17 +1335,19 @@ struct InvoicesModelIssuingTests {
     }
 
     /// A draft that could not be issued is issued once what stopped it is put right, here once the rates of its year
-    /// are in the cache: the reason goes, and the draft has the rate of its DUZP, 30. 6. 2022.
+    /// are in the cache: the reason goes, and the draft has the rate of its DUZP, 30. 6. 2022. The file of 2022 is
+    /// asked for by the first press alone, which did not get it; the second finds the rates in the cache.
     @Test func theReasonGoesOnceTheDraftIsIssuedAfterAll() async throws {
         try await EditorFixture.with { f in
             let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
             let model = await model(withTheDetailOf: id, in: f)
             await model.issue(id)
-            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+            #expect(model.issueProblem == rateNotDownloaded)
 
             try await f.addDollarRates(ofYears: [2022])
             await model.issue(id)
 
+            #expect(f.http.requests == [CNBEndpoints.yearly(2022)])
             #expect(model.issueProblem == nil)
             let issued = try await f.stored(id)
             #expect(issued.status == .issued)
@@ -1340,6 +1356,87 @@ struct InvoicesModelIssuingTests {
             #expect(model.openInvoiceID == id)
             #expect(model.detail?.canIssue == false)
         }
+    }
+
+    /// A draft whose DUZP is in a year the cache of the ČNB does not hold asks for the file of that year, as the editor
+    /// does once it shows the draft, and is issued with the rate of its DUZP, 30. 6. 2022, once the file has come.
+    /// "Vystavit" is off while the file is on its way, and a press meanwhile does nothing: the file is asked for once.
+    @Test func aDraftOfAYearNotInTheCacheIsIssuedOnceTheFileOfItsYearHasCome() async throws {
+        let file = try Data(contentsOf: fixtureURL("cnb_rok_2022", "txt"))
+        let gate = Gate()
+        try await EditorFixture.with(http: StubHTTPClient([CNBEndpoints.yearly(2022): file]), gate: gate) { f in
+            let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+
+            let first = Task { await model.issue(id) }
+            try await waitUntil { await gate.heldCount == 1 }
+            #expect(model.isIssuing)
+            #expect(try await f.stored(id).status == .draft)
+            await model.issue(id)
+            await gate.open()
+            await first.value
+
+            #expect(f.http.requests == [CNBEndpoints.yearly(2022)])
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.invoiceRate?.rate.currency == .usd)
+            #expect(issued.invoiceRate?.declaredOn == civilDate("2022-06-30"))
+            #expect(model.issueProblem == nil)
+            #expect(model.isIssuing == false)
+            #expect(model.detail?.canIssue == false)
+        }
+    }
+
+    /// A draft that is changed while it is being issued, here in another window while the file of its year is on its
+    /// way, is not issued over that change: the detail says so, and that it can be issued again, which the next press
+    /// does with the draft as it is now, as each press loads the draft afresh.
+    @Test func aDraftChangedWhileItIsBeingIssuedSaysSoAndIsIssuedOnTheNextPress() async throws {
+        let file = try Data(contentsOf: fixtureURL("cnb_rok_2022", "txt"))
+        let gate = Gate()
+        try await EditorFixture.with(http: StubHTTPClient([CNBEndpoints.yearly(2022): file]), gate: gate) { f in
+            let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+
+            let first = Task { await model.issue(id) }
+            try await waitUntil { await gate.heldCount == 1 }
+            var changed = try await f.stored(id)
+            changed.note = "Changed in another window"
+            try await f.database.saveInvoice(changed)
+            await gate.open()
+            await first.value
+
+            #expect(model.issueProblem == changedMeanwhile)
+            #expect(try await f.stored(id) == changed)
+
+            await model.issue(id)
+
+            #expect(model.issueProblem == nil)
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.note == "Changed in another window")
+        }
+    }
+
+    /// The detail gives the reason the editor gives, without the advice that only fits the editor: a draft whose rate
+    /// is not downloaded is saved already, and there is no editing to close when the draft changed meanwhile. Every
+    /// other reason is the editor's word for word, and the editor keeps its own texts.
+    @Test func theDetailSaysTheReasonOfTheEditorWithoutTheAdviceThatOnlyFitsTheEditor() {
+        #expect(
+            InvoicesModel.issueProblemText(for: InvoiceEditorError.invalid(EditorText.ratesNotDownloaded))
+                == rateNotDownloaded)
+        #expect(InvoicesModel.issueProblemText(for: InvoiceEditorError.invoiceChanged) == changedMeanwhile)
+        for reason in [EditorText.currencyNotQuoted, EditorText.totalNotPositive, EditorText.noItems] {
+            #expect(InvoicesModel.issueProblemText(for: InvoiceEditorError.invalid(reason)) == reason)
+        }
+        #expect(InvoicesModel.issueProblemText(for: InvoiceError.duplicateNumber("1")) == "Číslo faktury už existuje.")
+        #expect(InvoicesModel.issueProblemText(for: VaultError.locked) == "Fakturu se nepodařilo uložit.")
+        #expect(
+            EditorText.ratesNotDownloaded
+                == "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou"
+                + " – koncept můžete uložit už teď.")
+        #expect(
+            InvoiceEditorModel.failureText(for: InvoiceEditorError.invoiceChanged)
+                == "Faktura se mezitím změnila. Zavřete úpravy a otevřete ji znovu.")
     }
 
     /// A press of "Vystavit" while the draft is being issued starts no other issue: the button is off meanwhile

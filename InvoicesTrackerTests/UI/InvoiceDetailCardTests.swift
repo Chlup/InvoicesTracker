@@ -198,7 +198,7 @@ struct InvoiceDetailCardTests {
     @Test func aDraftThatCouldNotBeIssuedSaysWhyInARedNoteUnderItsButtons() async throws {
         let presses = Presses()
         let detail = detail(of: invoice(in: .draft))
-        let problem = EditorText.ratesNotDownloaded
+        let problem = "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou."
 
         try await withHostedView(
             card(of: detail, presses: presses, issueProblem: problem), size: CGSize(width: 400, height: 1_000)

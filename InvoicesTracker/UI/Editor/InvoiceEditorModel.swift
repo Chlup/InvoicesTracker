@@ -50,8 +50,8 @@ nonisolated struct EditorTotals: Equatable, Sendable {
 ///   amounts too high to add up are problems of the invoice, not traps.
 ///
 /// "Vystavit" in the detail of a draft in Faktury issues the draft with an editor that is never shown
-/// (`issueDraft(_:app:)`): it opens the draft as the editor shown for it would and issues it with the work of "Vystavit
-/// fakturu", but its save leaves the window as it is.
+/// (`issueDraft(_:app:)`): it opens the draft as the editor shown for it would, asks for a ČNB rate the cache lacks as
+/// that editor does, and issues the draft with the work of "Vystavit fakturu", but its save leaves the window as it is.
 @MainActor
 @Observable
 final class InvoiceEditorModel {
@@ -837,8 +837,12 @@ final class InvoiceEditorModel {
     /// work of "Vystavit fakturu" (`issue()`): the invoice worked out afresh with the data of its client as they are
     /// then, the ČNB rate of the DUZP fixed on it, the same checks, the same refusal of an invoice that was changed
     /// meanwhile, and the same writes, conversions and reloads after it. The window stays as it is: the screen, the
-    /// editor that is open and the detail, and no banner says that it saved. The files of the ČNB that a rate missing
-    /// in the cache may be in are not asked for here; the editor asks for them once it is shown.
+    /// editor that is open and the detail, and no banner says that it saved.
+    ///
+    /// Before the draft is issued, a ČNB rate of the DUZP that the cache does not have is asked for in the yearly files
+    /// that may hold it, as the editor does once it shows the draft (`recompute()`): a draft of a year that is in the
+    /// cache asks for nothing, and one whose file does not come stays a draft, with the reason that its rate is not
+    /// downloaded.
     ///
     /// Returns the id. Throws `InvoiceError.notFound` when there is no such invoice, `InvoiceEditorError.invalid` with
     /// `EditorText.notPrepared` when what the invoice is made of cannot be read, and what `issue()` throws: among it
@@ -853,6 +857,7 @@ final class InvoiceEditorModel {
         if model.loadFailed {
             throw InvoiceEditorError.invalid(EditorText.notPrepared)
         }
+        await model.recompute()
         return try await model.issue()
     }
 

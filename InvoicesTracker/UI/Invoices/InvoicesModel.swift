@@ -62,6 +62,17 @@ final class InvoicesModel {
     /// What the alert says when the invoice that an action was asked for was deleted meanwhile.
     nonisolated static let invoiceGoneText = "Faktura mezitím byla smazána."
 
+    /// What the detail of a draft says when the ČNB rate of its DUZP is not in the cache, also once the file of its
+    /// year was asked for: the reason of the editor (`EditorText.ratesNotDownloaded`) without its advice to save the
+    /// draft, which is saved already.
+    nonisolated static let rateNotDownloadedText =
+        "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou."
+
+    /// What the detail of a draft says when the draft was changed while it was being issued, in another window: the
+    /// reason of the editor (`InvoiceEditorError.invoiceChanged`) with advice that fits the detail in place of closing
+    /// the editing, as each press of "Vystavit" loads the draft afresh.
+    nonisolated static let changedMeanwhileText = "Faktura se mezitím změnila. Zkuste ji vystavit znovu."
+
     /// The invoice whose detail is open, or nil when it is closed. Setting it shows that invoice's detail as far as
     /// the list can tell, until `loadDetail()` has the rest; why the draft of the detail before could not be issued
     /// goes with that detail.
@@ -87,13 +98,13 @@ final class InvoicesModel {
     /// What the detail says about the open invoice.
     private(set) var detail: InvoiceDetail?
 
-    /// Why the draft whose detail is open could not be issued in one click (`issue(_:)`), in the words of the editor
-    /// (`InvoiceEditorModel.failureText(for:)`), or nil. It goes when the detail moves to another invoice or closes,
-    /// and when the draft is issued after all.
+    /// Why the draft whose detail is open could not be issued in one click (`issue(_:)`): the reason the editor gives,
+    /// without the advice that only fits the editor (`issueProblemText(for:)`), or nil. It goes when the detail moves
+    /// to another invoice or closes, and when the draft is issued after all.
     private(set) var issueProblem: String?
 
-    /// Whether a draft is being issued in one click (`issue(_:)`): "Vystavit" is off meanwhile, and a press of it does
-    /// nothing.
+    /// Whether a draft is being issued in one click (`issue(_:)`), the file of the ČNB it may ask for included:
+    /// "Vystavit" is off meanwhile, and a press of it does nothing.
     private(set) var isIssuing = false
 
     private let app: AppModel
@@ -334,15 +345,32 @@ final class InvoicesModel {
 
     // MARK: Issuing
 
+    /// What the detail of a draft says when issuing it in one click failed with `error`: the reason the editor gives
+    /// (`InvoiceEditorModel.failureText(for:)`), without the advice that only fits the editor. A rate of the DUZP that
+    /// is not downloaded says it without the advice to save the draft (`rateNotDownloadedText`), and a draft changed
+    /// meanwhile says that it can be issued again instead of closing the editing (`changedMeanwhileText`). Every other
+    /// reason is the editor's, word for word; the editor keeps its own texts.
+    static func issueProblemText(for error: any Error) -> String {
+        switch error {
+        case InvoiceEditorError.invalid(let text) where text == EditorText.ratesNotDownloaded:
+            rateNotDownloadedText
+        case InvoiceEditorError.invoiceChanged:
+            changedMeanwhileText
+        default:
+            InvoiceEditorModel.failureText(for: error)
+        }
+    }
+
     /// "Vystavit" in the detail of a draft: issues the draft `id` in one click, as "Vystavit fakturu" in the editor
-    /// would, without showing the editor (`InvoiceEditorModel.issueDraft(_:app:)`). The detail stays where it is, and
-    /// once the draft is issued it shows the invoice as issued, without a notice; the app is told of the write, so the
-    /// list loads again. A draft that cannot be issued stays a draft: the reason the editor gives is kept for its
-    /// detail (`issueProblem`) and told to VoiceOver, as long as the detail is still on it. A draft that is issued
-    /// already, meanwhile in another window, is what was asked for, and its detail shows it so; a draft deleted
-    /// meanwhile closes its detail, and the screen says so (`invoiceIsGone(_:)`). One draft is issued at a time: a
-    /// press while one is being issued does nothing (`isIssuing`), and the detail is loaded again before the next press
-    /// can come.
+    /// would, without showing the editor, after asking the ČNB for the file of its year where the rate of its DUZP is
+    /// not in the cache (`InvoiceEditorModel.issueDraft(_:app:)`). The detail stays where it is, and once the draft is
+    /// issued it shows the invoice as issued, without a notice; the app is told of the write, so the list loads again.
+    /// A draft that cannot be issued stays a draft: the reason the editor gives, in the words of the detail
+    /// (`issueProblemText(for:)`), is kept for its detail (`issueProblem`) and told to VoiceOver, as long as the detail
+    /// is still on it. A draft that is issued already, meanwhile in another window, is what was asked for, and its
+    /// detail shows it so; a draft deleted meanwhile closes its detail, and the screen says so (`invoiceIsGone(_:)`).
+    /// One draft is issued at a time: a press while one is being issued does nothing (`isIssuing`), and the detail is
+    /// loaded again before the next press can come.
     func issue(_ id: Int64) async {
         guard !isIssuing else { return }
         isIssuing = true
@@ -359,7 +387,7 @@ final class InvoicesModel {
         } catch {
             AppModel.log("Issuing a draft from its detail", failedWith: error)
             guard openInvoiceID == id else { return }
-            let problem = InvoiceEditorModel.failureText(for: error)
+            let problem = Self.issueProblemText(for: error)
             issueProblem = problem
             app.announceWhenUnlocked(problem)
         }

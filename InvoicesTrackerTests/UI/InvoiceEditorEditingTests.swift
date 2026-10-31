@@ -694,8 +694,9 @@ struct InvoiceEditorEditingTests {
     }
 
     /// Issuing from the detail refuses what the editor refuses, for the same reason: a draft whose DUZP has no rate in
-    /// the cache stays a draft, with the editor's words for it; an invoice that is issued already is not issued again;
-    /// and one that is not there is not brought back. Nothing is written.
+    /// the cache asks for the file of its year, as the editor shown for it does, and where the file does not come stays
+    /// a draft, with the editor's words for it; an invoice that is issued already is not issued again; and one that is
+    /// not there is not brought back. Nothing is written.
     @Test func issuingFromTheDetailRefusesWhatTheEditorRefuses() async throws {
         try await EditorFixture.with { f in
             var draft = try await f.storeIssuedDollarInvoice(number: "20240501", status: .draft)
@@ -716,6 +717,7 @@ struct InvoiceEditorEditingTests {
                 try await InvoiceEditorModel.issueDraft(999, app: f.app)
             }
 
+            #expect(f.http.requests == [CNBEndpoints.yearly(2024)])
             #expect(try await f.stored(draft.id) == draft)
             try await f.expectInvoiceCount(12)
             #expect(f.app.banner == nil)

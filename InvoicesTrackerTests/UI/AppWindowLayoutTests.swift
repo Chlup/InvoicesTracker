@@ -422,9 +422,9 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// A draft that cannot be issued stays a draft, and its detail says why under its buttons in the words of the
-    /// editor: here its DUZP, 31. 5. 2024, has no rate in the cache of the ČNB. The buttons stay as they were and on,
-    /// "Upravit" among them, and the editor does not open.
+    /// A draft that cannot be issued stays a draft, and its detail says why under its buttons, with the reason the
+    /// editor gives: here its DUZP, 31. 5. 2024, has no rate in the cache of the ČNB, and the file of 2024 that it asks
+    /// for does not come. The buttons stay as they were and on, "Upravit" among them, and the editor does not open.
     @Test func aDraftThatCannotBeIssuedSaysWhyInItsDetailAndCanStillBeEdited() async throws {
         try await EditorFixture.with { f in
             var draft = try await f.storeIssuedDollarInvoice(number: "20240501", status: .draft)
@@ -441,8 +441,10 @@ struct AppWindowLayoutTests {
 
                     let issue = try #require(accessibilityButton(labelled: "Vystavit", in: window))
                     #expect(issue.accessibilityPerformPress?() == true)
-                    try await waitUntil { showsText(EditorText.ratesNotDownloaded, in: window) }
+                    let reason = "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou."
+                    try await waitUntil { showsText(reason, in: window) }
 
+                    #expect(f.http.requests == [CNBEndpoints.yearly(2024)])
                     #expect(try await f.stored(draft.id).status == .draft)
                     #expect(detailActionNames(in: window) == ["Vystavit", "Upravit", "Zobrazit PDF"])
                     #expect(problems(ofTheDetailActionsIn: window) == [])

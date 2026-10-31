@@ -17,7 +17,7 @@ struct InvoiceDetailCard: View {
 
     let detail: InvoiceDetail
 
-    /// Why the draft could not be issued in one click, in the words of the editor, or nil: a red note right under the
+    /// Why the draft could not be issued in one click, the reason the editor gives, or nil: a red note right under the
     /// buttons says it.
     var issueProblem: String?
 
