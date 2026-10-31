@@ -105,13 +105,23 @@ struct OffscreenPicture {
     /// in every channel, or nil where there is none: the extent of a mark in that colour. The pixels at the soft edge
     /// of a shape are not within a margin of the colour, so the extent is up to a point smaller than the shape.
     func extent(near colour: [Int], by margin: Int) -> CGRect? {
+        extent(near: colour, in: CGRect(origin: .zero, size: size), by: margin)
+    }
+
+    /// The extent of the pixels within `margin` levels of `colour` that lie in `region`, in points from the top left of
+    /// the picture, or nil where there is none: where the same colour is in more than one mark, the extent of the mark
+    /// in the region, such as where the text of one cell of a box ends.
+    func extent(near colour: [Int], in region: CGRect, by margin: Int) -> CGRect? {
         let scale = CGFloat(Self.scale)
-        let rowCount = bytes.count / (pixelsPerRow * 4)
-        let columnCount = Int(size.width * scale)
+        let firstRow = max(0, Int(region.minY * scale))
+        let lastRow = min(bytes.count / (pixelsPerRow * 4), Int((region.maxY * scale).rounded(.up)))
+        let firstColumn = max(0, Int(region.minX * scale))
+        let lastColumn = min(Int(size.width * scale), Int((region.maxX * scale).rounded(.up)))
+        guard firstRow < lastRow, firstColumn < lastColumn else { return nil }
         var rows: ClosedRange<Int>?
         var columns: ClosedRange<Int>?
-        for row in 0..<rowCount {
-            for column in 0..<columnCount
+        for row in firstRow..<lastRow {
+            for column in firstColumn..<lastColumn
             where zip(colour, pixel(row: row, column: column)).allSatisfy({ abs($0 - $1) <= margin }) {
                 rows = rows.map { min($0.lowerBound, row)...max($0.upperBound, row) } ?? row...row
                 columns = columns.map { min($0.lowerBound, column)...max($0.upperBound, column) } ?? column...column

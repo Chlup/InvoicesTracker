@@ -94,8 +94,9 @@ struct InvoicesScreen: View {
                     SearchLineView(
                         line: line, showYear: { model.switchToYear($0) }, clear: { model.clearSearch() })
                 }
-                // The detail stands beside the card of the table, from its top to its bottom, and the card takes the
-                // rest; below its least width the table scrolls sideways in the card.
+                // The detail stands beside the card of the table, from its top as far down as its content goes and no
+                // further than the bottom of the card, where it scrolls, and the card takes the rest; below its least
+                // width the table scrolls sideways in the card.
                 HStack(alignment: .top, spacing: 16) {
                     InvoiceTableView(
                         data: data, openID: model.openInvoiceID, click: { model.click($0) },

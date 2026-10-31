@@ -211,24 +211,41 @@ struct InvoiceDetailCardTests {
 
     // MARK: The size
 
-    /// The card is 300 points wide, as the design's panel beside a table is, and as high as the room it is given.
-    @Test func theCardIs300PointsWideAndAsHighAsTheRoomItIsGiven() async throws {
-        try await withHostedView(
-            card(of: detail(paymentEffect: levies)), size: CGSize(width: 400, height: 900)
-        ) { window in
-            try await withAccessibilityElements {
-                try await waitUntil { cardFrame(in: window) != nil }
+    /// The frame of the card in `window`, and the frame of its button Smazat fakturu…, in the coordinates of the
+    /// screen, once the card is there.
+    private func cardAndDeleteButton(in window: NSWindow) async throws -> (card: CGRect, delete: CGRect) {
+        try await waitUntil { cardFrame(in: window) != nil }
+        let card = try #require(cardFrame(in: window))
+        let delete = try #require(
+            accessibilityButton(labelled: "Smazat fakturu…", in: window)?.accessibilityFrame?(), "No Smazat fakturu…")
+        return (card, delete)
+    }
 
-                let frame = try #require(cardFrame(in: window))
-                #expect(abs(frame.width - 300) < 0.5, "\(frame)")
-                #expect(abs(frame.height - 900) < 1, "\(frame)")
+    /// The card is 300 points wide, as the design's panel beside a table is, and as high as its content where that fits
+    /// in the room it is given, as the prototype's panel is: it is no higher in a room of 1 000 points than in one of
+    /// 900, and ends 20 points under its last button, Smazat fakturu…, with the room under it left empty.
+    @Test func theCardIs300PointsWideAndAsHighAsItsContentWhereThatFitsInTheRoom() async throws {
+        let detail = detail(paymentEffect: levies)
+        var heights: [CGFloat] = []
+
+        for room in [900.0, 1_000.0] {
+            try await withHostedView(card(of: detail), size: CGSize(width: 400, height: room)) { window in
+                try await withAccessibilityElements {
+                    let (frame, delete) = try await cardAndDeleteButton(in: window)
+
+                    #expect(abs(frame.width - 300) < 0.5, "\(frame)")
+                    #expect(frame.height < room - 100, "\(frame) in a room of \(room)")
+                    #expect(abs(delete.minY - frame.minY - 20) < 1.5, "\(delete) in \(frame)")
+                    heights.append(frame.height)
+                }
             }
         }
+        #expect(heights.count == 2 && abs(heights[0] - heights[1]) < 0.5, "\(heights)")
     }
 
     /// A card in a room lower than its content keeps the height of the room, and what does not fit in it scrolls: the
-    /// content is higher than the part of it that the card shows. In a room that holds the whole content there is
-    /// nothing to scroll to.
+    /// content is higher than the part of it that the card shows. In a room that holds the whole content the card is as
+    /// high as its content, which ends 20 points under its last button, and there is nothing to scroll.
     @Test func aCardHigherThanItsRoomKeepsTheHeightOfTheRoomAndScrollsItsContent() async throws {
         let detail = detail(of: invoice(in: .paid), paymentEffect: effect(on: "2026-10-15"))
 
@@ -245,13 +262,13 @@ struct InvoiceDetailCardTests {
         }
         try await withHostedView(card(of: detail), size: CGSize(width: 400, height: 1_000)) { window in
             try await withAccessibilityElements {
-                try await waitUntil { cardFrame(in: window) != nil }
+                let (frame, delete) = try await cardAndDeleteButton(in: window)
 
-                let frame = try #require(cardFrame(in: window))
-                let scrolled = try #require(scrollView(in: window))
-                let content = try #require(scrolled.documentView)
-                #expect(abs(frame.height - 1_000) < 1, "\(frame)")
-                #expect(content.frame.height <= scrolled.contentView.bounds.height + 0.5, "\(content.frame)")
+                let scrolled = scrollView(in: window)
+                let overflow = (scrolled?.documentView?.frame.height ?? 0) - (scrolled?.contentView.bounds.height ?? 0)
+                #expect(frame.height < 900, "\(frame)")
+                #expect(abs(delete.minY - frame.minY - 20) < 1.5, "\(delete) in \(frame)")
+                #expect(overflow <= 0.5, "The card scrolls \(overflow) points")
             }
         }
     }
@@ -328,6 +345,47 @@ struct InvoiceDetailCardTests {
                 let tint = try OffscreenPicture.bytes(of: Palette.orangeTint, in: scheme)
 
                 #expect(!picture.rows(near: tint, from: 40, to: 260, by: 1).isEmpty, "\(scheme): the note has no tint")
+            }
+        }
+    }
+
+    // MARK: The right column of the payment box
+
+    /// The right column of the box of the payment is aligned to the right, as the prototype sets it: the amount in
+    /// crowns, "příjem pro daň" and the net income end at one edge, the right edge of the content of the box (12 points
+    /// inside the box, which is 20 points inside the card), and without the net income the first two do. The edge of
+    /// each cell is that of the pixels of its colour in the box: the amount is in the colour of text, the label in the
+    /// secondary grey and the net income in the green of text, and no other text of the box reaches so far to the
+    /// right. In a light and in a dark window.
+    @Test(arguments: [true, false])
+    func theRightColumnOfThePaymentBoxEndsAtOneEdge(withTheNetIncome: Bool) async throws {
+        let detail = detail(
+            of: invoice(in: .paid), paymentEffect: withTheNetIncome ? effect(on: "2026-10-15") : nil)
+        for scheme in [ColorScheme.light, .dark] {
+            try await withPictureOfTheCard(of: detail, in: scheme) { picture in
+                let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
+                // The box, from the first to the last of the rows across it that no text is on.
+                let rows = picture.rows(near: inset, from: 40, to: 260, by: 1)
+                let top = try #require(rows.min(), "\(scheme): no box")
+                let bottom = try #require(rows.max(), "\(scheme): no box")
+                let box = CGRect(x: 20, y: top, width: 260, height: bottom - top)
+
+                var cells: [(name: String, colour: Color)] = [
+                    ("the amount", Palette.text), ("příjem pro daň", Palette.text2),
+                ]
+                if withTheNetIncome {
+                    cells.append(("the net income", Palette.greenText))
+                }
+                var edges: [String: CGFloat] = [:]
+                for cell in cells {
+                    let colour = try OffscreenPicture.bytes(of: cell.colour, in: scheme)
+                    let found = try #require(
+                        picture.extent(near: colour, in: box, by: 2), "\(scheme): no \(cell.name) in the box")
+                    edges[cell.name] = found.maxX
+                }
+                for (name, edge) in edges {
+                    #expect(abs(edge - 268) <= 2, "\(scheme): \(name) ends at \(edge), not at 268 (\(edges))")
+                }
             }
         }
     }

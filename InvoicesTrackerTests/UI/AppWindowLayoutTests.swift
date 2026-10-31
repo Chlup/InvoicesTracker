@@ -180,6 +180,10 @@ struct AppWindowLayoutTests {
     /// which the search for "alfa" finds too.
     private static let alfaInvoiceID: Int64 = 3
 
+    /// The invoice of `EditorFixture` in dollars, 20260901 for Bravo, paid on 2. 10. 2026, whose detail is one of the
+    /// highest: its payment crosses a threshold of the levies, so that the note of its section says so.
+    private static let dollarInvoiceID: Int64 = 10
+
     @Test(arguments: [false, true], [nil, "alfa"] as [String?])
     func fakturyFitsTheWindowAtTheLeastRoomAndAtALargeSize(detailOpen: Bool, search: String?) async throws {
         try await EditorFixture.with { f in
@@ -209,9 +213,9 @@ struct AppWindowLayoutTests {
     }
 
     /// The detail of an invoice is a card of the page beside the table: it starts where the card of the table starts,
-    /// under the filters, and ends where it ends, at the bottom margin of the page; it is 300 points wide and stands at
-    /// the right margin of the page, the card of the table ending 16 points before it. The window has no inspector
-    /// beside the page: its split views hold the sidebar and the page alone.
+    /// under the filters, and is as high as its content, or as that card where its content is higher; it is 300 points
+    /// wide and stands at the right margin of the page, the card of the table ending 16 points before it. The window
+    /// has no inspector beside the page: its split views hold the sidebar and the page alone.
     @Test func theDetailCardStandsBesideTheTableAndStartsWithIt() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -225,6 +229,66 @@ struct AppWindowLayoutTests {
                 }
             }
         }
+    }
+
+    /// A detail that fits beside the table is as high as its content, as the prototype's panel is, and no higher: in a
+    /// large window the detail of a paid invoice starts with the card of the table and ends 20 points under its last
+    /// button, Smazat fakturu…, which is well above the bottom of that card, and it has nothing to scroll.
+    @Test func aDetailThatFitsIsAsHighAsItsContentAndShorterThanTheTable() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(Self.alfaInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await expectSettled(window) { problems(of: window, detailOpen: true) }
+
+                    let detail = try #require(detailCardFrame(in: window))
+                    let table = try #require(tableCardFrame(in: window))
+                    let delete = try #require(buttonFrame("Smazat fakturu…", in: window))
+                    #expect(detail.height < table.height - 50, "The detail \(detail) is not shorter than \(table)")
+                    #expect((detail.maxY - table.maxY).magnitude <= 1, "\(detail) does not start with \(table)")
+                    #expect((delete.minY - detail.minY - 20).magnitude <= 1.5, "\(delete) in \(detail)")
+                    #expect(detailOverflow(in: window) <= 0.5, "The detail scrolls \(detailOverflow(in: window))")
+                }
+            }
+        }
+    }
+
+    /// A detail whose content is higher than the card of the table is as high as that card and no higher, and the part
+    /// of the content that does not fit scrolls inside it: in the least window the detail of a paid invoice in dollars
+    /// starts with the card of the table and ends where it ends, and its content is higher than the card shows.
+    @Test func aDetailHigherThanTheTableIsCappedAtItAndScrollsInsideIt() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(Self.dollarInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await expectSettled(window) { problems(of: window, detailOpen: true) }
+
+                    let detail = try #require(detailCardFrame(in: window))
+                    let table = try #require(tableCardFrame(in: window))
+                    #expect((detail.maxY - table.maxY).magnitude <= 1, "\(detail) does not start with \(table)")
+                    #expect((detail.minY - table.minY).magnitude <= 1, "\(detail) does not end with \(table)")
+                    #expect(detailOverflow(in: window) > 50, "The detail scrolls \(detailOverflow(in: window))")
+                }
+            }
+        }
+    }
+
+    /// How much higher than the part of it that the card of the detail in `window` shows its content is, which is what
+    /// scrolls in it. Nothing where the card is as high as its content, which then has no scroll view of its own. Needs
+    /// the accessibility elements (`withAccessibilityElements(_:)`).
+    private func detailOverflow(in window: NSWindow) -> CGFloat {
+        guard let detail = detailCardFrame(in: window), let content = window.contentView else { return 0 }
+        let scrolled = scrollViews(in: content).first { detail.insetBy(dx: -1, dy: -1).contains(frameInWindow($0)) }
+        guard let scrolled, let document = scrolled.documentView else { return 0 }
+        return max(0, document.frame.height - scrolled.contentView.bounds.height)
+    }
+
+    /// The frame of the button that VoiceOver reads under `label` in `window`, in the coordinates of the window.
+    private func buttonFrame(_ label: String, in window: NSWindow) -> CGRect? {
+        let frame = accessibilityButton(labelled: label, in: window)?.accessibilityFrame?()
+        return frame.map { window.convertFromScreen($0) }
     }
 
     /// The buttons of the detail of an invoice that the design has under its header, by the name VoiceOver reads for
@@ -494,7 +558,7 @@ struct AppWindowLayoutTests {
             guard let detail else {
                 return problems + ["The detail is not open"]
             }
-            problems += self.problems(ofTheDetail: detail, besideTheTable: table, in: room)
+            problems += self.problems(ofTheDetail: detail, besideTheTable: table, in: room, of: window)
             if openRow(in: window) == nil {
                 problems.append("No row of the table is open")
             }
@@ -510,10 +574,13 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
-    /// page `room`, all in the coordinates of the window: the detail is 300 points wide at the right margin of the page
-    /// (16 points), starts and ends at the height of the card of the table (to a point), and that card ends 16 points
-    /// before it.
-    private func problems(ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
+    /// page `room`, all in the coordinates of `window`: the detail is 300 points wide at the right margin of the page
+    /// (16 points), starts at the height of the card of the table (to a point), never reaches below it, and that card
+    /// ends 16 points before it. The detail is as high as its content, so where it ends above the bottom of the card of
+    /// the table it ends 20 points under its last button, Smazat fakturu…, and has nothing to scroll.
+    private func problems(
+        ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect, of window: NSWindow
+    ) -> [String] {
         var problems: [String] = []
         if (detail.width - 300).magnitude >= 0.5 {
             problems.append("The detail is not 300 points wide: \(detail)")
@@ -525,8 +592,19 @@ struct AppWindowLayoutTests {
         if (detail.maxY - table.maxY).magnitude > 1 {
             problems.append("The detail does not start where the table does: \(detail), \(table)")
         }
-        if (detail.minY - table.minY).magnitude > 1 {
-            problems.append("The detail does not end where the table does: \(detail), \(table)")
+        if detail.minY < table.minY - 1 {
+            problems.append("The detail reaches below the card of the table: \(detail), \(table)")
+        }
+        if detail.minY > table.minY + 1 {
+            guard let delete = buttonFrame("Smazat fakturu…", in: window) else {
+                return problems + ["The detail has no Smazat fakturu…"]
+            }
+            if (delete.minY - detail.minY - 20).magnitude > 1.5 {
+                problems.append("The detail does not end 20 points under its last button: \(detail), \(delete)")
+            }
+            if detailOverflow(in: window) > 0.5 {
+                problems.append("The detail scrolls although it is shorter than the table: \(detail), \(table)")
+            }
         }
         if (detail.minX - 16 - table.maxX).magnitude >= 0.5 {
             problems.append("The table does not end 16 points before the detail: \(table), \(detail)")

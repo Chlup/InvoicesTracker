@@ -7,8 +7,8 @@ import SwiftUI
 ///
 /// A draft is issued, edited and shown as a PDF; an invoice that waits for its payment is marked paid, edited and
 /// shown; one that has a payment has the payment changed and is shown. A paid invoice is not edited, only its payment,
-/// so its detail has no "Upravit", not even one that is off. The card is `width` points wide and as tall as the room it
-/// is given, and what does not fit in it scrolls.
+/// so its detail has no "Upravit", not even one that is off. The card is `width` points wide and as high as its
+/// content, or as the room it is given where that is less, and what does not fit in it then scrolls.
 struct InvoiceDetailCard: View {
     /// The width of the card: 300 points, as the design's panel beside a table.
     static let width: CGFloat = 300
@@ -164,7 +164,8 @@ private struct PaymentSection: View {
     }
 
     /// The box on the inset background that VoiceOver reads as one phrase: the payment and the income, and under a rule
-    /// across the box the net income, when the levies are known.
+    /// across the box the net income, when the levies are known. The right column, as wide as its widest cell, is
+    /// aligned to the right: the amounts and the words in it end at one edge.
     private var box: some View {
         Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 2) {
             GridRow {
@@ -176,6 +177,7 @@ private struct PaymentSection: View {
                     .font(Typography.bodySemibold)
                     .foregroundStyle(Palette.text)
                     .fixedSize()
+                    .gridColumnAlignment(.trailing)
             }
             GridRow {
                 Text(verbatim: payment.note)

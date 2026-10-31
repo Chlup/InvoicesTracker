@@ -36,12 +36,13 @@ private nonisolated enum DetailPanelMetrics {
 
 /// The card beside a table that shows one of its rows: a header with the title in title 2 on one line, an optional
 /// pill and the button that closes the panel, under it the actions in a row of small buttons that wraps, and under them
-/// the content, 16 points apart. The panel is as wide as the room it is given and, unless it `scrolls`, as high as its
-/// content, and its content is padded 20 points like that of every card.
+/// the content, 16 points apart. The panel is as wide as the room it is given and as high as its content, and its
+/// content is padded 20 points like that of every card.
 ///
-/// A panel that `scrolls` is as high as the room it is given, as the panel beside a table that fills the window is, and
-/// the header and the content scroll inside the card where they do not fit in it: the card keeps its corners and its
-/// edge, and nothing runs out of it.
+/// A panel that `scrolls` is as high as its content where that fits in the room it is given, as the panel beside a
+/// table is in the prototype, and as high as the room where the content is higher: the header and the content scroll
+/// inside the card then, which keeps its corners and its edge, and nothing runs out of it. A panel that does not scroll
+/// is as high as its content whatever the room.
 ///
 /// The close button is a circle of 28 points on the grey fill with an ✕, which VoiceOver reads under `closeLabel`.
 /// The actions are buttons of `CapsuleButtonStyle` of the small size, whose kind the caller chooses for each; the
@@ -53,15 +54,16 @@ struct DetailPanel<Actions: View, Content: View>: View {
     let closeLabel: String
     let close: () -> Void
 
-    /// Whether the panel takes the height it is offered and scrolls its header and its content inside the card.
+    /// Whether the panel is no higher than the room it is given and scrolls its header and its content inside the card
+    /// where they are higher than that.
     let scrolls: Bool
     private let actions: Actions
     private let content: Content
     private let hasActions: Bool
 
     /// A panel titled `title`, with `pill` after the title where there is one, `actions` under the header and `content`
-    /// under them. `close` runs when the ✕ is pressed. The panel takes the height it is offered and scrolls what does
-    /// not fit in it where `scrolls` is true, and is as high as its content otherwise.
+    /// under them. `close` runs when the ✕ is pressed. The panel scrolls what does not fit in the room it is given
+    /// where `scrolls` is true, and is as high as its content whatever the room otherwise.
     init(
         title: String, pill: (text: String, tone: PillTone)?, closeLabel: String = "Zavřít detail",
         close: @escaping () -> Void, scrolls: Bool = false, @ViewBuilder actions: () -> Actions,
@@ -83,18 +85,21 @@ struct DetailPanel<Actions: View, Content: View>: View {
             .accessibilityLabel(title)
     }
 
-    /// The panel on its card. Where the panel scrolls, the card is the background of a scroll view that takes the
-    /// height it is offered, clipped to the corners of the card, so that the card stays where it is and its content
-    /// moves.
+    /// The panel on its card. Where the panel scrolls, it is the panel as it is, as high as its content, where that
+    /// fits in the room it is given, and otherwise the card is the background of a scroll view that is as high as the
+    /// room, clipped to the corners of the card, so that the card stays where it is and its content moves.
     @ViewBuilder
     private var panelOnItsCard: some View {
         if scrolls {
-            ScrollView {
+            ViewThatFits(in: .vertical) {
                 panel
+                    .card()
+                ScrollView {
+                    panel
+                }
+                .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
+                .card()
             }
-            .frame(maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
-            .card()
         } else {
             panel
                 .card()
@@ -153,8 +158,8 @@ struct DetailPanel<Actions: View, Content: View>: View {
 /// A panel that has no actions under its header.
 extension DetailPanel where Actions == EmptyView {
     /// A panel titled `title`, with `pill` after the title where there is one and `content` under the header, which
-    /// has no actions under it. `close` runs when the ✕ is pressed. The panel takes the height it is offered and
-    /// scrolls what does not fit in it where `scrolls` is true, and is as high as its content otherwise.
+    /// has no actions under it. `close` runs when the ✕ is pressed. The panel scrolls what does not fit in the room it
+    /// is given where `scrolls` is true, and is as high as its content whatever the room otherwise.
     init(
         title: String, pill: (text: String, tone: PillTone)?, closeLabel: String = "Zavřít detail",
         close: @escaping () -> Void, scrolls: Bool = false, @ViewBuilder content: () -> Content

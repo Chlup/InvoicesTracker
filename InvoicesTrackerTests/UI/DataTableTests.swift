@@ -5,7 +5,7 @@ import Testing
 
 /// The shared parts of a table in a card and of the panel beside it: the heights of the header and the rows, the
 /// summary row on top of the table, the background of a selected row, and the detail panel with its header, its
-/// actions, its facts and its figure, and the panel that takes the height it is offered and scrolls.
+/// actions, its facts and its figure, and the panel that scrolls what does not fit in its room.
 @Suite(.serialized)
 @MainActor
 struct DataTableTests {
@@ -321,8 +321,8 @@ struct DataTableTests {
 
     // MARK: The panel that scrolls
 
-    /// A panel with an invoice number for its title and an action, and `lines` short lines of content, which takes the
-    /// height it is offered and scrolls what does not fit where `scrolls` says so.
+    /// A panel with an invoice number for its title and an action, and `lines` short lines of content, which scrolls
+    /// what does not fit in the room it is given where `scrolls` says so.
     private func panel(lines: Int, scrolls: Bool) -> some View {
         DetailPanel(title: "20260902", pill: (text: "Uhrazená", tone: PillTone.paid), close: {}, scrolls: scrolls) {
             Button("Upravit") {}
@@ -362,17 +362,25 @@ struct DataTableTests {
         return view.subviews.lazy.compactMap { scrollView(under: $0) }.first
     }
 
-    /// A panel that scrolls is as high as the room it is given, whether its content is shorter or taller than that,
-    /// and what does not fit in it scrolls inside the card: the card keeps its edges, and the content is higher than
-    /// the part of it the card shows. A panel that does not scroll is as high as its content, with nothing to scroll.
-    @Test func aPanelThatScrollsTakesTheHeightItIsOfferedAndScrollsWhatDoesNotFitInIt() async throws {
+    /// A panel that scrolls is as high as its content where that fits in the room it is given, as a panel that does
+    /// not scroll is, and has nothing to scroll; where the content is higher than the room, the panel is as high as
+    /// the room and what does not fit in it scrolls inside the card: the card keeps its edges, and the content is
+    /// higher than the part of it the card shows.
+    @Test func aPanelThatScrollsIsAsHighAsItsContentWhereThatFitsAndAsHighAsTheRoomWhereItDoesNot() async throws {
+        let natural = frames(of: panel(lines: 40, scrolls: false), width: 300).size.height
         let short = try await heightAndOverflow(of: panel(lines: 3, scrolls: true), offered: 600)
-        let tall = try await heightAndOverflow(of: panel(lines: 60, scrolls: true), offered: 400)
         let plain = try await heightAndOverflow(of: panel(lines: 3, scrolls: false), offered: 600)
+        let fits = try await heightAndOverflow(of: panel(lines: 40, scrolls: true), offered: natural + 1)
+        let barely = try await heightAndOverflow(of: panel(lines: 40, scrolls: true), offered: natural - 40)
+        let tall = try await heightAndOverflow(of: panel(lines: 60, scrolls: true), offered: 400)
 
-        #expect(abs(short.0 - 600) < 1 && short.1 < 0.5, "\(short)")
-        #expect(abs(tall.0 - 400) < 1 && tall.1 > 100, "\(tall)")
+        // Content that fits: as high as it is, with nothing to scroll, as a panel that does not scroll.
         #expect(plain.0 < 300 && plain.1 < 0.5, "\(plain)")
+        #expect(abs(short.0 - plain.0) < 0.5 && short.1 < 0.5, "\(short) against \(plain)")
+        #expect(abs(fits.0 - natural) < 1 && fits.1 < 0.5, "\(fits) against \(natural)")
+        // Content that does not: as high as the room, and the content is higher than what shows.
+        #expect(abs(barely.0 - (natural - 40)) < 1 && barely.1 > 30, "\(barely) in \(natural - 40)")
+        #expect(abs(tall.0 - 400) < 1 && tall.1 > 100, "\(tall)")
     }
 
     // MARK: The facts and the figure
