@@ -31,27 +31,42 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   RELEASE_ID = 1001
 
   # The calls of a run that goes through, as the fake logs them (`create_call` and `upload_calls` are the ones that
-  # depend on the folder).
+  # depend on the folder): the checks before anything is created, the call that makes the git tag, and the publish.
   VIEW_CALL = "release view v1.7.0-10 --repo Chlup/InvoicesTracker"
   TAG_REF_CALL = "api repos/Chlup/InvoicesTracker/git/ref/tags/v1.7.0-10"
   LATEST_CALL = "api repos/Chlup/InvoicesTracker/releases/latest --jq .tag_name"
+  CHECKS = [VIEW_CALL, TAG_REF_CALL, LATEST_CALL].freeze
+  TAG_CREATE_CALL = "api --method POST repos/Chlup/InvoicesTracker/git/refs -f ref=refs/tags/v1.7.0-10 " \
+                    "-f sha=#{COMMIT} --silent"
   PUBLISH_CALL = "api --method PATCH repos/Chlup/InvoicesTracker/releases/#{RELEASE_ID} -F draft=false " \
                  "-f make_latest=true --silent"
+
+  # The calls that only a run makes which ends without having seen its publish succeed, as it cleans up after itself.
+  # The release is asked whether it is a draft and, if it is, deleted. Then the git tag the run made is asked where it
+  # points and whether a published release uses it, and, if all is well, deleted (TAG_CLEANUP_CALLS in that order).
   IS_DRAFT_CALL = "api repos/Chlup/InvoicesTracker/releases/#{RELEASE_ID} --jq .draft"
   DELETE_CALL = "api --method DELETE repos/Chlup/InvoicesTracker/releases/#{RELEASE_ID} --silent"
-  CHECKS = [VIEW_CALL, TAG_REF_CALL, LATEST_CALL].freeze
+  TAG_POINTS_CALL = 'api repos/Chlup/InvoicesTracker/git/ref/tags/v1.7.0-10 --jq .object.type + ":" + .object.sha'
+  RELEASE_ON_TAG_CALL = "api repos/Chlup/InvoicesTracker/releases/tags/v1.7.0-10 --silent"
+  TAG_DELETE_CALL = "api --method DELETE repos/Chlup/InvoicesTracker/git/refs/tags/v1.7.0-10 --silent"
+  TAG_CLEANUP_CALLS = [TAG_POINTS_CALL, RELEASE_ON_TAG_CALL, TAG_DELETE_CALL].freeze
 
   # What the fake answers unless a test says otherwise: no release and no tag yet, the Latest release is the one
-  # the feed was made against, every write works, and a release that is asked about is a draft.
+  # the feed was made against, every write works, a release that is asked about is a draft, and the git tag the run
+  # made points at the built commit and has no published release.
   DEFAULT_ANSWERS = {
     "FAKE_GH_RELEASE_VIEW" => "missing",
     "FAKE_GH_TAG_REF" => "404",
     "FAKE_GH_LATEST" => "v1.6.0-9",
     "FAKE_GH_CREATE" => "ok",
     "FAKE_GH_UPLOAD" => "ok",
+    "FAKE_GH_TAG_CREATE" => "ok",
     "FAKE_GH_PUBLISH" => "ok",
     "FAKE_GH_IS_DRAFT" => "true",
-    "FAKE_GH_DELETE" => "ok"
+    "FAKE_GH_DELETE" => "ok",
+    "FAKE_GH_TAG_POINTS" => "commit",
+    "FAKE_GH_RELEASE_ON_TAG" => "missing",
+    "FAKE_GH_TAG_DELETE" => "ok"
   }.freeze
 
   # A stand-in for gh that answers the way the real tool does: `release view` says "release not found" for a release
@@ -62,9 +77,15 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   # while gh runs, and then answers the ID. The uploads, the publish and the delete are answered from FAKE_GH_UPLOAD,
   # FAKE_GH_PUBLISH and FAKE_GH_DELETE: ok or fail, and for the uploads and the publish signal:<SIG> too, which kills
   # the script and then succeeds. The question whether the release is a draft is answered from FAKE_GH_IS_DRAFT: true,
-  # false, null (an answer that is none of the two), missing (HTTP 404), or error, which prints true on standard output
-  # although the call fails, as a failed gh call may. A call or an answer it does not know ends with status 99, so a
-  # typo in a test cannot pass quietly.
+  # false, null (an answer that is none of the two), missing (HTTP 404), error, which prints true on standard output
+  # although the call fails, as a failed gh call may, or signal:<SIG>, which kills the script and then answers true.
+  # The calls about the git tag are answered from four variables. FAKE_GH_TAG_CREATE, the call that makes the tag: ok,
+  # exists (HTTP 422 with "Reference already exists"), refused (HTTP 422 with another message), error (HTTP 502) or
+  # signal:<SIG>, which kills the script and then succeeds. FAKE_GH_TAG_POINTS, the question where the tag points:
+  # commit (at the built commit, which the fake gets as FAKE_GH_COMMIT), moved (at another commit), annotated (at a tag
+  # object), missing (HTTP 404) or error (HTTP 502). FAKE_GH_RELEASE_ON_TAG, the question whether a published release
+  # has the tag: missing (HTTP 404), found or error (HTTP 502). FAKE_GH_TAG_DELETE: ok or fail (HTTP 500). A call or an
+  # answer it does not know ends with status 99, so a typo in a test cannot pass quietly.
   FAKE_GH = <<~'SH'
     #!/bin/sh
     printf '%s\n' "$*" >> "$FAKE_GH_LOG"
@@ -119,6 +140,7 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         true|false|null) echo "$FAKE_GH_IS_DRAFT" ;;
         missing) http_error "Not Found" 404 ;;
         error) echo true ; echo "gh: Bad Gateway (HTTP 502)" >&2 ; exit 1 ;;
+        signal:*) kill -"${FAKE_GH_IS_DRAFT#signal:}" "$PPID" ; echo true ;;
         *) unknown FAKE_GH_IS_DRAFT "$FAKE_GH_IS_DRAFT" ;;
       esac
     }
@@ -129,9 +151,46 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         *) unknown FAKE_GH_DELETE "$FAKE_GH_DELETE" ;;
       esac
     }
+    make_tag() {
+      case "$FAKE_GH_TAG_CREATE" in
+        ok) ;;
+        exists) http_error "Reference already exists" 422 ;;
+        refused) http_error "Object does not exist" 422 ;;
+        error) http_error "Bad Gateway" 502 ;;
+        signal:*) kill -"${FAKE_GH_TAG_CREATE#signal:}" "$PPID" ;;
+        *) unknown FAKE_GH_TAG_CREATE "$FAKE_GH_TAG_CREATE" ;;
+      esac
+    }
+    tag_points() {
+      case "$FAKE_GH_TAG_POINTS" in
+        commit) echo "commit:$FAKE_GH_COMMIT" ;;
+        moved) echo commit:ffffffffffffffffffffffffffffffffffffffff ;;
+        annotated) echo "tag:$FAKE_GH_COMMIT" ;;
+        missing) http_error "Not Found" 404 ;;
+        error) http_error "Bad Gateway" 502 ;;
+        *) unknown FAKE_GH_TAG_POINTS "$FAKE_GH_TAG_POINTS" ;;
+      esac
+    }
+    release_on_tag() {
+      case "$FAKE_GH_RELEASE_ON_TAG" in
+        found) ;;
+        missing) http_error "Not Found" 404 ;;
+        error) http_error "Bad Gateway" 502 ;;
+        *) unknown FAKE_GH_RELEASE_ON_TAG "$FAKE_GH_RELEASE_ON_TAG" ;;
+      esac
+    }
+    delete_tag() {
+      case "$FAKE_GH_TAG_DELETE" in
+        ok) ;;
+        fail) http_error "Server Error" 500 ;;
+        *) unknown FAKE_GH_TAG_DELETE "$FAKE_GH_TAG_DELETE" ;;
+      esac
+    }
 
     case "$*" in
       "release view "*) release_view ;;
+      # The question where the tag points comes first: the pattern of the check below would take it too.
+      "api repos/"*"/git/ref/tags/"*' --jq .object.type + ":" + .object.sha') tag_points ;;
       "api repos/"*"/git/ref/tags/"*)
         case "$FAKE_GH_TAG_REF" in
           found) echo '{"ref":"refs/tags/v1.7.0-10"}' ;;
@@ -148,9 +207,12 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         esac ;;
       "api --method POST repos/"*"/releases -f "*) create_release ;;
       "api --method POST https://uploads.github.com/repos/"*"/releases/1001/assets?name="*) upload_asset ;;
+      "api --method POST repos/"*"/git/refs -f ref=refs/tags/"*) make_tag ;;
       "api --method PATCH repos/"*"/releases/1001 "*) publish_release ;;
       "api repos/"*"/releases/1001 --jq .draft") release_is_draft ;;
       "api --method DELETE repos/"*"/releases/1001 "*) delete_release ;;
+      "api repos/"*"/releases/tags/"*" --silent") release_on_tag ;;
+      "api --method DELETE repos/"*"/git/refs/tags/"*" --silent") delete_tag ;;
       *)
         echo "fake gh: no answer for: $*" >&2
         exit 99 ;;
@@ -507,17 +569,74 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     end
   end
 
-  # The release is asked whether it is a draft, and only an answer of true lets the delete follow.
-  def test_a_failed_publish_deletes_only_its_draft
+  # When a draft is published, GitHub makes the tag that it lacks, and uses the commit of a tag of that name that is
+  # there already, whatever commit that is. So the script makes the tag itself, at the built commit, before the
+  # publish. GitHub refuses that when someone pushed a tag of the name after the checks: the run stops, the draft is
+  # deleted, and the tag, which is not the run's, is left alone and reported.
+  def test_a_tag_that_appeared_after_the_checks_stops_the_run_and_its_draft_is_deleted
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_TAG_CREATE" => "exists" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *calls_to_make_the_tag(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
+      assert_includes stderr, "the git tag v1.7.0-10 appeared after the checks, so the release was not published"
+      assert_includes stderr, "Check https://github.com/Chlup/InvoicesTracker/tags"
+      assert_includes stdout, "Deleted the draft release v1.7.0-10."
+      refute_includes stdout, "Deleted the git tag"
+      refute_includes stderr, "may have made the git tag"
+      assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+    end
+  end
+
+  # A call that GitHub refused with an HTTP 4xx status made no tag, so there is none to look for.
+  def test_a_refused_tag_made_nothing
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_TAG_CREATE" => "refused" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *calls_to_make_the_tag(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
+      assert_includes stderr, "creating the git tag v1.7.0-10 failed (HTTP 422)"
+      assert_includes stdout, "GitHub refused to create the git tag v1.7.0-10, so this run made no tag."
+      refute_includes stderr, "may have made the git tag"
+    end
+  end
+
+  # After any other failure GitHub may have made the tag all the same, and a tag of that name may be one that someone
+  # else pushed, so the script deletes nothing and says where to look.
+  def test_a_tag_that_may_have_been_made_is_left_and_reported
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_TAG_CREATE" => "error" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *calls_to_make_the_tag(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
+      assert_includes stderr, "creating the git tag v1.7.0-10 failed (HTTP 502)"
+      assert_includes stderr, "GitHub may have made the git tag v1.7.0-10 all the same, so it was not deleted"
+      assert_includes stderr, "Check https://github.com/Chlup/InvoicesTracker/tags"
+      refute_includes stdout, "Deleted the git tag"
+      assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+    end
+  end
+
+  # The release is asked whether it is a draft, and only an answer of true lets the delete follow. The git tag that the
+  # run made goes after the draft, once it is asked where it points and whether a published release uses it, because
+  # the next run would stop at it.
+  def test_a_failed_publish_deletes_the_draft_and_the_tag_it_made
     with_scratch do |scratch|
       write_feed(scratch)
 
       stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail", "FAKE_GH_IS_DRAFT" => "true" })
 
       refute_equal 0, status.exitstatus
-      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, *TAG_CLEANUP_CALLS], calls(scratch)
       assert_includes stderr, "publishing the release v1.7.0-10 failed (HTTP 500)"
-      assert_includes stdout, "Deleted the draft release v1.7.0-10"
+      assert_includes stdout, "Deleted the draft release v1.7.0-10."
+      assert_includes stdout, "Deleted the git tag v1.7.0-10, which this run made."
       assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
     end
   end
@@ -529,7 +648,7 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail", "FAKE_GH_DELETE" => "fail" })
 
       refute_equal 0, status.exitstatus
-      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, *TAG_CLEANUP_CALLS], calls(scratch)
       assert_includes stderr, "could not delete the draft release v1.7.0-10 (HTTP 500)"
       assert_includes stderr, "https://github.com/Chlup/InvoicesTracker/releases"
     end
@@ -564,9 +683,149 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
                                                            "FAKE_GH_IS_DRAFT" => "missing" })
 
       assert_equal 1, status.exitstatus
-      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL], calls(scratch)
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, *TAG_CLEANUP_CALLS], calls(scratch)
       assert_includes stdout, "There is no release v1.7.0-10 on GitHub any more"
       refute_includes stderr, "could not"
+    end
+  end
+
+  # The git tag that a run made is deleted only while it is still the run's: a lightweight tag at the built commit. One
+  # that was moved to another commit, or replaced by an annotated tag (which answers a tag object, not a commit), is
+  # someone else's now.
+  def test_a_tag_that_is_not_the_runs_any_more_is_not_deleted
+    %w[moved annotated].each do |answer|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail",
+                                                              "FAKE_GH_TAG_POINTS" => answer })
+
+        assert_equal 1, status.exitstatus, answer
+        assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, TAG_POINTS_CALL],
+                     calls(scratch), answer
+        assert_includes stderr, "the git tag v1.7.0-10 does not point at the built commit any more, so it was not " \
+                                "deleted. Check https://github.com/Chlup/InvoicesTracker/tags", answer
+      end
+    end
+  end
+
+  # A published release on the tag would be left without it, so the tag stays.
+  def test_a_tag_that_a_published_release_uses_is_not_deleted
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail",
+                                                            "FAKE_GH_RELEASE_ON_TAG" => "found" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, TAG_POINTS_CALL, RELEASE_ON_TAG_CALL],
+                   calls(scratch)
+      assert_includes stderr, "a published release uses the git tag v1.7.0-10, so it was not deleted. " \
+                              "Check https://github.com/Chlup/InvoicesTracker/releases"
+    end
+  end
+
+  # A tag that someone deleted meanwhile is nothing to delete, which is no failure of the cleanup.
+  def test_a_tag_that_is_gone_is_not_deleted_again
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail",
+                                                           "FAKE_GH_TAG_POINTS" => "missing" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, TAG_POINTS_CALL], calls(scratch)
+      assert_includes stdout, "There is no git tag v1.7.0-10 any more, so none was left behind."
+      refute_includes stderr, "could not"
+    end
+  end
+
+  # A question about the tag that fails leaves the tag where it is, and says which question it was. What a failed call
+  # printed is not an answer.
+  def test_tag_questions_that_fail_leave_the_tag
+    {
+      "the question where the tag points" => [
+        { "FAKE_GH_TAG_POINTS" => "error" }, [TAG_POINTS_CALL],
+        "could not tell where the git tag v1.7.0-10 points (HTTP 502), so it was not deleted. " \
+        "Check https://github.com/Chlup/InvoicesTracker/tags"
+      ],
+      "the question whether a published release uses the tag" => [
+        { "FAKE_GH_RELEASE_ON_TAG" => "error" }, [TAG_POINTS_CALL, RELEASE_ON_TAG_CALL],
+        "could not tell whether a published release uses the git tag v1.7.0-10 (HTTP 502), so it was not deleted. " \
+        "Check https://github.com/Chlup/InvoicesTracker/tags"
+      ]
+    }.each do |label, (answers, asked, message)|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail" }.merge(answers))
+
+        assert_equal 1, status.exitstatus, label
+        assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, *asked], calls(scratch), label
+        assert_includes stderr, message, label
+      end
+    end
+  end
+
+  # A tag that cannot be deleted is reported with where to delete it by hand, because the next run stops at it.
+  def test_a_tag_that_cannot_be_deleted_is_reported
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      _stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail",
+                                                            "FAKE_GH_TAG_DELETE" => "fail" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, *TAG_CLEANUP_CALLS], calls(scratch)
+      assert_includes stderr, "could not delete the git tag v1.7.0-10 (HTTP 500). " \
+                              "Delete it at https://github.com/Chlup/InvoicesTracker/tags before the next run."
+    end
+  end
+
+  # A draft that could not be deleted is a draft all the same, so no published release has the tag, and the tag goes.
+  def test_the_tag_cleanup_follows_a_draft_whose_delete_failed
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail", "FAKE_GH_DELETE" => "fail" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, *TAG_CLEANUP_CALLS], calls(scratch)
+      assert_includes stderr, "could not delete the draft release v1.7.0-10 (HTTP 500)"
+      assert_includes stdout, "Deleted the git tag v1.7.0-10, which this run made."
+    end
+  end
+
+  # A release that is gone has no draft and no published release, and the tag goes.
+  def test_the_tag_cleanup_follows_a_release_that_is_gone
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail",
+                                                            "FAKE_GH_IS_DRAFT" => "missing" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, *TAG_CLEANUP_CALLS], calls(scratch)
+      assert_includes stdout, "Deleted the git tag v1.7.0-10, which this run made."
+    end
+  end
+
+  # A release that is published, or that cannot be asked about and so may be published, has the tag: deleting it would
+  # leave that release without its tag. So the tag is not asked about, let alone deleted, and not a word is said about
+  # it.
+  def test_the_tag_of_a_published_or_unknown_release_is_never_touched
+    %w[false null error].each do |answer|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail",
+                                                             "FAKE_GH_IS_DRAFT" => answer })
+
+        assert_equal 1, status.exitstatus, answer
+        assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL], calls(scratch), answer
+        refute_includes stdout, "Deleted the git tag", answer
+        refute_includes stderr, "git tag", answer
+      end
     end
   end
 
@@ -652,6 +911,49 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         refute_includes stdout, "Deleting"
         assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
       end
+    end
+  end
+
+  # A signal that ends the script while the tag is made is dealt with when gh is done, before the script has seen how
+  # the call went. GitHub may have made the tag by then, and the script cannot tell it from a tag of that name that
+  # someone else pushed, so the tag stays and the report says where to look. The draft is deleted all the same.
+  %w[HUP INT TERM].each do |signal|
+    define_method("test_a_run_stopped_by_#{signal}_while_the_tag_is_made_leaves_the_tag") do
+      skip "#{signal} is ignored in this environment, so no shell can trap it" if signal_ignored?(signal)
+
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_TAG_CREATE" => "signal:#{signal}" })
+
+        assert_equal 128 + Signal.list.fetch(signal), status.exitstatus
+        assert_equal [*CHECKS, *calls_to_make_the_tag(scratch), IS_DRAFT_CALL, DELETE_CALL], calls(scratch)
+        assert_includes stderr, "GitHub may have made the git tag v1.7.0-10 all the same"
+        assert_includes stdout, "Deleted the draft release v1.7.0-10."
+        assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+      end
+    end
+  end
+
+  # A cancelled job gets INT and, some seconds later, TERM. The cleanup makes calls that take their time, so the
+  # second signal comes while it runs, and it must not cut the cleanup short: the draft would be left behind. The run
+  # still ends with the status of the first signal.
+  def test_a_second_signal_during_the_cleanup_does_not_cut_it_short
+    %w[INT TERM].each do |signal|
+      skip "#{signal} is ignored in this environment, so no shell can trap it" if signal_ignored?(signal)
+    end
+
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_UPLOAD" => "signal:INT",
+                                                            "FAKE_GH_IS_DRAFT" => "signal:TERM" })
+
+      assert_equal 128 + Signal.list.fetch("INT"), status.exitstatus
+      assert_equal [*CHECKS, create_call(scratch), upload_calls(scratch).first, IS_DRAFT_CALL, DELETE_CALL],
+                   calls(scratch)
+      assert_includes stdout, "Deleted the draft release v1.7.0-10."
+      assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
     end
   end
 
@@ -853,11 +1155,12 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   end
 
   # Runs the script on the feed folder (or on `args`) in the working directory of the scratch, with the fake gh in
-  # place of gh. `answers` replace what the fake answers and `env` any other variable; nil unsets one.
+  # place of gh. `answers` replace what the fake answers and `env` any other variable; nil unsets one. The fake gets
+  # the built commit too, which it answers when it is asked where the git tag points.
   def publish(scratch, args: nil, answers: {}, env: {})
     environment = DEFAULT_ANSWERS.merge(answers).merge(
       "GITHUB_REPOSITORY" => REPOSITORY, "GH" => scratch.gh, "GH_TOKEN" => TOKEN, "TMPDIR" => scratch.tmp,
-      "GITHUB_STEP_SUMMARY" => scratch.summary, "FAKE_GH_LOG" => scratch.log
+      "GITHUB_STEP_SUMMARY" => scratch.summary, "FAKE_GH_LOG" => scratch.log, "FAKE_GH_COMMIT" => COMMIT
     ).merge(env)
     Open3.capture3(environment, SCRIPT, *(args || [scratch.feed]), chdir: scratch.work)
   end
@@ -889,9 +1192,15 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     end
   end
 
-  # The calls of a run that publishes, after its checks: the create, the two uploads and the publish. A test that
-  # expects a release to go through compares with these, so that a new step of the publish is added in one place.
+  # The calls of a run that gets as far as making the git tag, after its checks: the create, the two uploads and the
+  # call that makes the tag.
+  def calls_to_make_the_tag(scratch)
+    [create_call(scratch), *upload_calls(scratch), TAG_CREATE_CALL]
+  end
+
+  # The calls of a run that publishes, after its checks: the create, the two uploads, the tag and the publish. A test
+  # that expects a release to go through compares with these, so that a new step of the publish is added in one place.
   def publish_calls(scratch)
-    [create_call(scratch), *upload_calls(scratch), PUBLISH_CALL]
+    [*calls_to_make_the_tag(scratch), PUBLISH_CALL]
   end
 end
