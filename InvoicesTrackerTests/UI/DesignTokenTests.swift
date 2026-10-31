@@ -102,6 +102,14 @@ struct DesignTokenTests {
         Token("TokenShadowPopDrop", light: Rgba(0x000000, alpha: 0.16), dark: Rgba(0x000000, alpha: 0.50)),
     ]
 
+    /// The tokens that the prototype has and the board does not: the shadow under the page of an invoice, which lies
+    /// on a ground of its own in the preview of the editor and in the sheet of the PDF. The prototype draws it as
+    /// `0 8px 24px rgba(0, 0, 0, 0.10)` (and a tight shadow of 12 % under the edge, which the half-point ring of a
+    /// control stands for); in a dark window it is as much stronger as the shadows of the board are.
+    private static let beyondTheBoard: [Token] = [
+        Token("TokenShadowPaperDrop", light: Rgba(0x000000, alpha: 0.10), dark: Rgba(0x000000, alpha: 0.40))
+    ]
+
     /// The colour in the catalog under `name`, as sRGB bytes in a window of `appearance`, or nil when the catalog has
     /// no colour of that name.
     private func catalogColor(_ name: String, in appearance: NSAppearance.Name) throws -> Rgba? {
@@ -175,7 +183,8 @@ struct DesignTokenTests {
         _ color: Color, isToken name: String, sourceLocation: SourceLocation = #_sourceLocation
     ) throws {
         let token = try #require(
-            Self.board[name], "\(name) is not a token of the board", sourceLocation: sourceLocation)
+            Self.board[name] ?? Self.beyondTheBoard.first { $0.name == name },
+            "\(name) is not a token of the board", sourceLocation: sourceLocation)
         let windows: [(label: String, scheme: ColorScheme, expected: Rgba)] = [
             ("light", .light, token.light), ("dark", .dark, token.dark),
         ]
@@ -236,6 +245,23 @@ struct DesignTokenTests {
             try expectColor(entry.level.ringColor, isToken: entry.ring)
             try expectColor(entry.level.dropColor, isToken: entry.drop)
         }
+    }
+
+    @Test func thePaperTakesItsRingFromTheControlAndItsDropFromATokenOfItsOwn() throws {
+        for token in Self.beyondTheBoard {
+            for (appearance, expected) in [(NSAppearance.Name.aqua, token.light), (.darkAqua, token.dark)] {
+                let found = try #require(
+                    try catalogColor(token.name, in: appearance), "\(token.name) is not in the catalog")
+                #expect(found.matches(expected), "\(token.name) is \(found), the prototype has \(expected)")
+            }
+        }
+        try expectColor(Elevation.paper.ringColor, isToken: "TokenShadowControlRing")
+        try expectColor(Elevation.paper.dropColor, isToken: "TokenShadowPaperDrop")
+    }
+
+    @Test func thePaperShadowIsTheSoftOneThePrototypeDrawsUnderThePageOfAnInvoice() {
+        #expect(Elevation.paper.dropOffset == 8)
+        #expect(Elevation.paper.dropRadius == 12)
     }
 
     @Test func theDropShadowsAreAsLowAndAsSoftAsTheBoardDrawsThem() {

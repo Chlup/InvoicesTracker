@@ -2,14 +2,14 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The sheet with the page of an invoice as it prints, and the way to keep it: "Uložit PDF…" asks where to save the
+/// The sheet with the page of an invoice as it prints, and the way to keep it: "Stáhnout PDF" asks where to save the
 /// file, which is named after the number of the invoice, and "Zavřít" closes the sheet. The page is the same view that
 /// makes the PDF, shown smaller: it is a close look at what the file will hold, laid out the same way, but not a
 /// proof of it down to the pixel, as hairlines and the place of a line can differ a little at the smaller size. When
 /// the invoice does not fit the page whole, a line under the page says so.
 ///
 /// The sheet is 676 points tall, so that it hangs inside the smallest window (720 points) with both buttons on screen,
-/// and the page is shown as large as the height left for it allows.
+/// and the page is shown as large as the height left for it allows, on a soft shadow.
 struct PDFPreviewSheet: View {
     let document: InvoiceDocument
 
@@ -28,13 +28,14 @@ struct PDFPreviewSheet: View {
             page
             if let overflowMessage {
                 Text(overflowMessage)
-                    .font(.callout)
-                    .foregroundStyle(Color(.simulationText))
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.orangeText)
                     .frame(maxWidth: .infinity)
             }
             if saveFailed {
                 Text("PDF se nepodařilo uložit.")
-                    .foregroundStyle(.red)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.redText)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             buttons
@@ -54,42 +55,35 @@ struct PDFPreviewSheet: View {
     private var header: some View {
         let invoice = document.invoice
         let total = CzechFormat.money(Money(minor: invoice.totalMinor, currency: invoice.currency))
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: "Faktura \(invoice.number)")
-                .font(.system(size: 17, weight: .bold))
-            Text(verbatim: "\(invoice.client.name) · \(total)")
-                .foregroundStyle(.secondary)
-        }
+        return SheetHeader(title: "Faktura \(invoice.number)", subtitle: "\(invoice.client.name) · \(total)")
     }
 
-    /// The page, in the middle of the height that the rest of the sheet leaves, as large as fits it.
+    /// The page, in the middle of the height that the rest of the sheet leaves, as large as fits it, as paper on the
+    /// ground of the sheet.
     private var page: some View {
         GeometryReader { geometry in
             let scale = Self.previewScale(fitting: geometry.size)
             InvoiceDocumentView(document: document)
                 .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: PageSize.a4.width * scale, height: PageSize.a4.height * scale, alignment: .topLeading)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.separator))
-                .shadow(color: .black.opacity(0.1), radius: 12, y: 8)
+                .paperPage(on: Palette.bgCard)
                 .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
 
+    /// Zavřít, which Esc presses, and Stáhnout PDF, which Return presses: the capsules of a dialog, 32 points tall.
     private var buttons: some View {
         HStack(spacing: 8) {
             Spacer()
             Button("Zavřít") {
                 dismiss()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(CapsuleButtonStyle(.secondary))
             .keyboardShortcut(.cancelAction)
-            Button("Uložit PDF…", action: save)
-                .buttonStyle(.borderedProminent)
+            Button("Stáhnout PDF", action: save)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
     }
 
     // MARK: What the page is shown at and what is said about it
@@ -114,14 +108,21 @@ struct PDFPreviewSheet: View {
 
     // MARK: Saving
 
-    /// Asks where to save the PDF, as a sheet of the window the person works in, and writes it there. The page is made
-    /// once the place is chosen. A file that cannot be written is told in the sheet.
-    private func save() {
-        saveFailed = false
+    /// The panel that asks where to save the PDF of `document`: for a PDF, named after the number of the invoice, with
+    /// the means to make a folder.
+    static func savePanel(for document: InvoiceDocument) -> NSSavePanel {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = document.fileName
         panel.canCreateDirectories = true
+        return panel
+    }
+
+    /// Asks where to save the PDF, as a sheet of the window the person works in, and writes it there. The page is made
+    /// once the place is chosen. A file that cannot be written is told in the sheet.
+    private func save() {
+        saveFailed = false
+        let panel = Self.savePanel(for: document)
         let write: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
             do {

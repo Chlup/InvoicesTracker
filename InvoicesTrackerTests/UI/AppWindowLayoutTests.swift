@@ -1255,6 +1255,9 @@ struct AppWindowLayoutTests {
         }
     }
 
+    /// The editor fits the window at the least room, at a large size and at the least room again. At the least room
+    /// the preview stands under the form, as wide as the form is; in a large window it is the aside of 461 points
+    /// beside the form (`PreviewPane.width`), with the gap of 16 between them.
     @Test func theEditorFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -1262,11 +1265,27 @@ struct AppWindowLayoutTests {
                 try await waitUntil { window.subtitle == "Ze šablony Software development" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
-                try await expectSettled(window) { viewsOutside(window) }
-                window.setContentSize(AppWindowSize.large)
-                try await expectSettled(window) { viewsOutside(window) }
-                window.setContentSize(AppWindowSize.minimum)
-                try await expectSettled(window) { viewsOutside(window) }
+                try await withAccessibilityElements {
+                    let sizes = [
+                        (AppWindowSize.minimum, false), (AppWindowSize.large, true), (AppWindowSize.minimum, false),
+                    ]
+                    for (size, beside) in sizes {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { viewsOutside(window) }
+                        try await waitUntil { frameOfCard(labelled: "Náhled PDF", in: window) != nil }
+                        let aside = try #require(frameOfCard(labelled: "Náhled PDF", in: window))
+                        let form = try #require(frameOfCard(labelled: "Odběratel a doklad", in: window))
+
+                        if beside {
+                            #expect(abs(aside.width - PreviewPane.width) < 0.5, "The aside is \(aside) at \(size)")
+                            let gap = aside.minX - form.maxX
+                            #expect((gap - DesignMetrics.cardSpacing).magnitude < 1, "The gap is \(gap) at \(size)")
+                        } else {
+                            #expect((aside.minX - form.minX).magnitude < 1, "The aside is \(aside), the form \(form)")
+                            #expect((aside.width - form.width).magnitude < 1, "The aside is \(aside), the form \(form)")
+                        }
+                    }
+                }
                 #expect(window.title == "Nová faktura")
             }
         }

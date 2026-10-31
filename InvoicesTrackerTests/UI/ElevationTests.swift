@@ -128,6 +128,64 @@ struct ElevationTests {
         }
     }
 
+    // MARK: A sheet of paper
+
+    /// A sheet of paper, 220 by 80 points, on the window with `room` points around it.
+    private func paper(_ content: some View) -> some View {
+        onWindow(
+            content
+                .frame(width: 220, height: 80)
+                .background {
+                    RoundedRectangle(cornerRadius: 4)
+                        .surface(Palette.bgCard, elevation: .paper)
+                })
+    }
+
+    @Test func aPaperCastsItsSoftShadowUnderItsEdgeInALightAndInADarkWindow() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let picture = try OffscreenPicture(of: paper(Color.clear), in: scheme)
+
+            // The shadow lies 8 points below the paper and is 12 wide, so it darkens the ground under the edge and
+            // fades out well before the margin of the picture, 30 points under the edge.
+            let underEdge = picture.bytes(at: CGPoint(x: cardFrame.midX, y: cardFrame.maxY + 3))
+            let faraway = picture.bytes(at: CGPoint(x: cardFrame.midX, y: cardFrame.maxY + 29))
+            let deficit = zip(faraway, underEdge).map { $0 - $1 }.max() ?? 0
+            #expect(deficit >= 4, "\(scheme): the window is \(faraway) and just under the paper \(underEdge)")
+        }
+    }
+
+    @Test func aPaperShadowReachesFurtherThanTheShadowOfAControl() throws {
+        // 10 points under the edge a control casts no shadow any more, and a paper still does.
+        let controlBox = onWindow(
+            Color.clear
+                .frame(width: 220, height: 80)
+                .background {
+                    RoundedRectangle(cornerRadius: 4)
+                        .surface(Palette.bgCard, elevation: .control)
+                })
+        let withPaper = try OffscreenPicture(of: paper(Color.clear), in: .light)
+        let withControl = try OffscreenPicture(of: controlBox, in: .light)
+
+        let point = CGPoint(x: cardFrame.midX, y: cardFrame.maxY + 10)
+        let underControl = withControl.bytes(at: point)
+        let underPaper = withPaper.bytes(at: point)
+        let darker = zip(underControl, underPaper).map { $0 - $1 }.max() ?? 0
+        #expect(darker >= 4, "At 10 points under the edge: a control \(underControl), a paper \(underPaper)")
+    }
+
+    @Test func theTextOnAPaperCastsNoShadowOfItsOwn() throws {
+        let text = Text(verbatim: "Obsah stránky")
+            .font(Typography.body)
+            .foregroundStyle(Palette.text)
+        let picture = try OffscreenPicture(of: paper(text), in: .dark)
+        let colour = try cardColour(in: .dark)
+
+        #expect(picture.count(lighterThan: colour, in: cardInterior, by: margin) > 100, "The text is not drawn")
+        #expect(
+            picture.count(darkerThan: colour, in: cardInterior, by: margin) == 0,
+            "The text casts a shadow on the paper")
+    }
+
     // MARK: A search line
 
     @Test func theTextOfASearchLineCastsNoShadowOfItsOwn() throws {

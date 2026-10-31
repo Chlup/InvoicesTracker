@@ -67,7 +67,7 @@ nonisolated enum QRPayload {
     static func payload(for invoice: Invoice, supplier: Supplier, accounts: [BankAccount]) -> QRPayloadResult {
         let currency = invoice.currency
         guard currency == .czk || currency == .eur else {
-            return .unavailable("Pro \(currency.code) standard QR platby není.")
+            return .unavailable("Pro platby v \(currency.code) QR standard není, faktura bude bez QR kódu.")
         }
         guard let account = accounts.first(where: { $0.currency == currency }), !compact(account.iban).isEmpty else {
             return .unavailable(currency == .czk ? missingCzkIBAN : missingEurIBAN)

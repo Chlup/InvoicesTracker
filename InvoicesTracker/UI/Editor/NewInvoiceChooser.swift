@@ -148,12 +148,7 @@ struct NewInvoiceChooser: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.title)
-                    .font(.system(size: 17, weight: .bold))
-                Text(model.subtitle)
-                    .foregroundStyle(.secondary)
-            }
+            SheetHeader(title: model.title, subtitle: model.subtitle)
             ScrollView {
                 VStack(spacing: 8) {
                     ForEach(model.rows) { row in
@@ -168,7 +163,8 @@ struct NewInvoiceChooser: View {
             .disabled(asksToDiscard)
             if let errorText = model.errorText {
                 Text(verbatim: errorText)
-                    .foregroundStyle(.red)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.redText)
             }
             if asksToDiscard {
                 DiscardQuestionBox(keepEditing: { app.cancelDiscard() }, discard: { app.confirmDiscard() })
@@ -190,54 +186,58 @@ struct NewInvoiceChooser: View {
         DiscardQuestion.isAskedByChooser(app)
     }
 
+    /// The link to Odběratelé in the blue of a link, which VoiceOver reads as a link, as it leads to another screen,
+    /// and Zrušit, which Esc presses, a capsule of a dialog at the trailing end.
     private var footer: some View {
         HStack(spacing: 8) {
             Button("Šablony upravíte u odběratelů") {
                 model.showClients()
             }
-            .buttonStyle(.link)
+            .buttonStyle(TextLinkButtonStyle(.accent))
+            .accessibilityAddTraits(.isLink)
             Spacer()
             Button("Zrušit") {
                 model.cancel()
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.large)
+            .buttonStyle(CapsuleButtonStyle(.secondary))
             .keyboardShortcut(.cancelAction)
         }
+        .padding(.top, 4)
     }
 }
 
-/// One choice: the name and the amount on the first line, what it starts with on the second.
+/// One choice: the name and the amount on the first line, what it starts with on the second, in an inset panel with a
+/// line of the colour of the separators around it.
 private struct RowButton: View {
     let row: ChooserRow
     let choose: () -> Void
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
         Button(action: choose) {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 2) {
                 GridRow {
                     Text(verbatim: row.title)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(verbatim: row.amount)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                         .monospacedDigit()
                 }
                 GridRow {
                     Text(verbatim: row.subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Color.clear
                         .frame(width: 0, height: 0)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .insetPanel(horizontal: 14, vertical: 12)
+            .overlay(shape.strokeBorder(Palette.sep))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)

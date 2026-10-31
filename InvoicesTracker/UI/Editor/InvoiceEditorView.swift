@@ -22,15 +22,20 @@ struct InvoiceEditorView: View {
     /// over the editor or in the chooser.
     let asksToDiscard: Bool
 
+    /// The least width of the form beside the preview: the 590 points its rows of items need.
+    private static let formMinimumWidth: CGFloat = 590
+
     /// The window is wide enough for the form and the preview side by side from this width: the form keeps the 590
-    /// points its rows of items need, the preview has 380, and there are the margins and the gap between them.
-    private static let sideBySideWidth: CGFloat = 1_040
-    private static let previewWidth: CGFloat = 380
+    /// points its rows of items need, the preview is the aside of 461 (`PreviewPane.width`), and there are the margins
+    /// of the page and the gap between the two.
+    static let sideBySideWidth: CGFloat =
+        formMinimumWidth + DesignMetrics.cardSpacing + PreviewPane.width + DesignMetrics.pageLeading
+        + DesignMetrics.pageTrailing
 
     var body: some View {
         GeometryReader { geometry in
             if geometry.size.width >= Self.sideBySideWidth {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: DesignMetrics.cardSpacing) {
                     ScrollView {
                         form
                             .pagePadding(.vertical)
@@ -39,12 +44,12 @@ struct InvoiceEditorView: View {
                         PreviewPane(document: model.document)
                             .pagePadding(.vertical)
                     }
-                    .frame(width: Self.previewWidth)
+                    .frame(width: PreviewPane.width)
                 }
                 .pagePadding(.horizontal)
             } else {
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: DesignMetrics.cardSpacing) {
                         form
                         PreviewPane(document: model.document)
                     }
@@ -66,8 +71,10 @@ struct InvoiceEditorView: View {
 
     // MARK: The form
 
+    /// The form: the bar of the template or of the invoice, the sections, what the invoice does to the levies, what
+    /// stops it from being saved and the buttons, 16 points apart.
     private var form: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
             if let name = model.templateBarName {
                 templateBar(name)
             }
@@ -79,7 +86,7 @@ struct InvoiceEditorView: View {
             InvoiceItemsEditor(model: model)
             noteSection
             if let heading = model.impactText {
-                impactBox(heading: heading, detail: model.impactDetail)
+                impactNote(heading: heading, detail: model.impactDetail)
             }
             problemsAndFailure
             buttons
@@ -91,67 +98,61 @@ struct InvoiceEditorView: View {
 
     /// "Šablona <name>" with "Vybrat jinou", over a new invoice.
     private func templateBar(_ name: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: "doc.on.doc")
-                .foregroundStyle(.tint)
+                .imageScale(.large)
+                .foregroundStyle(Palette.accent)
                 .accessibilityHidden(true)
             Text("Šablona")
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
             Text(verbatim: name)
-                .fontWeight(.semibold)
+                .font(Typography.bodyBold)
+                .foregroundStyle(Palette.text)
             Button("Vybrat jinou") {
                 model.chooseAnotherTemplate()
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
+            .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
+        .editorBar()
     }
 
-    /// "Upravujete fakturu <number>" with its state, and for an invoice that is issued the warning.
+    /// "Upravujete fakturu <number>" with its state, and for an invoice that is issued the warning, a note of
+    /// attention.
     private func editBar(_ state: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Image(systemName: "pencil")
-                    .foregroundStyle(.tint)
+                    .imageScale(.large)
+                    .foregroundStyle(Palette.accent)
                     .accessibilityHidden(true)
                 Text("Upravujete fakturu")
-                    .foregroundStyle(.secondary)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
                 Text(verbatim: model.editing?.number ?? "")
-                    .fontWeight(.semibold)
+                    .font(Typography.bodyBold)
+                    .foregroundStyle(Palette.text)
                     .monospacedDigit()
                 Text(verbatim: state)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text3)
                 Spacer(minLength: 0)
             }
             if let warning = model.editWarning {
-                Text(verbatim: warning)
-                    .font(.callout)
-                    .foregroundStyle(Color(.simulationText))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                Note(.attention, icon: .none, text: warning)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
+        .editorBar()
     }
 
     // MARK: Sections
 
+    /// "Odběratel a doklad": the client among chips and what it starts an invoice with, the number, the two dates and
+    /// the due days.
     private var clientSection: some View {
-        VStack(spacing: 0) {
-            FormRow("Odběratel", alignment: .top) {
+        RowsCard(label: "Odběratel a doklad") {
+            FormRow("Odběratel", alignment: .top, labelHeight: DesignMetrics.smallControlHeight) {
                 VStack(alignment: .leading, spacing: 6) {
                     FlowLayout(spacing: 6) {
                         ForEach(model.clients) { client in
@@ -162,18 +163,18 @@ struct InvoiceEditorView: View {
                     }
                     if model.clients.isEmpty {
                         Text(verbatim: EditorText.noClients)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .font(Typography.callout)
+                            .foregroundStyle(Palette.text2)
                     }
                     if !model.clientInfo.isEmpty {
                         Text(verbatim: model.clientInfo)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .font(Typography.callout)
+                            .foregroundStyle(Palette.text3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-            Divider()
+            Hairline()
             FormRow("Číslo faktury") {
                 HStack(spacing: 10) {
                     if model.numberIsEditable {
@@ -184,23 +185,24 @@ struct InvoiceEditorView: View {
                             .frame(width: 180)
                     } else {
                         Text(verbatim: model.number)
-                            .fontWeight(.semibold)
+                            .font(Typography.bodySemibold)
+                            .foregroundStyle(Palette.text)
                             .monospacedDigit()
                     }
                     Text(verbatim: model.numberHint)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text3)
                 }
             }
-            Divider()
+            Hairline()
             FormRow("Datum vystavení") {
                 dateField("Datum vystavení", selection: issueDateSelection)
             }
-            Divider()
+            Hairline()
             FormRow("DUZP") {
                 dateField("DUZP", selection: dutySelection)
             }
-            Divider()
+            Hairline()
             FormRow("Splatnost") {
                 HStack(spacing: 8) {
                     TextField("Splatnost ve dnech", text: $model.dueDaysText)
@@ -209,30 +211,31 @@ struct InvoiceEditorView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 64)
                     Text(verbatim: model.dueDaysLine)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
                         .monospacedDigit()
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Odběratel a doklad")
     }
 
+    /// "Platba, měna a DPH": the way of payment, the currency with its rate, the VAT mode and the QR code.
     private var paymentSection: some View {
-        VStack(spacing: 0) {
+        RowsCard(label: "Platba, měna a DPH") {
             FormRow("Platba") {
                 Text(verbatim: model.methodText.isEmpty ? "—" : model.methodText)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
             }
-            Divider()
+            Hairline()
             FormRow("Měna a kurz") {
                 Text(verbatim: model.currencyText)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
                     .monospacedDigit()
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Divider()
+            Hairline()
             FormRow("Režim DPH") {
                 Picker("Režim DPH", selection: $model.vatMode) {
                     ForEach(VatMode.allCases, id: \.self) { mode in
@@ -244,81 +247,63 @@ struct InvoiceEditorView: View {
                 .pickerStyle(.menu)
                 .fixedSize()
             }
-            Divider()
+            Hairline()
             FormRow("QR platba", alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Přidat na fakturu QR kód pro platbu", isOn: qrSelection)
                         .disabled(!model.qrAvailable)
                     Text(verbatim: model.qrNote)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text3)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 22)
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Platba, měna a DPH")
     }
 
+    /// "Poznámka na faktuře": the note that the page prints, on the background of a card with the stronger line of a
+    /// field around it and the example of the prototype in it while it is empty, and under it what it is for and how
+    /// long it may be.
     private var noteSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Poznámka na faktuře")
-                .font(.system(size: 15, weight: .semibold))
-                .accessibilityAddTraits(.isHeader)
-            TextEditor(text: $model.note)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .frame(height: 110)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-                .accessibilityLabel("Poznámka na faktuře")
+        Card(title: "Poznámka na faktuře", spacing: 8, label: "Poznámka") {
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $model.note)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .accessibilityLabel("Poznámka na faktuře")
+                if model.note.isEmpty {
+                    Text(InvoiceEditorModel.notePlaceholder)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text3)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(height: 110)
+            .background(Palette.bgCard, in: RoundedRectangle(cornerRadius: DesignMetrics.controlRadius))
+            .overlay(RoundedRectangle(cornerRadius: DesignMetrics.controlRadius).strokeBorder(Palette.sepStrong))
             let tooLong = model.noteLineCount > EditorLimits.noteLines
             Text(
                 "Vytiskne se dole na faktuře. Ze šablony se předvyplní, tady ji můžete pro tuto fakturu změnit."
                     + " Nejvýše \(EditorLimits.noteLines) řádků (teď \(model.noteLineCount))."
             )
-            .font(.callout)
-            .foregroundStyle(tooLong ? Color.red : Color.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(tooLong ? Palette.redText : Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
-        .accessibilityElement(children: .contain)
     }
 
-    /// "Až přijde platba, přibude k odvodům …" or "Po úpravě se odvody za rok … změní o …".
-    private func impactBox(heading: String, detail: String?) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 18))
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: heading)
-                    .fontWeight(.semibold)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let detail {
-                    Text(verbatim: detail)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Dopad na odvody")
+    /// "Až přijde platba, přibude k odvodům …" or "Po úpravě se odvody za rok … změní o …": the note of an estimate,
+    /// read as "Dopad na odvody".
+    private func impactNote(heading: String, detail: String?) -> some View {
+        Note(.attention, icon: .info, title: heading, text: detail ?? "")
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Dopad na odvody")
     }
 
     // MARK: Buttons
@@ -330,8 +315,8 @@ struct InvoiceEditorView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 ForEach(model.validation, id: \.self) { text in
                     Text(verbatim: text)
-                        .font(.callout)
-                        .foregroundStyle(Color(.simulationText))
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.orangeText)
                         .multilineTextAlignment(.trailing)
                 }
             }
@@ -340,24 +325,28 @@ struct InvoiceEditorView: View {
         }
         if let failure = model.failure {
             Text(verbatim: failure)
-                .foregroundStyle(.red)
+                .font(Typography.body)
+                .foregroundStyle(Palette.redText)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
+    /// Zrušit, which Esc presses, Uložit koncept for a new invoice and a draft, and the main one, which ⌘↩ presses: the
+    /// capsules of the page, 32 points tall. Uložit koncept stands on the window itself, so it is in the colour of a
+    /// card.
     private var buttons: some View {
         HStack(spacing: 8) {
             Spacer(minLength: 0)
             Button("Zrušit") {
                 model.cancel()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(CapsuleButtonStyle(.secondary))
             .keyboardShortcut(.cancelAction)
             if model.showsSaveDraft {
                 Button("Uložit koncept") {
                     run { try await model.saveDraft() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.onWindow))
                 .disabled(!model.canSaveDraft || model.isSaving)
             }
             Button(model.primaryTitle) {
@@ -367,12 +356,10 @@ struct InvoiceEditorView: View {
                     run { try await model.issue() }
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(CapsuleButtonStyle(.primary))
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!model.canIssue || model.isSaving)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
     }
 
     /// Saves with `action`. The model closes the editor when it has saved; a failure is said under the form until the
@@ -442,6 +429,23 @@ struct InvoiceEditorView: View {
     private func instant(of day: CivilDate) -> Date {
         let parts = DateComponents(year: day.year, month: day.month, day: day.day, hour: 12)
         return calendar.date(from: parts) ?? Date()
+    }
+}
+
+extension View {
+    /// The look of a bar over the form: its content padded 20 at the sides, 16 above and 12 under, as wide as the room,
+    /// on a panel in the colour of a card with the elevation of a card. It stands on the window, so it has the corners
+    /// of a panel (10 points) and not of a card, as the line of a search does. VoiceOver reads it as a group.
+    fileprivate func editorBar() -> some View {
+        padding(.top, 16)
+            .padding(.horizontal, DesignMetrics.cardPadding)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
+                    .surface(Palette.bgCard, elevation: .card)
+            }
+            .accessibilityElement(children: .contain)
     }
 }
 
@@ -555,40 +559,99 @@ private struct FocusReturn: NSViewRepresentable {
     }
 }
 
-/// A row of a section: the label on the left, the content beside it.
+/// The sizes of the rows of the form, in points.
+private enum FormRowMetrics {
+    /// The width of the label of a row, which the content starts after.
+    static let labelWidth: CGFloat = 140
+
+    /// The space between the label and the content.
+    static let gap: CGFloat = 14
+
+    /// The space above and under the content of a row, on either side of the hairline between two rows.
+    static let verticalPadding: CGFloat = 10
+}
+
+/// A row of a section: the label on the left, in secondary text, the content beside it. `labelHeight` makes the label
+/// as high as the first line of the content where that is a control taller than a line of text, such as a chip, so that
+/// the label stands level with it.
 private struct FormRow<Content: View>: View {
     let label: String
     let alignment: VerticalAlignment
+    let labelHeight: CGFloat?
     let content: Content
 
-    init(_ label: String, alignment: VerticalAlignment = .center, @ViewBuilder content: () -> Content) {
+    init(
+        _ label: String, alignment: VerticalAlignment = .center, labelHeight: CGFloat? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
         self.label = label
         self.alignment = alignment
+        self.labelHeight = labelHeight
         self.content = content()
     }
 
     var body: some View {
-        HStack(alignment: alignment, spacing: 14) {
+        HStack(alignment: alignment, spacing: FormRowMetrics.gap) {
             Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: 140, alignment: .leading)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
+                .frame(width: FormRowMetrics.labelWidth, height: labelHeight, alignment: .leading)
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, FormRowMetrics.verticalPadding)
     }
 }
 
-/// "Náhled PDF": the page of the invoice as it prints, as large as the width allows, on a grey ground. The page is cut
-/// to the paper: an invoice that does not fit it draws below it, and what is cut is not the editor's to judge (the
-/// check of the page is `InvoicePDFRenderer.fitsOnOnePage`).
+/// A card of rows, which VoiceOver reads under `label`: the rows one under the other with a hairline between two of
+/// them. The card is padded 20 as every card is, so its padding above the first row and under the last is less by the
+/// 10 points that a row has of its own.
+private struct RowsCard<Content: View>: View {
+    let label: String
+    private let content: Content
+
+    init(label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .padding(.horizontal, DesignMetrics.cardPadding)
+        .padding(.vertical, DesignMetrics.cardPadding - FormRowMetrics.verticalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// "Náhled PDF": the aside with the page of the invoice as it prints, as large as the width allows, on the fill of the
+/// design. It is 461 points wide: the 429 points that the prototype gives it as the basis of its width, and 16 points
+/// of padding on either side, which the prototype's box model adds to the width (`width`). The page is cut to the
+/// paper: an invoice that does not fit it draws below it, and what is cut is not the editor's to judge (the check of
+/// the page is `InvoicePDFRenderer.fitsOnOnePage`).
 struct PreviewPane: View {
     let document: InvoiceDocument?
+
+    /// The padding of the aside at either side.
+    private static let sidePadding: CGFloat = 16
+
+    /// The width the page has in the aside: 429 points, the basis of the width of the aside in the prototype
+    /// (`flex: 0 1 429px`).
+    static let contentWidth: CGFloat = 429
+
+    /// The width of the aside, 461 points. The prototype sets no `box-sizing`, so the padding of its aside comes to
+    /// the width of its basis, and its page, which is a fixed 397 points there, fills the 429 here.
+    static let width: CGFloat = contentWidth + 2 * sidePadding
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Náhled PDF")
-                .font(.system(size: 13, weight: .semibold))
+                .font(Typography.headline)
+                .foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
             if let document {
                 GeometryReader { geometry in
@@ -599,22 +662,21 @@ struct PreviewPane: View {
                             width: PageSize.a4.width * scale, height: PageSize.a4.height * scale,
                             alignment: .topLeading
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                        .paperPage(on: Palette.fill)
                 }
                 .aspectRatio(PageSize.a4.width / PageSize.a4.height, contentMode: .fit)
             } else {
                 Text("Náhled se zobrazí, až bude faktura úplná.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .frame(maxWidth: .infinity, minHeight: 120)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Self.sidePadding)
         .padding(.top, 14)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Náhled PDF")
     }
