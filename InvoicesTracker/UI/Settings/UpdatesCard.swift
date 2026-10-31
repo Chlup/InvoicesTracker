@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The card Aktualizace of Nastavení › Aplikace: the version of the app, when the updater last checked for a new
 /// version, the switch of the daily check, and Zkontrolovat teď, which asks the updater for a check at once. The
-/// updater shows what it finds in its own windows. The card is made like the card Kurzy, whose button reads the same.
+/// updater shows what it finds in its own windows. The card is made like the card Kurzy, whose button shows the same
+/// title, so VoiceOver names this card's button after the card (`UpdatesTexts.checkNowAccessibilityLabel`).
 ///
 /// Without `updates` (the app has no updater while it hosts the unit tests) the card still names the version, the last
 /// check never was, the switch is off, and neither the switch nor the button can be used. The button can be used
@@ -40,6 +41,7 @@ struct UpdatesCard: View {
                     updates?.checkNow()
                 }
                 .settingsCardButton()
+                .accessibilityLabel(UpdatesTexts.checkNowAccessibilityLabel)
                 .disabled(updates?.canCheck != true)
                 .padding(.top, 10)
             }

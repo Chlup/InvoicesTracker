@@ -15,6 +15,11 @@ nonisolated enum UpdatesTexts {
     /// The title of the button that checks for a new version at once.
     static let checkNowTitle = "Zkontrolovat teď"
 
+    /// The name VoiceOver and Voice Control give that button: its title, then the name of the card. The tab has another
+    /// Zkontrolovat teď, the button of the rates (Kurzy), and the two must not be listed under one name. The button
+    /// itself still shows `checkNowTitle` alone.
+    static let checkNowAccessibilityLabel = "\(checkNowTitle) – \(title)"
+
     /// "1.7.0 (10)": the marketing version of the app and its build in parentheses.
     static func version(shortVersion: String, build: String) -> String {
         "\(shortVersion) (\(build))"

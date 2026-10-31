@@ -10,9 +10,10 @@ import Testing
 /// - without an updater the card shows the version and its controls are disabled;
 /// - the card stands under Vzhled in the left column, and the licences end with the footer in place of a version.
 ///
-/// The tab has two buttons that read Zkontrolovat teď, this card's and the one of the rates (Kurzy). So the controls of
-/// this card are looked for in the card, never in the whole window, and a switch is found by its role, as the text
-/// beside it reads the same. One window at a time, so that what a test sees settle is its own window.
+/// The tab has two buttons that show Zkontrolovat teď, this card's and the one of the rates (Kurzy). VoiceOver names
+/// this card's after the card (`UpdatesTexts.checkNowAccessibilityLabel`), and the controls of this card are looked for
+/// in the card, never in the whole window. A switch is found by its role, as the text beside it reads the same. One
+/// window at a time, so that what a test sees settle is its own window.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct UpdatesCardWindowTests {
@@ -28,11 +29,11 @@ struct UpdatesCardWindowTests {
         }
     }
 
-    /// The button of the card, found in the card and not in the window, where the card Kurzy has one that reads the
-    /// same.
+    /// The button of the card, found in the card by the name VoiceOver gives it. The card Kurzy has a button that shows
+    /// the same title, so the lookup is made in the card and not in the window.
     private func checkButton(in window: NSWindow) -> AnyObject? {
         accessibilityElement(labelled: UpdatesTexts.title, in: window).flatMap {
-            accessibilityElement(labelled: UpdatesTexts.checkNowTitle, role: .button, under: $0)
+            accessibilityElement(labelled: UpdatesTexts.checkNowAccessibilityLabel, role: .button, under: $0)
         }
     }
 
@@ -90,6 +91,29 @@ struct UpdatesCardWindowTests {
                     #expect(button.accessibilityPerformPress?() == true)
 
                     #expect(fake.checkCount == 1)
+                }
+            }
+        }
+    }
+
+    /// The tab has two buttons that show Zkontrolovat teď, and VoiceOver, its rotor and Voice Control list buttons by
+    /// name. The card's button is named after the card, so that the two are listed apart, and the button of the card
+    /// Kurzy keeps its name: it is the only one outside the card that reads the title alone.
+    @Test func theButtonIsNamedAfterTheCardApartFromTheOneOfKurzy() async throws {
+        try await EditorFixture.with { f in
+            f.app.updates = UpdatesModel(updater: FakeUpdater(canCheck: true, automatic: true, lastCheck: nil))
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withTheCard(of: f.app, in: window) { card in
+                    try await waitUntil { accessibilityButton(labelled: UpdatesTexts.checkNowTitle, in: window) != nil }
+                    let button = try #require(checkButton(in: window))
+                    #expect(button.accessibilityLabel?() == "Zkontrolovat teď – Aktualizace")
+                    #expect(
+                        accessibilityElement(labelled: UpdatesTexts.checkNowTitle, role: .button, under: card) == nil)
+
+                    let rates = try #require(accessibilityButton(labelled: UpdatesTexts.checkNowTitle, in: window))
+                    let cardFrame = try #require(card.accessibilityFrame?())
+                    let ratesFrame = try #require(rates.accessibilityFrame?())
+                    #expect(!cardFrame.intersects(ratesFrame), "\(ratesFrame) is in the card \(cardFrame)")
                 }
             }
         }

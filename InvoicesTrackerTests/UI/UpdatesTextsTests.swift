@@ -24,6 +24,7 @@ struct UpdatesTextsTests {
         #expect(UpdatesTexts.subtitle == "Jednou denně se podívá, jestli je nová verze. Nic jiného se neodesílá.")
         #expect(UpdatesTexts.automaticLabel == "Kontrolovat automaticky")
         #expect(UpdatesTexts.checkNowTitle == "Zkontrolovat teď")
+        #expect(UpdatesTexts.checkNowAccessibilityLabel == "Zkontrolovat teď – Aktualizace")
     }
 
     @Test func theVersionIsTheMarketingVersionAndTheBuildInParentheses() {
