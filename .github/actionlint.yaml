@@ -1,0 +1,10 @@
+# Settings for actionlint (https://github.com/rhysd/actionlint). Version 1.7.12 knows neither the runner label nor the
+# "queue" key that GitHub added to "concurrency" in May 2026. Drop each entry once actionlint knows it.
+self-hosted-runner:
+  labels:
+    - xcode-27
+
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

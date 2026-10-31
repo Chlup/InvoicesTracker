@@ -1,0 +1,19 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>InvoicesTracker</title>
+        <link>https://github.com/Chlup/InvoicesTracker/releases</link>
+        <description>Most recent changes with links to updates.</description>
+        <item>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.6</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[- Oprava]]></description>
+            <enclosure url="https://github.com/Chlup/InvoicesTracker/releases/download/v1.7.0-10/InvoicesTracker-1.7.0-10.dmg" length="1" type="application/octet-stream" sparkle:edSignature="c2ln"/>
+        </item>
+    </channel>
+</rss>
+<!-- sparkle-signatures:
+edSignature: c2ln
+length: 1
+-->

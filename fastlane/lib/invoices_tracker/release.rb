@@ -22,5 +22,16 @@ module InvoicesTracker
     # and replaced by this exact name, so renewing it never leaves copies with
     # a timestamp appended.
     PROFILE_NAME = "InvoicesTracker Developer ID"
+
+    # The GitHub repository that holds the source, the releases and the update
+    # feed, as `owner/name`.
+    REPOSITORY = "Chlup/InvoicesTracker"
+
+    # The releases page of the repository, which lists every published release.
+    RELEASES_URL = "https://github.com/Chlup/InvoicesTracker/releases"
+
+    # The Sparkle appcast of the newest release. GitHub's `latest/download` link
+    # resolves to the newest release, so the update feed never needs a new address.
+    FEED_URL = "https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml"
   end
 end

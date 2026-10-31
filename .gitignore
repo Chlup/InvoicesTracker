@@ -33,6 +33,10 @@ playground.xcworkspace
 # Swift Package Manager
 .build/
 
+# Bundler: on the release runner, ruby/setup-ruby installs the gems into the checkout
+/.bundle/
+/vendor/bundle/
+
 # fastlane
 fastlane/report.xml
 fastlane/Preview.html
@@ -42,6 +46,9 @@ fastlane/test_output
 # fastlane local secrets (App Store Connect API key + env)
 fastlane/.env
 *.p8
+
+# The Developer ID identity exported from the keychain, with its private key, for the release workflow's secret
+*.p12
 
 # macOS
 
