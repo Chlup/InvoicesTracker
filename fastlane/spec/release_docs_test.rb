@@ -115,6 +115,13 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
     assert_match(/spaces around them are ignored/i, prose)
   end
 
+  # The update window reads the notes as plain Markdown and would join the lines of a paragraph, so the run marks each
+  # line break. A reader who finds two spaces at the ends of the published lines looks here for the reason.
+  def test_the_readme_says_each_line_break_shows_in_the_update_window_too
+    assert_match(/every line break shows, on the release page and in the update window alike/i, prose)
+    assert_match(/two spaces, Markdown's mark for a line break/, prose)
+  end
+
   # The first step of the run checks the branch, like the numbers, and a reader who is stopped there looks for the rule.
   def test_the_readme_says_what_a_branch_name_may_hold
     assert prose.include?("letters, digits, `.`, `_`, `-` and `/`"), "the README does not say what a branch may hold"

@@ -188,7 +188,11 @@ boxes do:
 - `changelog`: the release notes in Markdown. A deploy needs them: they become
   the text of the release and what Sparkle's update window shows. The box in the
   Actions form is one line, so type `\n` where a line break belongs. A text with
-  real line breaks passed through `gh workflow run` keeps them.
+  real line breaks passed through `gh workflow run` keeps them. Every line break
+  shows, on the release page and in the update window alike: the run ends each
+  line that another line follows with two spaces, Markdown's mark for a line
+  break, because the update window would otherwise join the lines into one. An
+  empty line, `\n\n` in the box, starts a new paragraph.
 - `skip_tests`: skips the unit tests.
 - `deploy`: also publishes the release and the update feed. Without it the run
   only builds the DMG, and nothing else changes.
