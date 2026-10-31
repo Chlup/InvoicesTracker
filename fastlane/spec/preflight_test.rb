@@ -80,7 +80,7 @@ class InvoicesTrackerPreflightTest < Minitest::Test
 
   def test_each_problem_is_reported
     report = check(
-      missing_tools: ["create-dmg"],
+      missing_tools: ["xcbeautify"],
       api_key_settings: key_settings(key_id: nil, key_file: nil, missing: [SETTINGS::KEY_ID]),
       identity_result: failed_identity(NO_IDENTITY),
       version_errors: ["MARKETING_VERSION '1' is not X.Y or X.Y.Z"]
@@ -88,7 +88,7 @@ class InvoicesTrackerPreflightTest < Minitest::Test
 
     refute_predicate report, :ok?
     assert_equal [
-      "create-dmg is not installed — brew install create-dmg",
+      "xcbeautify is not installed — brew install xcbeautify",
       "ASC_KEY_ID (or APP_STORE_CONNECT_API_KEY_KEY_ID) is not set in fastlane/.env (see fastlane/.env.example)",
       "App Store Connect API key file not found: /r/fastlane/AuthKey_X.p8 or /r/AuthKey_X.p8",
       NO_IDENTITY,
@@ -98,7 +98,7 @@ class InvoicesTrackerPreflightTest < Minitest::Test
 
   def test_errors_come_in_a_fixed_order_with_one_for_each_missing_tool_and_setting
     report = check(
-      dirty_paths: ["?? a.txt"], missing_tools: ["create-dmg", "other-tool"],
+      dirty_paths: ["?? a.txt"], missing_tools: ["python3", "xcbeautify"],
       api_key_settings: key_settings(
         key_id: nil, issuer_id: nil, key_file: nil, missing: [SETTINGS::KEY_ID, SETTINGS::ISSUER_ID]
       ),
@@ -107,8 +107,8 @@ class InvoicesTrackerPreflightTest < Minitest::Test
 
     assert_equal [
       "uncommitted changes — commit or stash them first: ?? a.txt",
-      "create-dmg is not installed — brew install create-dmg",
-      "other-tool is not installed — brew install other-tool",
+      "python3 is not installed — brew install python",
+      "xcbeautify is not installed — brew install xcbeautify",
       "ASC_KEY_ID (or APP_STORE_CONNECT_API_KEY_KEY_ID) is not set in fastlane/.env (see fastlane/.env.example)",
       "ASC_ISSUER_ID (or APP_STORE_CONNECT_API_KEY_ISSUER_ID) is not set in fastlane/.env (see fastlane/.env.example)",
       "App Store Connect API key file not found: /r/fastlane/AuthKey_X.p8 or /r/AuthKey_X.p8",
@@ -116,6 +116,18 @@ class InvoicesTrackerPreflightTest < Minitest::Test
       "version one",
       "version two"
     ], report.errors
+  end
+
+  # The Homebrew formula that provides python3 is named python.
+  def test_a_missing_python3_points_to_the_python_formula
+    assert_equal ["python3 is not installed — brew install python"], check(missing_tools: ["python3"]).errors
+  end
+
+  def test_any_other_missing_tool_points_to_the_formula_of_its_own_name
+    assert_equal ["xcbeautify is not installed — brew install xcbeautify"],
+                 check(missing_tools: ["xcbeautify"]).errors
+    assert_equal ["other-tool is not installed — brew install other-tool"],
+                 check(missing_tools: ["other-tool"]).errors
   end
 
   # The error names every path the key file was looked for at.

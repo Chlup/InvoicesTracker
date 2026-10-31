@@ -18,6 +18,12 @@ class InvoicesTrackerBuildSettingsTest < Minitest::Test
     InvoicesTracker::BuildSettings.errors(versions(marketing_version, build))
   end
 
+  # What is wrong with the numbers typed for a release when the branch's are
+  # `project`.
+  def mismatches(project, version:, build:)
+    InvoicesTracker::BuildSettings.mismatch_errors(project, version: version, build: build)
+  end
+
   def test_reads_the_versions_of_the_app_target
     result = InvoicesTracker::BuildSettings.versions(JSON_OUT, target: "InvoicesTracker")
 
@@ -72,5 +78,147 @@ class InvoicesTrackerBuildSettingsTest < Minitest::Test
     assert_equal ["MARKETING_VERSION 'v1' is not X.Y or X.Y.Z",
                   "CURRENT_PROJECT_VERSION '0' is not a positive whole number"],
                  errors("v1", "0")
+  end
+
+  def test_typed_numbers_that_are_the_projects_have_no_mismatch
+    assert_equal [], mismatches(versions("1.7.0", "10"), version: "1.7.0", build: "10")
+    assert_equal [], mismatches(versions("1.7", "2048"), version: "1.7", build: "2048")
+  end
+
+  def test_typed_values_are_trimmed_and_a_v_prefix_is_refused
+    project = versions("1.7.0", "10")
+
+    assert_equal [], mismatches(project, version: " 1.7.0 ", build: " 10\n")
+    assert_equal ["the typed version 'v1.7.0' is not X.Y or X.Y.Z"],
+                 mismatches(project, version: "v1.7.0", build: "10")
+    assert_equal ["the typed version 'v1.7.0' is not X.Y or X.Y.Z"],
+                 mismatches(project, version: " v1.7.0\n", build: "10")
+  end
+
+  def test_a_typed_build_that_is_not_a_positive_whole_number_is_refused
+    project = versions("1.7.0", "10")
+
+    assert_equal ["the typed build '10a' is not a positive whole number"],
+                 mismatches(project, version: "1.7.0", build: "10a")
+    ["0", "010", "1.5", "-3", ""].each do |bad|
+      assert_equal ["the typed build '#{bad}' is not a positive whole number"],
+                   mismatches(project, version: "1.7.0", build: bad), bad.inspect
+    end
+  end
+
+  def test_typed_values_that_are_missing_are_refused_like_empty_ones
+    assert_equal ["the typed version '' is not X.Y or X.Y.Z",
+                  "the typed build '' is not a positive whole number"],
+                 mismatches(versions("1.7.0", "10"), version: nil, build: nil)
+  end
+
+  def test_numbers_other_than_the_projects_ask_for_a_bump_in_a_pr
+    old = versions("1.6.0", "9")
+
+    assert_equal ["the branch's MARKETING_VERSION is 1.6.0, not the typed 1.7.0 — bump it in a PR first",
+                  "the branch's CURRENT_PROJECT_VERSION is 9, not the typed 10 — bump it in a PR first"],
+                 mismatches(old, version: "1.7.0", build: "10")
+  end
+
+  def test_only_the_number_that_differs_is_reported
+    assert_equal ["the branch's CURRENT_PROJECT_VERSION is 9, not the typed 10 — bump it in a PR first"],
+                 mismatches(versions("1.7.0", "9"), version: "1.7.0", build: "10")
+    assert_equal ["the branch's MARKETING_VERSION is 1.6.0, not the typed 1.7.0 — bump it in a PR first"],
+                 mismatches(versions("1.6.0", "10"), version: "1.7.0", build: "10")
+  end
+
+  # A typed number is the text the release is named after, so 1.7 is not 1.7.0.
+  def test_numbers_are_compared_as_text
+    assert_equal ["the branch's MARKETING_VERSION is 1.7, not the typed 1.7.0 — bump it in a PR first"],
+                 mismatches(versions("1.7", "10"), version: "1.7.0", build: "10")
+  end
+
+  # The typed value is wrong in itself, so there is nothing to compare: the
+  # error is the format one only, whatever the project holds.
+  def test_a_format_error_replaces_the_comparison_for_that_value
+    assert_equal ["the typed version 'v1.7.0' is not X.Y or X.Y.Z",
+                  "the branch's CURRENT_PROJECT_VERSION is 9, not the typed 10 — bump it in a PR first"],
+                 mismatches(versions("1.6.0", "9"), version: "v1.7.0", build: "10")
+    assert_equal ["the branch's MARKETING_VERSION is 1.6.0, not the typed 1.7.0 — bump it in a PR first",
+                  "the typed build '10a' is not a positive whole number"],
+                 mismatches(versions("1.6.0", "9"), version: "1.7.0", build: "10a")
+    assert_equal ["the typed version 'v1.7.0' is not X.Y or X.Y.Z",
+                  "the typed build '10a' is not a positive whole number"],
+                 mismatches(versions("1.6.0", "9"), version: "v1.7.0", build: "10a")
+  end
+
+  # The partial Info.plist with the update settings is named by the app
+  # target's INFOPLIST_FILE; the tests target's entry must not be read.
+  def test_reads_the_info_plist_file_of_the_app_target
+    json = '[{"target":"InvoicesTracker","buildSettings":{"INFOPLIST_FILE":"InvoicesTracker-Info.plist"}},' \
+           '{"target":"InvoicesTrackerTests","buildSettings":{"INFOPLIST_FILE":"Other.plist"}}]'
+
+    assert_equal "InvoicesTracker-Info.plist",
+                 InvoicesTracker::BuildSettings.info_plist_file(json, target: "InvoicesTracker")
+  end
+
+  # A generated Info.plist without a partial one leaves the setting unset, and
+  # an empty value names no file either.
+  def test_no_info_plist_file_is_nil
+    assert_nil InvoicesTracker::BuildSettings.info_plist_file(JSON_OUT, target: "InvoicesTracker")
+    assert_nil InvoicesTracker::BuildSettings.info_plist_file(
+      '[{"target":"InvoicesTracker","buildSettings":{"INFOPLIST_FILE":" "}}]', target: "InvoicesTracker"
+    )
+  end
+
+  # Open3 labels xcodebuild's output with the locale's encoding, which on a CI
+  # runner may be US-ASCII; the output itself is UTF-8.
+  def test_output_labelled_with_another_encoding_is_read_as_utf8
+    json = '[{"target":"InvoicesTracker","buildSettings":{"MARKETING_VERSION":"1.0",' \
+           '"CURRENT_PROJECT_VERSION":"1","INFOPLIST_FILE":"Fakturace-Info.plist",' \
+           '"INFOPLIST_KEY_NSHumanReadableCopyright":"© Michal Fousek, Účty"}}]'
+    labelled = json.b.force_encoding(Encoding::US_ASCII)
+
+    assert_equal "1.0", InvoicesTracker::BuildSettings.versions(labelled, target: "InvoicesTracker").marketing_version
+    assert_equal "Fakturace-Info.plist",
+                 InvoicesTracker::BuildSettings.info_plist_file(labelled, target: "InvoicesTracker")
+  end
+
+  def test_the_info_plist_file_of_a_missing_target_raises
+    error = assert_raises(ArgumentError) do
+      InvoicesTracker::BuildSettings.info_plist_file(JSON_OUT, target: "Nope")
+    end
+
+    assert_equal "no build settings for target Nope", error.message
+  end
+
+  def test_well_formed_typed_numbers_have_no_format_errors
+    assert_empty InvoicesTracker::BuildSettings.typed_format_errors(version: "1.7.0", build: "10")
+    assert_empty InvoicesTracker::BuildSettings.typed_format_errors(version: " 1.7 ", build: "10\n")
+  end
+
+  def test_typed_numbers_in_the_wrong_format_are_reported_version_first
+    assert_equal ["the typed version 'v1.7.0' is not X.Y or X.Y.Z",
+                  "the typed build '10a' is not a positive whole number"],
+                 InvoicesTracker::BuildSettings.typed_format_errors(version: "v1.7.0", build: "10a")
+    assert_equal ["the typed version '' is not X.Y or X.Y.Z",
+                  "the typed build '' is not a positive whole number"],
+                 InvoicesTracker::BuildSettings.typed_format_errors(version: nil, build: nil)
+  end
+
+  # The format check needs no branch, and says what mismatch_errors says about
+  # the format whatever the branch's numbers are.
+  def test_the_format_errors_read_like_those_of_the_comparison
+    [["v1.7.0", "10a"], ["1.0\n::error::x", "0"], ["", "-3"]].each do |version, build|
+      assert_equal mismatches(versions("1.6.0", "9"), version: version, build: build),
+                   InvoicesTracker::BuildSettings.typed_format_errors(version: version, build: build),
+                   [version, build].inspect
+    end
+  end
+
+  # `errors` reports a number the project does not define as such; here it
+  # also differs from what was typed, and the message must still read.
+  def test_a_number_the_project_does_not_define_is_a_mismatch
+    assert_equal ["the branch's MARKETING_VERSION is unset, not the typed 1.7.0 — bump it in a PR first",
+                  "the branch's CURRENT_PROJECT_VERSION is unset, not the typed 10 — bump it in a PR first"],
+                 mismatches(InvoicesTracker::BuildSettings::Versions.new, version: "1.7.0", build: "10")
+    assert_equal ["the branch's MARKETING_VERSION is unset, not the typed 1.7.0 — bump it in a PR first",
+                  "the branch's CURRENT_PROJECT_VERSION is unset, not the typed 10 — bump it in a PR first"],
+                 mismatches(versions("", ""), version: "1.7.0", build: "10")
   end
 end

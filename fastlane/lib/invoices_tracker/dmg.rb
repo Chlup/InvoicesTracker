@@ -3,8 +3,10 @@
 module InvoicesTracker
   # Builds the commands that produce the distributable disk image: a standard
   # drag-to-Applications window with the app icon on the left and a link to
-  # /Applications on the right. Pure argv construction with no I/O, so the
-  # layout is unit-testable; callers run the arrays without a shell.
+  # /Applications on the right. dmgbuild makes the image and writes the window
+  # layout into it without driving Finder; the layout itself is in
+  # fastlane/dmg_settings.py. Pure argv construction with no I/O, so the
+  # commands are unit-testable; callers run the arrays without a shell.
   module Dmg
     module_function
 
@@ -14,23 +16,18 @@ module InvoicesTracker
       "#{app_name.strip.gsub(/\s+/, '-')}-#{version}-#{build}.dmg"
     end
 
-    # `app_bundle` is the file name of the app as it appears inside
-    # `source_dir`, which must contain ONLY the app bundle: create-dmg turns the
-    # whole folder into the volume. `volicon` (an .icns file) is optional; nil
-    # leaves the volume with the default icon, which is what an app without an
-    # icon needs.
-    def create_dmg_command(app_bundle:, source_dir:, dmg_path:, volname:, volicon: nil)
-      command = ["create-dmg", "--volname", volname]
-      command += ["--volicon", volicon] if volicon
-      command + [
-        "--window-pos", "200", "120",
-        "--window-size", "600", "400",
-        "--icon-size", "128",
-        "--icon", app_bundle, "150", "190",
-        "--app-drop-link", "450", "190",
-        "--hide-extension", app_bundle,
-        dmg_path, source_dir
-      ]
+    # The dmgbuild command that makes the disk image `dmg_path`, named `volname`
+    # as a volume, from the app bundle at `app` and the layout of the dmgbuild
+    # settings file `settings`. `dmgbuild` is the path of the executable. The app
+    # and the volume icon reach the settings file as its defines: dmgbuild copies
+    # the app into the image with ditto, so its signature and stapled ticket
+    # survive, and nothing else of the folder the app is in goes along.
+    # `volicon` (an .icns file) is optional; nil leaves the volume with the
+    # default icon, which is what an app without an icon needs.
+    def dmgbuild_command(dmgbuild:, settings:, app:, dmg_path:, volname:, volicon: nil)
+      command = [dmgbuild, "-s", settings, "-D", "app=#{app}"]
+      command += ["-D", "volicon=#{volicon}"] if volicon
+      command + [volname, dmg_path]
     end
 
     # `identity` has no default on purpose. Pass the SHA-1 of the team's own
