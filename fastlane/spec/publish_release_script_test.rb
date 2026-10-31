@@ -51,6 +51,17 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   TAG_DELETE_CALL = "api --method DELETE repos/Chlup/InvoicesTracker/git/refs/tags/v1.7.0-10 --silent"
   TAG_CLEANUP_CALLS = [TAG_POINTS_CALL, RELEASE_ON_TAG_CALL, TAG_DELETE_CALL].freeze
 
+  # The line of standard error that names the git tag when the script could not tell whether the release is a draft,
+  # right after the line about the release. The release may be published and use the tag, so the tag is left where it
+  # is, and the line says whose it is and where to delete it if the release turns out to be a draft. The first is for a
+  # tag that the run made, the second for one that it may have made.
+  TAG_LEFT_LINE = "error: the git tag v1.7.0-10, which this run made, was left because the release may use it. " \
+                  "If the release turns out to be a draft, delete the tag at " \
+                  "https://github.com/Chlup/InvoicesTracker/tags too: the next run stops at it."
+  TAG_MAYBE_LEFT_LINE = "error: the git tag v1.7.0-10, which this run may have made, was left because the release " \
+                        "may use it. If the release turns out to be a draft and this run made the tag, delete the " \
+                        "tag at https://github.com/Chlup/InvoicesTracker/tags too: the next run stops at it."
+
   # The line that names the rule of workflow files after a step that GitHub answered with HTTP 404 or 403: one line of
   # standard error, right after the line that names the step.
   WORKFLOW_HINT = "GitHub answers 404 or 403 here when the built commit adds or changes files under " \
@@ -852,11 +863,30 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     end
   end
 
-  # A release that is published, or that cannot be asked about and so may be published, has the tag: deleting it would
-  # leave that release without its tag. So the tag is not asked about, let alone deleted, and not a word is said about
-  # it.
-  def test_the_tag_of_a_published_or_unknown_release_is_never_touched
-    %w[false null error].each do |answer|
+  # A release that is published has the tag: deleting it would leave that release without its tag. So the tag is not
+  # asked about, let alone deleted, and not a word is said about it.
+  def test_the_tag_of_a_published_release_is_never_touched
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_PUBLISH" => "fail", "FAKE_GH_IS_DRAFT" => "false" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL], calls(scratch)
+      refute_includes stdout, "Deleted the git tag"
+      refute_includes stderr, "git tag"
+      refute_includes stderr, "/tags"
+      assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+    end
+  end
+
+  # A release that cannot be asked about may be published, and then it has the tag, so the tag is not asked about or
+  # deleted either. But a reader who finds the release to be a draft has to know that the tag is there too, because the
+  # next run stops at it. So the line right after the one about the release names the tag that the run made and says
+  # where to delete it. The question failed after printing true (error), or its answer was neither true nor false
+  # (null).
+  def test_a_tag_the_run_made_is_named_when_the_release_cannot_be_asked_about
+    %w[null error].each do |answer|
       with_scratch do |scratch|
         write_feed(scratch)
 
@@ -865,8 +895,63 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
 
         assert_equal 1, status.exitstatus, answer
         assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL], calls(scratch), answer
+        assert_includes stderr, "publishing the release v1.7.0-10 failed (HTTP 500)", answer
+        assert_equal TAG_LEFT_LINE, line_after_the_unanswered_draft_question(stderr), answer
+        assert_equal 1, stderr.lines.count { |line| line.include?("git tag") }, answer
+        refute_includes stdout, "Deleting", answer
         refute_includes stdout, "Deleted the git tag", answer
-        refute_includes stderr, "git tag", answer
+        assert_empty Dir.children(scratch.tmp), "#{answer}: the script must remove the files it made"
+      end
+    end
+  end
+
+  # A tag call that fails in a way that says nothing about whether GitHub made the tag leaves a tag that the script
+  # cannot tell from one that someone else pushed. When the release cannot be asked about, that tag is left too, and
+  # the line says that the run may have made it, so that the reader deletes it only if this run did.
+  def test_a_tag_the_run_may_have_made_is_named_when_the_release_cannot_be_asked_about
+    %w[null error].each do |answer|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_TAG_CREATE" => "error",
+                                                             "FAKE_GH_IS_DRAFT" => answer })
+
+        assert_equal 1, status.exitstatus, answer
+        assert_equal [*CHECKS, *calls_to_make_the_tag(scratch), IS_DRAFT_CALL], calls(scratch), answer
+        assert_includes stderr, "creating the git tag v1.7.0-10 failed (HTTP 502)", answer
+        assert_equal TAG_MAYBE_LEFT_LINE, line_after_the_unanswered_draft_question(stderr), answer
+        refute_includes stderr, "GitHub may have made the git tag", answer
+        refute_includes stdout, "Deleting", answer
+        refute_includes stdout, "Deleted the git tag", answer
+        assert_empty Dir.children(scratch.tmp), "#{answer}: the script must remove the files it made"
+      end
+    end
+  end
+
+  # Only a tag that the run made, or may have made, is named. After an upload that failed there is no tag yet, a call
+  # that GitHub refused made none, and a tag that was there already is someone else's, which the message about the
+  # call says where to look for. A line about any of them would send the reader to a tag that is not the run's.
+  def test_no_tag_is_named_when_the_release_cannot_be_asked_about_and_the_run_made_none
+    {
+      "an upload that failed" => [{ "FAKE_GH_UPLOAD" => "fail" },
+                                  ->(scratch) { [create_call(scratch), upload_calls(scratch).first] }],
+      "a tag call that was refused" => [{ "FAKE_GH_TAG_CREATE" => "refused" },
+                                        ->(scratch) { calls_to_make_the_tag(scratch) }],
+      "a tag that was there already" => [{ "FAKE_GH_TAG_CREATE" => "exists" },
+                                         ->(scratch) { calls_to_make_the_tag(scratch) }]
+    }.each do |label, (answers, calls_made)|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: answers.merge("FAKE_GH_IS_DRAFT" => "null"))
+
+        assert_equal 1, status.exitstatus, label
+        assert_equal [*CHECKS, *calls_made.call(scratch), IS_DRAFT_CALL], calls(scratch), label
+        assert_includes stderr, "error: could not tell whether the release v1.7.0-10 is a draft", label
+        refute_includes stderr, "was left because the release may use it", label
+        refute_includes stderr, "may have made", label
+        refute_includes stdout, "Deleting", label
+        assert_empty Dir.children(scratch.tmp), "#{label}: the script must remove the files it made"
       end
     end
   end
@@ -1338,6 +1423,15 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   def signal_ignored?(signal)
     stdout, = Open3.capture2("sh", "-c", "kill -#{signal} $$; echo survived")
     stdout.include?("survived")
+  end
+
+  # The line of `stderr` right after the one that says the script could not tell whether the release is a draft: the
+  # line about the git tag, when there is one.
+  def line_after_the_unanswered_draft_question(stderr)
+    lines = stderr.lines(chomp: true)
+    index = lines.index { |line| line.start_with?("error: could not tell whether the release v1.7.0-10 is a draft") }
+    refute_nil index, "no line says that the draft question had no answer: #{stderr}"
+    lines[index + 1]
   end
 
   # The calls the fake gh got, in order, one string of arguments for each.

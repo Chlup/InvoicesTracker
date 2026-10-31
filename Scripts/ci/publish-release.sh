@@ -15,22 +15,25 @@ the disk image, the release notes, and appcast.xml, the update feed.
 The script stops before it creates anything when a file does not match its
 SHA-256 in release.json, when a release or a git tag of that name exists, or
 when the Latest release is not the one the build saw. Then it creates the
-release as a draft through the API, which answers the release ID, and from then
-on names the draft by that ID, never by its tag. It uploads the disk image and
-appcast.xml to the draft, makes the git tag of the release at the commit the
+release as a draft through the API, which answers with the release ID, and from
+then on names the draft by that ID, never by its tag. It uploads the disk image
+and appcast.xml to the draft, makes the git tag of the release at the commit the
 build was made from, and only then publishes the draft by its ID and marks it
 Latest, the moment installed apps are offered the update. A tag of that name
 that exists by then stops the run before anything is published.
 
 A run that fails or is stopped once the draft exists asks GitHub whether the
 release is still a draft, and deletes it by its ID only if the answer is yes. A
-release that is not a draft any more, or that cannot be asked about, is left
-alone with its tag and reported, and the run still fails. When the release was a
-draft, or is gone, the run goes on to the git tag and deletes it only if this
-run made it, it still points at the built commit and no published release uses
-it. A tag that exists already when the script goes to make it is not the run's
-and stays. A draft or a tag that cannot be deleted is reported, with where to
-delete it.
+release that is not a draft any more is left alone with its tag, and reported,
+and the run still fails. The run goes on to the git tag only if the release was
+a draft, or is gone, and deletes it only if this run made it, it still points at
+the built commit and no published release uses it. When the run cannot tell
+whether the release is a draft, because its question fails or gets no clear
+answer, it leaves the release and any git tag that it made or may have made,
+since the release may be published and use the tag, and names both, with where
+to delete them if the release turns out to be a draft. A tag that exists already
+when the script goes to make it is not the run's and stays. A draft or a tag
+that cannot be deleted is reported, with where to delete it.
 
 A create or a tag call that GitHub refuses with an HTTP status of 4xx made
 nothing. After one that fails in another way, a create that answers without an
@@ -85,6 +88,12 @@ TAG_STATE=""
 # release that is published, or that cannot be asked about, may be using it.
 RELEASE_GONE_OR_DRAFT=false
 
+# Whether discard_draft could not tell if the release is a draft: the question
+# failed, or its answer was neither true nor false. The release may be published
+# then, so the exit trap leaves the git tag alone, and only says that it is
+# there (see report_tag_left).
+RELEASE_STATE_UNKNOWN=false
+
 # The files that hold what gh prints on standard output and on standard error,
 # and what the last call of call_gh printed on each of the two.
 STDOUT_FILE=""
@@ -104,11 +113,12 @@ fail() {
 # Runs on every exit. When the create was attempted and the script has not seen
 # the release published, it deals with the draft by the ID that the create
 # answered: it discards the draft if it is still one, and then the git tag, if
-# the release was a draft or is gone (see discard_tag). Without an ID there is
-# no release it can name, and a draft of the tag may be one that someone else
-# made, so nothing is deleted. It says instead that GitHub refused the create,
-# which made no draft, or that GitHub may have made the draft all the same,
-# which is the case after a create that failed in another way, one that
+# the release was a draft or is gone (see discard_tag). When the release could
+# not be asked about, the tag stays, and report_tag_left says so. Without an ID
+# there is no release it can name, and a draft of the tag may be one that
+# someone else made, so nothing is deleted. It says instead that GitHub refused
+# the create, which made no draft, or that GitHub may have made the draft all the
+# same, which is the case after a create that failed in another way, one that
 # answered without an ID, and a stop before the script had read the ID. It keeps
 # the status the run ends with. A cancelled job gets INT and, some seconds
 # later, TERM, and the trap for the second would end the script in the middle of
@@ -122,6 +132,8 @@ cleanup() {
       discard_draft
       if [[ $RELEASE_GONE_OR_DRAFT == true ]]; then
         discard_tag
+      elif [[ $RELEASE_STATE_UNKNOWN == true ]]; then
+        report_tag_left
       fi
     elif [[ $CREATE_REFUSED == true ]]; then
       echo "GitHub refused to create the release $TAG, so no draft was made."
@@ -153,7 +165,8 @@ cleanup() {
 # draft, that is not there, or that cannot be asked about is left alone and
 # reported. RELEASE_GONE_OR_DRAFT records that the release was a draft, whether
 # or not it could be deleted, or was gone: the exit trap goes on to the git tag
-# only then.
+# only then. RELEASE_STATE_UNKNOWN records that the question had no answer, and
+# the exit trap says what became of the tag then.
 discard_draft() {
   local status=0 releases="https://github.com/$REPO/releases"
   call_gh api "repos/$REPO/releases/$RELEASE_ID" --jq .draft || status=$?
@@ -167,6 +180,7 @@ discard_draft() {
     RELEASE_GONE_OR_DRAFT=true
     echo "There is no release $TAG on GitHub any more, so no draft was left behind."
   else
+    RELEASE_STATE_UNKNOWN=true
     echo "error: could not tell whether the release $TAG is a draft$(http_status), so it was not deleted." \
       "Check $releases and delete the draft there if one was left behind." >&2
   fi
@@ -190,14 +204,14 @@ delete_draft() {
 # Deals with the git tag that make_tag may have made, when discard_draft found
 # the release to be a draft or gone. In any other case the tag is not touched,
 # because a release that is published, or that could not be asked about, may be
-# using it. A tag that was made is deleted when it is still the run's (see
-# discard_made_tag), because the next run would stop at it. A tag that GitHub
-# may have made all the same, which is the case after a failure that says
-# nothing about it and after a stop during the call, cannot be told from a tag
-# of that name that someone else pushed, so it is not deleted, and the message
-# says where to look. A call that GitHub refused made no tag. A tag that was
-# there already is not the run's, and before make_tag there is no tag, so
-# neither is mentioned.
+# using it (see report_tag_left for the second). A tag that was made is deleted
+# when it is still the run's (see discard_made_tag), because the next run would
+# stop at it. A tag that GitHub may have made all the same, which is the case
+# after a failure that says nothing about it and after a stop during the call,
+# cannot be told from a tag of that name that someone else pushed, so it is not
+# deleted, and the message says where to look. A call that GitHub refused made
+# no tag. A tag that was there already is not the run's, and before make_tag
+# there is no tag, so neither is mentioned.
 discard_tag() {
   local tags="https://github.com/$REPO/tags"
   case $TAG_STATE in
@@ -268,6 +282,30 @@ delete_tag() {
   fi
 }
 
+# Says that the git tag that make_tag made, or may have made, was left where it
+# is, when discard_draft could not tell whether the release is a draft. Such a
+# release may be published, and then it uses the tag, so the tag is neither
+# asked about nor deleted. But a reader who finds the release to be a draft has
+# to know that the tag is there too, because the next run stops at it. So one
+# line names the tag, says whether the run made it or may have made it, and
+# where to delete it. A call that GitHub refused made no tag, a tag that was
+# there already is not the run's, and before make_tag there is no tag, so none of
+# the three is mentioned.
+report_tag_left() {
+  local tags="https://github.com/$REPO/tags"
+  case $TAG_STATE in
+    made)
+      echo "error: the git tag $TAG, which this run made, was left because the release may use it." \
+        "If the release turns out to be a draft, delete the tag at $tags too: the next run stops at it." >&2
+      ;;
+    unknown)
+      echo "error: the git tag $TAG, which this run may have made, was left because the release may use it." \
+        "If the release turns out to be a draft and this run made the tag, delete the tag at $tags too:" \
+        "the next run stops at it." >&2
+      ;;
+  esac
+}
+
 # Runs gh with the arguments. What it prints on standard output goes to GH_OUT
 # and what it prints on standard error to GH_ERR, and the status it ends with is
 # the status of the function. Every call of gh goes through here. Both streams
@@ -284,9 +322,9 @@ call_gh() {
 }
 
 # The three digits of the HTTP status that gh printed for the call that just
-# failed, and nothing when it printed none. This is the one place that reads the
-# status out of what gh printed: http_status, refused_by_github and
-# workflow_hint all go through it, so that they cannot disagree about it.
+# failed, and nothing when it printed none. This is the one place that extracts
+# the status code, which http_status, refused_by_github and workflow_hint use,
+# so that they cannot disagree about it.
 http_status_code() {
   local pattern='HTTP ([0-9]{3})'
   if [[ $GH_ERR =~ $pattern ]]; then

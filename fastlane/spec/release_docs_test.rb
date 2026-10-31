@@ -153,6 +153,19 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
     assert_match(/may have made/, prose)
   end
 
+  # The tag is touched only when the release was found to be a draft or is gone: a release that is published, or that
+  # the job could not ask about, may use it. When the job cannot tell what the release is, it leaves the release and any
+  # tag it made, and its log names both, so a reader who finds a draft there knows that the tag has to go too. The
+  # README and the help of the publish script say so.
+  def test_the_readme_and_the_help_say_when_the_tag_is_touched_and_what_is_left_when_the_release_is_unknown
+    { "README" => failure_prose, "help" => publish_script_help }.each do |where, text|
+      assert_match(/only if the release was a draft, or is gone/, text,
+                   "the #{where} does not say when the tag is touched")
+      assert_match(/cannot tell whether the release is a draft[^.]*leaves the release[^.]*names both/, text,
+                   "the #{where} does not say what it leaves when it cannot tell whether the release is a draft")
+    end
+  end
+
   # When a job is cancelled GitHub gives it 10 seconds, and the cleanup of the publish script starts only when the call
   # to GitHub that is running has ended. A long upload can use up the time, and then the reader deletes the leftovers.
   def test_the_readme_says_what_a_cancelled_publish_does_and_what_can_stop_its_cleanup
