@@ -6,14 +6,10 @@ private nonisolated enum AdvancesScreenMetrics {
     /// narrower than this and the panel together, the panel comes under the column.
     static let cardColumnMinimumWidth: CGFloat = 520
 
-    /// The width of the content of the impact panel: the 300 points the prototype gives it as the basis of its width.
-    static let impactPanelContentWidth: CGFloat = 300
-
-    /// The width of the impact panel: 340 points. The prototype's panel is a box of `flex: 1 1 300px; padding: 20px`,
-    /// and nothing in the prototype makes a box hold its padding (`box-sizing`), so the 300 points are those of its
-    /// content, to which the padding of a card on either side adds. The detail panels of Faktury and Odběratelé are
-    /// the same width for the same reason (`DetailPanelMetrics.width`).
-    static let impactPanelWidth: CGFloat = impactPanelContentWidth + 2 * DesignMetrics.cardPadding
+    /// The width of the impact panel: that of the detail panels of Faktury and Odběratelé, 340 points
+    /// (`DetailPanelMetrics.width`). It is a box of the same kind in the prototype, `flex: 1 1 300px; padding: 20px`,
+    /// which holds 300 points of content and the padding of a card on either side.
+    static let impactPanelWidth: CGFloat = DetailPanelMetrics.width
 }
 
 /// Zálohy a odpočty: the plan of advances of the selected year with its totals, the deductions, the taxpayer credit,

@@ -57,10 +57,7 @@ struct Card<Content: View>: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 if let title {
-                    Text(verbatim: title)
-                        .font(Typography.title3)
-                        .foregroundStyle(Palette.text)
-                        .accessibilityAddTraits(.isHeader)
+                    CardTitle(text: title)
                 }
                 if let subtitle {
                     Text(verbatim: subtitle)
@@ -77,6 +74,20 @@ struct Card<Content: View>: View {
                     .foregroundStyle(accessoryIsAmount ? Palette.text : Palette.text2)
             }
         }
+    }
+}
+
+/// The title of a card: title 3 in the colour of text, a heading for VoiceOver. A card draws it in its header. A card
+/// whose header holds more beside the title than a note or an amount, such as the pill of the interest on a mortgage,
+/// draws it itself in a header of its own, so that the title is the same everywhere.
+struct CardTitle: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(Typography.title3)
+            .foregroundStyle(Palette.text)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 

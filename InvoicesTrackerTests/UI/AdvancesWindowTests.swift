@@ -23,26 +23,50 @@ struct AdvancesWindowTests {
 
     // MARK: Refused texts
 
+    /// The titles of the four fields of the savings and insurance for old age, which VoiceOver reads the fields under.
+    private static let savingsFields = [
+        "Soukromé životní pojištění (Kč za rok)", "Penzijní spoření – částka k odpočtu z potvrzení",
+        "Dlouhodobý investiční produkt (DIP)", "Pojištění dlouhodobé péče",
+    ]
+
+    /// What is wrong with the arrangement of the four fields of the savings in `window`, in words: they do not stand
+    /// in `columns` columns, which the width of the cards lets them (`RetirementFieldGrid`). A column is a left edge
+    /// the fields stand at. Empty when they do. Needs the accessibility elements.
+    private func problems(ofTheSavingsFieldsIn window: NSWindow, standingIn columns: Int) -> [String] {
+        var edges = Set<Int>()
+        for title in Self.savingsFields {
+            guard let frame = accessibilityElement(labelled: title, in: window)?.accessibilityFrame?() else {
+                return ["No field \(title)"]
+            }
+            edges.insert(Int(frame.minX.rounded()))
+        }
+        return edges.count == columns
+            ? [] : ["The fields stand in \(edges.count) columns, at \(edges.sorted()), not in \(columns)"]
+    }
+
     /// The life insurance pauses in the middle of "13 340", in a window whose fields of the savings stand in two
-    /// columns (1 200 points wide) and in one whose fields stand in a row (1 600 points). With the impact panel of 340
-    /// points beside the cards, two columns stand from 1 170 points and a row from 1 570. The text so far is refused,
-    /// and its message, which is longer than the title of the field, comes under the field. The fields of the savings
-    /// stay where they are, so the field keeps the focus. The rest of the amount is typed into it and saved, and the
-    /// message goes without the focus going.
-    @Test(arguments: [CGFloat(1_200), 1_600])
-    func aRefusedSavingsAmountKeepsItsFieldFocused(windowWidth: CGFloat) async throws {
+    /// columns (1 200 points wide) and in one whose fields stand in a row of four (1 600 points), which the test
+    /// asserts before it types: the arrangement is what the test is for. With the impact panel of 340 points beside the
+    /// cards, one column stands from 1 150 points, two columns from 1 170 and the row from 1 570. The text so far is
+    /// refused, and its message, which is longer than the title of the field, comes under the field. The fields of the
+    /// savings stay where they are, so the field keeps the focus. The rest of the amount is typed into it and saved,
+    /// and the message goes without the focus going.
+    @Test(arguments: [(CGFloat(1_200), 2), (CGFloat(1_600), 4)])
+    func aRefusedSavingsAmountKeepsItsFieldFocused(windowWidth: CGFloat, columns: Int) async throws {
         try await whileTypingAlone {
             try await EditorFixture.with { f in
                 try await withAppWindow(of: f.app, size: CGSize(width: windowWidth, height: 720)) { window in
                     try await showAdvances(of: f.app, in: window)
                     try await withAccessibilityElements {
-                        let label = "Soukromé životní pojištění (Kč za rok)"
+                        let label = Self.savingsFields[0]
                         try await waitUntil { textField(labelled: label, in: window) != nil }
                         let field = try #require(textField(labelled: label, in: window))
+                        try await expectSettled(window) { problems(ofTheSavingsFieldsIn: window, standingIn: columns) }
 
                         try type("13 3", into: field, in: window)
                         try await waitUntil { showsText(AdvancesModel.wholeKcMessage, in: window) }
                         try await expectSettled(window) { focusProblems(of: field, in: window) }
+                        #expect(problems(ofTheSavingsFieldsIn: window, standingIn: columns) == [])
 
                         try typeOn("40", into: field)
                         try await waitUntil {
@@ -211,25 +235,66 @@ struct AdvancesWindowTests {
         }
     }
 
+    // MARK: The card of the interest
+
+    /// The interest on a mortgage has its pill "odhad do potvrzení banky" at the end of the line of its title, on the
+    /// line of the title, where the card is wide enough for both, and under the title, at its start, where it is not.
+    /// The card is shown alone in a window of 720 points, and of 380. VoiceOver reads the words of the pill, which
+    /// stand 8 points inside the pill (its padding).
+    @Test(arguments: [CGFloat(720), 380])
+    func theEstimatePillStandsAtTheEndOfTheLineOfTheTitleOfTheInterestOrUnderIt(width: CGFloat) async throws {
+        let pillPadding: CGFloat = 8
+        try await EditorFixture.with { f in
+            let model = await loadedAdvancesModel(of: f.app)
+            let form = DeductionsForm(model: model, openChild: { _ in }).padding(24)
+            try await withHostedView(form, size: CGSize(width: width, height: 900)) { window in
+                try await withAccessibilityElements {
+                    let pillText = "odhad do potvrzení banky"
+                    try await waitUntil { frameOfText(startingWith: pillText, in: window) != nil }
+                    try await layOut(window)
+                    let heading = "Odpočty · úroky z úvěru na bydlení"
+                    let card = try #require(frameOfCard(labelled: "Úroky z hypotéky", in: window))
+                    // A heading is read under its words as a label, not as a value.
+                    let title = try #require(accessibilityElement(labelled: heading, in: window)?.accessibilityFrame?())
+                    let words = try #require(frameOfText(startingWith: pillText, in: window))
+                    let pill = words.insetBy(dx: -pillPadding, dy: 0)
+
+                    // The origin of the screen is at the bottom left, so what is lower has the smaller y.
+                    if width > 600 {
+                        #expect(abs(pill.midY - title.midY) <= 3, "The pill \(pill) is not on the line of \(title)")
+                        #expect(pill.minX > title.maxX, "The pill \(pill) is not after the title \(title)")
+                        let end = card.maxX - DesignMetrics.cardPadding
+                        #expect(abs(pill.maxX - end) <= 1, "The pill \(pill) is not at the end of \(card)")
+                    } else {
+                        #expect(abs(pill.minX - title.minX) <= 1, "The pill \(pill) is not under the title \(title)")
+                        #expect(pill.maxY <= title.minY, "The pill \(pill) is not under the title \(title)")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: The impact panel
 
-    /// The least the cards need beside the impact panel (`SidePanelLayout`'s main column), and the width of the panel:
-    /// the prototype draws it 300 points of content and 20 points of padding on either side, which are 340 in all.
+    /// The least the cards need beside the impact panel (`SidePanelLayout`'s main column in `AdvancesScreen`).
     private static let cardsLeastWidth: CGFloat = 520
-    private static let impactPanelWidth: CGFloat = 340
+
+    /// The width of the impact panel: that of the detail panels (`DetailPanelMetrics.width`). The prototype draws both
+    /// as 300 points of content and 20 points of padding on either side, which are 340 in all.
+    private static let impactPanelWidth = DetailPanelMetrics.width
 
     /// The impact panel stands beside the cards, 340 points wide, as the detail panels of Faktury and Odběratelé are,
     /// as soon as the cards keep their 520 points beside it, and under them, as wide as they are, where they would
-    /// not. At the least window it comes under the cards; a little wider than that, where the cards are at their
-    /// narrowest, and at a large size it stands beside them.
+    /// not. At the least window it comes under the cards; in the least window that has it beside them, where the
+    /// cards are at their narrowest (`AdvancesWindowSize.impactPanelBeside`), and at a large size it stands beside
+    /// them.
     @Test(arguments: [
-        (AppWindowSize.minimum, false),
-        (CGSize(width: AppWindowSize.minimum.width + 50, height: AppWindowSize.minimum.height), true),
-        (AppWindowSize.large, true),
+        (AppWindowSize.minimum, false), (AdvancesWindowSize.impactPanelBeside, true), (AppWindowSize.large, true),
     ])
     func theImpactPanelStandsBesideTheCardsAt340AndUnderThemWhereTheyWouldBeNarrower(
         size: CGSize, isBeside: Bool
     ) async throws {
+        #expect(Self.impactPanelWidth == 340)
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: size) { window in
                 try await showAdvances(of: f.app, in: window)

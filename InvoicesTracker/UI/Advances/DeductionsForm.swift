@@ -32,12 +32,12 @@ struct DeductionsForm: View {
             // The pill stands at the end of the line of the title, or under it where the line is too narrow for both.
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 8) {
-                    DeductionCardTitle(text: "Odpočty · úroky z úvěru na bydlení")
+                    CardTitle(text: "Odpočty · úroky z úvěru na bydlení")
                     Spacer(minLength: 8)
                     estimatePill
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    DeductionCardTitle(text: "Odpočty · úroky z úvěru na bydlení")
+                    CardTitle(text: "Odpočty · úroky z úvěru na bydlení")
                     estimatePill
                 }
             }
@@ -56,8 +56,7 @@ struct DeductionsForm: View {
     // MARK: Savings and insurance for old age
 
     private var retirement: some View {
-        Card(spacing: 10, label: "Spoření a pojištění na stáří") {
-            DeductionCardTitle(text: "Odpočty · spoření a pojištění na stáří")
+        Card(title: "Odpočty · spoření a pojištění na stáří", spacing: 10, label: "Spoření a pojištění na stáří") {
             if let hints = model.deductionHints {
                 RetirementLimitBars(limits: hints.retirementLimits)
             }
@@ -82,10 +81,10 @@ struct DeductionsForm: View {
     // MARK: Gifts and credits
 
     private var giftsAndCredits: some View {
-        Card(spacing: 0, label: "Dary a slevy") {
-            DeductionCardTitle(text: "Dary a slevy na dani")
-                .padding(.bottom, 6)
+        Card(title: "Dary a slevy na dani", spacing: 0, label: "Dary a slevy") {
+            // The first row stands 6 points under the title.
             Hairline()
+                .padding(.top, 6)
             GiftsRow(inputs: inputs, hints: model.deductionHints)
             Hairline()
             TaxpayerCreditRow(year: model.year, isOn: taxpayerCredit)
@@ -128,17 +127,5 @@ struct DeductionsForm: View {
         Binding(
             get: { model.settings?.taxpayerCredit ?? false },
             set: { model.setTaxpayerCredit($0) })
-    }
-}
-
-/// The title of a card of the deductions in title 3, a heading for VoiceOver.
-private struct DeductionCardTitle: View {
-    let text: String
-
-    var body: some View {
-        Text(verbatim: text)
-            .font(Typography.title3)
-            .foregroundStyle(Palette.text)
-            .accessibilityAddTraits(.isHeader)
     }
 }

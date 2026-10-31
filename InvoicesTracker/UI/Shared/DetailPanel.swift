@@ -10,14 +10,18 @@ nonisolated struct DetailFact: Sendable, Hashable {
     var note: String?
 }
 
-/// The sizes of a detail panel and of its parts, in points. The screens that stand a panel beside a table, Faktury and
-/// Odběratelé, take its width from here.
+/// The sizes of a detail panel and of its parts, in points. The screens that stand a panel beside a table or beside
+/// cards, Faktury, Odběratelé and Zálohy a odpočty (its impact panel), take its width from here.
 nonisolated enum DetailPanelMetrics {
-    /// The width of a panel beside a table: 340 points, as the prototype's panel beside a table is. Its 300 points are
-    /// those of its content, to which its padding of 20 points on either side adds: the prototype's panel is a box of
-    /// `flex: 1 1 300px; padding: 20px`, and nothing in the prototype makes a box hold its padding (`box-sizing`), so
-    /// it is 300 + 2 × 20 points wide.
-    static let width: CGFloat = 340
+    /// The width of the content of a panel beside a table or beside cards: the 300 points that the prototype gives such
+    /// a panel as the basis of its width (`flex: 1 1 300px`).
+    static let contentWidth: CGFloat = 300
+
+    /// The width of a panel beside a table or beside cards: 340 points, as the prototype's panels are. Their 300
+    /// points (`contentWidth`) are those of their content, to which their padding of 20 points on either side adds:
+    /// the prototype's panel is a box of `flex: 1 1 300px; padding: 20px`, and nothing in the prototype makes a box
+    /// hold its padding (`box-sizing`), so it is 300 + 2 × 20 points wide.
+    static let width: CGFloat = contentWidth + 2 * DesignMetrics.cardPadding
 
     /// The space between the header and the content, and between the parts of the content.
     static let partSpacing: CGFloat = 16

@@ -2283,9 +2283,11 @@ struct AppWindowLayoutTests {
                 try await withAccessibilityElements {
                     try await waitUntil { frameOfText(startingWith: Self.familyTexts[1].prefix, in: window) != nil }
 
-                    for size in [
-                        AppWindowSize.minimum, Self.narrowestFamilyCards, AppWindowSize.large, AppWindowSize.minimum,
-                    ] {
+                    let sizes = [
+                        AppWindowSize.minimum, AdvancesWindowSize.impactPanelBeside, AppWindowSize.large,
+                        AppWindowSize.minimum,
+                    ]
+                    for size in sizes {
                         window.setContentSize(size)
                         try await expectSettled(window) { problems(ofPageIn: window) + problems(ofFamilyIn: window) }
                     }
@@ -2438,11 +2440,6 @@ struct AppWindowLayoutTests {
         let needed = NSHostingView(rootView: measured).fittingSize.height
         return frame.height + 1 < needed ? ["\(what) is \(frame.height) points tall, it needs \(needed)"] : []
     }
-
-    /// The room at which the impact panel of Zálohy a odpočty first stands beside the cards, a little wider than the
-    /// least: the cards are at their narrowest there, 520 points and a little more, beside the panel of 340 points.
-    private static let narrowestFamilyCards = CGSize(
-        width: AppWindowSize.minimum.width + 50, height: AppWindowSize.minimum.height)
 
     /// The label of the box of ZTP/P of the spouse, with the months beside it while it is ticked.
     private static let spouseZTPPLabel = "Průkaz ZTP/P – sleva dvojnásobná"
