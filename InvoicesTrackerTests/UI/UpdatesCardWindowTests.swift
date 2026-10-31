@@ -37,6 +37,11 @@ struct UpdatesCardWindowTests {
         }
     }
 
+    /// What VoiceOver reads in the card, looked up again at each call. Empty while the window has no card.
+    private func cardReadings(in window: NSWindow) -> [String] {
+        accessibilityElement(labelled: UpdatesTexts.title, in: window).map { accessibilityReadings(under: $0) } ?? []
+    }
+
     /// The switch of the daily check, found in the card by its role, as the text beside it reads the same.
     private func dailySwitch(in window: NSWindow) -> AnyObject? {
         accessibilityElement(labelled: UpdatesTexts.title, in: window).flatMap {
@@ -114,6 +119,24 @@ struct UpdatesCardWindowTests {
                     let cardFrame = try #require(card.accessibilityFrame?())
                     let ratesFrame = try #require(rates.accessibilityFrame?())
                     #expect(!cardFrame.intersects(ratesFrame), "\(ratesFrame) is in the card \(cardFrame)")
+                }
+            }
+        }
+    }
+
+    /// The card reads the updater again when it appears: what the updater changed while no card showed it, such as a
+    /// check in the background that left it ready and stamped the time, is on the card once the tab is shown. The test
+    /// never calls `refresh()` of the model.
+    @Test func theCardReadsTheUpdaterAgainWhenItAppears() async throws {
+        try await EditorFixture.with { f in
+            let fake = FakeUpdater(canCheck: false, automatic: true, lastCheck: nil)
+            f.app.updates = UpdatesModel(updater: fake)
+            fake.canCheckForUpdates = true
+            fake.lastUpdateCheckDate = try nineFourteen(of: f.app)
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withTheCard(of: f.app, in: window) { _ in
+                    try await waitUntil { checkButton(in: window)?.isAccessibilityEnabled?() == true }
+                    try await waitUntil { cardReadings(in: window).contains("dnes 9:14") }
                 }
             }
         }
