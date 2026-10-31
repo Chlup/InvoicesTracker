@@ -366,8 +366,8 @@ struct MonthChoice: View {
     }
 }
 
-/// The title of a card of the family in title 3, a heading for VoiceOver, with its total at the other end in semibold:
-/// in the colour of the text while `totalCounts`, otherwise in the grey of captions.
+/// The title of a card of the family (`CardTitle`), with its total at the other end in semibold: in the colour of the
+/// text while `totalCounts`, otherwise in the grey of captions.
 private struct FamilyCardHeader: View {
     let title: String
     let total: String?
@@ -375,11 +375,8 @@ private struct FamilyCardHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(verbatim: title)
-                .font(Typography.title3)
-                .foregroundStyle(Palette.text)
+            CardTitle(text: title)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             if let total {
                 Text(verbatim: total)

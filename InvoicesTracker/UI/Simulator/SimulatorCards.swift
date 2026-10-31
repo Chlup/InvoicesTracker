@@ -244,7 +244,7 @@ struct SimulatorDeductionsHeading: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            SimulatorCardTitle(text: "Odpočty a slevy")
+            CardTitle(text: "Odpočty a slevy")
             Spacer(minLength: 8)
             if model.canCopyDeductionsAndFamily {
                 Button("Převzít ze Záloh a odpočtů \(String(model.year))") {
@@ -265,7 +265,7 @@ struct SimulatorMortgageCard: View {
 
     var body: some View {
         Card(label: "Úroky z úvěru na bydlení") {
-            SimulatorCardTitle(text: "Úroky z úvěru na bydlení")
+            CardTitle(text: "Úroky z úvěru na bydlení")
             MortgageInterestFields(inputs: model.deductionInputs, cap: capChoice)
             if let hints = model.page?.hints {
                 MortgageClaimSummary(hints: hints)
@@ -285,7 +285,7 @@ struct SimulatorRetirementCard: View {
 
     var body: some View {
         Card(spacing: 10, label: "Spoření a pojištění na stáří") {
-            SimulatorCardTitle(text: "Spoření a pojištění na stáří")
+            CardTitle(text: "Spoření a pojištění na stáří")
             if let hints = model.page?.hints {
                 RetirementLimitBars(limits: hints.retirementLimits)
             }
@@ -314,7 +314,7 @@ struct SimulatorGiftsCard: View {
 
     var body: some View {
         Card(spacing: 0, label: "Dary a slevy na dani") {
-            SimulatorCardTitle(text: "Dary a slevy na dani")
+            CardTitle(text: "Dary a slevy na dani")
                 .padding(.bottom, 6)
             Hairline()
             GiftsRow(inputs: model.deductionInputs, hints: model.page?.hints)
@@ -330,10 +330,13 @@ struct SimulatorGiftsCard: View {
 
 // MARK: - The family
 
-/// The cards of the children and of the spouse of the simulation, after "Dary a slevy na dani": those of Zálohy a
-/// odpočty, without what the tax return asks for. A row of a child and Přidat dítě open the dialog of a child of the
-/// simulation (`openChild`); a choice of the spouse changes the simulation at once, and the spouse's own income is a
-/// typed field, read as the other amounts of the Simulátor are. Nothing of it is stored.
+/// The cards of the children and of the spouse of the simulation, after "Dary a slevy na dani": the shared cards of the
+/// family in the mode of the Simulátor (`FamilyCardsMode.simulation`). They leave out what the tax return asks for and
+/// speak the words of the Simulátor's own design: the sentence of the rates without its introduction, the text of a
+/// year without a child, the names VoiceOver reads the cards under, and the note beside Přidat dítě in the grey of
+/// captions. A row of a child and Přidat dítě open the dialog of a child of the simulation (`openChild`); a choice of
+/// the spouse changes the simulation at once, and the spouse's own income is a typed field, read as the other amounts
+/// of the Simulátor are. Nothing of it is stored.
 struct SimulatorFamilyCards: View {
     let model: SimulatorModel
 
@@ -361,18 +364,6 @@ struct SimulatorFamilyCards: View {
 }
 
 // MARK: - Parts
-
-/// The title of a card of the Simulátor, a heading for VoiceOver.
-struct SimulatorCardTitle: View {
-    let text: String
-
-    var body: some View {
-        Text(verbatim: text)
-            .font(Typography.title3)
-            .foregroundStyle(Palette.text)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
 
 /// The small title over a menu, which the menu carries for VoiceOver.
 private struct FieldTitle: View {
