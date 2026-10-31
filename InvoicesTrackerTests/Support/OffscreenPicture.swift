@@ -6,7 +6,8 @@ import Testing
 /// which a test reads the bytes of sRGB pixels. `ImageRenderer` draws it, and it draws the drop shadow under a surface
 /// too: the picture of the content of a hosted window (`displayIgnoringOpacity`, which `Snapshot` takes) leaves out the
 /// shadows that the compositor draws under a layer, and shows only what a view draws over itself. A view that AppKit
-/// draws, such as the link of a button, is not drawn but stands as a yellow placeholder.
+/// draws, such as the link of a button, is not drawn but stands as a yellow placeholder, and what a scroll view holds
+/// is not drawn at all: the picture of such a view is taken of its window (`init(of:)`).
 @MainActor
 struct OffscreenPicture {
     /// The pixels to a point.
@@ -36,6 +37,27 @@ struct OffscreenPicture {
         bytes = Array(UnsafeRawBufferPointer(start: memory, count: context.bytesPerRow * image.height))
         pixelsPerRow = context.bytesPerRow / 4
         size = CGSize(width: image.width / Self.scale, height: image.height / Self.scale)
+    }
+
+    /// The picture of what `window` shows now, in the appearance it has: its content view drawn from the top left into
+    /// a bitmap of the picture's own, in sRGB. `ImageRenderer` leaves out what AppKit draws and what a scroll view
+    /// holds, so a card that scrolls its content is drawn by its window instead. The drop shadows that the compositor
+    /// draws under a layer are not in it, and where nothing is painted the pixel is clear.
+    init(of window: NSWindow) throws {
+        let view = try #require(window.contentView)
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let scale = CGFloat(Self.scale)
+        let context = try #require(
+            CGContext(
+                data: nil, width: Int((view.bounds.width * scale).rounded()),
+                height: Int((view.bounds.height * scale).rounded()), bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.scaleBy(x: scale, y: scale)
+        view.displayIgnoringOpacity(view.bounds, in: NSGraphicsContext(cgContext: context, flipped: false))
+        let memory = try #require(context.data)
+        bytes = Array(UnsafeRawBufferPointer(start: memory, count: context.bytesPerRow * context.height))
+        pixelsPerRow = context.bytesPerRow / 4
+        size = CGSize(width: context.width / Self.scale, height: context.height / Self.scale)
     }
 
     /// Whether `other` shows exactly the same pixels as this picture, and is as large.

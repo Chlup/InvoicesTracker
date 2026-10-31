@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// One line of the facts of a detail: a label, its value, and under the value a note, such as the date of a rate under
-/// the rate. A fact whose value is empty is not a fact: the builder of a detail leaves it out.
+/// the rate. A fact whose value is empty is not a fact: the builder of a detail leaves it out, as the detail of an
+/// invoice leaves out "Platba" for an invoice without a method of payment. A value that is not known but whose note
+/// says why, such as a rate the ČNB has not declared yet, is not empty: it stays, as a dash, with its note.
 nonisolated struct DetailFact: Sendable, Hashable {
     var label: String
     var value: String
@@ -34,8 +36,12 @@ private nonisolated enum DetailPanelMetrics {
 
 /// The card beside a table that shows one of its rows: a header with the title in title 2 on one line, an optional
 /// pill and the button that closes the panel, under it the actions in a row of small buttons that wraps, and under them
-/// the content, 16 points apart. The panel is as wide as the room it is given and as high as its content, and its
-/// content is padded 20 points like that of every card.
+/// the content, 16 points apart. The panel is as wide as the room it is given and, unless it `scrolls`, as high as its
+/// content, and its content is padded 20 points like that of every card.
+///
+/// A panel that `scrolls` is as high as the room it is given, as the panel beside a table that fills the window is, and
+/// the header and the content scroll inside the card where they do not fit in it: the card keeps its corners and its
+/// edge, and nothing runs out of it.
 ///
 /// The close button is a circle of 28 points on the grey fill with an ✕, which VoiceOver reads under `closeLabel`.
 /// The actions are buttons of `CapsuleButtonStyle` of the small size, whose kind the caller chooses for each; the
@@ -46,35 +52,63 @@ struct DetailPanel<Actions: View, Content: View>: View {
     let pill: (text: String, tone: PillTone)?
     let closeLabel: String
     let close: () -> Void
+
+    /// Whether the panel takes the height it is offered and scrolls its header and its content inside the card.
+    let scrolls: Bool
     private let actions: Actions
     private let content: Content
     private let hasActions: Bool
 
     /// A panel titled `title`, with `pill` after the title where there is one, `actions` under the header and `content`
-    /// under them. `close` runs when the ✕ is pressed.
+    /// under them. `close` runs when the ✕ is pressed. The panel takes the height it is offered and scrolls what does
+    /// not fit in it where `scrolls` is true, and is as high as its content otherwise.
     init(
         title: String, pill: (text: String, tone: PillTone)?, closeLabel: String = "Zavřít detail",
-        close: @escaping () -> Void, @ViewBuilder actions: () -> Actions, @ViewBuilder content: () -> Content
+        close: @escaping () -> Void, scrolls: Bool = false, @ViewBuilder actions: () -> Actions,
+        @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.pill = pill
         self.closeLabel = closeLabel
         self.close = close
+        self.scrolls = scrolls
         self.actions = actions()
         self.content = content()
         hasActions = true
     }
 
     var body: some View {
+        panelOnItsCard
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(title)
+    }
+
+    /// The panel on its card. Where the panel scrolls, the card is the background of a scroll view that takes the
+    /// height it is offered, clipped to the corners of the card, so that the card stays where it is and its content
+    /// moves.
+    @ViewBuilder
+    private var panelOnItsCard: some View {
+        if scrolls {
+            ScrollView {
+                panel
+            }
+            .frame(maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
+            .card()
+        } else {
+            panel
+                .card()
+        }
+    }
+
+    /// The header and the content, 16 points apart, with the padding of a card.
+    private var panel: some View {
         VStack(alignment: .leading, spacing: DetailPanelMetrics.partSpacing) {
             header
             content
         }
         .padding(DesignMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .card()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(title)
     }
 
     /// The title, the pill and the ✕ on one line, and the actions under them.
@@ -119,15 +153,17 @@ struct DetailPanel<Actions: View, Content: View>: View {
 /// A panel that has no actions under its header.
 extension DetailPanel where Actions == EmptyView {
     /// A panel titled `title`, with `pill` after the title where there is one and `content` under the header, which
-    /// has no actions under it. `close` runs when the ✕ is pressed.
+    /// has no actions under it. `close` runs when the ✕ is pressed. The panel takes the height it is offered and
+    /// scrolls what does not fit in it where `scrolls` is true, and is as high as its content otherwise.
     init(
         title: String, pill: (text: String, tone: PillTone)?, closeLabel: String = "Zavřít detail",
-        close: @escaping () -> Void, @ViewBuilder content: () -> Content
+        close: @escaping () -> Void, scrolls: Bool = false, @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.pill = pill
         self.closeLabel = closeLabel
         self.close = close
+        self.scrolls = scrolls
         actions = EmptyView()
         self.content = content()
         hasActions = false

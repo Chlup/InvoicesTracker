@@ -16,16 +16,3 @@ nonisolated extension InvoiceDisplayStatus {
         }
     }
 }
-
-/// The status of an invoice as a pill of the design in the tone of the status, with the text it is given: the pill in
-/// the header of the detail, which keeps the day of a payment ("Uhrazená 2. 10."). VoiceOver reads "Stav" and the text.
-struct StatusPill: View {
-    let status: InvoiceDisplayStatus
-    let label: String
-
-    var body: some View {
-        Pill(label, tone: status.pillTone)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Stav: \(label)")
-    }
-}

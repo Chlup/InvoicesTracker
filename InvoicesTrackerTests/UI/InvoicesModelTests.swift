@@ -616,6 +616,46 @@ struct InvoicesModelTests {
         #expect(model.detail?.canPay == false)
     }
 
+    /// The list of a past year is shown as of its last day, but the detail says that a payment comes later only when it
+    /// is dated after today (17. 10. 2026): in the list of 2025 an invoice paid on 7. 1. 2026 has no such note, as the
+    /// money has come, and one paid on 1. 12. 2026 has it.
+    @Test func theDetailInTheListOfAPastYearSaysThatAPaymentComesLaterOnlyAfterToday() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        func invoice(_ number: String, paid day: String) -> Invoice {
+            var invoice = SearchFixtures.earlierCrownInvoice()
+            invoice.number = number
+            invoice.issueDate = civilDate("2025-12-20")
+            invoice.duzp = civilDate("2025-12-20")
+            invoice.dueDate = civilDate("2026-01-03")
+            invoice.payment = .fixture(on: day)
+            return invoice
+        }
+        let january = try await database.saveInvoice(invoice("20251201", paid: "2026-01-07"))
+        let december = try await database.saveInvoice(invoice("20251202", paid: "2026-12-01"))
+        await app.didWriteAndBackUp()
+        let model = await loadedModel(of: app)
+        model.switchToYear(2025)
+        await model.load()
+        #expect(app.asOf.asOf == civilDate("2025-12-31"))
+
+        model.click(january)
+        await model.loadDetail()
+
+        #expect(model.detail?.number == "20251201")
+        #expect(model.detail?.statusLabel == "Uhrazená 7.\u{00A0}1.\u{00A0}2026")
+        #expect(model.detail?.payment?.laterNote == nil)
+
+        model.click(december)
+        await model.loadDetail()
+
+        #expect(model.detail?.number == "20251202")
+        #expect(
+            model.detail?.payment?.laterNote == "Platba má datum po dnešku – do příjmů se započítá až ten den.")
+    }
+
     @Test func theDetailOfAnInvoiceThatIsNotPaidSaysRoughlyWhatItWouldAdd() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }

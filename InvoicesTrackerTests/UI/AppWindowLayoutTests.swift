@@ -209,7 +209,7 @@ struct AppWindowLayoutTests {
     }
 
     /// The detail of an invoice is a card of the page beside the table: it starts where the card of the table starts,
-    /// under the filters, and ends where it ends, at the bottom margin of the page; it is 320 points wide and stands at
+    /// under the filters, and ends where it ends, at the bottom margin of the page; it is 300 points wide and stands at
     /// the right margin of the page, the card of the table ending 16 points before it. The window has no inspector
     /// beside the page: its split views hold the sidebar and the page alone.
     @Test func theDetailCardStandsBesideTheTableAndStartsWithIt() async throws {
@@ -222,6 +222,104 @@ struct AppWindowLayoutTests {
                     try await expectSettled(window) { problems(of: window, detailOpen: true) }
                     #expect(openRowNumber(in: window) == "2026-03-01")
                     #expect(splitViewItemBehaviors(in: window) == [.sidebar, .default])
+                }
+            }
+        }
+    }
+
+    /// The buttons of the detail of an invoice that the design has under its header, by the name VoiceOver reads for
+    /// them in `window`, in the order of reading: the row above first, and on a row the left one first. A button that
+    /// the detail does not have is left out.
+    private func detailActions(in window: NSWindow) -> [(name: String, frame: CGRect)] {
+        let names = ["Označit jako uhrazenou", "Vystavit", "Upravit", "Upravit platbu", "Zobrazit PDF"]
+        var found: [(name: String, frame: CGRect)] = []
+        for name in names {
+            if let frame = accessibilityButton(labelled: name, in: window)?.accessibilityFrame?() {
+                found.append((name, frame))
+            }
+        }
+        // The origin of the screen is at the bottom left, so the higher a button the larger its y.
+        return found.sorted { first, second in
+            if abs(first.frame.midY - second.frame.midY) > 1 {
+                return first.frame.midY > second.frame.midY
+            }
+            return first.frame.minX < second.frame.minX
+        }
+    }
+
+    /// The names of `detailActions(in:)`.
+    private func detailActionNames(in window: NSWindow) -> [String] {
+        detailActions(in: window).map(\.name)
+    }
+
+    /// What is wrong with the buttons under the header of the detail in `window`, in words: one is a button that is off
+    /// or not a capsule 28 points high, the height of a button inside a card.
+    private func problems(ofTheDetailActionsIn window: NSWindow) -> [String] {
+        detailActions(in: window).flatMap { action -> [String] in
+            var problems: [String] = []
+            if abs(action.frame.height - 28) >= 0.5 {
+                problems.append("\(action.name) is \(action.frame.height) points high")
+            }
+            if accessibilityButton(labelled: action.name, in: window)?.isAccessibilityEnabled?() == false {
+                problems.append("\(action.name) is off")
+            }
+            return problems
+        }
+    }
+
+    /// A paid invoice is not edited, only its payment: its detail offers to change the payment and to show the PDF, and
+    /// "Upravit" is not there at all, not even as a button that is off. (The invoice of 2026-03-01 is paid on 7. 4.)
+    @Test func aPaidInvoiceOffersOnlyItsPaymentAndThePDF() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(Self.alfaInvoiceID)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await waitUntil { accessibilityButton(labelled: "Zobrazit PDF", in: window) != nil }
+
+                    #expect(accessibilityButton(labelled: "Upravit", in: window) == nil)
+                    #expect(accessibilityButton(labelled: "Upravit platbu", in: window) != nil)
+                    #expect(accessibilityButton(labelled: "Zobrazit PDF", in: window) != nil)
+                    #expect(detailActionNames(in: window) == ["Upravit platbu", "Zobrazit PDF"])
+                    #expect(problems(ofTheDetailActionsIn: window) == [])
+                    #expect(accessibilityButton(labelled: "Smazat fakturu…", in: window) != nil)
+                }
+            }
+        }
+    }
+
+    /// An invoice that waits for its payment is marked paid, edited and shown as a PDF, in that order, and its payment
+    /// is not there to change: the payment of an invoice is only changed once it has one.
+    @Test func anUnpaidInvoiceOffersPaymentEditingAndPDF() async throws {
+        try await EditorFixture.with { f in
+            let unpaid = try await f.storeIssuedDollarInvoice()
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(unpaid.id)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await waitUntil { accessibilityButton(labelled: "Zobrazit PDF", in: window) != nil }
+
+                    #expect(detailActionNames(in: window) == ["Označit jako uhrazenou", "Upravit", "Zobrazit PDF"])
+                    #expect(problems(ofTheDetailActionsIn: window) == [])
+                }
+            }
+        }
+    }
+
+    /// A draft is issued, edited and shown as a PDF, in that order. It is not marked paid before it is issued.
+    @Test func aDraftOffersIssueEditAndPDF() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260904", status: .draft)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(draft.id)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await waitUntil { accessibilityButton(labelled: "Zobrazit PDF", in: window) != nil }
+
+                    #expect(detailActionNames(in: window) == ["Vystavit", "Upravit", "Zobrazit PDF"])
+                    #expect(problems(ofTheDetailActionsIn: window) == [])
                 }
             }
         }
@@ -412,13 +510,13 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
-    /// page `room`, all in the coordinates of the window: the detail is 320 points wide at the right margin of the page
+    /// page `room`, all in the coordinates of the window: the detail is 300 points wide at the right margin of the page
     /// (16 points), starts and ends at the height of the card of the table (to a point), and that card ends 16 points
     /// before it.
     private func problems(ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
         var problems: [String] = []
-        if (detail.width - 320).magnitude >= 0.5 {
-            problems.append("The detail is not 320 points wide: \(detail)")
+        if (detail.width - 300).magnitude >= 0.5 {
+            problems.append("The detail is not 300 points wide: \(detail)")
         }
         if (detail.maxX - (room.maxX - 16)).magnitude >= 0.5 {
             problems.append("The detail does not stand at the right margin of the page: \(detail)")

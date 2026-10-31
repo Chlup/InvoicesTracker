@@ -5,7 +5,7 @@ import Testing
 
 /// The shared parts of a table in a card and of the panel beside it: the heights of the header and the rows, the
 /// summary row on top of the table, the background of a selected row, and the detail panel with its header, its
-/// actions, its facts and its figure.
+/// actions, its facts and its figure, and the panel that takes the height it is offered and scrolls.
 @Suite(.serialized)
 @MainActor
 struct DataTableTests {
@@ -317,6 +317,62 @@ struct DataTableTests {
 
         // The row of actions is a button of 28 points and the gap of 10 under the line of the title.
         #expect(abs(height(of: with) - height(of: without) - 38) < 0.5)
+    }
+
+    // MARK: The panel that scrolls
+
+    /// A panel with an invoice number for its title and an action, and `lines` short lines of content, which takes the
+    /// height it is offered and scrolls what does not fit where `scrolls` says so.
+    private func panel(lines: Int, scrolls: Bool) -> some View {
+        DetailPanel(title: "20260902", pill: (text: "Uhrazená", tone: PillTone.paid), close: {}, scrolls: scrolls) {
+            Button("Upravit") {}
+                .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+        } content: {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(0..<lines, id: \.self) { line in
+                    Text(verbatim: "Řádek \(line)")
+                }
+            }
+        }
+    }
+
+    /// The height of the card that VoiceOver reads under the title of `panel` in a room of `height` points, and how
+    /// much higher than what the card shows the content that scrolls in it is: nothing where nothing scrolls.
+    private func heightAndOverflow(of panel: some View, offered height: CGFloat) async throws -> (CGFloat, CGFloat) {
+        var result: (CGFloat, CGFloat) = (0, 0)
+        try await withHostedView(
+            panel.frame(width: 300).padding(24), size: CGSize(width: 348, height: height + 48)
+        ) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityElement(labelled: "20260902", in: window) != nil }
+                let frame = try #require(accessibilityElement(labelled: "20260902", in: window)?.accessibilityFrame?())
+                let scrolled = window.contentView.flatMap { scrollView(under: $0) }
+                let overflow = (scrolled?.documentView?.frame.height ?? 0) - (scrolled?.contentView.bounds.height ?? 0)
+                result = (frame.height, max(0, overflow))
+            }
+        }
+        return result
+    }
+
+    /// The first scroll view of AppKit under `view`: the one a panel that scrolls scrolls its content in.
+    private func scrollView(under view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView {
+            return scrollView
+        }
+        return view.subviews.lazy.compactMap { scrollView(under: $0) }.first
+    }
+
+    /// A panel that scrolls is as high as the room it is given, whether its content is shorter or taller than that,
+    /// and what does not fit in it scrolls inside the card: the card keeps its edges, and the content is higher than
+    /// the part of it the card shows. A panel that does not scroll is as high as its content, with nothing to scroll.
+    @Test func aPanelThatScrollsTakesTheHeightItIsOfferedAndScrollsWhatDoesNotFitInIt() async throws {
+        let short = try await heightAndOverflow(of: panel(lines: 3, scrolls: true), offered: 600)
+        let tall = try await heightAndOverflow(of: panel(lines: 60, scrolls: true), offered: 400)
+        let plain = try await heightAndOverflow(of: panel(lines: 3, scrolls: false), offered: 600)
+
+        #expect(abs(short.0 - 600) < 1 && short.1 < 0.5, "\(short)")
+        #expect(abs(tall.0 - 400) < 1 && tall.1 > 100, "\(tall)")
+        #expect(plain.0 < 300 && plain.1 < 0.5, "\(plain)")
     }
 
     // MARK: The facts and the figure
