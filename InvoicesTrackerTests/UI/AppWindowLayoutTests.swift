@@ -3024,6 +3024,34 @@ struct AppWindowLayoutTests {
         }
     }
 
+    /// Where the name of a template fills its line, it ends 8 points before the amount of the template, the room the
+    /// prototype leaves between them, and not 16: a name of narrow letters with no space, which breaks after any letter
+    /// and so fills its lines but the last (to less than the width of a letter), on the panel of a template of 999 USD.
+    @Test func aLongNameOfATemplateEnds8PointsBeforeItsAmount() async throws {
+        try await EditorFixture.with { f in
+            var template = f.dollarTemplate
+            template.id = 0
+            template.name = String(repeating: "i", count: 120)
+            template.items = [TemplateItem(description: "Konzultace", quantity: 1, unit: "h", unitPriceMinor: 99_900)]
+            try await f.database.saveTemplate(template)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                    try await waitUntil { frameOfText(startingWith: template.name, in: window) != nil }
+                    try await layOut(window)
+
+                    let name = try #require(frameOfText(startingWith: template.name, in: window))
+                    let amount = try #require(frameOfText(startingWith: "999,00\u{00A0}USD", in: window))
+                    let gap = amount.minX - name.maxX
+                    #expect(gap >= 7.5 && gap < 12, "The name ends \(gap) points before the amount: \(name), \(amount)")
+                }
+            }
+        }
+    }
+
     /// The two buttons of the panel of a template, Vystavit podle šablony and Upravit, share one line in the detail of
     /// its client, which is as wide as a detail panel, 6 points apart: the panel of Bravo's template "Software
     /// development" in the least window.

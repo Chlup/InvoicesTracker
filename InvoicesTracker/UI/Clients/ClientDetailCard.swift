@@ -55,12 +55,12 @@ struct ClientDetailCard: View {
     /// group under its heading.
     private var templates: some View {
         DetailSection {
-            HStack(alignment: .firstTextBaseline, spacing: ClientDetailMetrics.headingGap) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Text("Šablony faktur")
                     .font(Typography.bodySemibold)
                     .foregroundStyle(Palette.text)
                     .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
+                Spacer(minLength: ClientDetailMetrics.headingGap)
                 Button(action: newTemplate) {
                     HStack(spacing: ClientDetailMetrics.iconGap) {
                         Image(systemName: "plus")
@@ -88,8 +88,8 @@ struct ClientDetailCard: View {
 
 /// The sizes of the parts of the detail of a client, in points, as the prototype draws them.
 private nonisolated enum ClientDetailMetrics {
-    /// The space between the heading "Šablony faktur" and Nová šablona, and between the name and the amount of a
-    /// template.
+    /// The least space between the heading "Šablony faktur" and Nová šablona, and between the name and the amount of
+    /// a template, where the first fills its line; the rest of the line lies between them otherwise.
     static let headingGap: CGFloat = 8
 
     /// The space between the plus of Nová šablona and its words.
@@ -126,12 +126,12 @@ private struct TemplatePanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: ClientDetailMetrics.panelLineSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: ClientDetailMetrics.headingGap) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Text(verbatim: panel.name)
                     .font(Typography.bodySemibold)
                     .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+                Spacer(minLength: ClientDetailMetrics.headingGap)
                 Text(verbatim: panel.amount)
                     .font(Typography.bodySemibold)
                     .foregroundStyle(Palette.text)
