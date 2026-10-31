@@ -7,6 +7,8 @@ import Testing
 /// - the card shows the version installed, when the updater last checked and the switch of the daily check, the switch
 ///   turns the daily check off and on, and Zkontrolovat teď asks the updater for a check;
 /// - the button waits while the updater cannot check;
+/// - VoiceOver names the button after the card, apart from the button of the card Kurzy;
+/// - the card reads the updater again when it appears;
 /// - without an updater the card shows the version and its controls are disabled;
 /// - the card stands under Vzhled in the left column, and the licences end with the footer in place of a version.
 ///
