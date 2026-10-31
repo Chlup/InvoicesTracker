@@ -29,11 +29,21 @@ struct HatchingTests {
         try OffscreenPicture(of: HatchedFill().frame(width: size.width, height: size.height), in: scheme)
     }
 
+    // MARK: The measures
+
+    /// The stripe is 3 points across and the ground after it 3 more, which is the 6 of the period, as the design draws
+    /// them (`repeating-linear-gradient(135deg, stripe 0 3px, ground 3px 6px)`). The other tests take their measures
+    /// from here.
+    @Test func theStripeIsThreePointsAcrossAndThePeriodSix() {
+        #expect(Hatching.stripeWidth == 3)
+        #expect(Hatching.period == 6)
+    }
+
     // MARK: The fill of a view
 
-    /// Along the diagonal from the top left corner, which is the direction of the gradient, the colour changes every 3
-    /// points: the stripe first, then the ground, and so on, in a light and in a dark window. The points are the
-    /// middles of the stripes and of the grounds, so no point is on an edge.
+    /// Along the diagonal from the top left corner, which is the direction of the gradient, the colour changes every
+    /// `stripeWidth` points: the stripe first, then the ground, and so on, in a light and in a dark window. The points
+    /// are the middles of the stripes and of the grounds, so no point is on an edge.
     @Test(arguments: [ColorScheme.light, ColorScheme.dark])
     func theColourChangesEveryThreePointsAlongTheDiagonalFromTheTopLeftCorner(scheme: ColorScheme) throws {
         let (stripe, ground) = try colours(in: scheme)
@@ -41,7 +51,7 @@ struct HatchingTests {
 
         // The distance d along the diagonal is (x + y) / √2, so on the line x = y it is x · √2.
         for step in 0..<8 {
-            let distance = 1.5 + 3 * CGFloat(step)
+            let distance = Hatching.stripeWidth * (CGFloat(step) + 0.5)
             let along = distance / 2.0.squareRoot()
             let isStripe = step.isMultiple(of: 2)
             let found = picture.bytes(at: CGPoint(x: along, y: along))
@@ -51,14 +61,14 @@ struct HatchingTests {
         }
     }
 
-    /// The stripes repeat every 6 points across, which is 6 · √2 points along a horizontal line: the middles of the
-    /// stripes and of the grounds on a row, from the fourth period on, have their colours in a light and in a dark
-    /// window, and both colours are there.
+    /// The stripes repeat every `period` points across, which is `period` · √2 points along a horizontal line: the
+    /// middles of the stripes and of the grounds on a row, from the fourth period on, have their colours in a light and
+    /// in a dark window, and both colours are there.
     @Test(arguments: [ColorScheme.light, ColorScheme.dark])
-    func theStripesRepeatEverySixPointsAcrossAndBothColoursAreThere(scheme: ColorScheme) throws {
+    func theStripesRepeatEveryPeriodAcrossAndBothColoursAreThere(scheme: ColorScheme) throws {
         let (stripe, ground) = try colours(in: scheme)
         let picture = try picture(of: CGSize(width: 60, height: 40), in: scheme)
-        let period = 6 * 2.0.squareRoot()
+        let period = Hatching.period * 2.0.squareRoot()
         let row: CGFloat = 20
 
         for index in 3...5 {
@@ -100,15 +110,15 @@ struct HatchingTests {
     // MARK: The paint of a chart
 
     /// The bars of a chart are painted with an `ImagePaint` made of the same drawing (`Hatching.paint`): along the
-    /// diagonal from the corner of what it paints it is the stripe and the ground, 3 points each, in a light and in a
-    /// dark window.
+    /// diagonal from the corner of what it paints it is the stripe and the ground, `stripeWidth` points each, in a
+    /// light and in a dark window.
     @Test(arguments: [ColorScheme.light, ColorScheme.dark])
     func thePaintOfAChartHasTheSameStripesAsTheFill(scheme: ColorScheme) throws {
         let (stripe, ground) = try colours(in: scheme)
         let picture = try OffscreenPicture(of: PaintedLikeTheChart(), in: scheme)
 
         for step in 0..<8 {
-            let distance = 1.5 + 3 * CGFloat(step)
+            let distance = Hatching.stripeWidth * (CGFloat(step) + 0.5)
             let along = distance / 2.0.squareRoot()
             let found = picture.bytes(at: CGPoint(x: along, y: along))
             #expect(isNear(found, step.isMultiple(of: 2) ? stripe : ground), "At \(distance) points: \(found)")
