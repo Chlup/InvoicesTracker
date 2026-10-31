@@ -67,12 +67,12 @@ struct InvoicesScreen: View {
                     removePayment: { typed in try await model.removePayment(payment.invoice.id, typed: typed) },
                     removed: { paying = nil }
                 )
-                .idleLockCover()
+                .sheetChrome()
             }
             .sheet(isPresented: pdfShown) {
                 if let pdf {
                     PDFPreviewSheet(document: pdf)
-                        .idleLockCover()
+                        .sheetChrome()
                 }
             }
             .alert(

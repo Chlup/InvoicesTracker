@@ -108,14 +108,14 @@ private struct AppWindow: View {
         .discardQuestion(of: model)
         .sheet(isPresented: chooserShown) {
             NewInvoiceChooser(app: model)
-                .idleLockCover()
+                .sheetChrome()
         }
         .sheet(isPresented: uniformRateSheetShown) {
             if let finding = model.uniformRateOffer {
                 UniformRateConfirmSheet(app: model, finding: finding)
                     // Another finding is another sheet.
                     .id(finding)
-                    .idleLockCover()
+                    .sheetChrome()
             }
         }
         .task(id: model.editorKey) {

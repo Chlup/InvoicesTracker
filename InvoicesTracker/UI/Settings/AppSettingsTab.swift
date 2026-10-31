@@ -30,7 +30,7 @@ struct AppSettingsTab: View {
             LicenseSheet(licence: licence) {
                 shownLicence = nil
             }
-            .idleLockCover()
+            .sheetChrome()
         }
     }
 

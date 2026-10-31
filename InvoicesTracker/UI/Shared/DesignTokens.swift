@@ -172,6 +172,32 @@ nonisolated enum Typography {
 
     /// The subheadline style, semibold, for an eyebrow and for the small text of a pill.
     static let subheadlineSemibold = Font.subheadline.weight(.semibold)
+
+    /// The subheadline style, bold, for the number in the circle of a step.
+    static let subheadlineBold = Font.subheadline.bold()
+
+    /// The title 2 style (17 points) in a monospaced design, semibold, for the groups of characters of a recovery
+    /// code.
+    static let title2Monospaced = Font.system(.title2, design: .monospaced).weight(.semibold)
+
+    /// The body style in a monospaced design, for the field where a recovery code is typed.
+    static let bodyMonospaced = Font.system(.body, design: .monospaced)
+
+    // MARK: Symbols
+
+    /// A symbol that stands alone in a circle or a tile of 56 to 64 points, such as the lock: the large title style
+    /// (26 points), regular. Where the design draws it larger, the view adds `.imageScale(.large)`.
+    static let symbolLarge = Font.largeTitle
+
+    /// A symbol on a drop zone: the large title style, light.
+    static let symbolLight = Font.largeTitle.weight(.light)
+
+    /// A symbol in a circle of 44 points, such as the key over the field of a recovery code: the title style
+    /// (22 points), regular.
+    static let symbolMedium = Font.title
+
+    /// A symbol in the circle of a choice on a card: the title 2 style (17 points), semibold.
+    static let symbolSmall = Font.title2.weight(.semibold)
 }
 
 /// The radii, spacings and heights of the design, in points, on its grid of 4. They are named `DesignMetrics` because

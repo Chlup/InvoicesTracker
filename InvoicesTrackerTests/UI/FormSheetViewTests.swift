@@ -403,6 +403,61 @@ struct FormSheetViewTests {
         }
     }
 
+    /// The red box that asks before what cannot be undone is a panel of the red tint with the question in bold red text
+    /// and two capsules: Zrušit on the grey fill, and the answer that does it in solid red. The capsules are 32 points
+    /// tall as the buttons of a sheet are, and 28 where the box stands in a card and is told so with a small control.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theQuestionOfABoxIsARedPanelWithTwoCapsules(scheme: ColorScheme) async throws {
+        func box(_ size: String) -> some View {
+            ConfirmationBox(
+                title: "Smazat \(size)?", message: "Nejde to vrátit zpět.", cancelTitle: "Zrušit \(size)", cancel: {},
+                confirmTitle: "Smazat \(size)", confirm: {})
+        }
+        let boxes = VStack(spacing: 24) {
+            box("velké")
+            box("malé").controlSize(.small)
+        }
+        .padding(24)
+        .background(Palette.bgCard)
+
+        try await withHostedView(boxes, size: CGSize(width: 520, height: 400)) { window in
+            window.appearance = appearance(of: scheme)
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Smazat malé", in: window) != nil }
+                try await layOut(window)
+                let picture = try OffscreenPicture(of: window)
+                let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                let red = try OffscreenPicture.bytes(of: Palette.red, in: scheme)
+                let redText = try OffscreenPicture.bytes(of: Palette.redText, in: scheme)
+                let tint = try OffscreenPicture.bytes(of: Palette.redTint, in: scheme)
+
+                for (size, height) in [("velké", CGFloat(32)), ("malé", CGFloat(28))] {
+                    let confirm = try pictureFrame(
+                        ofScreenFrame: try #require(
+                            accessibilityButton(labelled: "Smazat \(size)", in: window)?.accessibilityFrame?()),
+                        in: window)
+                    let cancel = try pictureFrame(
+                        ofScreenFrame: try #require(
+                            accessibilityButton(labelled: "Zrušit \(size)", in: window)?.accessibilityFrame?()),
+                        in: window)
+                    #expect(abs(confirm.height - height) < 0.5, "Smazat \(size) is \(confirm.height) points tall")
+                    #expect(abs(cancel.height - height) < 0.5, "Zrušit \(size) is \(cancel.height) points tall")
+                    #expect(pixelIs(red, at: CGPoint(x: confirm.minX + 8, y: confirm.midY), in: picture))
+                    #expect(pixelIs(fill, at: CGPoint(x: cancel.minX + 8, y: cancel.midY), in: picture))
+                    let title = try pictureFrame(
+                        ofScreenFrame: try #require(frameOfText(startingWith: "Smazat \(size)?", in: window)),
+                        in: window)
+                    #expect(
+                        picture.count(near: redText, in: title, by: 6) > 10,
+                        "\(scheme): the question is not in the red text")
+                    #expect(
+                        pixelIs(tint, at: CGPoint(x: title.minX - 8, y: title.midY), in: picture),
+                        "\(scheme): the question is not on the red tint")
+                }
+            }
+        }
+    }
+
     /// What the form was told to do.
     private final class Calls {
         var finished = 0

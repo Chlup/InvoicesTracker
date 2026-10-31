@@ -57,13 +57,13 @@ struct SecurityTab: View {
             NewRecoveryCodeSheet(model: model) {
                 showsNewCode = false
             }
-            .idleLockCover()
+            .sheetChrome()
         }
         .sheet(isPresented: $showsRestore) {
             RestoreSheet(app: app, security: model) {
                 showsRestore = false
             }
-            .idleLockCover()
+            .sheetChrome()
         }
     }
 

@@ -17,7 +17,7 @@ struct ImportScreen: View {
     var body: some View {
         let model = app.importModel
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
                 ChooseFilesCard(model: model, showPicker: { showsPicker = true }, start: { start($0, in: model) })
                 if !model.fileRows.isEmpty {
                     ImportProgressCard(model: model)
@@ -67,14 +67,14 @@ private struct ChooseFilesCard: View {
     @State private var isDropTarget = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Card(spacing: 14, label: "Výběr souborů") {
             dropZone
             Text(
                 "Faktury se spárují podle čísla: nové se přidají, změněné se aktualizují, zálohové a stornované se"
                     + " přeskočí. Soubory se čtou jen v tomto počítači."
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .fixedSize(horizontal: false, vertical: true)
             if model.fileRows.isEmpty {
                 if let failure = model.failure {
@@ -82,50 +82,38 @@ private struct ChooseFilesCard: View {
                 }
                 if let line = model.lastImportLine {
                     Text(verbatim: line)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Výběr souborů")
     }
 
     /// "Přetáhněte CSV sem nebo klikněte a vyberte soubory": a button that opens the panel, which files can also be
-    /// dropped on.
+    /// dropped on. It is the zone of the design (`DropZoneLook`), and keeps the pill "Vybrat soubory…" that says what
+    /// a click does.
     private var dropZone: some View {
         Button(action: showPicker) {
             VStack(spacing: 6) {
                 Image(systemName: "arrow.down.doc")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundStyle(Color.accentColor)
+                    .font(Typography.symbolLight)
+                    .imageScale(.large)
+                    .foregroundStyle(Palette.accent)
                     .accessibilityHidden(true)
                 Text("Přetáhněte CSV sem nebo klikněte a vyberte soubory")
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
                 Text("Export faktur z Fakturoidu · lze vybrat víc souborů najednou")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text("Vybrat soubory…")
-                    .font(.callout.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 5)
-                    .background(.quaternary, in: Capsule())
-                    .padding(.top, 4)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
+                pill
             }
             .multilineTextAlignment(.center)
-            .padding(.vertical, 26)
+            .padding(.vertical, 34)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
-            .background(Color.accentColor.opacity(isDropTarget ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color.accentColor.opacity(isDropTarget ? 0.8 : 0.35), lineWidth: 1.5)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .modifier(DropZoneLook(isTargeted: isDropTarget))
         }
         .buttonStyle(.plain)
         .disabled(model.running)
@@ -138,5 +126,19 @@ private struct ChooseFilesCard: View {
         } isTargeted: {
             isDropTarget = $0
         }
+    }
+
+    /// "Vybrat soubory…": the words of what a click on the zone does, drawn as a small capsule in the colour of a
+    /// card, raised off the zone, as the buttons that stand on a tint are. It is no button of its own: the zone is.
+    private var pill: some View {
+        Text("Vybrat soubory…")
+            .font(Typography.bodySemibold)
+            .foregroundStyle(CapsuleButtonKind.onWindow.foreground)
+            .padding(.horizontal, CapsuleButtonSize.small.horizontalPadding)
+            .frame(height: CapsuleButtonSize.small.height)
+            .background {
+                Capsule().surface(CapsuleButtonKind.onWindow.background, elevation: .control)
+            }
+            .padding(.top, 4)
     }
 }

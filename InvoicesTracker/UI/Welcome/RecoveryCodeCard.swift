@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 /// The recovery code as the screens that make a code show it: its caption, the code in eight monospace groups of four,
-/// and the two buttons that take it out of the app — "Vytisknout nebo uložit jako PDF…" and "Kopírovat".
+/// each on the colour of a card raised off the panel, and the two buttons that take it out of the app — "Vytisknout
+/// nebo uložit jako PDF…" and "Kopírovat".
 ///
 /// The card keeps nothing of the code beyond the screen that shows it: its only state is whether it was copied.
 struct RecoveryCodeCard: View {
@@ -21,30 +22,31 @@ struct RecoveryCodeCard: View {
     /// What VoiceOver calls the group of characters.
     var accessibilityName = "Kód pro obnovení"
 
-    /// The size of the characters of a group.
-    var groupFontSize: CGFloat = 18
-
     @State private var copied = false
 
     var body: some View {
         WelcomeBox {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(caption)
-                    .fontWeight(.semibold)
+                    .font(Typography.calloutSemibold)
+                    .foregroundStyle(Palette.text)
                 Spacer(minLength: 6)
                 Text(note)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(Array(WelcomeTexts.codeGroups(code).enumerated()), id: \.offset) { _, group in
                     Text(group)
-                        .font(.system(size: groupFontSize, weight: .semibold, design: .monospaced))
+                        .font(Typography.title2Monospaced)
                         .tracking(2)
+                        .foregroundStyle(Palette.text)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
+                        .background {
+                            RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
+                                .surface(Palette.bgCard, elevation: .control)
+                        }
                         .accessibilityLabel(group.map(String.init).joined(separator: " "))
                 }
             }

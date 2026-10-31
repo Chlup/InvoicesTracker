@@ -49,13 +49,13 @@ struct ClientsScreen: View {
                     model.didSaveClient(id)
                 }
             )
-            .idleLockCover()
+            .sheetChrome()
         }
         .sheet(item: $templateForm) { templateForm in
             TemplateForm(
                 model: templateForm, cancel: { self.templateForm = nil }, finished: { self.templateForm = nil }
             )
-            .idleLockCover()
+            .sheetChrome()
         }
     }
 

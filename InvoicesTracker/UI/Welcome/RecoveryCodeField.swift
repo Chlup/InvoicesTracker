@@ -21,22 +21,25 @@ struct RecoveryCodeField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 // The field has it as its own label.
                 .accessibilityHidden(true)
             TextField("", text: shownText, prompt: Text(verbatim: "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"))
                 .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
+                .font(Typography.bodyMonospaced)
                 .controlSize(.large)
                 .autocorrectionDisabled()
                 .focused($isFocused)
                 .onSubmit(submit)
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.red, lineWidth: errorText == nil ? 0 : 1.5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
+                        .strokeBorder(Palette.red, lineWidth: errorText == nil ? 0 : 1.5)
+                )
                 .accessibilityLabel(label)
             Text("Velikost písmen, mezery a pomlčky nehrají roli.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
             if let errorText {
                 WelcomeErrorLine(text: errorText)
             }
@@ -91,9 +94,10 @@ struct RecoveryCodeAsk<Extra: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: "key")
-                .font(.system(size: 18, weight: .regular))
+                .font(Typography.symbolMedium)
+                .foregroundStyle(Palette.text2)
                 .frame(width: 44, height: 44)
-                .background(.quaternary, in: Circle())
+                .background(Palette.fill, in: Circle())
                 .accessibilityHidden(true)
             WelcomeHeading(title: title, text: text)
                 .padding(.top, 4)

@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// The title of a sheet in title 2 and the line under it in secondary text, at its top.
+/// The title of a sheet in title 2 and the line under it in secondary text, at its top. The title is a heading to
+/// VoiceOver, unless the dialog that it heads is named by it already (`isHeading` false), as a dialog of the window is.
 struct SheetHeader: View {
     let title: String
     let subtitle: String
+    var isHeading = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: title)
                 .font(Typography.title2)
                 .foregroundStyle(Palette.text)
-                .accessibilityAddTraits(.isHeader)
+                .accessibilityAddTraits(isHeading ? .isHeader : [])
             Text(verbatim: subtitle)
                 .font(Typography.body)
                 .foregroundStyle(Palette.text2)

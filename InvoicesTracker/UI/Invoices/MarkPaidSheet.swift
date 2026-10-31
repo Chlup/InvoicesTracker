@@ -56,9 +56,6 @@ struct MarkPaidSheet: View {
     /// Whether the payment is being removed: Odebrat platbu and Zpět are off meanwhile.
     @State private var isRemoving = false
 
-    /// Whether the field of the number in the removal step has the focus, which it takes when the step opens.
-    @FocusState private var numberFocused: Bool
-
     /// What the removal step says when nothing was removed: the number typed is not the invoice's, or the payment is
     /// not there any more.
     nonisolated static let removalRefusedText =
@@ -327,33 +324,16 @@ struct MarkPaidSheet: View {
 
     // MARK: The removal step
 
-    /// The removal step: what removing the payment does, in the red note of an error with the triangle of a warning;
-    /// the field where the number of the invoice is typed to confirm, which has the focus when the step opens and is
-    /// framed in red once the number matches, and where Return removes the payment as Odebrat platbu does; why the
-    /// latest removal failed; and the footer.
+    /// The removal step: what removing the payment does, in the red note of an error with the triangle of a warning,
+    /// as the dialog that deletes an invoice draws it; the field where the number of the invoice is typed to confirm,
+    /// which has the focus when the step opens and is framed in red once the number matches, and where Return removes
+    /// the payment as Odebrat platbu does; why the latest removal failed; and the footer.
     @ViewBuilder
     private func removalStep(_ summary: PaymentRemovalSummary) -> some View {
-        Note(.error, icon: .warning, title: "Jen pro opravu omylu.", text: summary.lines.joined(separator: "\n"))
-        VStack(alignment: .leading, spacing: 6) {
-            let number = Text(verbatim: summary.number).font(Typography.bodySemibold).monospacedDigit()
-            Text("Pro potvrzení napište číslo faktury \(number)")
-                .font(Typography.body)
-                .foregroundStyle(Palette.text)
-            TextField("Číslo faktury", text: $model.typedNumber)
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .monospacedDigit()
-                .autocorrectionDisabled()
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
-                        .strokeBorder(Palette.red, lineWidth: model.typedNumberMatches ? 1.5 : 0)
-                )
-                .focused($numberFocused)
-                .onSubmit(removePaymentIfConfirmed)
-                .onAppear {
-                    numberFocused = true
-                }
-        }
+        Note(.error, icon: .warning, title: "Jen pro opravu omylu.", paragraphs: summary.lines)
+        NumberConfirmationField(
+            number: summary.number, typed: $model.typedNumber, matches: model.typedNumberMatches,
+            submit: removePaymentIfConfirmed)
         failureLine
         removalFooter
     }

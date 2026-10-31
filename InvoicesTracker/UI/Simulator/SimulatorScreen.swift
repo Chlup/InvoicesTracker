@@ -96,7 +96,7 @@ struct SimulatorScreen: View {
         }
         .sheet(item: $childDialog) { dialog in
             ChildDialog(model: dialog, close: { childDialog = nil })
-                .idleLockCover()
+                .sheetChrome()
         }
     }
 

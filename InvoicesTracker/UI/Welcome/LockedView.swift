@@ -19,8 +19,11 @@ struct LockedView: View {
         case inactivity
     }
 
-    /// The title of both locks, which a sheet under the lock after inactivity shows too (`idleLockCover()`).
+    /// The title of both locks, which a sheet under the lock after inactivity shows too (`sheetChrome()`).
     static let title: LocalizedStringKey = "InvoicesTracker je zamčený"
+
+    /// The width the text of the lock wraps at: the prototype's `max-width: 30em` at the 13-point body, 390 points.
+    static let textWidth: CGFloat = 390
 
     let model: AppModel
     var kind = Kind.launch
@@ -32,12 +35,14 @@ struct LockedView: View {
             VStack(spacing: 10) {
                 LockSymbol()
                 Text(Self.title)
-                    .font(.title.weight(.bold))
+                    .font(Typography.title)
+                    .foregroundStyle(Palette.text)
                     .padding(.top, 4)
                     .accessibilityAddTraits(.isHeader)
                 text
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: 380)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
+                    .frame(maxWidth: Self.textWidth)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .multilineTextAlignment(.center)
@@ -48,16 +53,17 @@ struct LockedView: View {
                     Button("Odemknout kódem pro obnovení…") {
                         model.useRecoveryCode()
                     }
-                    .buttonStyle(.link)
-                    .font(.callout)
+                    .buttonStyle(TextLinkButtonStyle())
+                    .font(Typography.callout)
                     .disabled(runner.isWorking)
                 }
             }
             .frame(maxWidth: .infinity)
             footnote
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -100,18 +106,22 @@ struct LockedView: View {
     }
 }
 
-/// The lock in a circle at the top of a locked screen.
+/// The lock in a circle at the top of a locked screen: a symbol in the grey text on the grey fill, 64 points across.
 struct LockSymbol: View {
     var body: some View {
         Image(systemName: "lock")
-            .font(.system(size: 28, weight: .regular))
+            .font(Typography.symbolLarge)
+            .imageScale(.large)
+            .foregroundStyle(Palette.text2)
             .frame(width: 64, height: 64)
-            .background(.quaternary, in: Circle())
+            .background(Palette.fill, in: Circle())
             .accessibilityHidden(true)
     }
 }
 
-/// Odemknout of a locked screen, its default button (Return): runs `unlock` with `runner`, and waits while it runs.
+/// Odemknout of a locked screen, its default button (Return): the capsule of the accent with the symbol of Touch ID,
+/// 6 points wider at each end than the capsule of a dialog, as the prototype draws it (20 points of padding). It runs
+/// `unlock` with `runner`, and waits while it runs.
 struct UnlockButton: View {
     let runner: StepRunner
     let unlock: @MainActor () async -> Void
@@ -121,11 +131,9 @@ struct UnlockButton: View {
             Task { await runner.perform { await unlock() } }
         } label: {
             Label("Odemknout", systemImage: "touchid")
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 6)
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .buttonStyle(CapsuleButtonStyle(.primary))
         .keyboardShortcut(.defaultAction)
         .disabled(runner.isWorking)
     }

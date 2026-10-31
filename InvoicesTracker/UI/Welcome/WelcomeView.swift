@@ -16,20 +16,10 @@ struct WelcomeView: View {
         } else {
             WelcomeCard(label: "Vítejte") {
                 VStack(spacing: 10) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 30, weight: .regular))
-                        .foregroundStyle(.white)
-                        .frame(width: 64, height: 64)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.accentColor.opacity(0.75), Color.accentColor], startPoint: .top,
-                                endPoint: .bottom),
-                            in: RoundedRectangle(cornerRadius: 16)
-                        )
-                        .shadow(color: Color.accentColor.opacity(0.3), radius: 8, y: 4)
-                        .accessibilityHidden(true)
+                    AppTile()
                     Text("Vítejte v InvoicesTracker")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(Typography.title)
+                        .foregroundStyle(Palette.text)
                         .padding(.top, 4)
                         .accessibilityAddTraits(.isHeader)
                     Text(
@@ -38,14 +28,16 @@ struct WelcomeView: View {
                         šifruje a klíč k nim chrání Secure Enclave tohoto Macu.
                         """
                     )
-                    .frame(maxWidth: 400)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
+                    .frame(maxWidth: Self.textWidth)
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 VStack(spacing: 10) {
                     WelcomeOptionRow(
-                        systemImage: "plus", tint: .accentColor, title: "Začít s prázdnými daty",
+                        systemImage: "plus", tone: .accent, title: "Začít s prázdnými daty",
                         detail: """
                             Uložíte si kód pro obnovení, vyplníte své údaje na faktury a můžete importovat faktury z \
                             Fakturoidu.
@@ -55,7 +47,7 @@ struct WelcomeView: View {
                         Task { await runner.perform { try await model.startFresh() } }
                     }
                     WelcomeOptionRow(
-                        systemImage: "arrow.counterclockwise", tint: .green, title: "Obnovit ze zálohy",
+                        systemImage: "arrow.counterclockwise", tone: .green, title: "Obnovit ze zálohy",
                         detail: "Máte zálohu z InvoicesTracker (soubor .ttbackup), třeba z jiného Macu.",
                         isDisabled: runner.isWorking
                     ) {
@@ -71,12 +63,38 @@ struct WelcomeView: View {
                     najde sama a zeptá se jen na kód pro obnovení.
                     """
                 )
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
             }
         }
+    }
+
+    /// The width the text under the title wraps at: the prototype's `max-width: 32em` at the 13-point body, 416
+    /// points.
+    static let textWidth: CGFloat = 416
+}
+
+/// The tile of the app at the top of the first card: 64 points, with the corners of a card, a gradient from the accent
+/// to the accent text running down and a little to the right (the prototype's 160°), the glyph of a document in the
+/// colour of text on an accent, and the blue glow under it.
+private struct AppTile: View {
+    var body: some View {
+        Image(systemName: "doc.text")
+            .font(Typography.symbolLarge)
+            .imageScale(.large)
+            .foregroundStyle(Palette.onAccent)
+            .frame(width: 64, height: 64)
+            .background {
+                RoundedRectangle(cornerRadius: DesignMetrics.cardRadius)
+                    .surface(
+                        LinearGradient(
+                            colors: [Palette.accent, Palette.accentText], startPoint: UnitPoint(x: 0.28, y: -0.1),
+                            endPoint: UnitPoint(x: 0.72, y: 1.1)),
+                        elevation: .glow)
+            }
+            .accessibilityHidden(true)
     }
 }

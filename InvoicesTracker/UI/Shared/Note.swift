@@ -64,14 +64,33 @@ nonisolated enum NoteIcon: Sendable, Hashable {
 /// optional title in body semibold and the text in body, in the colour of text. A note may carry actions at its end,
 /// such as a button that closes it.
 ///
+/// The text is one block 4 points under the title. A note that says several things, such as the lines of the note that
+/// warns of a deletion, is made of paragraphs instead: they stand 6 points apart, and 6 points under the title, as the
+/// prototype draws that column.
+///
 /// A note without actions is one element to VoiceOver, which reads its title and text as one phrase. A note with
 /// actions is a group, so that VoiceOver reaches each action on its own.
 struct Note<Actions: View>: View {
     let tone: NoteTone
     let icon: NoteIcon
     let title: String?
-    let text: String
+
+    /// What the note says, paragraph by paragraph; one for a text, none for a title alone.
+    let paragraphs: [String]
+
+    /// The space between the title and the paragraphs, and between the paragraphs.
+    private let gap: CGFloat
     private let actions: Actions
+
+    /// The space between the title and the text of a note, in points.
+    private static var textGap: CGFloat {
+        4
+    }
+
+    /// The space between the title and the paragraphs of a note, and between the paragraphs, in points.
+    private static var paragraphGap: CGFloat {
+        6
+    }
 
     /// A note of `tone` that says `text`, under `title` if there is one, with `actions` at its end. A note that is a
     /// title alone, such as the banner with the result of an action, passes an empty `text`.
@@ -82,7 +101,22 @@ struct Note<Actions: View>: View {
         self.tone = tone
         self.icon = icon
         self.title = title
-        self.text = text
+        self.paragraphs = text.isEmpty ? [] : [text]
+        self.gap = Self.textGap
+        self.actions = actions()
+    }
+
+    /// A note of `tone` that says `paragraphs`, one under the other, under `title` if there is one, with `actions` at
+    /// its end.
+    init(
+        _ tone: NoteTone, icon: NoteIcon = .info, title: String? = nil, paragraphs: [String],
+        @ViewBuilder actions: () -> Actions
+    ) {
+        self.tone = tone
+        self.icon = icon
+        self.title = title
+        self.paragraphs = paragraphs
+        self.gap = Self.paragraphGap
         self.actions = actions()
     }
 
@@ -94,13 +128,13 @@ struct Note<Actions: View>: View {
                     .foregroundStyle(tone.iconColor)
                     .accessibilityHidden(true)
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: gap) {
                 if let title {
                     Text(verbatim: title)
                         .font(Typography.bodySemibold)
                 }
-                if !text.isEmpty {
-                    Text(verbatim: text)
+                ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                    Text(verbatim: paragraph)
                         .font(Typography.body)
                 }
             }
@@ -126,6 +160,13 @@ extension Note where Actions == EmptyView {
     /// A note of `tone` that says `text`, under `title` if there is one, with no actions.
     init(_ tone: NoteTone, icon: NoteIcon = .info, title: String? = nil, text: String) {
         self.init(tone, icon: icon, title: title, text: text) {
+            EmptyView()
+        }
+    }
+
+    /// A note of `tone` that says `paragraphs`, one under the other, under `title` if there is one, with no actions.
+    init(_ tone: NoteTone, icon: NoteIcon = .info, title: String? = nil, paragraphs: [String]) {
+        self.init(tone, icon: icon, title: title, paragraphs: paragraphs) {
             EmptyView()
         }
     }

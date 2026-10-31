@@ -3,7 +3,8 @@ import SwiftUI
 /// How far a surface stands off the page, as the design draws it: a ring half a point wide in the colour of its edge,
 /// and a drop shadow under it. The colours are the shadow tokens of the asset catalog, so both follow the appearance
 /// of the window, and both are on the main actor like the rest of the palette. The board has three levels (a card, a
-/// control and a pop); the fourth, the paper, is the prototype's, for the page of an invoice.
+/// control and a pop); the fourth, the paper, and the fifth, the glow, are the prototype's, for the page of an invoice
+/// and for the tile of the app on the first screen.
 enum Elevation {
     /// A card on the page.
     case card
@@ -22,6 +23,11 @@ enum Elevation {
     /// its ring included, so it shows the soft shadow alone.
     case paper
 
+    /// The tile of the app on the first screen, which the prototype lifts with a blue glow instead of a grey shadow:
+    /// `0 6px 16px` in the accent text at 30 %. It has no ring, and no token of its own: the glow is the accent text
+    /// of the palette, so it follows the appearance of the window with it.
+    case glow
+
     /// The width of the ring, in points.
     fileprivate static let ringWidth: CGFloat = 0.5
 
@@ -31,6 +37,7 @@ enum Elevation {
         case .card: Color(.tokenShadowCardRing)
         case .control, .paper: Color(.tokenShadowControlRing)
         case .pop: Color(.tokenShadowPopRing)
+        case .glow: Color.clear
         }
     }
 
@@ -41,6 +48,7 @@ enum Elevation {
         case .control: Color(.tokenShadowControlDrop)
         case .paper: Color(.tokenShadowPaperDrop)
         case .pop: Color(.tokenShadowPopDrop)
+        case .glow: Palette.accentText.opacity(0.3)
         }
     }
 
@@ -50,6 +58,7 @@ enum Elevation {
         case .card, .control: 1
         case .paper: 8
         case .pop: 12
+        case .glow: 6
         }
     }
 
@@ -59,6 +68,7 @@ enum Elevation {
         case .card, .control: 1
         case .paper: 12
         case .pop: 16
+        case .glow: 8
         }
     }
 }

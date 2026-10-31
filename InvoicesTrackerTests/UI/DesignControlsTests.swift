@@ -55,6 +55,43 @@ struct DesignControlsTests {
         #expect(NoteIcon.none.symbolName == nil)
     }
 
+    /// The lines of a note that warns of a deletion are paragraphs of the prototype's column: 6 points apart, and 6
+    /// points under the title, where the text of a note is one block 4 points under its title. Measured by the height
+    /// of the notes at one width, in which a paragraph of one word takes one line.
+    @Test func theParagraphsOfANoteStandSixPointsApartAndUnderItsTitle() {
+        func height(of note: some View) -> CGFloat {
+            fittingHeight(of: note, width: 400)
+        }
+        let padding: CGFloat = 24
+        let line = height(of: Note(.error, icon: .none, paragraphs: ["Řádek"])) - padding
+        let three = height(of: Note(.error, icon: .none, paragraphs: ["Řádek", "Řádek", "Řádek"]))
+        let title = height(of: Note(.error, icon: .none, title: "Nadpis", text: "")) - padding
+        let titled = height(of: Note(.error, icon: .none, title: "Nadpis", paragraphs: ["Řádek"]))
+        let titledText = height(of: Note(.error, icon: .none, title: "Nadpis", text: "Řádek"))
+
+        #expect(line > 8)
+        #expect(abs(three - (padding + 3 * line + 2 * 6)) < 0.5, "Three paragraphs are \(three) points tall")
+        #expect(abs(titled - (padding + title + 6 + line)) < 0.5, "A titled paragraph is \(titled) points tall")
+        // The text of a note keeps its 4 points under the title.
+        #expect(abs(titledText - (padding + title + 4 + line)) < 0.5, "A titled text is \(titledText) points tall")
+    }
+
+    /// A note with paragraphs is read as one phrase, as a note with a text is: the title first, then the paragraphs.
+    @Test func aNoteWithParagraphsIsReadAsOnePhraseThatStartsWithItsTitle() async throws {
+        let note = Note(.error, icon: .warning, title: "Nadpis", paragraphs: ["První řádek.", "Druhý řádek."])
+
+        try await withHostedView(note.padding(16), size: CGSize(width: 420, height: 160)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfText(startingWith: "Nadpis", in: window) != nil }
+                let readings = accessibilityReadings(in: window)
+                #expect(readings.count == 1, "The note reads \(readings)")
+                #expect(readings.first?.hasPrefix("Nadpis") == true)
+                #expect(readings.first?.contains("První řádek.") == true)
+                #expect(readings.first?.contains("Druhý řádek.") == true)
+            }
+        }
+    }
+
     @Test func capsuleButtonsTakeTheColoursOfTheirKind() {
         let kinds: [(kind: CapsuleButtonKind, background: Color, foreground: Color)] = [
             (.primary, Palette.accent, Palette.onAccent),

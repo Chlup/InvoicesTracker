@@ -57,7 +57,7 @@ struct NewRecoveryCodeSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             RecoveryCodeCard(
                 code: pending.code, caption: WelcomeTexts.codeCaption(number: pending.number, created: pending.created),
-                note: "32 znaků", label: pending.label, accessibilityName: "Nový kód pro obnovení", groupFontSize: 17)
+                note: "32 znaků", label: pending.label, accessibilityName: "Nový kód pro obnovení")
             Toggle(isOn: $stored) {
                 Text("Nový kód mám uložený mimo tento Mac")
                     .font(Typography.bodySemibold)

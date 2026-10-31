@@ -264,6 +264,15 @@ struct DesignTokenTests {
         #expect(Elevation.paper.dropRadius == 12)
     }
 
+    /// The tile of the app on the first screen has the blue glow the prototype draws under it (`0 6px 16px` in the
+    /// accent text at 30 %), with no ring, and takes it from the palette, not from a colour of its own.
+    @Test func theGlowIsTheBlueShadowUnderTheTileOfTheApp() {
+        #expect(Elevation.glow.dropOffset == 6)
+        #expect(Elevation.glow.dropRadius == 8)
+        #expect(Elevation.glow.dropColor == Palette.accentText.opacity(0.3))
+        #expect(Elevation.glow.ringColor == Color.clear)
+    }
+
     @Test func theDropShadowsAreAsLowAndAsSoftAsTheBoardDrawsThem() {
         #expect(Elevation.card.dropOffset == 1)
         #expect(Elevation.card.dropRadius == 1)

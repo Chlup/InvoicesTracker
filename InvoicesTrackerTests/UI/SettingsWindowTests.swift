@@ -284,6 +284,42 @@ struct SettingsWindowTests {
         }
     }
 
+    /// Hotovo of the new code stays off until the person says the code is stored away from this Mac: the sheet makes
+    /// the code with Vytvořit nový kód, and its second step has the checkbox "Nový kód mám uložený mimo tento Mac" and
+    /// Hotovo, which the checkbox enables and clearing it disables again. (This pins what the sheet does, whatever the
+    /// look of the checkbox.)
+    @Test func hotovoOfTheNewCodeStaysOffUntilTheCodeIsSaidToBeStored() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        app.showSettings(.security)
+        let security = SecurityTabModel(app: app)
+        security.load()
+
+        try await withHostedView(NewRecoveryCodeSheet(model: security) {}, size: CGSize(width: 560, height: 760)) {
+            window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Vytvořit nový kód", in: window) != nil }
+                let create = try #require(accessibilityButton(labelled: "Vytvořit nový kód", in: window))
+                #expect(create.accessibilityPerformPress?() == true)
+
+                try await waitUntil { accessibilityButton(labelled: "Hotovo", in: window) != nil }
+                let stored = "Nový kód mám uložený mimo tento Mac"
+                try await waitUntil { accessibilityElement(labelled: stored, in: window) != nil }
+                let done = try #require(accessibilityButton(labelled: "Hotovo", in: window))
+                let checkbox = try #require(accessibilityElement(labelled: stored, in: window))
+                #expect(checkbox.accessibilityRole?() == .checkBox)
+                #expect(done.isAccessibilityEnabled?() == false)
+
+                #expect(checkbox.accessibilityPerformPress?() == true)
+                try await waitUntil { done.isAccessibilityEnabled?() == true }
+
+                #expect(checkbox.accessibilityPerformPress?() == true)
+                try await waitUntil { done.isAccessibilityEnabled?() == false }
+            }
+        }
+    }
+
     /// The sheet Obnovit ze zálohy chooses among the backups in rows of the design: the chosen one on the pale blue
     /// with a ring of the accent, the others on the inset background, and ends in Zrušit and Obnovit, 32 points tall.
     @Test(arguments: [ColorScheme.light, .dark])

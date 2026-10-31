@@ -41,8 +41,8 @@ struct RestoreFlowView: View {
             WelcomeHeading(
                 title: "Obnovit ze zálohy",
                 text: """
-                    Vyberte soubor zálohy InvoicesTracker (.ttbackup). Záloha je šifrovaná – odemkne ji kód pro obnovení, \
-                    který platil, když vznikla.
+                    Vyberte soubor zálohy InvoicesTracker (.ttbackup). Záloha je šifrovaná – odemkne ji kód pro \
+                    obnovení, který platil, když vznikla.
                     """
             )
             if let backup {
@@ -77,30 +77,29 @@ struct RestoreFlowView: View {
         }
     }
 
-    /// "Vybrat soubor zálohy…": the button that opens the panel, which a file can also be dropped on.
+    /// "Vybrat soubor zálohy…": the button that opens the panel, which a file can also be dropped on. It is the zone of
+    /// the design: the accent tint with a ring of the soft accent, rounded as a panel is, and the ring in the accent
+    /// itself while a file is over it.
     private var dropZone: some View {
         Button {
             showsImporter = true
         } label: {
             VStack(spacing: 6) {
                 Image(systemName: "doc")
-                    .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(Color.accentColor)
+                    .font(Typography.symbolLight)
+                    .foregroundStyle(Palette.accent)
                     .accessibilityHidden(true)
                 Text("Vybrat soubor zálohy…")
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
                 Text("nebo ho sem přetáhněte")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
             }
-            .padding(.vertical, 28)
+            .padding(.vertical, 30)
+            .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
-            .background(Color.accentColor.opacity(isDropTarget ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color.accentColor.opacity(isDropTarget ? 0.8 : 0.35), lineWidth: 1.5)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .modifier(DropZoneLook(isTargeted: isDropTarget))
         }
         .buttonStyle(.plain)
         .disabled(runner.isWorking)
@@ -191,21 +190,22 @@ struct BackupFileCard: View {
         let lines = WelcomeTexts.backupCard(
             backup.header, fileName: backup.url.lastPathComponent, opensWithThisMac: backup.opensWithThisMac,
             timeZone: timeZone)
-        WelcomeBox(spacing: 4) {
+        WelcomeBox(spacing: 4, horizontalPadding: 16, verticalPadding: 14) {
             Text(lines[0])
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(Array(lines.dropFirst().enumerated()), id: \.offset) { index, line in
                 Text(line)
-                    .font(.callout)
+                    .font(Typography.callout)
                     // The last line, which names the code, is the one the next step is about.
-                    .foregroundStyle(index == lines.count - 2 ? .primary : .secondary)
+                    .foregroundStyle(index == lines.count - 2 ? Palette.text : Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button("Vybrat jiný soubor", action: chooseAnother)
-                .buttonStyle(.link)
-                .font(.callout)
+                .buttonStyle(TextLinkButtonStyle())
+                .font(Typography.callout)
                 .padding(.top, 4)
         }
     }
