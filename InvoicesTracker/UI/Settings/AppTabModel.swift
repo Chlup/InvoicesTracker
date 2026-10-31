@@ -47,6 +47,7 @@ final class AppTabModel {
         Licence(
             name: "SQLCipher Community Edition", detail: "šifrování databáze · licence BSD",
             fileName: "SQLCipher-LICENSE"),
+        Licence(name: "Sparkle", detail: "aktualizace aplikace · licence MIT", fileName: "Sparkle-LICENSE"),
     ]
 
     /// What the card says when the rates cannot be loaded.
@@ -179,13 +180,7 @@ final class AppTabModel {
 
     // MARK: Licence
 
-    /// "InvoicesTracker 1.0 · data jen v tomto Macu".
-    nonisolated static func versionLine(_ version: String) -> String {
-        "InvoicesTracker \(version) · data jen v tomto Macu"
-    }
-
-    /// The line of the version of this app.
-    var versionLine: String {
-        Self.versionLine(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
-    }
+    /// The line under the licences: the name of the app and where its data stay. The version of the app is in the card
+    /// Aktualizace.
+    nonisolated static let licenceFooter = "InvoicesTracker · data jen v tomto Macu"
 }
