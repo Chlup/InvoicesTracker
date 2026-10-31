@@ -256,9 +256,12 @@ struct UpdatesCardWindowTests {
                     #expect(
                         accessibilityElement(labelled: "Zobrazit licenci – Sparkle", role: .link, under: card) != nil)
                     #expect(readings.last == AppTabModel.licenceFooter)
+                    // The footer used to begin with the version, "InvoicesTracker 1.0 · data jen v tomto Macu", which
+                    // the card Aktualizace shows now. The version alone is no mark of that: a version such as 1.1 is
+                    // a part of the detail of IBM Plex Sans, "písmo faktur · SIL Open Font License 1.1".
                     let shortVersion = try #require(
                         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
-                    #expect(!readings.contains { $0.contains(shortVersion) }, "\(readings)")
+                    #expect(!readings.contains { $0.contains("InvoicesTracker \(shortVersion)") }, "\(readings)")
                 }
             }
         }
