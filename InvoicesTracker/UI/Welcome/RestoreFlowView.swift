@@ -205,6 +205,7 @@ struct BackupFileCard: View {
             }
             Button("Vybrat jiný soubor", action: chooseAnother)
                 .buttonStyle(TextLinkButtonStyle())
+                .accessibilityAddTraits(.isLink)
                 .font(Typography.callout)
                 .padding(.top, 4)
         }

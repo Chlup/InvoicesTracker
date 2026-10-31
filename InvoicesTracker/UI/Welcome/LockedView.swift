@@ -54,6 +54,8 @@ struct LockedView: View {
                         model.useRecoveryCode()
                     }
                     .buttonStyle(TextLinkButtonStyle())
+                    // The way to another screen is a link to VoiceOver, as the system's link style made it.
+                    .accessibilityAddTraits(.isLink)
                     .font(Typography.callout)
                     .disabled(runner.isWorking)
                 }

@@ -47,6 +47,10 @@ enum Palette {
     /// The stronger line around a field and above the total of a bill.
     static var sepStrong: Color { Color(.tokenSepStrong) }
 
+    /// The scrim that dims the sidebar and the page under a dialog of the window: a dark bluish grey at 32 %, the same
+    /// in a light and in a dark window.
+    static var scrim: Color { Color(.tokenScrim) }
+
     // MARK: Accent
 
     /// The blue of actions, of what is selected and of information.

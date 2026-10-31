@@ -8,11 +8,6 @@ enum WindowDialog {
     /// The identifier of the card, which the tests find it by.
     static let accessibilityID = "windowDialog"
 
-    /// The scrim that dims the sidebar and the page under the card: the prototype's `rgba(28, 28, 34, 0.32)`. It is
-    /// the one colour of the views that is not a token of the palette: the board has no scrim, and the prototype
-    /// draws the same one in a light and in a dark window.
-    static let scrim = Color(.sRGB, red: 28 / 255, green: 28 / 255, blue: 34 / 255, opacity: 0.32)
-
     /// The width of the card, at most.
     static let width: CGFloat = 520
 }
@@ -69,7 +64,7 @@ private struct WindowDialogCard<Dialog: View>: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            WindowDialog.scrim
+            Palette.scrim
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
             card

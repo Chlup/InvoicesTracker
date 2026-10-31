@@ -102,12 +102,16 @@ struct DesignTokenTests {
         Token("TokenShadowPopDrop", light: Rgba(0x000000, alpha: 0.16), dark: Rgba(0x000000, alpha: 0.50)),
     ]
 
-    /// The tokens that the prototype has and the board does not: the shadow under the page of an invoice, which lies
-    /// on a ground of its own in the preview of the editor and in the sheet of the PDF. The prototype draws it as
-    /// `0 8px 24px rgba(0, 0, 0, 0.10)` (and a tight shadow of 12 % under the edge, which the half-point ring of a
-    /// control stands for); in a dark window it is as much stronger as the shadows of the board are.
+    /// The tokens that the prototype has and the board does not:
+    /// - the shadow under the page of an invoice, which lies on a ground of its own in the preview of the editor and
+    ///   in the sheet of the PDF. The prototype draws it as `0 8px 24px rgba(0, 0, 0, 0.10)` (and a tight shadow of
+    ///   12 % under the edge, which the half-point ring of a control stands for); in a dark window it is as much
+    ///   stronger as the shadows of the board are;
+    /// - the scrim that dims the sidebar and the page under a dialog of the window, `rgba(28, 28, 34, 0.32)`, which the
+    ///   prototype draws alike in a light and in a dark window.
     private static let beyondTheBoard: [Token] = [
-        Token("TokenShadowPaperDrop", light: Rgba(0x000000, alpha: 0.10), dark: Rgba(0x000000, alpha: 0.40))
+        Token("TokenShadowPaperDrop", light: Rgba(0x000000, alpha: 0.10), dark: Rgba(0x000000, alpha: 0.40)),
+        Token("TokenScrim", light: Rgba(0x1C1C22, alpha: 0.32), dark: Rgba(0x1C1C22, alpha: 0.32)),
     ]
 
     /// The colour in the catalog under `name`, as sRGB bytes in a window of `appearance`, or nil when the catalog has
@@ -128,7 +132,7 @@ struct DesignTokenTests {
     /// The tokens of the board by their names in the asset catalog.
     private static let board: [String: Token] = Dictionary(uniqueKeysWithValues: tokens.map { ($0.name, $0) })
 
-    /// What `Palette` hands out under each of its 35 names, with the token it must take the colour from. The six
+    /// What `Palette` hands out under each of its 36 names, with the token it must take the colour from. The six
     /// shadow tokens are not here: they belong to the elevations.
     private static let palette: [(token: String, color: Color)] = [
         ("TokenText", Palette.text),
@@ -166,6 +170,7 @@ struct DesignTokenTests {
         ("TokenHighlight", Palette.highlight),
         ("TokenHatchStripe", Palette.hatchStripe),
         ("TokenHatchGround", Palette.hatchGround),
+        ("TokenScrim", Palette.scrim),
     ]
 
     /// The colour as sRGB bytes in a window of `scheme`.
@@ -216,7 +221,7 @@ struct DesignTokenTests {
     }
 
     @Test func thePaletteHandsOutEachTokenUnderItsOwnName() throws {
-        #expect(Self.palette.count == 35)
+        #expect(Self.palette.count == 36)
         for entry in Self.palette {
             try expectColor(entry.color, isToken: entry.token)
         }
@@ -247,7 +252,8 @@ struct DesignTokenTests {
         }
     }
 
-    @Test func thePaperTakesItsRingFromTheControlAndItsDropFromATokenOfItsOwn() throws {
+    @Test func everyTokenBeyondTheBoardHasTheValueOfThePrototypeInALightAndInADarkWindow() throws {
+        #expect(Self.beyondTheBoard.count == 2)
         for token in Self.beyondTheBoard {
             for (appearance, expected) in [(NSAppearance.Name.aqua, token.light), (.darkAqua, token.dark)] {
                 let found = try #require(
@@ -255,8 +261,23 @@ struct DesignTokenTests {
                 #expect(found.matches(expected), "\(token.name) is \(found), the prototype has \(expected)")
             }
         }
+    }
+
+    @Test func thePaperTakesItsRingFromTheControlAndItsDropFromATokenOfItsOwn() throws {
         try expectColor(Elevation.paper.ringColor, isToken: "TokenShadowControlRing")
         try expectColor(Elevation.paper.dropColor, isToken: "TokenShadowPaperDrop")
+    }
+
+    /// The scrim that dims the window under a dialog is a colour of the palette, not one of a view: `Palette.scrim`
+    /// takes it from `TokenScrim`, which has the prototype's one value, the same bytes and the same 32 % in a light and
+    /// in a dark window.
+    @Test func theScrimUnderADialogIsOneTokenOfThePaletteWithTheSameValueInBothAppearances() throws {
+        try expectColor(Palette.scrim, isToken: "TokenScrim")
+        let light = resolved(Palette.scrim, in: .light)
+        let dark = resolved(Palette.scrim, in: .dark)
+
+        #expect(light.matches(Rgba(0x1C1C22, alpha: 0.32)), "The scrim in a light window is \(light)")
+        #expect(dark.matches(light), "The scrim in a dark window is \(dark), in a light one \(light)")
     }
 
     @Test func thePaperShadowIsTheSoftOneThePrototypeDrawsUnderThePageOfAnInvoice() {

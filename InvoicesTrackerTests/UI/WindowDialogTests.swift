@@ -132,6 +132,36 @@ struct WindowDialogTests {
         }
     }
 
+    /// What the dialog dims is dimmed with the scrim of the palette (`Palette.scrim`): over a page of the colour of the
+    /// window, the page shows as that colour under the scrim, the same 32 % of the same grey in a light and in a dark
+    /// window, as the prototype draws it.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theDialogDimsThePageWithTheScrimOfThePalette(scheme: ColorScheme) async throws {
+        try await whileTypingAlone {
+            try await withHostedView(DialogOverAPage(), size: CGSize(width: 900, height: 600)) { window in
+                window.appearance = appearance(of: scheme)
+                try await withAccessibilityElements {
+                    try await waitUntil { dialogFrame(in: window) != nil }
+                    try await layOut(window)
+                    let picture = try OffscreenPicture(of: window)
+                    let page = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
+                    var environment = EnvironmentValues()
+                    environment.colorScheme = scheme
+                    let scrim = Palette.scrim.resolve(in: environment)
+                    let opacity = Double(scrim.opacity)
+                    let grey = [scrim.red, scrim.green, scrim.blue].map { Double($0) * 255 }
+                    let dimmed = zip(page, grey).map { Int((Double($0) * (1 - opacity) + $1 * opacity).rounded()) }
+
+                    #expect(abs(opacity - 0.32) < 0.005, "The scrim is \(opacity) of its grey")
+                    // Left of the card, which is 520 points wide and centred, and under its top.
+                    #expect(
+                        pixelIs(dimmed, at: CGPoint(x: 20, y: 300), in: picture, within: 3),
+                        "\(scheme): the page is \(picture.bytes(at: CGPoint(x: 20, y: 300))), not \(dimmed)")
+                }
+            }
+        }
+    }
+
     /// The field of the number takes the focus when the dialog opens, and keeps it: Tab goes round the dialog alone, as
     /// the sidebar, the page and the toolbar behind it take no focus. (With the keyboard navigation of the Mac off, as
     /// it is by default, the field is the one view of the dialog that takes the focus.)
@@ -484,6 +514,23 @@ struct WindowDialogTests {
                 windowNumber: window.windowNumber, context: nil, characters: characters,
                 charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
         window.sendEvent(event)
+    }
+}
+
+/// A dialog of the window over a page that is the background of the window, with nothing else in it.
+private struct DialogOverAPage: View {
+    /// The one dialog that is shown.
+    struct Shown: Identifiable {
+        let id = 1
+    }
+
+    @State private var shown: Shown? = Shown()
+
+    var body: some View {
+        Palette.bgWindow
+            .windowDialog(item: $shown, title: { _ in "Dialog nad stránkou" }) { _ in
+                Text(verbatim: "Obsah")
+            }
     }
 }
 

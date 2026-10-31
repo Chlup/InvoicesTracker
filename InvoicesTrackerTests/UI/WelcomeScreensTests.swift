@@ -14,6 +14,7 @@ struct WelcomeScreensTests {
     private final class Calls {
         var back = 0
         var submit = 0
+        var another = 0
     }
 
     // MARK: Esc
@@ -479,6 +480,57 @@ struct WelcomeScreensTests {
                         pixelIs(tint, at: CGPoint(x: card.midX - 26, y: card.minY + 30 + 32), in: picture),
                         "\(scheme): the circle of \(entry.label) is not the tint")
                 }
+            }
+        }
+    }
+
+    // MARK: The links
+
+    /// "Odemknout kódem pro obnovení…" on the locked screen of a launch leads to another screen, so VoiceOver reads it
+    /// as a link, as it did when it was drawn in the system's link style. The link of the design is a button style, so
+    /// the control says what it is itself. It is no button.
+    @Test func theWayToTheRecoveryCodeOnTheLockedScreenIsReadAsALink() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let model = makeAppModel(in: directory)
+        let label = "Odemknout kódem pro obnovení…"
+
+        try await withHostedView(LockedView(model: model), size: CGSize(width: 900, height: 700)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityElement(labelled: label, in: window) != nil }
+                let link = try #require(accessibilityElement(labelled: label, in: window))
+                let role = link.accessibilityRole?()
+                #expect(role == .link, "VoiceOver reads it as \(String(describing: role))")
+                #expect(accessibilityButton(labelled: label, in: window) == nil)
+            }
+        }
+    }
+
+    /// "Vybrat jiný soubor" on the card of the backup that was chosen is a link to VoiceOver too, and choosing another
+    /// file is what it does.
+    @Test func theWayToAnotherBackupFileIsReadAsALinkAndChoosesAnother() async throws {
+        let slot = RecoverySlot(
+            number: 1, created: civilDate("2026-10-17"), salt: Data(repeating: 1, count: 16),
+            wrappedKey: Data(repeating: 2, count: 40))
+        let header = BackupHeader(
+            created: date("2026-10-16T19:14:00Z"), appVersion: "1.0", schemaVersion: Schema.latestVersion,
+            invoiceCount: 13, clientCount: 3, years: 2024...2026, deviceName: "Testovací MacBook",
+            keys: KeysFile(recoverySlots: [slot]))
+        let backup = InspectedBackup(
+            url: URL(fileURLWithPath: "/tmp/Záloha.ttbackup"), header: header, opensWithThisMac: false)
+        let zone = try #require(TimeZone(identifier: "Europe/Prague"))
+        let calls = Calls()
+        let card = BackupFileCard(backup: backup, timeZone: zone) { calls.another += 1 }
+        let label = "Vybrat jiný soubor"
+
+        try await withHostedView(card.padding(20), size: CGSize(width: 640, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityElement(labelled: label, in: window) != nil }
+                let link = try #require(accessibilityElement(labelled: label, in: window))
+                let role = link.accessibilityRole?()
+                #expect(role == .link, "VoiceOver reads it as \(String(describing: role))")
+                #expect(link.accessibilityPerformPress?() == true)
+                #expect(calls.another == 1)
             }
         }
     }
