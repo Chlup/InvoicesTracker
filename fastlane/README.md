@@ -199,7 +199,12 @@ tools, the API key and the Developer ID identity. A deploy also checks that the
 changelog is not empty, that the tag does not exist yet, that the build number
 is higher than the newest published one, and that the app's `SUFeedURL` is the
 official feed address and its `SUPublicEDKey` the public half of
-`SPARKLE_PRIVATE_KEY`. A branch whose app has no Sparkle cannot be deployed.
+`SPARKLE_PRIVATE_KEY`. A branch whose app has no Sparkle cannot be deployed. A
+branch that adds or changes a file under `.github/workflows/` compared with
+`main`, the default branch, cannot be deployed either: GitHub does not let the
+workflow's token publish a release of such a commit. The run reports it with the
+other problems before it builds anything, and checks it again when it makes the
+feed. Merge `main` into the branch, or land the workflow change on `main` first.
 
 ### What a run leaves
 
@@ -210,10 +215,13 @@ a deploy that fails later still leaves it. Find it at the bottom of the run's
 page. The run's summary names the commit, the version and the build.
 
 A deploy then makes the update feed, and a second job publishes the release
-"InvoicesTracker <version> (<build>)": the tag `v<version>-<build>` on the built
-commit, the changelog as its text, not a pre-release, with the DMG and
-`appcast.xml` attached. It is created as a draft, then published and marked as
-the Latest release. That is the moment installed copies can see it: they read
+"InvoicesTracker <version> (<build>)": the changelog as its text, not a
+pre-release, with the DMG and `appcast.xml` attached. The job creates it as a
+draft and attaches the two files to it. Then it makes the tag
+`v<version>-<build>` at the built commit, and only then publishes the draft and
+marks it as the Latest release. A tag of that name that exists by then stops the
+run before anything is published. Publishing is the moment installed copies can
+see the release: they read
 `https://github.com/Chlup/InvoicesTracker/releases/latest/download/appcast.xml`,
 so a copy with an older build is offered the update within a day, or at once
 from "Zkontrolovat aktualizace…". Each release's `appcast.xml` lists only its own
@@ -221,15 +229,43 @@ version.
 
 ### When a deploy fails
 
-The release is a draft until the very end. If the publish job fails or is
-stopped after it created the draft, it asks GitHub whether the release is still
-a draft and deletes it if so, so the next run starts clean. If its log says it
-could not delete the draft, or could not tell whether it is one, delete the
-leftover draft on the Releases page
-(https://github.com/Chlup/InvoicesTracker/releases) before you run again: a run
-stops at a release or a tag of the name it wants. A release that is not a draft
-any more was published; look at it before you do anything else. When the build
+The release is a draft until the very end, and the publish job removes only what
+it made. If it fails or is stopped after it created the draft, it asks GitHub
+whether the release is still a draft and deletes it if so. It finds the draft by
+its ID, the number GitHub gave the release when it was created, and never by its
+tag, so a draft of the same tag that someone else made is left alone. Then it
+deletes the tag `v<version>-<build>`, but only if it made that tag, the tag
+still points at the built commit and no published release uses it. So the next
+run starts clean.
+
+The job cannot always tell whether a draft or a tag is its own. A request may
+fail in a way that does not say whether GitHub did what it was asked, or the job
+may be stopped in the middle of one. Then its log says that GitHub may have made
+the draft or the tag all the same, and the job does not delete it, because one
+of that name could be someone else's. The log also says where to look when the
+job could not delete the draft or the tag, or could not tell whether it should.
+Check the Releases page
+(https://github.com/Chlup/InvoicesTracker/releases) or the Tags page
+(https://github.com/Chlup/InvoicesTracker/tags), and delete the leftover if the
+run made it, before you run again: a run stops at a release or a tag of the name
+it wants. A release that is not a draft any more was published. The job never
+touches it or its tag; look at it before you do anything else. When the build
 job fails nothing is published, and the DMG is still there if it got that far.
+
+If you cancel the run while the publish job is going, the job cleans up in the
+same way, if it gets to. GitHub kills the job 10 seconds after the cancel, and a
+call to GitHub that is running when you cancel is not interrupted: the cleanup
+starts when it ends. A long upload can take all 10 seconds. Then the cleanup is
+cut short or never starts: the draft stays, and so does the tag if the job had
+made it. Delete them as above before you run again.
+
+When creating the draft, making the tag or publishing fails with HTTP 404 or
+403, the next line of the job's log names the likely cause. GitHub answers that
+way when the built commit adds or changes a file under `.github/workflows/`
+compared with `main`, because it does not let the workflow's token publish such
+a release. This is the rule from [Starting a run](#starting-a-run): merge `main`
+into the branch, or land the workflow change on `main` first, and run the
+release again.
 
 ### Two warnings
 

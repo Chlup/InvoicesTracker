@@ -107,7 +107,8 @@ end
 
 desc "CI only (CI=true, RUNNER_TEMP): the dmg lane on a GitHub-hosted runner, for the release workflow."
 desc "version: and build: are the typed numbers and must be the branch's. deploy:true also checks what a release " \
-     "needs (changelog, tag, Latest release, the app's update settings). skip_tests:true skips the unit tests."
+     "needs (changelog, tag, Latest release, the branch's workflow files, the app's update settings). " \
+     "skip_tests:true skips the unit tests."
 desc "Signs from a temporary keychain made from DEVELOPER_ID_P12 and DEVELOPER_ID_P12_PASSWORD, removed at the end."
 lane :ci_dmg do |options|
   ci = ci_options(options)
@@ -133,7 +134,7 @@ end
 desc "Writes build/feed/ for publishing the DMG that ci_dmg made: the DMG, its signed Sparkle appcast.xml, " \
      "release-notes.md and release.json."
 desc "version: and build: name the DMG. RELEASE_CHANGELOG holds the notes, SPARKLE_PRIVATE_KEY signs the feed, " \
-     "and gh asks GitHub about the tag and the Latest release."
+     "and gh asks GitHub about the tag, the Latest release and the branch's workflow files."
 lane :sparkle_feed do |options|
   # The key leaves the environment before the lane starts any tool, and reaches
   # generate_appcast on standard input alone.
@@ -156,8 +157,9 @@ lane :sparkle_feed do |options|
   UI.user_error!("gh is not installed — brew install gh") unless installed?("gh")
 
   # The checks of a deploy once more, on the app inside the DMG this time: its
-  # SUFeedURL and SUPublicEDKey, the key, the changelog, the tag and the Latest
-  # release, whose tag goes into release.json for the publish job to compare.
+  # SUFeedURL and SUPublicEDKey, the key, the changelog, the tag, the workflow
+  # files of the checked-out commit and the Latest release, whose tag goes into
+  # release.json for the publish job to compare.
   UI.message("Checking the app in #{File.basename(dmg)}, the changelog, the key and GitHub...")
   check = deploy_check(version: version, build: build, gh_installed: true, info_plist: info_plist_in_dmg(dmg),
                        sparkle_key: sparkle_key)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "open3"
 
 # The README says how to set up and start the release workflow, and AGENTS.md points to it. The checks look for the
 # facts the text has to carry (names, commands, warnings), not for its wording or where it wraps a line.
@@ -8,6 +9,9 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
   REPO_ROOT = File.expand_path("../..", __dir__)
   README = File.join(REPO_ROOT, "fastlane", "README.md")
   AGENTS = File.join(REPO_ROOT, "AGENTS.md")
+
+  # The script that publishes the release. Its help says the same as the README about what it does.
+  PUBLISH_SCRIPT = File.join(REPO_ROOT, "Scripts", "ci", "publish-release.sh")
 
   # The secrets of the environment `release`, the ones the workflow reads.
   SECRETS = %w[
@@ -117,6 +121,13 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
     assert prose.match?(/spaces around it are ignored/i), "the README does not say that spaces around it are ignored"
   end
 
+  # GitHub does not let the workflow's token publish a release of a commit that adds or changes workflow files, so a
+  # deploy of such a branch stops before it builds anything. A reader who is stopped there looks for the way out.
+  def test_the_readme_says_a_deploy_needs_the_workflow_files_of_main
+    assert_match(%r{`\.github/workflows/`}, prose)
+    assert_match(/Merge `main` into the branch/, prose)
+  end
+
   def test_the_readme_says_where_the_results_land
     assert_includes section, "InvoicesTracker-<version>-<build>.dmg"
     assert_includes section, "v<version>-<build>"
@@ -124,9 +135,53 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
     assert_match(/Latest release/, prose)
   end
 
+  # GitHub would make the tag itself when the draft is published, and take a tag of that name that is there already
+  # as it is, whatever commit it names. So the run makes the tag, and a tag that someone pushed meanwhile stops it.
+  def test_the_readme_says_the_run_makes_the_tag_itself
+    assert_match(/makes the tag `v<version>-<build>` at the built commit/, prose)
+  end
+
+  # The publish job deletes what it made, its draft by the release ID and its tag, and leaves what it cannot tell is
+  # its own. Its log then says that GitHub may have made the draft or the tag, which is what the reader looks for, and
+  # where to look: the Releases page for a draft and the Tags page for a tag.
   def test_the_readme_says_what_to_do_after_a_failed_deploy
     assert_match(/draft/, prose)
     assert_match(/Releases page/, prose)
+    assert_match(/by its ID/, prose)
+    assert_match(/Tags page/, prose)
+    assert_includes section, "https://github.com/Chlup/InvoicesTracker/tags"
+    assert_match(/may have made/, prose)
+  end
+
+  # When a job is cancelled GitHub gives it 10 seconds, and the cleanup of the publish script starts only when the call
+  # to GitHub that is running has ended. A long upload can use up the time, and then the reader deletes the leftovers.
+  def test_the_readme_says_what_a_cancelled_publish_does_and_what_can_stop_its_cleanup
+    assert_match(/cancel/i, failure_prose)
+    assert_match(/10 seconds/, failure_prose)
+    assert_match(/upload/, failure_prose)
+  end
+
+  # GitHub answers 404 or 403, and names no reason, when it refuses the workflow's token a release of a commit that
+  # changes workflow files. The log of the publish job names the rule after the step that failed, and the README does.
+  def test_the_readme_says_what_a_404_or_403_in_the_log_of_the_publish_job_means
+    assert_match(/404 or 403/, failure_prose)
+    assert_match(%r{`\.github/workflows/`}, failure_prose)
+  end
+
+  # The help of the publish script is a third place that says what the script does, so it says the same as the README
+  # and the messages of the script: the order of its calls, the release ID, the tag that the script makes itself, what
+  # it deletes and what GitHub may have made all the same.
+  def test_the_help_of_the_publish_script_says_what_the_script_does_and_cleans_up
+    help = publish_script_help
+
+    assert_match(/through the API/, help)
+    assert_match(/release ID/, help)
+    assert_match(/makes the git tag of the release at the commit the build was made from/, help)
+    assert_match(/publishes the draft by its ID/, help)
+    assert_match(/this run made it.*points at the built commit.*no published release/, help)
+    assert_match(/may have made the draft or the tag/, help)
+    assert_match(/404 or 403/, help)
+    assert_includes help, ".github/workflows/"
   end
 
   def test_the_readme_warns_about_hand_made_releases_and_about_who_may_use_the_secrets
@@ -175,5 +230,19 @@ class InvoicesTrackerReleaseDocsTest < Minitest::Test
   # The section with every run of white space, a line break included, made one space, for sentences that wrap.
   def prose
     section.gsub(/\s+/, " ")
+  end
+
+  # The prose of the subsection "When a deploy fails": the text between its heading and the next heading of its level.
+  # Some words are in the section elsewhere (the queue "cancels" no run), so such words are looked for only here.
+  def failure_prose
+    section[/^### When a deploy fails$.*?(?=^### |\z)/m].to_s.gsub(/\s+/, " ")
+  end
+
+  # What `publish-release.sh --help` prints, with every run of white space made one space, for sentences that wrap.
+  def publish_script_help
+    stdout, stderr, status = Open3.capture3(PUBLISH_SCRIPT, "--help")
+
+    assert status.success?, "the help of the publish script failed: #{stderr}"
+    stdout.gsub(/\s+/, " ")
   end
 end

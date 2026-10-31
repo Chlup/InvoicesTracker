@@ -12,20 +12,39 @@ Publishes the release that the build job left in <feed-dir> as the Latest
 release of the repository. release.json in the folder names the other files:
 the disk image, the release notes, and appcast.xml, the update feed.
 
-The release is created as a draft with the disk image and appcast.xml attached,
-and only then published and marked Latest, the moment installed apps are
-offered the update. The script stops before it creates anything when a file
-does not match its SHA-256 in release.json, when a release or a git tag of that
-name exists, or when the Latest release is not the one the build saw. Once the
-draft exists, every call names it by the release ID that GitHub answered when it
-was created, never by its tag. A run that fails or is stopped after that asks
-GitHub whether the release is still a draft, and deletes it only if the answer
-is yes. A release that is not a draft any more, or that cannot be asked about,
-is left alone and reported, and the run still fails. A create that GitHub
-refuses makes no draft. One that fails in another way, answers without an ID, or
-is stopped before the ID was read may have made a draft all the same, which the
-script cannot tell from a draft of that tag that someone else made, so it
-deletes nothing and says where to look.
+The script stops before it creates anything when a file does not match its
+SHA-256 in release.json, when a release or a git tag of that name exists, or
+when the Latest release is not the one the build saw. Then it creates the
+release as a draft through the API, which answers the release ID, and from then
+on names the draft by that ID, never by its tag. It uploads the disk image and
+appcast.xml to the draft, makes the git tag of the release at the commit the
+build was made from, and only then publishes the draft by its ID and marks it
+Latest, the moment installed apps are offered the update. A tag of that name
+that exists by then stops the run before anything is published.
+
+A run that fails or is stopped once the draft exists asks GitHub whether the
+release is still a draft, and deletes it by its ID only if the answer is yes. A
+release that is not a draft any more, or that cannot be asked about, is left
+alone with its tag and reported, and the run still fails. When the release was a
+draft, or is gone, the run goes on to the git tag and deletes it only if this
+run made it, it still points at the built commit and no published release uses
+it. A tag that exists already when the script goes to make it is not the run's
+and stays. A draft or a tag that cannot be deleted is reported, with where to
+delete it.
+
+A create or a tag call that GitHub refuses with an HTTP status of 4xx made
+nothing. After one that fails in another way, a create that answers without an
+ID, or a stop during either call, GitHub may have made the draft or the tag all
+the same, which the script cannot tell from one that someone else made. The
+script does not delete that draft or tag, and says that GitHub may have made it
+and where to look.
+
+A create, a tag call or a publish that GitHub answers with HTTP 404 or 403 adds
+a line to its message that names the likely cause: GitHub answers like that when
+the built commit adds or changes files under .github/workflows/ compared with
+the default branch, which the workflow's token may not publish. Merge the
+default branch into the branch, or land the workflow change there first, then
+run the release again.
 
 Environment:
   GITHUB_REPOSITORY    the repository as owner/name (required)
