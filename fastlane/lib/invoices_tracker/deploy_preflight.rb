@@ -27,12 +27,17 @@ module InvoicesTracker
     # - `changelog`: the typed release notes.
     # - `tag_exists`: whether the git tag of this release is on GitHub already.
     # - `latest_release`: the LatestRelease, nil when nothing is published yet.
+    # - `workflow_changes`: the paths of the workflow files that the commit
+    #   being deployed adds or changes compared with the default branch, as
+    #   GitHubReleases.workflow_changes lists them. Empty or nil when there are
+    #   none, and when GitHub could not tell: that problem is reported where the
+    #   question was asked.
     # - `info_plist`: the Sparkle settings of the app's Info.plist as a Hash, nil
     #   when they could not be read.
     # - `sparkle_private_key`: the SPARKLE_PRIVATE_KEY secret, nil when it is not
     #   set. It is a secret, so the facts print without it.
     Facts = Struct.new(
-      :version, :build, :changelog, :tag_exists, :latest_release, :info_plist, :sparkle_private_key,
+      :version, :build, :changelog, :tag_exists, :latest_release, :workflow_changes, :info_plist, :sparkle_private_key,
       keyword_init: true
     ) do
       # The facts as text, without the private key: `Struct#inspect` would print
@@ -57,12 +62,12 @@ module InvoicesTracker
     module_function
 
     # Why the deploy must not go on, one sentence each, in the order of the
-    # checks: the changelog, the tag, the Latest release, the feed address of
-    # the app, the private key, the public key of the app. Empty when it may go
-    # on. A check that depends on a fact that could not be had is left out: an
-    # Info.plist that cannot be read says nothing about the feed address or the
-    # public key, and a private key that cannot be used has no public key to
-    # compare with.
+    # checks: the changelog, the tag, the Latest release, the workflow files of
+    # the branch, the feed address of the app, the private key, the public key
+    # of the app. Empty when it may go on. A check that depends on a fact that
+    # could not be had is left out: an Info.plist that cannot be read says
+    # nothing about the feed address or the public key, and a private key that
+    # cannot be used has no public key to compare with.
     def errors(facts)
       plist = facts.info_plist
       private_key = facts.sparkle_private_key
@@ -72,6 +77,7 @@ module InvoicesTracker
       found.concat(ReleaseNotes.errors(facts.changelog, deploy: true))
       found.concat(tag_errors(facts))
       found.concat(latest_release_errors(facts))
+      found.concat(workflow_errors(facts))
       if plist
         found.concat(feed_url_errors(plist))
       else
@@ -116,6 +122,22 @@ module InvoicesTracker
       ["build #{facts.build} is not higher than #{newest}, the newest published build"]
     end
     private_class_method :latest_release_errors
+
+    # The problem with the workflow files of the branch, if it adds or changes
+    # any compared with the default branch. GitHub does not let the token of the
+    # workflow publish a release of such a commit, so the deploy stops here,
+    # before anything is built, and not when the release is published. The
+    # paths are named in order. With none, or no list at all, there is nothing
+    # to report.
+    def workflow_errors(facts)
+      paths = facts.workflow_changes
+      return [] if paths.nil? || paths.empty?
+
+      ["the branch adds or changes #{paths.sort.join(', ')} compared with the default branch — " \
+       "GitHub would refuse to publish the release; merge the default branch into it, " \
+       "or land the workflow change there first"]
+    end
+    private_class_method :workflow_errors
 
     # The problem with the feed address of the app, if it is not the
     # repository's: apps installed already look for their updates there.

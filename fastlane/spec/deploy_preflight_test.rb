@@ -23,14 +23,21 @@ class InvoicesTrackerDeployPreflightTest < Minitest::Test
   APPCAST = File.read(File.join(__dir__, "fixtures", "appcast.xml"), encoding: Encoding::UTF_8)
   BUILD = "<sparkle:version>10</sparkle:version>"
 
+  # The problem of a branch that adds or changes workflow files, with `paths`,
+  # a text, where it names them.
+  WORKFLOW_PROBLEM = lambda do |paths|
+    "the branch adds or changes #{paths} compared with the default branch — GitHub would refuse to publish the " \
+      "release; merge the default branch into it, or land the workflow change there first"
+  end
+
   # Facts in which every check passes: a release nothing else has the tag of,
-  # and nothing published yet to be newer than. Each test breaks what it
-  # examines.
+  # nothing published yet to be newer than, and a branch that changes no
+  # workflow file. Each test breaks what it examines.
   def facts(**overrides)
     InvoicesTracker::DeployPreflight::Facts.new(
       **{
         version: "1.7.0", build: "10", changelog: "- x", tag_exists: false, latest_release: nil,
-        info_plist: plist, sparkle_private_key: PRIVATE_KEY
+        workflow_changes: [], info_plist: plist, sparkle_private_key: PRIVATE_KEY
       }.merge(overrides)
     )
   end
@@ -118,6 +125,22 @@ class InvoicesTrackerDeployPreflightTest < Minitest::Test
     assert_equal [], errors(build: "10a", latest_release: latest(feed_of_build(12)))
   end
 
+  def test_a_branch_that_changes_a_workflow_file_stops_a_deploy
+    assert_equal [WORKFLOW_PROBLEM.call(".github/workflows/release.yml")],
+                 errors(workflow_changes: [".github/workflows/release.yml"])
+  end
+
+  def test_every_changed_workflow_file_is_named_in_order
+    assert_equal [WORKFLOW_PROBLEM.call(".github/workflows/a.yml, .github/workflows/z.yml")],
+                 errors(workflow_changes: [".github/workflows/z.yml", ".github/workflows/a.yml"])
+  end
+
+  def test_no_workflow_changes_are_fine
+    [[], nil].each do |changes|
+      assert_equal [], errors(workflow_changes: changes), changes.inspect
+    end
+  end
+
   def test_an_unreadable_info_plist_stops_a_deploy
     assert_equal ["the app's Info.plist cannot be read — does the branch have Sparkle?"], errors(info_plist: nil)
   end
@@ -185,6 +208,7 @@ class InvoicesTrackerDeployPreflightTest < Minitest::Test
   def test_every_problem_is_listed_in_the_order_of_the_checks
     found = errors(
       changelog: "", tag_exists: true, latest_release: latest(feed_of_build(12)),
+      workflow_changes: [".github/workflows/release.yml"],
       info_plist: { "SUFeedURL" => "https://x" }, sparkle_private_key: "nope"
     )
 
@@ -192,6 +216,7 @@ class InvoicesTrackerDeployPreflightTest < Minitest::Test
       "the changelog is empty — a deploy needs release notes",
       "the release v1.7.0-10 already exists — choose a new build number",
       "build 10 is not higher than 12, the newest published build",
+      WORKFLOW_PROBLEM.call(".github/workflows/release.yml"),
       "SUFeedURL is https://x, not #{FEED_URL}",
       "SPARKLE_PRIVATE_KEY is not a Sparkle private key",
       "the app has no SUPublicEDKey — does the branch have Sparkle?"

@@ -761,27 +761,31 @@ end
 
 # What decides whether `version` and `build`, trimmed, may be released, as
 # DeployPreflight judges it: the changelog in RELEASE_CHANGELOG, whether the tag
-# is new, the Latest release, the app's update settings in `info_plist` (a
-# Hash, nil when it could not be read) and `sparkle_key`, the private key (nil
-# when SPARKLE_PRIVATE_KEY is not set). Returns a Hash: `latest_release`, nil
-# when nothing is published or GitHub could not tell, and `errors`, those of
-# asking GitHub first. The facts hold the key, so they are never printed whole.
+# is new, the Latest release, the workflow files that the checked-out commit
+# adds or changes, the app's update settings in `info_plist` (a Hash, nil when
+# it could not be read) and `sparkle_key`, the private key (nil when
+# SPARKLE_PRIVATE_KEY is not set). Returns a Hash: `latest_release`, nil when
+# nothing is published or GitHub could not tell, and `errors`, those of asking
+# GitHub first. The facts hold the key, so they are never printed whole.
 def deploy_check(version:, build:, gh_installed:, info_plist:, sparkle_key:)
   github = github_facts(version: version, build: build, gh_installed: gh_installed)
   facts = InvoicesTracker::DeployPreflight::Facts.new(
     version: version, build: build, changelog: ENV["RELEASE_CHANGELOG"], tag_exists: github[:tag_exists],
-    latest_release: github[:latest_release], info_plist: info_plist, sparkle_private_key: sparkle_key
+    latest_release: github[:latest_release], workflow_changes: github[:workflow_changes], info_plist: info_plist,
+    sparkle_private_key: sparkle_key
   )
   { latest_release: github[:latest_release], errors: github[:errors] + InvoicesTracker::DeployPreflight.errors(facts) }
 end
 
 # What GitHub says about the release of `version` and `build`: whether its tag
-# exists, and the Latest release. Without gh nothing is asked; the preflight
-# reports gh as missing. The tag goes into the address of a question, so it is
-# asked about only when both numbers are well formed; when they are not, that
-# is reported already. A question that fails is a problem of its own.
+# exists, the Latest release, and the workflow files that the checked-out
+# commit adds or changes compared with the default branch. Without gh nothing
+# is asked; the preflight reports gh as missing. The tag goes into the address
+# of a question, so it is asked about only when both numbers are well formed;
+# when they are not, that is reported already. A question that fails is a
+# problem of its own.
 def github_facts(version:, build:, gh_installed:)
-  facts = { tag_exists: false, latest_release: nil, errors: [] }
+  facts = { tag_exists: false, latest_release: nil, workflow_changes: [], errors: [] }
   return facts unless gh_installed
 
   repository = InvoicesTracker::Release::REPOSITORY
@@ -794,6 +798,10 @@ def github_facts(version:, build:, gh_installed:)
   facts[:latest_release] = asking_github(facts[:errors]) do
     InvoicesTracker::GitHubReleases.latest(repository: repository, gh: gh_cli)
   end
+  facts[:workflow_changes] = asking_github(facts[:errors]) do
+    InvoicesTracker::GitHubReleases.workflow_changes(repository: repository, commit: working_copy_snapshot.head,
+                                                     gh: gh_cli)
+  end || []
   facts
 end
 
