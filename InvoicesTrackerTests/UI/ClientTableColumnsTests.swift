@@ -2,73 +2,86 @@ import CoreGraphics
 import Testing
 @testable import InvoicesTracker
 
-/// How wide the columns of the table of Odběratelé are in a table of a given width: Odběratel, Měna a DPH, Jazyk
-/// faktury, Rok Y and the chevron, 14 points apart, then 16 points and the 112 of the button Nová faktura, with 20
-/// points before the first column and after the button. Odběratel, Měna a DPH and Rok Y share the room in the
-/// proportion of 2 to 1,3 to 1,2, as the fractions of a grid do, none of them narrower than its least width; Jazyk
-/// faktury and the chevron keep their widths.
+/// How wide the columns of the table of Odběratelé are in a table of a given width: Odběratel, Měna a DPH, Šablony and
+/// Přijato Y, on the grid of the prototype, 12 points apart, with 16 points before the first and after the last. They
+/// share the room in the proportions 2 : 1,3 : 0,8 : 1, as the fractions of a CSS grid do, and a column whose share is
+/// less than its least width keeps that width while the others share the rest.
 struct ClientTableColumnsTests {
-    private let least: [CGFloat] = [150, 176, 84, 166, 14]
+    /// The least width of every column: the prototype's, with Měna a DPH raised from 130 to hold the widest chip of a
+    /// currency with the longest VAT text (`ClientTableViewTests`).
+    private let least: [CGFloat] = [150, 176, 76, 110]
 
-    /// The width of a table whose columns are `columns` wide: the columns, 4 gaps of 14 points, the 16 points before
-    /// the button and its 112, and 2 margins of 20.
+    /// The share of each column of the room.
+    private let fractions: [CGFloat] = [2, 1.3, 0.8, 1]
+
+    /// The width of a table whose columns are `columns` wide: the columns, 3 gaps of 12 points and 2 margins of 16.
     private func width(holding columns: [CGFloat]) -> CGFloat {
-        columns.reduce(0, +) + 4 * 14 + 16 + 112 + 2 * 20
+        columns.reduce(0, +) + 3 * 12 + 2 * 16
     }
 
+    private func isClose(_ found: [CGFloat], to expected: [CGFloat]) -> Bool {
+        found.count == expected.count && zip(found, expected).allSatisfy { ($0 - $1).magnitude < 0.001 }
+    }
+
+    // MARK: The least width
+
+    @Test func theColumnsAreTheGridOfThePrototypeWithMenaADphRaised() {
+        #expect(ClientTableColumns.columns.map(\.minimum) == least)
+        #expect(ClientTableColumns.columns.map(\.fraction) == fractions)
+        #expect(ClientTableColumns.gap == 12)
+        #expect(DataTableMetrics.margin == 16)
+    }
+
+    /// The least width of the table is the least widths of its columns with the room between and around them, 580
+    /// points: 512 of columns, 36 of gaps and 32 of margins. The prototype's table is at least 540 points wide; Měna a
+    /// DPH, raised by 46 points, makes this one wider.
     @Test func theLeastWidthOfTheTableIsTheLeastWidthsOfItsColumnsWithTheRoomBetweenAndAroundThem() {
-        #expect(least.reduce(0, +) == 590)
-        #expect(ClientTableColumns.minimumWidth == 814)
-        #expect(ClientTableColumns.columnWidths(inTableOf: 814) == least)
+        #expect(least.reduce(0, +) == 512)
+        #expect(ClientTableColumns.minimumWidth == 580)
+        #expect(isClose(ClientTableColumns.columnWidths(inTableOf: 580), to: least))
     }
 
     @Test func belowItsLeastWidthTheColumnsKeepTheirLeastWidths() {
-        for table: CGFloat in [0, 300, 700, 813] {
-            #expect(ClientTableColumns.columnWidths(inTableOf: table) == least, "a table of \(table)")
+        for table: CGFloat in [0, 300, 512, 540, 579] {
+            #expect(isClose(ClientTableColumns.columnWidths(inTableOf: table), to: least), "a table of \(table)")
         }
     }
 
-    /// The card of the page of the least window with the sidebar as wide as it starts is 820 points wide, 6 more than
-    /// the least width of the table: Odběratel gets them, and the other columns keep their least widths.
-    @Test func inTheCardOfTheLeastWindowOdberatelHasTheLeastWidthAndTheRoomThatIsLeft() throws {
-        let columns = ClientTableColumns.columnWidths(inTableOf: 820)
+    // MARK: Sharing the room
 
-        let expected: [CGFloat] = [156, 176, 84, 166, 14]
-        try #require(columns.count == expected.count, "\(columns)")
-        for (column, wanted) in zip(columns, expected) {
-            #expect((column - wanted).magnitude < 0.001, "\(columns) is not \(expected)")
-        }
-    }
-
-    /// A table of 2 000 points: no column is held to its least width, so the three that grow have 2 : 1,3 : 1,2 of what
-    /// is left when the other two have their 98 points.
-    @Test func columnsThatGrowShareTheRoomInTheProportionOfTheirWeights() throws {
-        let unit = (2_000 - width(holding: [0, 0, 0, 0, 0]) - 84 - 14) / 4.5
+    /// A table of 2 000 points: no column is held to its least width, so the four have 2 : 1,3 : 0,8 : 1 of the room
+    /// that the gaps and the margins leave.
+    @Test func theColumnsShareTheRoomInTheProportionsOfTheirFractions() throws {
+        let unit = (2_000 - width(holding: [0, 0, 0, 0])) / 5.1
 
         let columns = ClientTableColumns.columnWidths(inTableOf: 2_000)
 
-        let expected: [CGFloat] = [2 * unit, 1.3 * unit, 84, 1.2 * unit, 14]
-        try #require(columns.count == expected.count, "\(columns)")
-        for (column, wanted) in zip(columns, expected) {
-            #expect((column - wanted).magnitude < 0.001, "\(columns) is not \(expected)")
-        }
+        let expected = fractions.map { $0 * unit }
+        #expect(isClose(columns, to: expected), "\(columns) is not \(expected)")
     }
 
-    /// A table of 940 points: Rok Y would have 164,8 points by its weight, less than its least width, so it keeps 166
-    /// and the other two share what is left in the proportion of their weights.
+    /// A table of 700 points: Měna a DPH would have 161 points by its fraction, less than its least width, so it keeps
+    /// 176 and the other three share what is left in the proportions of their fractions.
     @Test func aColumnWhoseShareIsUnderItsLeastWidthKeepsItAndTheOthersShareTheRest() throws {
-        let columns = ClientTableColumns.columnWidths(inTableOf: 940)
+        let columns = ClientTableColumns.columnWidths(inTableOf: 700)
 
-        try #require(columns.count == 5, "\(columns)")
-        let left = 940 - width(holding: [0, 0, 0, 0, 0]) - 84 - 14 - 166
-        #expect(columns[3] == 166)
-        #expect((columns[0] - left * 2 / 3.3).magnitude < 0.001)
-        #expect((columns[1] - left * 1.3 / 3.3).magnitude < 0.001)
-        #expect(columns[2] == 84 && columns[4] == 14)
+        let unit = (700 - width(holding: [0, 0, 0, 0]) - 176) / 3.8
+        let expected = [2 * unit, 176, 0.8 * unit, unit]
+        #expect(isClose(columns, to: expected), "\(columns) is not \(expected)")
+        #expect(columns[0] > least[0] && columns[2] > least[2] && columns[3] > least[3])
+    }
+
+    /// In the card of the least window with the detail closed, 828 points, no column is held.
+    @Test func inTheCardOfTheLeastWindowEveryColumnHasItsShare() {
+        let unit = (828 - width(holding: [0, 0, 0, 0])) / 5.1
+
+        let columns = ClientTableColumns.columnWidths(inTableOf: 828)
+
+        #expect(isClose(columns, to: fractions.map { $0 * unit }), "\(columns)")
     }
 
     @Test func theColumnsFillTheTableEachNotNarrowerThanItsLeastWidth() throws {
-        for table in stride(from: CGFloat(814), through: 3_000, by: 37) {
+        for table in stride(from: CGFloat(580), through: 3_000, by: 37) {
             let columns = ClientTableColumns.columnWidths(inTableOf: table)
             try #require(columns.count == least.count, "a table of \(table): \(columns)")
             #expect((width(holding: columns) - table).magnitude < 0.001, "a table of \(table)")
@@ -79,8 +92,8 @@ struct ClientTableColumnsTests {
     }
 
     @Test func noColumnNarrowsAsTheTableWidens() throws {
-        var previous = ClientTableColumns.columnWidths(inTableOf: 814)
-        for table in stride(from: CGFloat(820), through: 3_000, by: 10) {
+        var previous = ClientTableColumns.columnWidths(inTableOf: 580)
+        for table in stride(from: CGFloat(585), through: 3_000, by: 5) {
             let columns = ClientTableColumns.columnWidths(inTableOf: table)
             try #require(columns.count == previous.count && columns.count == least.count, "a table of \(table)")
             for index in columns.indices {

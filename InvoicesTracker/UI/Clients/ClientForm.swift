@@ -10,8 +10,8 @@ struct ClientForm: View {
     /// Zrušit.
     let cancel: () -> Void
 
-    /// The client was saved.
-    let saved: () -> Void
+    /// The client was saved: its id, which a new client got from the save.
+    let saved: (Int64) -> Void
 
     @FocusState private var nameFocused: Bool
 
@@ -142,8 +142,8 @@ struct ClientForm: View {
         Task {
             // A save that does not happen says why in the sheet (`errors` and `failure` of the model, which has logged
             // what the database said), so there is nothing more to do here.
-            if (try? await model.save()) != nil {
-                saved()
+            if let id = try? await model.save() {
+                saved(id)
             }
         }
     }

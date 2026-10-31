@@ -145,6 +145,33 @@ struct SummaryFigure: View {
     }
 }
 
+/// A row of a table is a button that looks the same while it is pressed: a click selects the row or clears the
+/// selection, and nothing more.
+struct TableRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+    }
+}
+
+/// What a table says in place of its rows, such as "Pro tento filtr tu nic není.": `text` in body and secondary text,
+/// in a row of its own under the names of the columns, with the hairline of a row across its top.
+struct TableEmptyRow: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(Typography.body)
+            .foregroundStyle(Palette.text2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) {
+                Hairline()
+            }
+    }
+}
+
 extension View {
     /// The style of the row of the names of the columns of a table: callout in semibold and secondary text, on one
     /// line, in a row 32 points high with the names in the middle of it. The table gives the row its sides

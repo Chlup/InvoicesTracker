@@ -1,79 +1,69 @@
 import CoreGraphics
 
-/// The columns of the table of Odběratelé, and how wide each of them is in a table of a given width. A row has five:
-/// Odběratel, Měna a DPH, Jazyk faktury, Rok Y and the chevron, with 14 points between each two of them. After them
-/// come 16 points and the room of the button Nová faktura, and the row has 20 points before its first column and
-/// after the button.
+/// The columns of the table of Odběratelé, and how wide each of them is in a table of a given width: the grid of the
+/// prototype, `minmax(150px, 2fr) minmax(130px, 1.3fr) minmax(76px, 0.8fr) minmax(110px, 1fr)`, with `gap` between two
+/// columns and `DataTableMetrics.margin` at either end. The four share the room of the table in the proportions of
+/// their fractions, as a CSS grid shares it: a column whose share is less than its least width keeps that width, and
+/// the others share the rest. They have no greatest width.
 ///
-/// Odběratel, Měna a DPH and Rok Y share the room in the proportion of their weights, as the fractions of a grid do,
-/// none of them narrower than its least width; Jazyk faktury and the chevron keep their widths. In the least width of
-/// the table every column has its least width. Below it the table keeps that width and scrolls sideways
-/// (`ClientTableView`).
+/// The least width of Měna a DPH is raised from the prototype's 130 points to 176, which holds the widest chip of a
+/// currency with the longest VAT text whole, "BGN" with "přenesená povinnost" (`ClientTableViewTests` measures it);
+/// the other least widths hold what their cells say as they are, and Odběratel gives way, its name cut short. So the
+/// least width of the table is 580 points, where the prototype's is 540, and below it the table keeps that width and
+/// scrolls sideways (`ClientTableView`), as it does in the least window with the detail open.
 nonisolated enum ClientTableColumns {
     /// A column of a row.
     struct Column: Sendable, Equatable {
-        /// The least width. A column with no weight has no other.
+        /// The least width.
         var minimum: CGFloat
 
-        /// The part of the room that the columns with a weight share that falls to this one, in the proportion of the
-        /// weights. A column with none keeps its least width.
-        var weight: CGFloat
+        /// The part of the room that falls to this column, in the proportions of the fractions of the columns that
+        /// share it.
+        var fraction: CGFloat
     }
 
-    /// Odběratel, Měna a DPH, Jazyk faktury, Rok Y and the chevron. The least widths of all but Odběratel hold what
-    /// their cells say whole (`ClientTableViewTests` measures them): in Měna a DPH the widest tag of a currency with
-    /// "přenesená povinnost", in Jazyk faktury its name, in Rok Y the longest of its two lines. Odběratel gives way:
-    /// its name and the line under it are cut short, so that the least width of the table, 814 points, fits the card
-    /// of the page of the least window (820 points).
+    /// Odběratel, Měna a DPH, Šablony and Přijato Y.
     static let columns: [Column] = [
-        Column(minimum: 150, weight: 2),
-        Column(minimum: 176, weight: 1.3),
-        Column(minimum: 84, weight: 0),
-        Column(minimum: 166, weight: 1.2),
-        Column(minimum: 14, weight: 0),
+        Column(minimum: 150, fraction: 2),
+        Column(minimum: 176, fraction: 1.3),
+        Column(minimum: 76, fraction: 0.8),
+        Column(minimum: 110, fraction: 1),
     ]
 
-    /// The room between two columns of a row.
-    static let columnGap: CGFloat = 14
+    /// The room between two columns: 12 points, as the grid of the prototype has it for this table.
+    static let gap: CGFloat = 12
 
-    /// The room between the chevron and the button Nová faktura.
-    static let buttonGap: CGFloat = 16
-
-    /// The room of the button Nová faktura, which stands at the end of it.
-    static let buttonRoom: CGFloat = 112
-
-    /// The room before the first column and after the button.
-    static let margin: CGFloat = 20
-
-    /// The least width of the table: the least widths of its columns, with the room between them and around them.
+    /// The least width of the table: the least widths of its columns, with the room between them and at its ends.
     static var minimumWidth: CGFloat {
         columns.map(\.minimum).reduce(0, +) + roomAroundColumns
     }
 
-    /// The room a row takes besides its columns.
+    /// The room a row takes besides its columns: between each two of them, and at its ends.
     private static var roomAroundColumns: CGFloat {
-        columnGap * CGFloat(columns.count - 1) + buttonGap + buttonRoom + 2 * margin
+        gap * CGFloat(columns.count - 1) + 2 * DataTableMetrics.margin
     }
 
-    /// The widths of the columns in a table `width` points wide, in their order. Below `minimumWidth` they are the
-    /// least widths.
+    /// The widths of the columns in a table `width` points wide, in their order; below `minimumWidth` those of a table
+    /// of that width. Each column is its fraction of the room in the proportions of the fractions of the columns that
+    /// share it, and a column whose part is less than its least width keeps that width and leaves the sharing, until
+    /// every column that shares has at least its least width, as the fractions of a CSS grid are worked out.
     static func columnWidths(inTableOf width: CGFloat) -> [CGFloat] {
         var widths = columns.map(\.minimum)
-        var sharing = columns.indices.filter { columns[$0].weight > 0 }
-        let kept = columns.indices.filter { columns[$0].weight == 0 }.map { widths[$0] }.reduce(0, +)
-        var room = max(width, minimumWidth) - roomAroundColumns - kept
-        // A column whose share of the room is under its least width keeps that width, and the others share what is
-        // left of the room.
+        var sharing = Array(columns.indices)
+        var left = max(width, minimumWidth) - roomAroundColumns
         while !sharing.isEmpty {
-            let unit = room / sharing.map { columns[$0].weight }.reduce(0, +)
-            guard let held = sharing.first(where: { columns[$0].weight * unit < columns[$0].minimum }) else {
+            let share = left / sharing.map { columns[$0].fraction }.reduce(0, +)
+            let tooNarrow = sharing.filter { share * columns[$0].fraction < columns[$0].minimum }
+            guard !tooNarrow.isEmpty else {
                 for index in sharing {
-                    widths[index] = columns[index].weight * unit
+                    widths[index] = share * columns[index].fraction
                 }
                 break
             }
-            room -= columns[held].minimum
-            sharing.removeAll { $0 == held }
+            for index in tooNarrow {
+                left -= columns[index].minimum
+            }
+            sharing.removeAll { tooNarrow.contains($0) }
         }
         return widths
     }

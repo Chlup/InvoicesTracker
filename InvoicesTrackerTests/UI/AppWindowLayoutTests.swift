@@ -19,11 +19,15 @@ import Testing
 /// reporting year and no date or simulation controls. Reporting follows month end automatically while income headings
 /// and new income adjustments keep the real cash cutoff. Every item of the toolbar fits it at the least room on every
 /// screen. The page of Nastavení stands still while a tab loads: the switcher of the tabs does not move, and the tabs
-/// that have no cards until they have read their data say "Načítám…". Odběratelé is a table of rows of one height that
-/// fits the least window and scrolls sideways below its least width, and a click on a row, anywhere but on its Nová
-/// faktura, opens the form of its client. Zálohy a odpočty fits with the note about rent (§ 9) under the menu of its
-/// rate of 30 %, whole and clear of the box of the reduced base, and with the cards of a family whose texts are the
-/// longest, every text whole, and so does the dialog of a child, a sheet with the lock after inactivity over it.
+/// that have no cards until they have read their data say "Načítám…". Odběratelé is laid out as Faktury is: under Nový
+/// odběratel the card of its table, with the summary row on top and rows of one line, 40 points high, reaches down to
+/// the bottom margin of the page; a click on a row, anywhere on it, opens the detail of its client beside the card and
+/// not the form, and a second click closes it; the selection stays when the year changes, and a client saved in the
+/// form of Nový odběratel becomes the selected one, its row scrolled into view. With the detail open in the least
+/// window the table scrolls sideways in its card, and a wheel over the rows scrolls them up and down and the table
+/// sideways. Zálohy a odpočty fits with the note about rent (§ 9) under the menu of its rate of 30 %, whole and clear
+/// of the box of the reduced base, and with the cards of a family whose texts are the longest, every text whole, and
+/// so does the dialog of a child, a sheet with the lock after inactivity over it.
 /// Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the family as tall as its texts
 /// need and the bar of the tax whole. The Simulátor fits with the cards of the family after its deductions, empty and
 /// with the sample family copied into them, and with a secondary activity chosen and the rate of 30 % taken from the
@@ -851,14 +855,23 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// What is wrong with the summary row and the rows of the table of Faktury in `window`, in words: the summary row,
-    /// which VoiceOver reads as "Souhrn", is not across the top of the card of the table, as wide as the card and with
-    /// no more than its own margin above it, the first row does not start 32 points under it (the names of the columns
-    /// are between them), or one of the first five rows is not 40 points high and right under the row before it. Empty
-    /// when they are laid out so. Needs the accessibility elements (`withAccessibilityElements(_:)`).
+    /// What is wrong with the summary row and the rows of the table of Faktury in `window`, in words
+    /// (`problems(ofTheSummaryAndTheRowsOf:rows:)`). Needs the accessibility elements
+    /// (`withAccessibilityElements(_:)`).
     private func problems(ofTheSummaryAndTheRowsIn window: NSWindow) -> [String] {
-        guard let card = invoiceList(in: window)?.accessibilityFrame?(),
-            let summary = accessibilityElement(labelled: "Souhrn", in: window)?.accessibilityFrame?()
+        problems(ofTheSummaryAndTheRowsOf: invoiceList(in: window), rows: invoiceRows(in: window))
+    }
+
+    /// What is wrong with the summary row and the rows of a table whose card VoiceOver reads as `list`, with the rows
+    /// `rows` from the top, in words: the summary row in the card, which VoiceOver reads as "Souhrn", is not across the
+    /// top of the card, as wide as the card and with no more than its own margin above it, the first row does not start
+    /// 32 points under it (the names of the columns are between them), or one of the first five rows is not 40 points
+    /// high and right under the row before it. Empty when they are laid out so. Faktury and Odběratelé have such a
+    /// table.
+    private func problems(ofTheSummaryAndTheRowsOf list: AnyObject?, rows: [AnyObject]) -> [String] {
+        guard let list, let card = list.accessibilityFrame?(),
+            let summary = descendants(of: list).first(where: { ($0.accessibilityLabel?() ?? "") == "Souhrn" })?
+                .accessibilityFrame?()
         else {
             return ["The page has no card of the table with a summary row"]
         }
@@ -871,7 +884,7 @@ struct AppWindowLayoutTests {
         {
             problems.append("The summary row is not across the top of the card: \(summary) in \(card)")
         }
-        let rows = invoiceRows(in: window).prefix(5).compactMap { $0.accessibilityFrame?() }
+        let rows = rows.prefix(5).compactMap { $0.accessibilityFrame?() }
         guard let first = rows.first else {
             return problems + ["The table has no rows"]
         }
@@ -2498,8 +2511,30 @@ struct AppWindowLayoutTests {
 
     // MARK: Odběratelé and Šablony faktur
 
-    @Test func odberateleFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
-        try await expectCardsFit(on: .clients, titled: "Odběratelé")
+    /// Odběratelé fits the window at the least room, at a large size and at the least room again, with the detail of a
+    /// client closed and open, on the data of `EditorFixture`: Nový odběratel stands at the right margin of the page
+    /// above the card of the table, which reaches down to the bottom margin of the page, and the detail stands beside
+    /// the card, as Faktury lays its page out (`problems(ofOdberateleIn:detailOpen:)`).
+    @Test(arguments: [false, true])
+    func odberateleFitTheWindowAtTheLeastRoomAndAtALargeSize(detailOpen: Bool) async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    if detailOpen {
+                        press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                        try await waitUntil { clientDetailFrame(in: window) != nil }
+                    }
+
+                    try await expectSettled(window) { problems(ofOdberateleIn: window, detailOpen: detailOpen) }
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) { problems(ofOdberateleIn: window, detailOpen: detailOpen) }
+                    window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) { problems(ofOdberateleIn: window, detailOpen: detailOpen) }
+                }
+            }
+        }
     }
 
     @Test func sablonyFakturFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
@@ -2507,8 +2542,8 @@ struct AppWindowLayoutTests {
     }
 
     /// Shows the screen `screen` in the window at the least room, at a large size and at the least room again, on the
-    /// data of `EditorFixture`: three clients, which Odběratelé shows as the rows of a table, and two templates, which
-    /// make two or three columns of cards by the width of the window. Records an issue for every problem of the page.
+    /// data of `EditorFixture`, whose two templates make two or three columns of cards on Šablony faktur by the width
+    /// of the window. Records an issue for every problem of the page.
     private func expectCardsFit(on screen: Screen, titled title: String) async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -2530,14 +2565,14 @@ struct AppWindowLayoutTests {
     // MARK: The table of Odběratelé
 
     /// The table of Odběratelé is as wide as its card, with nothing to scroll sideways, in a large window and in the
-    /// least window with the sidebar as wide as it starts. The page of the least window is 868 points wide, its card
-    /// 828, and the least width of the table is 814: the least widths of its columns, 590, with 14 points between each
-    /// two of them, the button Nová faktura with 16 points before it and 112 of its own, and 20 points at either end.
-    /// So the button of every row is whole there. Its rows are of one height, 60 points, whatever they say: among the
-    /// clients of the fixture stand one that says as little as can be and one whose name is far too long for its
-    /// column. Below its least width the table keeps it and scrolls sideways in its card: with the sidebar as wide as
-    /// it goes (320 points, the card 740).
-    @Test func theClientTableFitsAndScrollsBelowItsMinimum() async throws {
+    /// least window while the detail is closed: the card of the least window is 828 points wide, more than the least
+    /// width of the table (`ClientTableColumns`). The card starts with its summary row, above the names of the columns
+    /// (32 points), and its rows are one line each, 40 points high, whatever they say: among the clients of the fixture
+    /// stand one that says as little as can be and one whose name is far too long for its column. With the detail open
+    /// the card of the least window is 512 points wide, narrower than the table: the detail stays beside the card, and
+    /// the table keeps its least width and scrolls sideways in the card under the summary row, as the table of Faktury
+    /// does. A large window holds the table and the detail side by side again.
+    @Test func theClientTableFillsItsCardAndScrollsSidewaysBesideTheDetailInTheLeastWindow() async throws {
         try await EditorFixture.with { f in
             try await f.database.saveClient(Client(name: "Bez údajů", country: ""))
             let longName = String(repeating: "Obchodní společnost s velmi dlouhým názvem ", count: 4)
@@ -2549,54 +2584,59 @@ struct AppWindowLayoutTests {
                     f.app.screen = .clients
                     try await waitUntil { clientRows(in: window).count == 5 }
 
-                    // A large window: its page is 1 368 points wide, its card 1 328.
+                    // A large window: its card is 1 328 points wide.
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
                             + problems(ofTheClientTableFillingItsCardIn: window)
-                            + problems(ofTheNovaFakturaButtonsOfTheClientTableIn: window, count: 5)
-                            + viewsOutside(window).map { "Outside the window: \($0)" }
+                            + problems(ofOdberateleIn: window, detailOpen: false)
+                            + problems(ofTheSummaryAndTheRowsOf: clientList(in: window), rows: clientRows(in: window))
                     }
-                    let large = try #require(clientTableScrollView(in: window)?.documentView).frame.width
-                    #expect((large - 1_328).magnitude <= 1)
+                    #expect((try clientTableWidth(in: window) - 1_328).magnitude <= 1)
 
-                    // The least window: its card of 828 points holds the least width of the table, 814, so the table
-                    // is as wide as its card, nothing scrolls sideways, and every button Nová faktura is whole.
+                    // The least window: its card of 828 points holds the table, so nothing scrolls sideways.
                     window.setContentSize(AppWindowSize.minimum)
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
                             + problems(ofTheClientTableFillingItsCardIn: window)
-                            + problems(ofTheNovaFakturaButtonsOfTheClientTableIn: window, count: 5)
-                            + viewsOutside(window).map { "Outside the window: \($0)" }
+                            + problems(ofOdberateleIn: window, detailOpen: false)
                     }
                     let card = try #require(clientTableScrollView(in: window)).contentView.bounds.width
                     #expect((card - 828).magnitude <= 1)
 
-                    // The sidebar as wide as it goes: the card shrinks to 740 points, and the table keeps its least
-                    // width and scrolls sideways.
-                    widenSidebar(of: window)
+                    // The detail open: the card of 512 points is narrower than the table, which keeps its least
+                    // width and scrolls sideways, under the summary row, which stays as wide as the card.
+                    press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                    try await waitUntil { clientDetailFrame(in: window) != nil }
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
                             + problems(ofTheClientTableScrollingSidewaysIn: window)
+                            + problems(ofOdberateleIn: window, detailOpen: true)
+                            + problems(ofTheSummaryAndTheRowsOf: clientList(in: window), rows: clientRows(in: window))
                     }
                     let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
-                    #expect((narrow - 740).magnitude <= 1)
+                    #expect((narrow - 512).magnitude <= 1)
 
-                    // A large window again: the table is as wide as its card, as it was.
+                    // A large window again: the card beside the detail, 1 012 points, holds the table.
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
                             + problems(ofTheClientTableFillingItsCardIn: window)
+                            + problems(ofOdberateleIn: window, detailOpen: true)
                     }
+                    #expect((try clientTableWidth(in: window) - 1_012).magnitude <= 1)
                 }
             }
         }
     }
 
-    /// A click on a row of the table of Odběratelé opens the form of its client, "Upravit odběratele", as a sheet, and
-    /// Zrušit closes it. Nová faktura of a row, which is a button of its own, opens the editor on a blank invoice for
-    /// that client, on Faktury, and no form. VoiceOver presses the buttons as a click does
-    /// (`aMouseClickAnywhereOnAClientRowButOnNovaFakturaOpensItsForm` clicks them).
-    @Test func aClickOnAClientRowOpensItsFormAndNovaFakturaStartsAnInvoiceForThatClient() async throws {
+    /// A click on a row of the table of Odběratelé selects it and opens the detail of its client beside the table, not
+    /// the form of the client; nothing is selected before. The detail is titled with the name of the client and has
+    /// Nová faktura and Upravit, buttons of 28 points. Upravit opens the form of the client, "Upravit odběratele", as a
+    /// sheet, and Zrušit closes it with the detail still open. A second click on the row closes the detail, and so does
+    /// its ✕, "Zavřít detail"; a click on another row opens the detail of that client. Nová faktura of the detail opens
+    /// the editor on a blank invoice for its client, on Faktury. VoiceOver presses the rows and the buttons as a click
+    /// does (`aMouseClickAnywhereOnAClientRowOpensItsDetailAndNoForm` clicks a row with the mouse).
+    @Test func aClickOnAClientRowOpensItsDetailAndNotItsForm() async throws {
         // The sheet takes the focus of the window, so the test takes its turn among the tests that type.
         try await whileTypingAlone {
             try await EditorFixture.with { f in
@@ -2604,8 +2644,24 @@ struct AppWindowLayoutTests {
                     f.app.screen = .clients
                     try await withAccessibilityElements {
                         try await waitUntil { clientRows(in: window).count == 3 }
+                        try await layOut(window)
+                        #expect(selectedClientRow(in: window) == nil)
+                        #expect(clientDetailFrame(in: window) == nil)
+                        let size = window.frame.size
 
                         press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                        try await waitUntil { clientDetailFrame(in: window) != nil }
+                        #expect(window.attachedSheet == nil)
+                        #expect(isClientSelected("Bravo Labs, Inc.", in: window))
+                        #expect(clientDetailShows("Bravo Labs, Inc.", in: window))
+                        #expect(window.frame.size == size)
+                        for label in ["Nová faktura pro Bravo Labs, Inc.", "Upravit", "Zavřít detail"] {
+                            let height = buttonFrame(label, in: window)?.height ?? 0
+                            #expect((height - DesignMetrics.smallControlHeight).magnitude < 0.5, "\(label): \(height)")
+                        }
+
+                        // Upravit opens the form of the client; Zrušit closes it, and the detail stays.
+                        press(try #require(accessibilityButton(labelled: "Upravit", in: window)))
                         try await waitUntil { window.attachedSheet != nil }
                         let sheet = try #require(window.attachedSheet)
                         // The title of the sheet is a heading, which VoiceOver reads by its label.
@@ -2613,8 +2669,24 @@ struct AppWindowLayoutTests {
                         #expect(showsText("Bravo Labs, Inc.", in: sheet))
                         press(try #require(accessibilityButton(labelled: "Zrušit", in: sheet)))
                         try await waitUntil { window.attachedSheet == nil }
-                        #expect(f.app.screen == .clients)
+                        #expect(clientDetailShows("Bravo Labs, Inc.", in: window))
 
+                        // A second click on the row closes the detail.
+                        press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                        try await waitUntil { clientDetailFrame(in: window) == nil }
+                        #expect(selectedClientRow(in: window) == nil)
+
+                        // Another row opens the detail of its client, and the ✕ closes it.
+                        press(try #require(clientRow(named: "Cetus Data s.r.o.", in: window)))
+                        try await waitUntil { clientDetailShows("Cetus Data s.r.o.", in: window) }
+                        #expect(isClientSelected("Cetus Data s.r.o.", in: window))
+                        press(try #require(accessibilityButton(labelled: "Zavřít detail", in: window)))
+                        try await waitUntil { clientDetailFrame(in: window) == nil }
+                        #expect(selectedClientRow(in: window) == nil)
+
+                        // Nová faktura of the detail starts a blank invoice for its client, and no form.
+                        press(try #require(clientRow(named: "Cetus Data s.r.o.", in: window)))
+                        try await waitUntil { clientDetailFrame(in: window) != nil }
                         let newInvoice = "Nová faktura pro Cetus Data s.r.o."
                         press(try #require(accessibilityButton(labelled: newInvoice, in: window)))
                         try await waitUntil { f.app.screen == .invoices }
@@ -2626,64 +2698,127 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// A mouse click anywhere on a row of the table of Odběratelé but on its Nová faktura opens the form of its client:
-    /// on the name, on the chevron, between the chevron and the button, and in the margin at either end of the row.
-    /// A click on Nová faktura starts the invoice and opens no form: the button lies over the row, and the click is its
-    /// alone.
-    @Test func aMouseClickAnywhereOnAClientRowButOnNovaFakturaOpensItsForm() async throws {
-        // The sheet takes the focus of the window, so the test takes its turn among the tests that type.
+    /// A mouse click anywhere on a row of the table of Odběratelé opens the detail of its client and no form, and a
+    /// second click on the row closes the detail: on the name, on the chip of the currency, on the templates, on the
+    /// money received, and in the margin at either end of the row. The detail narrows the card of the table, so each
+    /// place is found again in the row as it is once the detail is open.
+    @Test func aMouseClickAnywhereOnAClientRowOpensItsDetailAndNoForm() async throws {
+        // The click makes the window the key window, so the test takes its turn among the tests that type.
         try await whileTypingAlone {
             try await EditorFixture.with { f in
                 try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
                     f.app.screen = .clients
                     try await withAccessibilityElements {
                         try await waitUntil { clientRows(in: window).count == 3 }
-                        try await layOut(window)
-                        let row = try #require(clientRow(named: "Bravo Labs, Inc.", in: window))
-                        let rowFrame = try #require(row.accessibilityFrame?())
-                        let newInvoice = try #require(
-                            accessibilityButton(labelled: "Nová faktura pro Bravo Labs, Inc.", in: window))
-                        let buttonFrame = try #require(newInvoice.accessibilityFrame?())
-
-                        // Across the middle of the row: the name; the chevron, at its end; the room between the
-                        // chevron and the button; and the margins at the two ends of the row.
-                        let places: [(String, CGFloat)] = [
-                            ("the name", rowFrame.minX + 150), ("the chevron", rowFrame.maxX - 155),
-                            ("the room before the button", buttonFrame.minX - 8),
-                            ("the margin before the row", rowFrame.minX + 8),
-                            ("the margin after the button", rowFrame.maxX - 8),
+                        // Across the middle of the row, from its leading edge or back from its trailing edge: the
+                        // name, the chip of the currency, the templates, the money received, and the margins.
+                        let places: [(String, (CGRect) -> CGFloat)] = [
+                            ("the margin before the name", { $0.minX + 6 }),
+                            ("the name", { $0.minX + 40 }),
+                            ("the chip of the currency", { $0.minX + $0.width * 0.4 }),
+                            ("the templates", { $0.minX + $0.width * 0.7 }),
+                            ("the money received", { $0.maxX - 40 }),
+                            ("the margin after the money received", { $0.maxX - 6 }),
                         ]
-                        for (place, x) in places {
-                            try await click(atX: x, y: rowFrame.midY, in: window)
-                            try await waitUntil { window.attachedSheet != nil }
-                            let sheet = try #require(window.attachedSheet, "a click on \(place)")
-                            // The title of the sheet is a heading, which VoiceOver reads by its label.
-                            try await waitUntil {
-                                accessibilityElement(labelled: "Upravit odběratele", in: sheet) != nil
-                            }
-                            #expect(showsText("Bravo Labs, Inc.", in: sheet), "a click on \(place)")
-                            press(try #require(accessibilityButton(labelled: "Zrušit", in: sheet)))
-                            try await waitUntil { window.attachedSheet == nil }
+                        @MainActor func bravoRowFrame(in window: NSWindow) -> CGRect? {
+                            clientRow(named: "Bravo Labs, Inc.", in: window)?.accessibilityFrame?()
                         }
-                        #expect(f.app.screen == .clients)
+                        for (place, x) in places {
+                            try await layOut(window)
+                            let closed = try #require(bravoRowFrame(in: window))
+                            try await click(atX: x(closed), y: closed.midY, in: window)
+                            try await waitUntil { clientDetailFrame(in: window) != nil }
+                            #expect(isClientSelected("Bravo Labs, Inc.", in: window), "a click on \(place)")
+                            #expect(window.attachedSheet == nil, "a click on \(place)")
 
-                        try await click(atX: buttonFrame.midX, y: buttonFrame.midY, in: window)
-                        try await waitUntil { f.app.screen == .invoices }
-                        #expect(f.app.editorRequest == .new(templateID: nil, clientID: f.bravoID))
+                            try await layOut(window)
+                            let open = try #require(bravoRowFrame(in: window))
+                            try await click(atX: x(open), y: open.midY, in: window)
+                            try await waitUntil { clientDetailFrame(in: window) == nil }
+                            #expect(selectedClientRow(in: window) == nil, "a second click on \(place)")
+                        }
                         #expect(window.attachedSheet == nil)
+                        #expect(f.app.screen == .clients)
                     }
                 }
             }
         }
     }
 
-    /// The table of Odběratelé stands in the scroll view of the page, which scrolls up and down, and scrolls sideways
-    /// in its card where it is wider than the card. A wheel over the table moves what can move: an up-and-down one
-    /// moves the page, as the table has nothing to scroll that way, and a sideways one moves the table and leaves the
-    /// page.
-    @Test func aWheelOverTheClientTableScrollsThePageUpAndDownAndTheTableSideways() async throws {
+    /// A client saved in the form of Nový odběratel becomes the selected one: once the sheet closes, its row is
+    /// selected and shown whole, and the detail beside the table is that of the new client. The card of the least
+    /// window shows a dozen rows, so with twenty clients added to the three of the fixture the row of the new client,
+    /// whose name comes last, is far below them until the rows scroll to it.
+    @Test func aClientSavedInTheFormOfNovyOdberatelBecomesTheSelectedOneAndItsRowIsShown() async throws {
+        // The sheet takes the focus of the window, and the test types into it.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                for number in 1...20 {
+                    try await f.database.saveClient(Client(name: "Klient \(number)", city: "Brno"))
+                }
+                await f.app.didWrite()
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    f.app.screen = .clients
+                    try await withAccessibilityElements {
+                        try await waitUntil { clientRows(in: window).count == 23 }
+
+                        press(try #require(accessibilityButton(labelled: "Nový odběratel", in: window)))
+                        try await waitUntil { window.attachedSheet != nil }
+                        let sheet = try #require(window.attachedSheet)
+                        try await waitUntil { textField(labelled: "Název", in: sheet) != nil }
+                        let name = try #require(textField(labelled: "Název", in: sheet))
+                        try type("Žluťoučký kůň s.r.o.", into: name, in: sheet)
+                        press(try #require(accessibilityButton(labelled: "Uložit odběratele", in: sheet)))
+                        try await waitUntil { window.attachedSheet == nil }
+
+                        try await waitUntil { isClientSelected("Žluťoučký kůň s.r.o.", in: window) }
+                        #expect(clientRows(in: window).count == 24)
+                        #expect(clientDetailShows("Žluťoučký kůň s.r.o.", in: window))
+                        try await expectSettled(window) { problems(ofTheSelectedClientRowShownIn: window) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The selected client stays selected when the year in the toolbar changes, and its row says what the client paid
+    /// in the year shown: Bravo was paid 305 727 Kč in 2026 and nothing in 2025, which its row then leaves out.
+    @Test func theSelectedClientStaysSelectedWhenTheYearChanges() async throws {
         try await EditorFixture.with { f in
-            // Clients enough to make the page taller than the least window.
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                    try await waitUntil { clientDetailShows("Bravo Labs, Inc.", in: window) }
+                    let received = "Přijato 2026 305\u{00A0}727\u{00A0}Kč"
+                    #expect(clientRowLabel(named: "Bravo Labs, Inc.", in: window)?.contains(received) == true)
+
+                    f.app.selectYear(2025)
+                    try await waitUntil {
+                        clientRowLabel(named: "Bravo Labs, Inc.", in: window)?.contains("Přijato") == false
+                    }
+                    #expect(isClientSelected("Bravo Labs, Inc.", in: window))
+                    #expect(clientDetailShows("Bravo Labs, Inc.", in: window))
+
+                    f.app.selectYear(2026)
+                    try await waitUntil {
+                        clientRowLabel(named: "Bravo Labs, Inc.", in: window)?.contains(received) == true
+                    }
+                    #expect(isClientSelected("Bravo Labs, Inc.", in: window))
+                    #expect(clientDetailShows("Bravo Labs, Inc.", in: window))
+                }
+            }
+        }
+    }
+
+    /// The rows of the table of Odběratelé scroll up and down in its card, under the names of the columns, and the
+    /// table scrolls sideways where it is wider than its card, as the table of Faktury does. A wheel over the rows
+    /// moves what can move: an up-and-down one moves the rows and leaves the table where it is sideways, and a sideways
+    /// one moves the table, the names of the columns with the rows, and leaves the rows where they are up and down.
+    @Test func aWheelOverTheClientTableScrollsItsRowsUpAndDownAndTheTableSideways() async throws {
+        try await EditorFixture.with { f in
+            // Clients enough for more rows than the card of the least window shows.
             for number in 1...20 {
                 try await f.database.saveClient(Client(name: "Klient \(number)", city: "Brno"))
             }
@@ -2692,25 +2827,26 @@ struct AppWindowLayoutTests {
                 f.app.screen = .clients
                 try await withAccessibilityElements {
                     try await waitUntil { clientRows(in: window).count == 23 }
+                    // The detail beside the card of the least window leaves the card narrower than the table.
+                    press(try #require(clientRow(named: "Alfa Systems s.r.o.", in: window)))
+                    try await waitUntil { clientDetailFrame(in: window) != nil }
                 }
-                // The card of the least window holds the table, so the sidebar is widened until it does not.
-                widenSidebar(of: window)
                 try await expectSettled(window) { problems(ofTheClientTableScrollingSidewaysIn: window) }
                 let table = try #require(clientTableScrollView(in: window))
-                let page = try #require(table.enclosingScrollView)
-                let page0 = page.contentView.bounds.origin
+                let rows = try #require(clientRowsScrollView(in: window))
+                let rows0 = rows.contentView.bounds.origin
                 #expect(table.contentView.bounds.origin == .zero)
 
-                table.scrollWheel(with: try wheelEvent(upAndDown: -80, sideways: 0))
-                try await waitUntil { page.contentView.bounds.origin != page0 }
-                let page1 = page.contentView.bounds.origin
-                #expect(page1.x == page0.x && page1.y != page0.y)
+                rows.scrollWheel(with: try wheelEvent(upAndDown: -80, sideways: 0))
+                try await waitUntil { rows.contentView.bounds.origin != rows0 }
+                let rows1 = rows.contentView.bounds.origin
+                #expect(rows1.x == rows0.x && rows1.y != rows0.y)
                 #expect(table.contentView.bounds.origin == .zero)
 
-                table.scrollWheel(with: try wheelEvent(upAndDown: 0, sideways: -80))
+                rows.scrollWheel(with: try wheelEvent(upAndDown: 0, sideways: -80))
                 try await waitUntil { table.contentView.bounds.origin.x != 0 }
                 #expect(table.contentView.bounds.origin.y == 0)
-                #expect(page.contentView.bounds.origin == page1)
+                #expect(rows.contentView.bounds.origin == rows1)
             }
         }
     }
@@ -2763,22 +2899,19 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The table of Odběratelé in `window` as VoiceOver reads it, "Seznam odběratelů". Nil while the page has no table,
-    /// and while the views make no accessibility elements.
+    /// The table of Odběratelé in `window` as VoiceOver reads it, "Seznam odběratelů": its card, with the summary row
+    /// and the table under it. Nil while the page has no table, and while the views make no accessibility elements.
     private func clientList(in window: NSWindow) -> AnyObject? {
         accessibilityElement(labelled: "Seznam odběratelů", in: window)
     }
 
     /// The rows of the table of Odběratelé in `window`, from the top: the buttons in it that VoiceOver reads with the
-    /// name of a client and the rest of its row. (Nová faktura of each row is a button of its own, which is not a row,
-    /// and the arrows of a scroller are buttons with no label.) Empty while the views make no accessibility elements.
+    /// name of a client and the rest of its row. (The arrows of a scroller are buttons with no label.) Empty while the
+    /// views make no accessibility elements.
     private func clientRows(in window: NSWindow) -> [AnyObject] {
         guard let list = clientList(in: window) else { return [] }
         return descendants(of: list).filter { element in
-            guard element.accessibilityRole?() == .button, let label = element.accessibilityLabel?() else {
-                return false
-            }
-            return !label.isEmpty && !label.hasPrefix("Nová faktura pro ")
+            element.accessibilityRole?() == .button && !(element.accessibilityLabel?() ?? "").isEmpty
         }
     }
 
@@ -2787,59 +2920,186 @@ struct AppWindowLayoutTests {
         clientRows(in: window).first { ($0.accessibilityLabel?() ?? "").hasPrefix(name + ",") }
     }
 
+    /// What VoiceOver reads for the row of the client called `name` in the table of Odběratelé in `window`, or nil
+    /// where the table has no such row.
+    private func clientRowLabel(named name: String, in window: NSWindow) -> String? {
+        clientRow(named: name, in: window).flatMap { $0.accessibilityLabel?() ?? nil }
+    }
+
+    /// The selected row of the table of Odběratelé in `window`: the one VoiceOver reads as selected. Nil when no row is
+    /// selected.
+    private func selectedClientRow(in window: NSWindow) -> AnyObject? {
+        clientRows(in: window).first { $0.isAccessibilitySelected?() == true }
+    }
+
+    /// What is wrong with where the selected row of the table of Odběratelé is in `window`: it is not wholly within the
+    /// part of the rows that the table shows, the frame of the scroll area of the rows, under the names of the columns,
+    /// which is the last of the two scroll areas in the card (the first scrolls the names and the rows sideways).
+    /// Empty when it is. Needs the accessibility elements.
+    private func problems(ofTheSelectedClientRowShownIn window: NSWindow) -> [String] {
+        guard let row = selectedClientRow(in: window)?.accessibilityFrame?(), let list = clientList(in: window),
+            let shown = descendants(of: list).last(where: { $0.accessibilityRole?() == .scrollArea })?
+                .accessibilityFrame?()
+        else {
+            return ["No row is selected, or the table shows no rows"]
+        }
+        if row.minY < shown.minY - 0.5 || row.maxY > shown.maxY + 0.5 {
+            return ["The selected row \(row) is not within the rows that the table shows, \(shown)"]
+        }
+        return []
+    }
+
+    /// Whether the selected row of the table of Odběratelé in `window` is that of the client called `name`.
+    private func isClientSelected(_ name: String, in window: NSWindow) -> Bool {
+        (selectedClientRow(in: window)?.accessibilityLabel?() ?? "").hasPrefix(name + ",")
+    }
+
+    /// The frame of the card of the table of Odběratelé in `window`, in the coordinates of the window: the summary row
+    /// and the table under it. Nil while the page has no table, and while the views make no accessibility elements.
+    private func clientTableCardFrame(in window: NSWindow) -> CGRect? {
+        guard let frame = clientList(in: window)?.accessibilityFrame?() else { return nil }
+        return window.convertFromScreen(frame)
+    }
+
+    /// The frame of the card of the detail of Odběratelé in `window`, which VoiceOver reads as "Detail odběratele", in
+    /// the coordinates of the window. Nil while no client is selected, and while the views make no accessibility
+    /// elements.
+    private func clientDetailFrame(in window: NSWindow) -> CGRect? {
+        guard let frame = accessibilityElement(labelled: "Detail odběratele", in: window)?.accessibilityFrame?() else {
+            return nil
+        }
+        return window.convertFromScreen(frame)
+    }
+
+    /// Whether the detail of Odběratelé in `window` is that of the client called `name`: VoiceOver reads the name in
+    /// it, as its title.
+    private func clientDetailShows(_ name: String, in window: NSWindow) -> Bool {
+        guard let detail = accessibilityElement(labelled: "Detail odběratele", in: window) else { return false }
+        return accessibilityReadings(under: detail).contains(name)
+    }
+
     /// What is wrong with the `count` rows of the table of Odběratelé in `window`, in words: there are not so many, or
-    /// they are not of one height (to half a point), or a row is lower than 60 points. Empty when they are of one
-    /// height of 60 points or more. Needs the accessibility elements.
+    /// one is not 40 points high, the height of a row of one line (to half a point). Empty when each of them is. Needs
+    /// the accessibility elements.
     private func problems(ofTheClientRowsIn window: NSWindow, count: Int) -> [String] {
         let heights = clientRows(in: window).compactMap { $0.accessibilityFrame?().height }
-        guard heights.count == count, let tallest = heights.max(), let lowest = heights.min() else {
+        guard heights.count == count else {
             return ["The table has \(heights.count) rows, not \(count)"]
         }
-        var problems: [String] = []
-        if tallest - lowest > 0.5 {
-            problems.append("The rows are not of one height: \(heights)")
+        if heights.contains(where: { ($0 - DataTableMetrics.rowHeight).magnitude > 0.5 }) {
+            return ["The rows are not 40 points high: \(heights)"]
         }
-        if lowest < 59.5 {
-            problems.append("A row is lower than 60 points: \(heights)")
+        return []
+    }
+
+    /// What is wrong with the page of Odběratelé in `window`, in words: the views that stick out of the window; Nový
+    /// odběratel not a capsule 32 points high at the right margin of the page (16 points), under the toolbar and 14
+    /// points above the card of the table; the card of the table not reaching the bottom margin of the page (24
+    /// points), or the table that scrolls sideways not in it. With the detail closed the card reaches the right margin
+    /// of the page and no row is selected; with the detail open the card of the detail stands beside it
+    /// (`problems(ofTheClientDetail:besideTheTable:in:)`) and a row is selected. Empty when the page is laid out so.
+    /// Needs the accessibility elements (`withAccessibilityElements(_:)`).
+    private func problems(ofOdberateleIn window: NSWindow, detailOpen: Bool) -> [String] {
+        var problems = viewsOutside(window).map { "Outside the window: \($0)" }
+        guard let table = clientTableCardFrame(in: window), let scrollView = clientTableScrollView(in: window) else {
+            return problems + ["The page has no table"]
+        }
+        let room = window.contentLayoutRect
+        if let button = buttonFrame("Nový odběratel", in: window) {
+            if (button.maxX - (room.maxX - 16)).magnitude >= 0.5 {
+                problems.append("Nový odběratel does not stand at the right margin of the page: \(button)")
+            }
+            if (button.height - DesignMetrics.regularControlHeight).magnitude >= 0.5 {
+                problems.append("Nový odběratel is \(button.height) points high")
+            }
+            // The origin of the window is at the bottom left: the top is the largest y.
+            if button.maxY > room.maxY + 0.5 {
+                problems.append("Nový odběratel reaches under the toolbar: \(button)")
+            }
+            if (button.minY - table.maxY - 14).magnitude >= 0.5 {
+                problems.append("Nový odběratel does not stand 14 points above the table: \(button), \(table)")
+            }
+        } else {
+            problems.append("The page has no Nový odběratel")
+        }
+        if (table.minY - 24).magnitude >= 0.5 {
+            problems.append("The card of the table does not end at the bottom margin of the page: \(table)")
+        }
+        let scrolled = frameInWindow(scrollView)
+        if !table.insetBy(dx: -0.5, dy: -0.5).contains(scrolled) {
+            problems.append("The table that scrolls sideways is not in its card: \(scrolled), \(table)")
+        }
+        let detail = clientDetailFrame(in: window)
+        if detailOpen {
+            guard let detail else {
+                return problems + ["The detail is not open"]
+            }
+            problems += self.problems(ofTheClientDetail: detail, besideTheTable: table, in: room)
+            if selectedClientRow(in: window) == nil {
+                problems.append("No row of the table is selected")
+            }
+        } else {
+            if let detail {
+                problems.append("The detail is open: \(detail)")
+            }
+            if (table.maxX - (room.maxX - 16)).magnitude >= 0.5 {
+                problems.append("The card of the table does not reach the right margin of the page: \(table)")
+            }
+            if selectedClientRow(in: window) != nil {
+                problems.append("A row of the table is selected")
+            }
+        }
+        return problems
+    }
+
+    /// What is wrong with the card of the detail of a client, `detail`, beside the card of the table, `table`, in the
+    /// room of the page `room`, all in the coordinates of the window: the detail is 300 points wide at the right margin
+    /// of the page (16 points), starts at the height of the card of the table (to a point) and never reaches below it,
+    /// and the card of the table ends 16 points before it.
+    private func problems(ofTheClientDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
+        var problems: [String] = []
+        if (detail.width - 300).magnitude >= 0.5 {
+            problems.append("The detail is not 300 points wide: \(detail)")
+        }
+        if (detail.maxX - (room.maxX - 16)).magnitude >= 0.5 {
+            problems.append("The detail does not stand at the right margin of the page: \(detail)")
+        }
+        // The origin of the window is at the bottom left: the top is the largest y.
+        if (detail.maxY - table.maxY).magnitude > 1 {
+            problems.append("The detail does not start where the table does: \(detail), \(table)")
+        }
+        if detail.minY < table.minY - 1 {
+            problems.append("The detail reaches below the card of the table: \(detail), \(table)")
+        }
+        if (detail.minX - 16 - table.maxX).magnitude >= 0.5 {
+            problems.append("The table does not end 16 points before the detail: \(table), \(detail)")
         }
         return problems
     }
 
     /// The scroll view that the table of Odběratelé scrolls sideways in, in `window`: the one scroll view with a
-    /// horizontal scroller. It stands in the scroll view of the page, which scrolls up and down, so every scroll view
-    /// is looked at. Its frame is the card of the table, and what it scrolls is the table.
+    /// horizontal scroller. Its frame is the card of the table under the summary row, and what it scrolls is the table:
+    /// the names of the columns and the rows.
     private func clientTableScrollView(in window: NSWindow) -> NSScrollView? {
         guard let content = window.contentView else { return nil }
         return allScrollViews(in: content).first { $0.hasHorizontalScroller }
     }
 
+    /// The scroll view that the rows of the table of Odběratelé scroll up and down in, in `window`: the one inside the
+    /// scroll view that scrolls the table sideways, under the names of the columns.
+    private func clientRowsScrollView(in window: NSWindow) -> NSScrollView? {
+        guard let table = clientTableScrollView(in: window)?.documentView else { return nil }
+        return allScrollViews(in: table).first
+    }
+
+    /// How wide the table of Odběratelé is in `window`: what its card scrolls sideways.
+    private func clientTableWidth(in window: NSWindow) throws -> CGFloat {
+        try #require(clientTableScrollView(in: window)?.documentView).frame.width
+    }
+
     private func allScrollViews(in view: NSView) -> [NSScrollView] {
         let own = (view as? NSScrollView).map { [$0] } ?? []
         return own + view.subviews.flatMap { allScrollViews(in: $0) }
-    }
-
-    /// What is wrong with the `count` buttons Nová faktura of the table of Odběratelé in `window`, in words: there are
-    /// not so many, or one is not wholly within the card that shows the table, to half a point. Empty when each of
-    /// them is whole. Needs the accessibility elements.
-    private func problems(ofTheNovaFakturaButtonsOfTheClientTableIn window: NSWindow, count: Int) -> [String] {
-        guard let scrollView = clientTableScrollView(in: window), let list = clientList(in: window) else {
-            return ["The page has no table"]
-        }
-        let card = window.convertToScreen(frameInWindow(scrollView))
-        let buttons = descendants(of: list).filter { element in
-            let label = element.accessibilityLabel?() ?? ""
-            return element.accessibilityRole?() == .button && label.hasPrefix("Nová faktura pro ")
-        }
-        guard buttons.count == count else {
-            return ["The table has \(buttons.count) buttons Nová faktura, not \(count)"]
-        }
-        return buttons.compactMap { button in
-            guard let frame = button.accessibilityFrame?() else { return "A button Nová faktura has no frame" }
-            if frame.minX < card.minX - 0.5 || frame.maxX > card.maxX + 0.5 {
-                return "A button Nová faktura is not whole in the card: \(frame), the card \(card)"
-            }
-            return nil
-        }
     }
 
     /// What is wrong with the width of the table of Odběratelé in `window`: it is not as wide as its card, or a
@@ -2860,16 +3120,17 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the width of the table of Odběratelé in `window` while its card is narrower than its least
-    /// width: it is not 814 points wide, or not wider than its card, or the card shows no horizontal scroller. Empty
-    /// when the table keeps its least width and scrolls sideways.
+    /// width: it is not that wide (`ClientTableColumns.minimumWidth`), or not wider than its card, or the card shows no
+    /// horizontal scroller. Empty when the table keeps its least width and scrolls sideways.
     private func problems(ofTheClientTableScrollingSidewaysIn window: NSWindow) -> [String] {
         guard let scrollView = clientTableScrollView(in: window), let table = scrollView.documentView else {
             return ["The page has no table"]
         }
         var problems: [String] = []
         let shown = scrollView.contentView.bounds.width
-        if (table.frame.width - 814).magnitude >= 0.5 {
-            problems.append("The table is \(table.frame.width) points wide, not 814")
+        let least = ClientTableColumns.minimumWidth
+        if (table.frame.width - least).magnitude >= 0.5 {
+            problems.append("The table is \(table.frame.width) points wide, not \(least)")
         }
         if table.frame.width <= shown + 0.5 {
             problems.append("The table is not wider than its card, which shows \(shown) points")

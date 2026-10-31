@@ -92,7 +92,7 @@ struct InvoiceTableView: View {
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
                         if let emptyText = data.emptyText {
-                            emptyRow(emptyText)
+                            TableEmptyRow(text: emptyText)
                         }
                         ForEach(data.rows) { row in
                             rowView(row, widths: widths)
@@ -140,21 +140,6 @@ struct InvoiceTableView: View {
             .frame(width: width, alignment: alignment)
     }
 
-    /// What the list says in place of rows, in secondary text in a row of its own under the names of the columns, as
-    /// the prototype says it: "Pro tento filtr tu nic není.", or what the search did not find.
-    private func emptyRow(_ text: String) -> some View {
-        Text(verbatim: text)
-            .font(Typography.body)
-            .foregroundStyle(Palette.text2)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 18)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .top) {
-                Hairline()
-            }
-    }
-
     // MARK: A row
 
     /// The row of `row` as a button: its cells, the tint of the open row behind them and the hairline across its top.
@@ -170,7 +155,7 @@ struct InvoiceTableView: View {
                 }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(RowButtonStyle())
+        .buttonStyle(TableRowButtonStyle())
         .accessibilityLabel(Text(verbatim: row.spokenText))
         .accessibilityAddTraits(isOpen ? .isSelected : [])
     }
@@ -205,14 +190,6 @@ nonisolated extension InvoiceRow {
         }
         parts.append("Stav: \(listStatus)")
         return parts.joined(separator: ", ")
-    }
-}
-
-/// A row of the table is a button that looks the same while it is pressed: a click opens or closes it, and nothing
-/// more.
-private struct RowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
     }
 }
 

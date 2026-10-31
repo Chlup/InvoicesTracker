@@ -45,7 +45,7 @@ struct FormSheetViewTests {
             try await storePoundRate(in: f.database)
             let model = ClientFormModel(app: f.app, client: try await f.storedClient(f.bravoID))
 
-            try await inWindow(ClientForm(model: model, cancel: {}, saved: {})) { hosting, window in
+            try await inWindow(ClientForm(model: model, cancel: {}, saved: { _ in })) { hosting, window in
                 try await waitUntil { model.currencies.count == 4 }
 
                 let size = try await sheetSize(of: hosting, in: window)
@@ -64,7 +64,7 @@ struct FormSheetViewTests {
             model.email = "x"
             model.dueDaysText = "x"
 
-            try await inWindow(ClientForm(model: model, cancel: {}, saved: {})) { hosting, window in
+            try await inWindow(ClientForm(model: model, cancel: {}, saved: { _ in })) { hosting, window in
                 try await waitUntil { model.currencies.count == 4 }
                 let withoutErrors = try await sheetSize(of: hosting, in: window)
                 await #expect(throws: FormSaveError.invalid) { try await model.save() }
