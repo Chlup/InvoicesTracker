@@ -241,6 +241,20 @@ func accessibilityElement(labelled label: String, in window: NSWindow) -> AnyObj
     }
 }
 
+/// The element under `container` that VoiceOver reads under `label` with `role`, such as a control of a card that was
+/// found by its label (`accessibilityElement(labelled:in:)`). It is for a control that another one of the page reads
+/// like, such as the Zkontrolovat teď of two cards, or a switch that reads like the text beside it, so the control is
+/// found in its own card and by its role. Nil when `container` holds no such element, and while its views make no
+/// accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func accessibilityElement(
+    labelled label: String, role: NSAccessibility.Role, under container: AnyObject
+) -> AnyObject? {
+    firstElement(among: container.accessibilityChildren?() ?? []) { element in
+        element.accessibilityRole?() == role && element.accessibilityLabel?() == label
+    }
+}
+
 /// The element of `window` that carries the accessibility identifier `identifier`: a group that a test measures or
 /// looks into (`accessibilityChildren()`) and that VoiceOver reads nothing for, as it has no label. Nil when `window`
 /// has no such element, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).
