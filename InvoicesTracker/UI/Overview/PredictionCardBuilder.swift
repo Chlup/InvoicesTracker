@@ -71,7 +71,7 @@ nonisolated extension PredictionBuilder {
 
     /// What is left to pay with the returns, "Doplatek", after the advances of the whole year; or, when nothing is owed
     /// and the advances pay more than the levies, what is overpaid, "Přeplatek". An overpayment at one authority does
-    /// not lower what another is owed, so a year with both is a sum to pay (as in the summary of Odhad odvodů).
+    /// not lower what another is owed, so a year with both is a sum to pay (as in the result card of Odhad odvodů).
     private static func settlementStat(_ outcome: PredictionOutcome) -> PredictionMini {
         let owed = outcome.owedTotal
         let overpaid = outcome.overpaidTotal

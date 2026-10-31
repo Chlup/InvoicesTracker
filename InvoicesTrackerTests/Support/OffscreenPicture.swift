@@ -79,6 +79,28 @@ struct OffscreenPicture {
         }
     }
 
+    /// The smallest rectangle, in points from the top left, that holds every pixel within `margin` levels of `colour`
+    /// in every channel, or nil where there is none: the extent of a mark in that colour. The pixels at the soft edge
+    /// of a shape are not within a margin of the colour, so the extent is up to a point smaller than the shape.
+    func extent(near colour: [Int], by margin: Int) -> CGRect? {
+        let scale = CGFloat(Self.scale)
+        let rowCount = bytes.count / (pixelsPerRow * 4)
+        let columnCount = Int(size.width * scale)
+        var rows: ClosedRange<Int>?
+        var columns: ClosedRange<Int>?
+        for row in 0..<rowCount {
+            for column in 0..<columnCount
+            where zip(colour, pixel(row: row, column: column)).allSatisfy({ abs($0 - $1) <= margin }) {
+                rows = rows.map { min($0.lowerBound, row)...max($0.upperBound, row) } ?? row...row
+                columns = columns.map { min($0.lowerBound, column)...max($0.upperBound, column) } ?? column...column
+            }
+        }
+        guard let rows, let columns else { return nil }
+        return CGRect(
+            x: CGFloat(columns.lowerBound) / scale, y: CGFloat(rows.lowerBound) / scale,
+            width: CGFloat(columns.count) / scale, height: CGFloat(rows.count) / scale)
+    }
+
     /// The pixel rows of the picture, as the points from its top that they start at, in which every pixel from `start`
     /// to `end` points from the left edge is within `margin` levels of `colour` in every channel: the rows of a line
     /// that runs across that width. A line a point thick is two pixel rows (or three, where it lies between pixels).

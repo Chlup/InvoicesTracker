@@ -31,10 +31,11 @@ import Testing
 /// than the income or not. The breakdown of Výpočet and of the Simulátor stands in two columns in a large window and in
 /// one at the least room, and the key figure and the levy bar of the result card of Výpočet stand side by side where
 /// the card has the room of two columns and one above the other where it has not, with its two cards of one height in a
-/// row under it. Odhad odvodů fits with the months of its clients folded and unfolded, its breakdown in the same two
-/// columns and the texts of its cells whole, and so does the page of a year without rules of its own, which has a
-/// warning above its summary and the sign "≈" before the sum of its levies. One window at a time, so that what a test
-/// sees settle is its own window.
+/// row under it. Odhad odvodů fits with the months of its clients folded and unfolded, its result card and its card
+/// Příjmy laid out as their widths say, its breakdown in the same two columns and the texts of its cells whole, and it
+/// runs result card, Příjmy, note, months, breakdown; the page of a year without rules of its own fits as well, which
+/// has a warning above its result card and no sign "≈" in it. One window at a time, so that what a test sees settle is
+/// its own window.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct AppWindowLayoutTests {
@@ -3270,11 +3271,12 @@ struct AppWindowLayoutTests {
     /// size and at the least room again, and at the least room with the sidebar as wide as it goes: the page fits the
     /// window, its breakdown stands in one column where the detail has less than the 856 points that two columns need
     /// (828 at the least room, 740 with the wide sidebar) and in two columns in a large window (the cards of Výpočet,
-    /// with the same headings), the net income of the summary is read as one phrase in the summary card, under the
-    /// parts of the income and above the note of the money of next year, and no text of a cell is cut or even shrunk:
-    /// the months stand in rows of six at the least room, in cells of more than 100 points. In the narrowest window
-    /// that holds all twelve in a row, in cells of 64 points, the texts shrink as far as the cell lets them and are not
-    /// cut.
+    /// with the same headings), the key figure and the bar of the result card stand as the width says and the figure of
+    /// what is left to settle under them, the net income is read as one phrase in the card Příjmy, beside the income
+    /// and above the bar, the legend and the note of the money of next year, and no text of a cell is cut or even
+    /// shrunk: the months stand in rows of six at the least room, in cells of more than 100 points. In the narrowest
+    /// window that holds all twelve in a row, in cells of 64 points, the texts shrink as far as the cell lets them and
+    /// are not cut.
     @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -3287,7 +3289,7 @@ struct AppWindowLayoutTests {
                     for year in [2026, 2025] {
                         let page = try PredictionSample.page(year: year)
                         app.selectYear(year)
-                        try await waitUntil { frameOfCard(labelled: page.label, in: window) != nil }
+                        try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
                         for isUnfolded in [false, true] {
                             app.predictionMonthsOpen = isUnfolded
                             app.predictionOthersOpen = isUnfolded
@@ -3319,63 +3321,165 @@ struct AppWindowLayoutTests {
     }
 
     /// The narrowest window whose card of the months holds twelve cells of 64 points and the gaps between them, 834
-    /// points: the detail is 232 points less than the window (the sidebar), the page 48 less than that and the card 44
-    /// less again, 1 158, and two more for the width the cells are measured in to be more than the least.
-    private static let narrowestRoomForTwelveMonthsInARow = CGSize(width: 1_160, height: 1_000)
+    /// points: the detail is 232 points less than the window (the sidebar), the page 40 less than that (24 and 16) and
+    /// the card 40 less again (20 and 20), 1 146, and two more for the width the cells are measured in to be more than
+    /// the least.
+    private static let narrowestRoomForTwelveMonthsInARow = CGSize(width: 1_148, height: 1_000)
 
-    /// What is wrong with Odhad odvodů in `window` for `page`, in words: the problems of a page that scrolls, the net
-    /// income of the summary, the cards of the breakdown not in the two stacks that stand `beside` each other or one
-    /// under the other, and, with the months `unfolded`, the cells of the clients, whose texts may shrink to `scale` of
-    /// their size (not at all unless told). Needs the accessibility elements.
+    /// What is wrong with Odhad odvodů in `window` for `page`, in words: the problems of a page that scrolls, of the
+    /// result card and of the card Příjmy, the cards of the breakdown not in the two stacks that stand `beside` each
+    /// other or one under the other, and, with the months `unfolded`, the cells of the clients, whose texts may shrink
+    /// to `scale` of their size (not at all unless told). Needs the accessibility elements.
     private func problems(
         ofThePredictionFor page: PredictionPage, beside: Bool, unfolded: Bool, shrinkingTextsTo scale: CGFloat = 1,
         in window: NSWindow
     ) -> [String] {
         problems(ofPageIn: window)
-            + problems(ofTheNetIncomeOf: page, in: window)
+            + problems(ofTheResultCardOfOdhadFor: page, in: window)
+            + problems(ofTheCardPrijmyOf: page, in: window)
             + problems(ofTheBreakdown: Self.predictionBreakdown, beside: beside) { title in
                 frameOfCard(labelled: title, in: window)
             }
             + (unfolded ? problems(ofTheCellsOf: page, shrinkingTextsTo: scale, in: window) : [])
     }
 
-    /// What is wrong with the net income in the summary card of Odhad odvodů for `page` in `window`, in words:
-    /// VoiceOver does not read its caption, the average per month and the line under them as one phrase, the phrase is
-    /// not within the card, it is not under the last part of the income, or it is not above the note of the money of
-    /// next year (which only a year with such money has). The origin of the screen is at the bottom left, so what is
-    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
-    private func problems(ofTheNetIncomeOf page: PredictionPage, in window: NSWindow) -> [String] {
-        let net = page.netIncome
-        let phrase = [net.label, net.amount, net.sub].joined(separator: ", ")
-        guard accessibilityReadings(in: window).contains(phrase) else {
-            return ["The net income is not read as one phrase: \(phrase)"]
+    /// What is wrong with the result card of Odhad odvodů for `page` in `window`, in words: the key figure, the bar of
+    /// the levies (its header and the items of its legend) or what is left to settle is missing or not inside the card;
+    /// the key figure is not at the top left of the card; the key figure and the bar do not stand as the width of the
+    /// card says (side by side, in columns of one width 28 points apart and level at the top, from 788 points inside
+    /// its padding of 20, and otherwise one above the other, 20 points apart, the bar in the whole width); or what is
+    /// left to settle is not at the left edge, under the taller of the two, 37 points lower (20, a hairline and 16).
+    /// The origin of the screen is at the bottom left, so what is above has the larger y. Empty when it stands so.
+    /// Needs the accessibility elements.
+    private func problems(ofTheResultCardOfOdhadFor page: PredictionPage, in window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Výsledek", in: window) else {
+            return ["No card Výsledek"]
         }
-        guard let card = frameOfCard(labelled: page.label, in: window),
-            let frame = frameOfText(startingWith: phrase, in: window)
+        guard let key = frameOfText(startingWith: page.keyFigure.eyebrow, in: window) else {
+            return ["No key figure"]
+        }
+        guard let bar = accessibilityElement(labelStartingWith: page.levyBar.header, in: window)?.accessibilityFrame?(),
+            let header = frameOfText(startingWith: page.levyBar.header, in: window)
         else {
-            return ["No summary card \(page.label), or no net income in it"]
+            return ["No levy bar with its header"]
+        }
+        let items = page.levyBar.parts.compactMap { part in
+            accessibilityElement(labelled: part.accessibilityLabel, in: window)?.accessibilityFrame?()
+        }
+        guard items.count == page.levyBar.parts.count else {
+            return ["The legend of the levy bar has \(items.count) items, not \(page.levyBar.parts.count)"]
+        }
+        guard let due = frameOfText(startingWith: page.due.eyebrow, in: window) else {
+            return ["No figure of what is left to settle"]
         }
         var found: [String] = []
-        if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
-            found.append("The net income is not within the summary card: \(frame), the card \(card)")
+        let inside = card.insetBy(dx: -0.5, dy: -0.5)
+        for (name, frame) in [("The key figure", key), ("The levy bar", bar), ("What is left to settle", due)]
+        where !inside.contains(frame) {
+            found.append("\(name) is not inside the card: \(frame) and \(card)")
         }
-        // What stands above it, the last part of the income as VoiceOver reads it, and what stands under it.
-        var neighbours: [(name: String, reading: String, isAbove: Bool)] = []
-        if let part = page.parts.last {
-            neighbours.append(
-                (name: "the last part of the income", reading: part.text + ", " + part.value, isAbove: true))
+        let inner = card.width - 40
+        if (card.maxY - 20 - key.maxY).magnitude > 1 || (key.minX - card.minX - 20).magnitude > 1 {
+            found.append("The key figure is not at the top left of the card: \(key) and \(card)")
         }
-        if let note = page.nextYearNote {
-            neighbours.append((name: "the note of the money of next year", reading: note, isAbove: false))
+        if ResultCardLayout.standsSideBySide(innerWidth: inner) {
+            let column = (inner - 28) / 2
+            if (bar.minX - (card.minX + 20 + column + 28)).magnitude > 1 || (bar.width - column).magnitude > 1 {
+                found.append("The levy bar is not the second column of \(column) points, 28 from the first: \(bar)")
+            }
+            if (card.maxY - 20 - header.maxY).magnitude > 1 {
+                found.append("The levy bar is not level at the top with the key figure: \(header), \(card)")
+            }
+        } else {
+            if (key.minY - header.maxY - 20).magnitude > 1 {
+                found.append("The levy bar is not 20 points under the key figure: \(header), \(key)")
+            }
+            if (bar.minX - key.minX).magnitude > 1 || (bar.width - inner).magnitude > 1 {
+                found.append("The levy bar does not have the whole width of the card, from its left edge: \(bar)")
+            }
         }
-        for (name, reading, isAbove) in neighbours {
-            guard let other = frameOfText(startingWith: reading, in: window) else {
-                found.append("Cannot find \(name) in the window")
+        // The sentences stop at the widths the design gives them, 34 em and 36 em of the 13-point type, and where the
+        // room allows it a long one is set as wide as that, not held to the 416 points of the other screens.
+        if key.width > 442.5 {
+            found.append("The sentence of the key figure is wider than 442 points: \(key)")
+        }
+        if due.width > 468.5 {
+            found.append("The sentence of what is left to settle is wider than 468 points: \(due)")
+        }
+        if (inner - 28) / 2 > 470 {
+            for (name, sentence, frame) in [
+                ("the key figure", page.keyFigure.sentence, key), ("what is left to settle", page.due.sentence, due),
+            ] where (sentence?.count ?? 0) >= 120 && frame.width < 418 {
+                found.append("The long sentence of \(name) is held to 416 points, not as wide as the design: \(frame)")
+            }
+        }
+        let lowest = min(key.minY, items.map(\.minY).min() ?? bar.minY)
+        if (lowest - 37 - due.maxY).magnitude > 1.5 {
+            found.append("What is left to settle is not 37 points under the parts above it: \(due), \(key), \(items)")
+        }
+        if (due.minX - key.minX).magnitude > 1 {
+            found.append("What is left to settle is not at the left edge of the card: \(due), \(card)")
+        }
+        return found
+    }
+
+    /// What is wrong with the card Příjmy of Odhad odvodů for `page` in `window`, in words: it is missing; VoiceOver
+    /// does not read the income and the net income each as one phrase; the two do not stand side by side, 48 points
+    /// apart and level at the top, in the card; the bar of the income (14 points high) is not 14 points under the
+    /// lower of them; an item of the legend is not under the bar; or the note of the money of next year (which only a
+    /// year with such money has) is not under the legend. The origin of the screen is at the bottom left, so what is
+    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
+    private func problems(ofTheCardPrijmyOf page: PredictionPage, in window: NSWindow) -> [String] {
+        guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
+            return ["No card Příjmy"]
+        }
+        let net = page.netIncome
+        let incomePhrase = [page.incomeHead, page.incomeTotal, page.incomeNote].joined(separator: ", ")
+        let netPhrase = [net.label, net.amount, net.sub].joined(separator: ", ")
+        guard let income = frameOfText(startingWith: incomePhrase, in: window) else {
+            return ["The income is not read as one phrase: \(incomePhrase)"]
+        }
+        guard let netIncome = frameOfText(startingWith: netPhrase, in: window) else {
+            return ["The net income is not read as one phrase: \(netPhrase)"]
+        }
+        guard let bar = accessibilityElement(labelled: "\(page.incomeHead): \(page.incomeTotal)", in: window)?
+            .accessibilityFrame?()
+        else {
+            return ["No bar of the income"]
+        }
+        var found: [String] = []
+        let inside = card.insetBy(dx: -0.5, dy: -0.5)
+        for (name, frame) in [("The income", income), ("The net income", netIncome), ("The bar", bar)]
+        where !inside.contains(frame) {
+            found.append("\(name) is not within the card Příjmy: \(frame), the card \(card)")
+        }
+        if (income.maxY - netIncome.maxY).magnitude > 1 || (netIncome.minX - income.maxX - 48).magnitude > 1 {
+            found.append("The net income is not beside the income, 48 points from it: \(netIncome), \(income)")
+        }
+        if (bar.height - 14).magnitude > 0.5 {
+            found.append("The bar of the income is \(bar.height) points high, not 14")
+        }
+        if (min(income.minY, netIncome.minY) - 14 - bar.maxY).magnitude > 1.5 {
+            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome)")
+        }
+        var legendBottom = bar.minY
+        for part in page.parts {
+            guard let item = frameOfText(startingWith: part.text + ", " + part.value, in: window) else {
+                found.append("No item of the legend for \(part.text)")
                 continue
             }
-            let isInOrder = isAbove ? other.minY >= frame.maxY - 0.5 : frame.minY >= other.maxY - 0.5
-            if !isInOrder {
-                found.append("The net income is not \(isAbove ? "under" : "above") \(name): \(frame), \(other)")
+            if item.maxY > bar.minY - 11 {
+                found.append("The item \(part.text) is not under the bar: \(item), \(bar)")
+            }
+            legendBottom = min(legendBottom, item.minY)
+        }
+        if let text = page.nextYearNote {
+            if let note = frameOfText(startingWith: text, in: window) {
+                if note.maxY > legendBottom - 11 {
+                    found.append("The note of the money of next year is not under the legend: \(note), \(legendBottom)")
+                }
+            } else {
+                found.append("No note of the money of next year")
             }
         }
         return found
@@ -3423,24 +3527,26 @@ struct AppWindowLayoutTests {
     }
 
     /// Odhad odvodů of a year without rules of its own, 2027 as of 15. 1. 2027 on the prediction sample: the warning
-    /// that the page is an estimate with the rules of 2026 stands above the summary, and the sum of the levies, each
-    /// levy and the amount of the settlement have the sign "≈". At the least room the page fits the window, with the
-    /// months of the clients folded and unfolded, and the sum and the amount are neither cut nor shrunk.
+    /// that the page is an estimate with the rules of 2026 stands above the result card, and none of the figures of the
+    /// result card or of the net income has the sign "≈", as the card is an estimate as a whole. At the least room the
+    /// page fits the window, with the months of the clients folded and unfolded.
     @Test func thePredictionOfAYearWithoutItsOwnRulesFitsTheLeastRoom() async throws {
         try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
             // The page the screen shows. The sample stores no settings of 2027, so the levies are those of the
             // defaults.
-            let page = PredictionBuilder.page(try await app.predictionOutcome(year: 2027))
-            #expect(page.hero.hasPrefix(PredictionBuilder.estimateSign))
-            #expect(page.levies.allSatisfy { $0.value.hasPrefix(PredictionBuilder.estimateSign) })
-            #expect(page.settlement.amount.hasPrefix(PredictionBuilder.estimateSign))
+            let outcome = try await app.predictionOutcome(year: 2027)
+            let page = PredictionBuilder.page(outcome)
+            #expect(outcome.result.rulesAreEstimate)
+            #expect(!page.keyFigure.figure.contains("≈"))
+            #expect(page.levyBar.parts.allSatisfy { !$0.legendValue.contains("≈") })
+            #expect(!page.due.figure.contains("≈"))
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     app.screen = .prediction
                     try await waitUntil { window.title == "Odhad odvodů" }
                     // The page scrolls; with the data it is far taller than while it loads.
                     try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
-                    try await waitUntil { frameOfCard(labelled: page.label, in: window) != nil }
+                    try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
                     #expect(showsText(RulesWarning.message(year: 2027, rulesYear: 2026), in: window))
 
                     for isUnfolded in [false, true] {
@@ -3448,38 +3554,148 @@ struct AppWindowLayoutTests {
                         app.predictionOthersOpen = isUnfolded
                         try await expectSettled(window) {
                             problems(ofThePredictionFor: page, beside: false, unfolded: isUnfolded, in: window)
-                                + problems(ofTheBigFiguresOf: page, in: window)
                         }
                     }
+                    let card = try #require(accessibilityElement(labelled: "Výsledek", in: window))
+                    let readings = accessibilityReadings(under: card)
+                    #expect(!readings.contains { $0.contains("≈") }, "\(readings)")
                 }
             }
         }
     }
 
-    /// What is wrong with the two big figures of the summary of `page` in `window`, in words: the sum of the levies or
-    /// the amount of the settlement is not there, or is narrower than the text needs at its size of 52 points, as a
-    /// text that shrinks to fit the room or is cut would be. The sum is a text of its own. The amount is read with its
-    /// caption and its sentence as one element, as wide as the widest of the three; that is less than the amount needs
-    /// only if the amount is shrunk or cut, as the caption and the sentence take no more room than the amount has.
-    /// Needs the accessibility elements.
-    private func problems(ofTheBigFiguresOf page: PredictionPage, in window: NSWindow) -> [String] {
-        let settlement = page.settlement
-        let figures = [
-            (name: "sum of the levies", text: page.hero, reading: page.hero),
-            (
-                name: "amount of the settlement", text: settlement.amount,
-                reading: settlement.label + ", " + settlement.amount
-            ),
-        ]
-        return figures.flatMap { name, text, reading -> [String] in
-            guard let frame = frameOfText(startingWith: reading, in: window) else {
-                return ["No \(name) \(text)"]
+    /// Odhad odvodů runs in this order, at the least room and in a large window: the result card, the card Příjmy, the
+    /// info note about what the estimate counts, the months of the clients ("Kdy čekám faktury") and "Rozpis odhadu
+    /// odvodů" with its breakdown, each above the next. Nothing of the page is laid out beyond the window.
+    @Test func thePredictionPageRunsResultPrijmyNoteMonthsBreakdown() async throws {
+        try await PredictionSample.withStoredSample { app in
+            let page = try PredictionSample.page(year: 2026)
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    app.screen = .prediction
+                    try await waitUntil { window.title == "Odhad odvodů" }
+                    try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                    for isUnfolded in [false, true] {
+                        app.predictionMonthsOpen = isUnfolded
+                        app.predictionOthersOpen = isUnfolded
+                        for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                            window.setContentSize(size)
+                            try await expectSettled(window) {
+                                problems(ofTheOrderOfOdhadFor: page, in: window) + problems(ofPageIn: window)
+                            }
+                        }
+                    }
+                    #expect(viewsOutside(window) == [])
+                }
             }
-            let figure = Text(verbatim: text).font(.system(size: 52, weight: .bold, design: .rounded))
-                .monospacedDigit().tracking(-1)
-            let needed = fittingSize(of: figure).width
-            return frame.width + 1 < needed
-                ? ["The \(name) \(text) needs \(needed) points, it has \(frame.width)"] : []
+        }
+    }
+
+    /// What is wrong with the order of the page of Odhad odvodů in `window`, in words: a part is missing, or one of
+    /// them is not above the next in this order: the result card, the card Příjmy, the note about what the estimate
+    /// counts, the card of the months, and "Rozpis odhadu odvodů" with the first card of its breakdown, Příjmy a zisk,
+    /// inside it. The cards are 16 points apart, and as wide as the page. Empty when the page runs in that order.
+    /// Needs the accessibility elements.
+    private func problems(ofTheOrderOfOdhadFor page: PredictionPage, in window: NSWindow) -> [String] {
+        let landmarks: [(name: String, frame: CGRect?)] = [
+            ("Výsledek", frameOfCard(labelled: "Výsledek", in: window)),
+            ("Příjmy", frameOfCard(labelled: "Příjmy", in: window)),
+            ("the note", frameOfText(startingWith: "Odhad vychází z faktur do", in: window)),
+            (page.monthsHead, frameOfCard(labelled: page.monthsHead, in: window)),
+            ("Rozpis odhadu odvodů", frameOfCard(labelled: "Rozpis odhadu odvodů", in: window)),
+        ]
+        var found: [String] = []
+        for landmark in landmarks where landmark.frame == nil {
+            found.append("No \(landmark.name)")
+        }
+        let frames = landmarks.compactMap { landmark in landmark.frame.map { (name: landmark.name, frame: $0) } }
+        for (upper, lower) in zip(frames, frames.dropFirst()) {
+            // The origin of the screen is at the bottom left, so what stands above has the larger y.
+            let gap = upper.frame.minY - lower.frame.maxY
+            if gap < 15.5 || gap > 16.5 {
+                found.append("\(lower.name) is \(gap) points under \(upper.name), not 16")
+            }
+        }
+        if let first = frames.first?.frame {
+            for name in ["Příjmy", page.monthsHead] {
+                guard let frame = frames.first(where: { $0.name == name })?.frame else { continue }
+                if (frame.width - first.width).magnitude > 1 || (frame.minX - first.minX).magnitude > 1 {
+                    found.append("\(name) is not as wide as the result card: \(frame), \(first)")
+                }
+            }
+        }
+        if let breakdown = frames.last?.frame, let income = frameOfCard(labelled: "Příjmy a zisk", in: window) {
+            if !breakdown.insetBy(dx: -0.5, dy: -0.5).contains(income) {
+                found.append("Příjmy a zisk is not inside Rozpis odhadu odvodů: \(income) and \(breakdown)")
+            }
+            if income.maxY > breakdown.maxY - 10 {
+                found.append("Příjmy a zisk does not start under the heading of Rozpis odhadu odvodů")
+            }
+        }
+        return found
+    }
+
+    /// The popover of the levy bar hangs out of the result card of Odhad odvodů, over the edge of the card and of the
+    /// card Příjmy under it, and is drawn above both: the card is drawn above what follows it, and nothing clips the
+    /// popover. The pointer is moved over the part of the tax, and then over its item of the legend. A strip down the
+    /// popover, 6 points inside its leading edge, shows nothing but the colour of the popover while it is open, where
+    /// the edges of the two cards cross it while it is closed.
+    @Test func thePopoverOfTheLevyBarIsDrawnOverTheCardPrijmy() async throws {
+        try await PredictionSample.withStoredSample { app in
+            let page = try PredictionSample.page(year: 2026)
+            let weights = page.levyBar.parts.map(\.weight)
+            try await withAppWindow(of: app, size: AppWindowSize.large) { window in
+                app.screen = .prediction
+                try await waitUntil { window.title == "Odhad odvodů" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+
+                try await withAccessibilityElements {
+                    try await expectSettled(window) { problems(ofTheOrderOfOdhadFor: page, in: window) }
+                    let content = try #require(window.contentView)
+                    let bar = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: page.levyBar.header, in: window)?
+                                .accessibilityFrame?()))
+                    let legend = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelled: page.levyBar.parts[0].accessibilityLabel, in: window)?
+                                .accessibilityFrame?()))
+                    // The popover of the tax: 8 points under the legend, centred on its part and held in the panel.
+                    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
+                    let centre = LevyBarLayout.partCentres(widths: widths)[0]
+                    let left = bar.minX + LevyBarLayout.popoverX(centredOn: centre, panelWidth: bar.width)
+                    let top = content.bounds.height - legend.minY + LevyBarLayout.popoverGap
+
+                    /// The points of the strip down the popover, from 4 to 100 points under its top, whose colour is
+                    /// not that of the top of the strip: what is drawn over the popover while it is open.
+                    @MainActor func strayPoints() throws -> [CGPoint] {
+                        let picture = try WindowPicture(of: window)
+                        let strip = stride(from: top + 4, to: top + 100, by: 0.5).map { CGPoint(x: left + 6, y: $0) }
+                        let colour = picture.bytes(at: strip[0])
+                        return strip.filter { point in
+                            zip(picture.bytes(at: point), colour).contains { abs($0 - $1) > 6 }
+                        }
+                    }
+
+                    // With no popover the edges of the cards cross the strip: the test can tell the two states apart.
+                    let corner = CGPoint(x: 4, y: 4)
+                    try await expectSettled(window) {
+                        ((try? strayPoints()) ?? []).isEmpty ? ["No edge of a card crosses the strip"] : []
+                    }
+
+                    let overPart = CGPoint(x: bar.minX + 10, y: bar.midY)
+                    let overLegend = CGPoint(x: legend.minX + 10, y: legend.midY)
+                    for (name, pointer) in [("part", overPart), ("item of the legend", overLegend)] {
+                        try movePointer(to: pointer, in: window)
+                        try await waitUntil { ((try? strayPoints()) ?? [CGPoint.zero]).isEmpty }
+                        #expect(try strayPoints() == [], "Drawn over the popover of the \(name)")
+
+                        try movePointer(to: corner, in: window)
+                        try await waitUntil { !((try? strayPoints()) ?? []).isEmpty }
+                    }
+                }
+            }
         }
     }
 

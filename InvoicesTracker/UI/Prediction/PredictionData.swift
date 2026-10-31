@@ -18,55 +18,7 @@ nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
     }
 }
 
-// MARK: - The summary
-
-/// Which of its two forms the settlement of the summary takes.
-nonisolated enum PredictionSettlementKind: Sendable, Hashable {
-    /// Something is owed beyond the year's advances, or nothing is owed and nothing is overpaid: what to put aside.
-    case owed
-
-    /// Nothing is owed and something is overpaid: the advances pay more than the levies.
-    case overpaid
-}
-
-/// The block under the sum of the levies: what the year's levies leave to settle with the returns beyond its advances,
-/// or, when the advances pay more than the levies, what comes back. It is a caption, an amount set as big as the sum of
-/// the levies, and a sentence under it.
-nonisolated struct PredictionSettlement: Sendable, Hashable {
-    var kind: PredictionSettlementKind
-
-    /// What the amount is: "Odhad doplatku odvodů bez záloh", "Doplatek odvodů bez záloh" for a year that is over,
-    /// "Odhad přeplatku záloh" or "Přeplatek záloh".
-    var label: String
-
-    /// The sum that is owed beyond the advances, or that the advances overpay: "198 702 Kč". It has the sign of an
-    /// estimate only when the engine worked the year out with the rules of another year.
-    var amount: String
-
-    /// The sentence under the amount is `lead`, `advances` and `tail` one after the other. `lead` is its words up to
-    /// the advances.
-    var lead: String
-
-    /// The year's planned advances in whole Kč, "268 080 Kč", which the sentence sets in bold. They are written with
-    /// no-break spaces, so that a line never breaks them.
-    var advances: String
-
-    /// The rest of the sentence after the advances. Beside what is owed, it names an overpayment at some authority.
-    var tail: String
-}
-
-/// What one authority takes of the year, as the summary names it: "Daň", "114 786 Kč". A tax below zero is a bonus,
-/// "bonus 37 524 Kč".
-nonisolated struct PredictionLevy: Identifiable, Sendable, Hashable {
-    /// The authority whose colour marks the levy.
-    var authority: Authority
-    var title: String
-    var value: String
-
-    var id: Authority {
-        authority
-    }
-}
+// MARK: - The income
 
 /// What a part of the year's income is, for the bar and its legend.
 nonisolated enum PredictionPartKind: Sendable, Hashable {
@@ -94,23 +46,23 @@ nonisolated struct PredictionPart: Identifiable, Sendable, Hashable {
     }
 }
 
-/// The net income of the year ("čistý příjem"), what its income leaves after the tax and the insurance, as the summary
-/// card shows it under the parts of the income: a caption, the average per month as the amount, and under it the sum
-/// of the whole year with the part of the income that is. The three texts are read as one.
+/// The net income of the year ("čistý příjem"), what its income leaves after the levies, as the card Příjmy shows it
+/// beside the income: a caption, the average per month as the amount, and under it the sum of the whole year with the
+/// part of the income that is. The three texts are read as one.
 nonisolated struct PredictionNetIncome: Sendable, Hashable {
     /// What the amount is: "Čistý příjem průměrně za měsíc", and "Čistý příjem průměrně za měsíc (odhad)" for a year in
     /// progress.
     var label: String
 
     /// The average per month in whole Kč: "189 698 Kč", or "−8 310 Kč" where the levies are more than the income. It
-    /// has the sign of an estimate only when the engine worked the year out with the rules of another year, as the
-    /// levies it comes from have.
+    /// has the sign of an estimate only in a year that is over and that the engine worked out with the rules of
+    /// another year, as the levies it comes from have.
     var amount: String
 
     /// The sum of the whole year that the amount is the average of, and its part of the income: "za celý rok 2 276 375
-    /// Kč · 83,0 % příjmů po dani a pojistném". The sum has the sign of an estimate as the amount does. The part is
-    /// left out while the income is not above zero, as there is nothing for the levies to take a part of, and is shown
-    /// as it is otherwise, even where it is below zero.
+    /// Kč · 83,0 % příjmů po odvodech". The sum has the sign of an estimate as the amount does. The part is left out
+    /// while the income is not above zero, as there is nothing for the levies to take a part of, and is shown as it
+    /// is otherwise, even where it is below zero.
     var sub: String
 }
 
@@ -207,25 +159,34 @@ nonisolated struct PredictionClientRow: Identifiable, Sendable, Hashable {
 
 // MARK: - The page
 
-/// Everything the screen shows for a year: the summary card, the banner, the months of the clients and the two columns
-/// of the breakdown. Every text is made, and the screen only lays them out.
+/// Everything the screen shows for a year: the result card, the card Příjmy, the banner, the months of the clients and
+/// the two columns of the breakdown. Every text is made, and the screen only lays them out.
 nonisolated struct PredictionPage: Sendable, Hashable {
-    // The summary card.
+    // The result card.
 
-    /// "Odhad odvodů za celý rok 2026", or "Odvody za rok 2025 – skutečnost" for a year that is over.
-    var label: String
+    /// The levies of the year together as the key figure: the eyebrow "Odhad odvodů za celý rok 2026", or "Odvody za
+    /// rok 2025 – skutečnost" for a year that is over, the sum "466 782 Kč", its share of the income "17,0 % z příjmů"
+    /// (none while the income is not above zero), and the sentence that says what the sum is made from. In an
+    /// estimate that is not complete the figure is "—" and the sentence says that it is not complete.
+    var keyFigure: KeyFigureData
 
-    /// The tax and the insurance of the year together: "466 782 Kč".
-    var hero: String
+    /// The bar of the levies of the year by authority, beside the key figure: its header says "Odvody za celý rok 2026
+    /// podle úřadů", it has no total, as the key figure is the total, and the popover of each part has the year's levy,
+    /// the advances of the year and what is left to pay or comes back.
+    var levyBar: LevyBarData
 
-    /// The share of the year's income that the tax and the insurance take, beside their sum: "17,0 % příjmů", or nil
-    /// when the income is not above zero.
-    var heroShare: String?
-    var levies: [PredictionLevy]
-    var heroText: String
+    /// What is left to settle beyond the year's advances, or what they overpay, as a second key figure under the two
+    /// above: its eyebrow, the amount in the display size and a sentence that names the advances in bold.
+    var due: KeyFigureData
 
-    /// What is left to settle beyond the year's advances, or what they overpay, under the sum of the levies.
-    var settlement: PredictionSettlement
+    // The card Příjmy.
+
+    /// The line under the title of the card: "Odhad za celý rok 2026 z faktur do 17. 10. 2026", or "Rok 2025 ·
+    /// skutečnost" for a year that is over.
+    var incomeSub: String
+
+    /// The line under the income: "bez DPH · peníze přijaté do 31. 12.".
+    var incomeNote: String
     var incomeHead: String
 
     /// The income of the year: "2 743 157 Kč". It has no sign of an estimate in any year; the head of a year in
@@ -235,8 +196,8 @@ nonisolated struct PredictionPage: Sendable, Hashable {
     /// The parts of the income: what was received, and in a year in progress what waits and what is expected.
     var parts: [PredictionPart]
 
-    /// What the income leaves after the levies, under the parts of the income: the average per month and the sum of the
-    /// whole year.
+    /// What the income leaves after the levies, beside the income: the average per month and the sum of the whole
+    /// year.
     var netIncome: PredictionNetIncome
 
     /// The sum that is paid only in the next year, or nil when there is none.

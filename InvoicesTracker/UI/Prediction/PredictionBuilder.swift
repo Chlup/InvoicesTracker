@@ -2,27 +2,29 @@ import Foundation
 
 // MARK: - Builder
 
-/// Turns the prediction of a year and the levies the engine works out from it into the page of Odhad odvodů: the
-/// summary card, the banner, the months of the clients and the two columns of the breakdown. Every text is made here,
-/// and the screen only lays them out. The summary, the banner and the months are in this file, the rows of the clients
-/// and their cells in `+Clients`, and the breakdown in `+Breakdown`.
+/// Turns the prediction of a year and the levies the engine works out from it into the page of Odhad odvodů: the result
+/// card, the card Příjmy, the banner, the months of the clients and the two columns of the breakdown. Every text is
+/// made here, and the screen only lays them out. The result card and the card Příjmy are in this file, the banner and
+/// the months with them, the rows of the clients and their cells in `+Clients`, and the breakdown in `+Breakdown`.
 ///
 /// Nothing is worked out again: the income, the parts of it and the months come from the prediction, and every figure
 /// of the levies from the engine's result; so do the net income and its part of the income (`NetIncome`,
-/// `IncomeShares`). The breakdown reuses Výpočet's own rows and notes where it says the same (`ComputationBuilder`).
+/// `IncomeShares`). The bar of the levies is the shared one (`LevyBarBuilder`), and the breakdown reuses Výpočet's own
+/// rows and notes where it says the same (`ComputationBuilder`).
 ///
 /// The sign "≈", followed by a no-break space so that a line never ends with the sign alone (`estimateSign`), stands in
-/// front of a figure that is an estimate. In a year in progress these are the sum that is paid only in the next year
-/// and the amounts expected of the clients, in their rows and in the cells of their months. The income of the year has
-/// no sign: its head says that it is an estimate, and so does the caption of the net income. The advances never have
-/// it, and the sum of the levies, each of them, the amount of the settlement and the two figures of the net income, its
-/// average per month and the sum of the year, have it only in the case below. A year that is over has no estimate: it
+/// front of a figure that is a lone estimate among actual figures. In a year in progress these are the amounts expected
+/// of the clients, in their rows, in their notes and in the cells of their months. The result card and the card Příjmy
+/// are areas of estimates as a whole in a year in progress, as their eyebrow, their heads and their subtitle say, so no
+/// figure in them has the sign: not the levies, what is left to settle, the net income or the sum that is paid only in
+/// the next year, and not the income, whose head says that it is an estimate. A year that is over has no estimate: it
 /// is what it was, and none of its texts has the sign, even when a payment is converted at a provisional rate; only the
-/// banner takes account of that (`page(_:hasProvisionalIncome:)`). The one exception is the levies of a year that the
-/// engine worked out with the rules of another year (`TaxResult.rulesAreEstimate`): they are an estimate whether the
-/// year is over or not, so the sum of them, each of them, the amount of the settlement and the net income, which is the
-/// income less them, have the sign. The sums are in whole Kč, rounded half up from haléře, and the dates are written as
-/// everywhere in the app (`CzechFormat`).
+/// banner takes account of that (`page(_:hasProvisionalIncome:)`). The one exception is the levies of a year that is
+/// over and that the engine worked out with the rules of another year (`TaxResult.rulesAreEstimate`): they are an
+/// estimate among figures that are not, so the sum of them, each of them in the legend of the bar and in the rows of
+/// its popover that follow from the levy, the amount of what is left to settle and the net income, which is the income
+/// less them, have the sign. The advances never have it. The sums are in whole Kč, rounded half up from haléře, and the
+/// dates are written as everywhere in the app (`CzechFormat`).
 nonisolated enum PredictionBuilder {
     // MARK: Texts
 
@@ -34,6 +36,9 @@ nonisolated enum PredictionBuilder {
     /// Why the whole-year figures are unavailable while their known components remain visible.
     static let incompleteText =
         "Odhad je neúplný: některé částky nejsou známé – chybí kurz nebo podklady pro odhad."
+
+    /// What stands for a figure that is not known while the estimate is incomplete.
+    private static let unknownAmount = "—"
 
     // MARK: The page
 
@@ -48,6 +53,9 @@ nonisolated enum PredictionBuilder {
         let year = prediction.year
         let isClosed = prediction.isClosed
         let rulesAreEstimate = outcome.result.rulesAreEstimate
+        let incomeSub =
+            isClosed
+            ? "Rok \(year) · skutečnost" : "Odhad za celý rok \(year) z faktur do " + CzechFormat.date(prediction.now)
         let active = prediction.clients.filter(\.isActive)
         let others = prediction.clients.filter { !$0.isActive }
         let columns = breakdown(outcome)
@@ -55,20 +63,12 @@ nonisolated enum PredictionBuilder {
             "Měsíce s očekávanou fakturou předvyplňuje aplikace podle dosavadních faktur."
             + " Klepnutím je změníte, když víte víc – třeba u nové zakázky nebo když spolupráce končí."
         return PredictionPage(
-            label: isClosed ? "Odvody za rok \(year) – skutečnost" : "Odhad odvodů za celý rok \(year)",
-            hero: prediction.isComplete
-                ? estimate(CzechFormat.wholeKc(outcome.result.liabilityTotal), when: rulesAreEstimate) : "—",
-            heroShare: prediction.isComplete ? leviesShare(outcome.result).map { $0 + " příjmů" } : nil,
-            levies: levies(outcome.result).map { levy in
-                var shown = levy
-                if !prediction.isComplete { shown.value = "—" }
-                return shown
-            }, heroText: prediction.isComplete ? heroText(prediction) : incompleteText,
-            settlement: settlement(outcome),
+            keyFigure: keyFigure(outcome), levyBar: levyBar(outcome), due: due(outcome), incomeSub: incomeSub,
+            incomeNote: "bez DPH · peníze přijaté do 31.\u{00A0}12.",
             incomeHead: isClosed ? "Příjmy za rok \(year)" : "Příjmy za rok \(year) (odhad)",
             incomeTotal: prediction.isComplete ? kc(ofHalere: prediction.incomeHalere) : "—",
             parts: parts(prediction), netIncome: prediction.isComplete
-                ? netIncome(outcome.result, isClosed: isClosed)
+                ? netIncome(outcome)
                 : PredictionNetIncome(
                     label: "Čistý příjem průměrně za měsíc (odhad)", amount: "—", sub: incompleteText),
             nextYearNote: nextYearNote(prediction),
@@ -83,7 +83,7 @@ nonisolated enum PredictionBuilder {
             left: columns.left, right: columns.right)
     }
 
-    // MARK: The summary card
+    // MARK: The result card
 
     /// The share of the year's income that the tax and the insurance take together, in percent with one decimal:
     /// "17,0 %". It is the part of the income that the net income does not leave (`IncomeShares`), and nil when the
@@ -93,54 +93,121 @@ nonisolated enum PredictionBuilder {
         IncomeShares(result).map { BuilderText.share(tenths: $0.leviesTenths) }
     }
 
-    /// The tax, the social and the health insurance of the year. Each has the sign of an estimate in front of it when
-    /// the engine worked the year out with the rules of another year.
-    private static func levies(_ result: TaxResult) -> [PredictionLevy] {
-        Authority.allCases.map { authority in
-            let liability = result.balance(authority).liability
-            let value = authority == .tax ? BuilderText.taxOrBonus(liability) : CzechFormat.wholeKc(liability)
-            return PredictionLevy(
-                authority: authority, title: ComputationBuilder.shortName(of: authority),
-                value: estimate(value, when: result.rulesAreEstimate))
+    /// Whether the levies of the year have the sign of an estimate in front of them: the engine worked the year out
+    /// with the rules of another year and the year is over, so that they are an estimate among figures that are not.
+    /// In a year in progress nothing of the result card has it, as the card is an estimate as a whole.
+    private static func marksLevies(_ outcome: PredictionOutcome) -> Bool {
+        outcome.result.rulesAreEstimate && outcome.prediction.isClosed
+    }
+
+    /// The sum of the levies of the year as the key figure, with its share of the income and the sentence that says
+    /// what it is made from. While the estimate is not complete the figure is "—" and the sentence says so, once for
+    /// the whole card.
+    private static func keyFigure(_ outcome: PredictionOutcome) -> KeyFigureData {
+        let prediction = outcome.prediction
+        let eyebrow =
+            prediction.isClosed
+            ? "Odvody za rok \(prediction.year) – skutečnost" : "Odhad odvodů za celý rok \(prediction.year)"
+        guard prediction.isComplete else {
+            return KeyFigureData(eyebrow: eyebrow, figure: "—", sentence: incompleteText)
         }
+        return KeyFigureData(
+            eyebrow: eyebrow,
+            figure: estimate(CzechFormat.wholeKc(outcome.result.liabilityTotal), when: marksLevies(outcome)),
+            share: leviesShare(outcome.result).map { $0 + " z příjmů" }, sentence: keyFigureSentence(prediction))
     }
 
     /// What the sum of the levies is made from: for a year in progress the estimated income, for a year that is over
     /// the payments.
-    private static func heroText(_ prediction: IncomePrediction) -> String {
+    private static func keyFigureSentence(_ prediction: IncomePrediction) -> String {
         if prediction.isClosed {
-            return "Daň a pojistné za celý rok \(prediction.year) ze všech přijatých plateb."
+            return "Odvody za celý rok \(prediction.year) ze všech přijatých plateb."
         }
-        return "Daň a pojistné z odhadovaného příjmu \(kc(ofHalere: prediction.incomeHalere))"
+        return "Odvody z odhadovaného příjmu \(kc(ofHalere: prediction.incomeHalere))"
             + " za celý rok \(prediction.year)"
             + " – s odpočty a slevami ze Záloh a odpočtů a s minimálním pojistným za celý rok."
     }
 
+    /// The bar of the levies of the whole year by authority, under a header that names the year and has no total, as
+    /// the key figure beside it is the total. The popover of a part has the year's levy, the advances of all twelve
+    /// months and what is left to pay or comes back (`LevyBarBuilder`).
+    ///
+    /// While the estimate is not complete the bar is an empty track: no part has a width, the legend says "—", and
+    /// the popover of a part has nothing that follows from the amounts that are not known, only the advances that the
+    /// plan gives. The levies of a year that is over, worked out with the rules of another year, have the sign of an
+    /// estimate in the legend and in the rows of the popover that follow from the levy.
+    private static func levyBar(_ outcome: PredictionOutcome) -> LevyBarData {
+        let prediction = outcome.prediction
+        let header = "Odvody za " + (prediction.isClosed ? "rok " : "celý rok ") + "\(prediction.year) podle úřadů"
+        let bar = LevyBarBuilder.balances(of: outcome.result, kind: .wholeYear, header: header, showsTotal: false)
+        if !prediction.isComplete {
+            return retouched(bar) { part in
+                var part = part
+                let advances = part.rows.filter { $0.style == .muted }
+                part.weight = 0
+                part.legendValue = unknownAmount
+                part.rows =
+                    [LevyPopoverRow(label: part.rows[0].label, value: unknownAmount, style: .strong)] + advances
+                    + [LevyPopoverRow(label: "Doplatek", value: unknownAmount, style: .strong)]
+                part.shareLine = nil
+                return part
+            }
+        }
+        guard marksLevies(outcome) else { return bar }
+        return retouched(bar) { part in
+            var part = part
+            part.legendValue = estimateSign + part.legendValue
+            part.rows = part.rows.map { row in
+                var row = row
+                if row.style != .muted {
+                    row.value = estimateSign + row.value
+                }
+                return row
+            }
+            return part
+        }
+    }
+
+    /// `bar` with each of its parts changed by `change`, and the readings of the parts and of the bar worded again
+    /// from what the parts now say.
+    private static func retouched(_ bar: LevyBarData, _ change: (LevyBarPart) -> LevyBarPart) -> LevyBarData {
+        var retouched = bar
+        retouched.parts = bar.parts.map { part in
+            var changed = change(part)
+            changed.accessibilityLabel = LevyBarBuilder.accessibilityLabel(
+                of: changed.authority, rows: changed.rows, shareLine: changed.shareLine, note: changed.note)
+            return changed
+        }
+        retouched.accessibilityLabel = LevyBarBuilder.accessibilityLabel(header: bar.header, parts: retouched.parts)
+        return retouched
+    }
+
     /// What is left to pay with the returns beyond the year's advances, which its sentence names; or, when nothing is
-    /// owed and the advances pay more than the levies, what is overpaid. What is left to pay is the sum of what each
-    /// authority is owed: an overpayment at one authority does not lower what another is owed, but the sentence names
-    /// it beside. The amount has the sign of an estimate only when the engine worked the year out with the rules of
-    /// another year, as the sum of the levies has; the advances never have it.
-    private static func settlement(_ outcome: PredictionOutcome) -> PredictionSettlement {
+    /// owed and the advances pay more than the levies, what is overpaid. It is the second key figure of the result
+    /// card. What is left to pay is the sum of what each authority is owed: an overpayment at one authority does not
+    /// lower what another is owed, but the sentence names it beside. The amount has the sign of an estimate only in a
+    /// year that is over and that the engine worked out with the rules of another year, as the sum of the levies has;
+    /// the advances never have it. While the estimate is not complete the amount is "—", and the sentence names the
+    /// planned advances only: that the estimate is not complete is said once, under the key figure.
+    private static func due(_ outcome: PredictionOutcome) -> KeyFigureData {
         let prediction = outcome.prediction
         let isClosed = prediction.isClosed
+        let advances = CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
         guard prediction.isComplete else {
-            return PredictionSettlement(
-                kind: .owed, label: "Odhad doplatku odvodů bez záloh", amount: "—",
-                lead: incompleteText + " Plánované zálohy ",
-                advances: CzechFormat.wholeKc(outcome.result.advancesPaidTotal), tail: " za celý rok.")
+            return KeyFigureData(
+                eyebrow: "Odhad doplatku odvodů bez záloh", figure: unknownAmount,
+                sentence: "Plánované zálohy " + advances + " za celý rok.", sentenceEmphasis: advances)
         }
         let owed = outcome.owedTotal
         let overpaid = outcome.overpaidTotal
-        let advances = CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
         func amount(_ crowns: Int64) -> String {
-            estimate(CzechFormat.wholeKc(crowns), when: outcome.result.rulesAreEstimate)
+            estimate(CzechFormat.wholeKc(crowns), when: marksLevies(outcome))
         }
         guard owed > 0 || overpaid == 0 else {
-            return PredictionSettlement(
-                kind: .overpaid, label: isClosed ? "Přeplatek záloh" : "Odhad přeplatku záloh",
-                amount: amount(overpaid), lead: "Zálohy ", advances: advances,
-                tail: " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů.")
+            return KeyFigureData(
+                eyebrow: isClosed ? "Přeplatek záloh" : "Odhad přeplatku záloh", figure: amount(overpaid),
+                sentence: "Zálohy " + advances + " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů.",
+                sentenceEmphasis: advances)
         }
         let beside =
             overpaid > 0
@@ -148,15 +215,17 @@ nonisolated enum PredictionBuilder {
                 + "."
             : ""
         if isClosed {
-            return PredictionSettlement(
-                kind: .owed, label: "Doplatek odvodů bez záloh", amount: amount(owed),
-                lead: "Za rok \(prediction.year) navíc k zálohám ", advances: advances,
-                tail: " – daň, ČSSZ a VZP po podání přiznání a přehledů." + beside)
+            return KeyFigureData(
+                eyebrow: "Doplatek odvodů bez záloh", figure: amount(owed),
+                sentence: "Za rok \(prediction.year) navíc k zálohám " + advances
+                    + " – daň, ČSSZ a VZP po podání přiznání a přehledů." + beside,
+                sentenceEmphasis: advances)
         }
-        return PredictionSettlement(
-            kind: .owed, label: "Odhad doplatku odvodů bez záloh", amount: amount(owed),
-            lead: "Tolik si odložte stranou – navíc k zálohám ", advances: advances,
-            tail: ", které platíte průběžně. Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP." + beside)
+        return KeyFigureData(
+            eyebrow: "Odhad doplatku odvodů bez záloh", figure: amount(owed),
+            sentence: "Tolik si odložte stranou – navíc k zálohám " + advances
+                + ", které platíte průběžně. Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP." + beside,
+            sentenceEmphasis: advances)
     }
 
     /// What was received, and in a year in progress what waits for its payment and what is expected, each with its part
@@ -197,21 +266,25 @@ nonisolated enum PredictionBuilder {
     /// under it the sum of the whole year, with the part of the income that the sum is (`IncomeShares`) while the
     /// income is above zero. A part below zero or above the whole is shown as it is. The result is of 31 December, so
     /// the average is over all twelve months. The caption says that the figure is an estimate in a year in progress, as
-    /// the head of the income does, and the two figures have the sign of an estimate only when the engine worked the
-    /// year out with the rules of another year, as the levies they are made from have.
-    private static func netIncome(_ result: TaxResult, isClosed: Bool) -> PredictionNetIncome {
+    /// the head of the income does, and the two figures have the sign of an estimate only in a year that is over and
+    /// that the engine worked out with the rules of another year, as the levies they are made from have.
+    private static func netIncome(_ outcome: PredictionOutcome) -> PredictionNetIncome {
+        let result = outcome.result
         let net = NetIncome(result)
+        let sign = marksLevies(outcome)
         let share =
-            IncomeShares(result).map { " · " + BuilderText.share(tenths: $0.netTenths) + " příjmů po dani a pojistném" }
-            ?? ""
+            IncomeShares(result).map { " · " + BuilderText.share(tenths: $0.netTenths) + " příjmů po odvodech" } ?? ""
         return PredictionNetIncome(
-            label: isClosed ? "Čistý příjem průměrně za měsíc" : "Čistý příjem průměrně za měsíc (odhad)",
-            amount: estimate(CzechFormat.wholeKc(net.monthlyKc), when: result.rulesAreEstimate),
-            sub: "za celý rok " + estimate(CzechFormat.wholeKc(net.yearKc), when: result.rulesAreEstimate) + share)
+            label: outcome.prediction.isClosed
+                ? "Čistý příjem průměrně za měsíc" : "Čistý příjem průměrně za měsíc (odhad)",
+            amount: estimate(CzechFormat.wholeKc(net.monthlyKc), when: sign),
+            sub: "za celý rok " + estimate(CzechFormat.wholeKc(net.yearKc), when: sign) + share)
     }
 
     /// The sum that is paid only in the next year, which is that year's income, or nil when there is none. The note
-    /// names the year and not a month: a payment after 31 December need not come in January.
+    /// names the year and not a month: a payment after 31 December need not come in January. It has no sign of an
+    /// estimate, as the card it stands in is an area of estimates in a year in progress, and a year that is over has
+    /// no estimate.
     private static func nextYearNote(_ prediction: IncomePrediction) -> String? {
         if prediction.hasUnknownNextYearAmount {
             let known = prediction.nextYearHalere > 0
@@ -221,7 +294,7 @@ nonisolated enum PredictionBuilder {
         }
         guard prediction.nextYearHalere > 0 else { return nil }
         let next = prediction.year + 1
-        return estimate(kc(ofHalere: prediction.nextYearHalere), isClosed: prediction.isClosed)
+        return kc(ofHalere: prediction.nextYearHalere)
             + " přijde až v roce \(next) (faktury zaplacené po 31.\u{00A0}12.) – to už jsou příjmy roku \(next)."
     }
 

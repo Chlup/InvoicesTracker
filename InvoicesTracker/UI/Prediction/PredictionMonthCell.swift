@@ -2,9 +2,10 @@ import SwiftUI
 
 /// One month of a client in the grid of the months: its short name, what the month holds in a few figures, and under it
 /// what that means ("zaplaceno", "čekám", "→ 2027"), on a fill and with an edge that tell the six kinds of month apart
-/// (`PredictionCellKind.style`). A month that is open, where an invoice is expected or not, is a toggle button that a
-/// tap switches, and VoiceOver reads whether it is on. A month that holds invoices or is over, and a month of the
-/// invoices of a client the app does not know, are not buttons: the cell only says what it holds.
+/// (`PredictionCellKind.style`), in a shape rounded by the radius of a control. A month that is open, where an invoice
+/// is expected or not, is a toggle button that a tap switches, and VoiceOver reads whether it is on. A month that holds
+/// invoices or is over, and a month of the invoices of a client the app does not know, are not buttons: the cell only
+/// says what it holds.
 ///
 /// The texts stand on one line each, in a cell that is only 64 points wide where the grid has just room for its columns
 /// (twelve in a row from 834 points, six from 414), so that they shrink as far as `minimumTextScale` before they would
@@ -40,17 +41,17 @@ struct PredictionMonthCell: View {
         let style = cell.kind.style
         return VStack(alignment: .leading, spacing: 1) {
             Text(verbatim: cell.label)
-                .font(.subheadline.weight(.semibold))
+                .font(Typography.subheadlineSemibold)
                 .foregroundStyle(style.label)
             if !cell.value.isEmpty {
                 Text(verbatim: cell.value)
-                    .font(.callout.weight(style.valueWeight))
+                    .font(Typography.callout.weight(style.valueWeight))
                     .monospacedDigit()
                     .foregroundStyle(style.value)
             }
             if !cell.sub.isEmpty {
                 Text(verbatim: cell.sub)
-                    .font(.subheadline)
+                    .font(Typography.subheadline)
                     .foregroundStyle(style.sub)
             }
         }
@@ -59,14 +60,14 @@ struct PredictionMonthCell: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, minHeight: 52, maxHeight: .infinity, alignment: .topLeading)
-        .background(style.fill, in: RoundedRectangle(cornerRadius: 8))
+        .background(style.fill, in: RoundedRectangle(cornerRadius: DesignMetrics.controlRadius))
         .overlay {
             if let edge = style.edge {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
                     .strokeBorder(edge.color, style: StrokeStyle(lineWidth: edge.width, dash: edge.dash))
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(RoundedRectangle(cornerRadius: DesignMetrics.controlRadius))
     }
 }
 
@@ -111,35 +112,37 @@ struct PredictionCellStyle {
 }
 
 extension PredictionCellKind {
-    /// How a cell, and its swatch in the legend, of this kind is set. The colours are those the app already has:
-    /// - what is paid is in the green of the status of a paid invoice, with its dark green text;
-    /// - what is issued is in the blue of a banner, and what is expected in the same blue, paler, with a dashed edge in
-    ///   the blue of the issued money in the chart, both with the dark blue text of the rate capsule;
-    /// - what is paid only next year is on the cream and in the brown of the day in the future and the simulation,
-    ///   with an orange dashed edge;
-    /// - what is over, and what is not expected, is in the greys of secondary text, the latter with a thin edge.
+    /// How a cell, and its swatch in the legend, of this kind is set. The colours are tokens of the design:
+    /// - what is paid is on the green tint, in the green of text;
+    /// - what is issued is on the accent tint, in the blue of text, and what is expected is the same, with a dashed
+    ///   edge in the accent;
+    /// - what is paid only next year is on the orange tint, in the orange of text, with a dashed orange edge;
+    /// - what is over is on the inset background, in the faintest text;
+    /// - what is not expected is on the card, in tertiary text and the faintest, with a thin dashed edge in the
+    ///   stronger separator.
     var style: PredictionCellStyle {
         switch self {
         case .paid:
-            PredictionCellStyle(fill: Color.green.opacity(0.15), text: Color(.bannerText))
+            PredictionCellStyle(fill: Palette.greenTint, text: Palette.greenText)
         case .waiting:
-            PredictionCellStyle(fill: Color.blue.opacity(0.12), text: Color(.uniformRateText))
+            PredictionCellStyle(fill: Palette.accentTint, text: Palette.accentText)
         case .past:
             PredictionCellStyle(
-                fill: Color.secondary.opacity(0.1), label: Color.secondary, value: Color(nsColor: .tertiaryLabelColor),
-                sub: Color.secondary, valueWeight: .regular)
+                fill: Palette.bgInset, label: Palette.text4, value: Palette.text4, sub: Palette.text4,
+                valueWeight: .regular)
         case .expected:
             PredictionCellStyle(
-                fill: Color.blue.opacity(0.05), text: Color(.uniformRateText),
-                edge: PredictionCellStyle.Edge(color: Color(.chartIssued), width: 1.5, dash: [4, 3]))
+                fill: Palette.accentTint, text: Palette.accentText,
+                edge: PredictionCellStyle.Edge(color: Palette.accent, width: 1.5, dash: [4, 3]))
         case .expectedNextYear:
             PredictionCellStyle(
-                fill: Color(.futureDateBackground), text: Color(.simulationText),
-                edge: PredictionCellStyle.Edge(color: Color.orange, width: 1.5, dash: [4, 3]))
+                fill: Palette.orangeTint, text: Palette.orangeText,
+                edge: PredictionCellStyle.Edge(color: Palette.orange, width: 1.5, dash: [4, 3]))
         case .notExpected:
             PredictionCellStyle(
-                fill: Color.clear, text: Color.secondary,
-                edge: PredictionCellStyle.Edge(color: Color.secondary.opacity(0.5), width: 1, dash: [3, 3]))
+                fill: Palette.bgCard, label: Palette.text3, value: Palette.text4, sub: Palette.text4,
+                valueWeight: .semibold,
+                edge: PredictionCellStyle.Edge(color: Palette.sepStrong, width: 1, dash: [3, 3]))
         }
     }
 }

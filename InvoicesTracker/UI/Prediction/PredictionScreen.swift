@@ -1,17 +1,25 @@
 import SwiftUI
 
+/// The sizes of the page of Odhad odvodů that its parts do not set themselves, in points.
+private nonisolated enum PredictionScreenMetrics {
+    /// The space at the sides of the heading "Rozpis výpočtu".
+    static let headingInset: CGFloat = 4
+}
+
 /// Odhad odvodů: the estimate of the selected year's whole income, client by client, and of its tax and insurance. At
 /// the top stands the warning that the year is an estimate with the rules of another year, and under that the line that
-/// part of the income is converted at a provisional rate, each only when it applies. Then comes the summary card, with
-/// the sum of the levies, what is left to settle beyond the year's advances (the doplatek, or the přeplatek when the
-/// advances pay more than the levies), the income with its bar and the net income of the year, and under it the banner
-/// that says what the estimate counts. Then come the months of the clients ("Kdy čekám faktury"), folded until the
-/// person opens them, where a tap on a month says whether an invoice is expected in it, and the breakdown of the
-/// levies in two columns: the income and the tax on the left, the social and the health insurance with the net income
-/// under them on the right, side by side where the window has room for two columns and one under the other where it
-/// has not. The title and the line under it are the shell's. The screen only lays out the page the model builds. The
-/// data is loaded again whenever what it depends on changes, and when the day changes: the estimate is made as of
-/// today, whatever "K datu" shows.
+/// part of the income is converted at a provisional rate, each only when it applies. Then comes the result card, with
+/// the sum of the levies as the key figure, the bar of the levies by authority beside it (or under it, where the card
+/// is too narrow for two columns), the bar's popovers hanging out over what follows, and under a hairline what is left
+/// to settle beyond the year's advances (the doplatek, or the přeplatek when the advances pay more than the levies).
+/// Under it come the card Příjmy, with the income and the net income of the year, the bar of the income with its
+/// legend and the note about the money that comes next year, and the note that says what the estimate counts. Then
+/// come the months of the clients ("Kdy čekám faktury"), folded until the person opens them, where a tap on a month
+/// says whether an invoice is expected in it, and the breakdown of the levies in two columns: the income and the tax on
+/// the left, the social and the health insurance with the net income under them on the right, side by side where the
+/// window has room for two columns and one under the other where it has not. The title and the line under it are the
+/// shell's. The screen only lays out the page the model builds. The data is loaded again whenever what it depends on
+/// changes, and when the day changes: the estimate is made as of today, whatever "K datu" shows.
 struct PredictionScreen: View {
     let app: AppModel
     @State private var model: PredictionModel
@@ -30,7 +38,7 @@ struct PredictionScreen: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: DesignMetrics.cardSpacing) {
                 content
             }
             .pagePadding()
@@ -49,7 +57,11 @@ struct PredictionScreen: View {
             if let notice = model.provisionalNotice {
                 RulesWarning(text: notice)
             }
-            PredictionSummaryCard(page: page)
+            // The popover of the bar hangs below its legend and may reach over the cards that follow, so the card is
+            // drawn above them, and nothing clips it.
+            PredictionResultCard(page: page)
+                .zIndex(1)
+            PredictionIncomeCard(page: page)
             ComputationBanner(text: page.banner)
             PredictionMonthsSection(
                 page: page, saveFailure: model.saveFailure, isOpen: Bindable(app).predictionMonthsOpen,
@@ -63,7 +75,8 @@ struct PredictionScreen: View {
             breakdown(page)
         } else if let errorText = model.errorText {
             Text(verbatim: errorText)
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         }
@@ -72,11 +85,12 @@ struct PredictionScreen: View {
     /// "Rozpis výpočtu": the cards of the income and the tax on the left, and of the social insurance and the health
     /// insurance with the net income under them on the right.
     private func breakdown(_ page: PredictionPage) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignMetrics.innerSpacing) {
             Text("Rozpis výpočtu")
-                .font(.system(size: 15, weight: .semibold))
+                .font(Typography.title3)
+                .foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, PredictionScreenMetrics.headingInset)
             TwoColumnStack {
                 ForEach(page.left) { section in
                     card(of: section)

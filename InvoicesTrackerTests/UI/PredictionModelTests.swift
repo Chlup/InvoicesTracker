@@ -80,8 +80,11 @@ struct PredictionModelTests {
 
             let page = try #require(model.page)
             let expected = try expectedPage()
-            #expect(page.label == "Odhad odvodů za celý rok 2026")
-            #expect(page.hero == "466\u{A0}782\u{A0}Kč")
+            #expect(page.keyFigure.eyebrow == "Odhad odvodů za celý rok 2026")
+            #expect(page.keyFigure.figure == "466\u{A0}782\u{A0}Kč")
+            #expect(page.levyBar.header == "Odvody za celý rok 2026 podle úřadů")
+            #expect(page.due.figure == "198\u{A0}702\u{A0}Kč")
+            #expect(page.incomeSub == "Odhad za celý rok 2026 z faktur do 17.\u{A0}10.\u{A0}2026")
             #expect(page == expected)
             #expect(model.errorText == nil)
             #expect(model.saveFailure == nil)
@@ -95,13 +98,13 @@ struct PredictionModelTests {
             app.selectYear(2025)
             await model.load()
 
-            #expect(model.page?.label == "Odvody za rok 2025 – skutečnost")
-            #expect(model.page?.hero == "537\u{A0}865\u{A0}Kč")
+            #expect(model.page?.keyFigure.eyebrow == "Odvody za rok 2025 – skutečnost")
+            #expect(model.page?.keyFigure.figure == "537\u{A0}865\u{A0}Kč")
 
             app.selectYear(2026)
             await model.load()
 
-            #expect(model.page?.label == "Odhad odvodů za celý rok 2026")
+            #expect(model.page?.keyFigure.eyebrow == "Odhad odvodů za celý rok 2026")
         }
     }
 
@@ -182,7 +185,7 @@ struct PredictionModelTests {
             await older.value
             await newer.value
 
-            #expect(model.page?.label == "Odvody za rok 2025 – skutečnost")
+            #expect(model.page?.keyFigure.eyebrow == "Odvody za rok 2025 – skutečnost")
         }
     }
 
@@ -211,7 +214,7 @@ struct PredictionModelTests {
             await older.value
             await newer.value
 
-            #expect(model.page?.label == "Odvody za rok 2026 – skutečnost")
+            #expect(model.page?.keyFigure.eyebrow == "Odvody za rok 2026 – skutečnost")
             #expect(model.rulesWarning == nil)
             #expect(model.provisionalNotice == nil)
         }
@@ -225,14 +228,14 @@ struct PredictionModelTests {
         try await withSample { app in
             let model = await loadedModel(of: app)
 
-            #expect(model.page?.label == "Odhad odvodů za celý rok 2026")
+            #expect(model.page?.keyFigure.eyebrow == "Odhad odvodů za celý rok 2026")
             #expect(model.rulesWarning == nil)
             #expect(model.provisionalNotice == nil)
         }
         try await withSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
             let model = await loadedModel(of: app)
 
-            #expect(model.page?.label == "Odhad odvodů za celý rok 2027")
+            #expect(model.page?.keyFigure.eyebrow == "Odhad odvodů za celý rok 2027")
             #expect(
                 model.rulesWarning
                     == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
@@ -254,7 +257,7 @@ struct PredictionModelTests {
             app.selectYear(2026)
             await model.load()
 
-            #expect(model.page?.label == "Odvody za rok 2026 – skutečnost")
+            #expect(model.page?.keyFigure.eyebrow == "Odvody za rok 2026 – skutečnost")
             #expect(model.rulesWarning == nil)
             #expect(model.provisionalNotice == nil)
         }
@@ -300,7 +303,7 @@ struct PredictionModelTests {
 
             try await database.saveInvoiceWithProvisionalPayment(on: "2025-12-15")
             let model = await loadedModel(of: app)
-            #expect(model.page?.label == "Odvody za rok 2025 – skutečnost")
+            #expect(model.page?.keyFigure.eyebrow == "Odvody za rok 2025 – skutečnost")
             #expect(model.provisionalNotice == RulesWarning.provisionalIncome)
             #expect(model.rulesWarning == nil)
             #expect(

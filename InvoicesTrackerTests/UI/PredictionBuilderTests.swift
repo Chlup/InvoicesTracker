@@ -2,13 +2,13 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// The page of Odhad odvodů that the builder makes from a prediction and its levies: every text of the summary card,
-/// the banner, the months of each client and the two columns of the breakdown. The data is the prediction sample as of
-/// Saturday 17. 10. 2026, and its closed years 2025 and 2024; the incomes and the levies are those of
-/// `PredictionGoldenTests`. Below the income line the figures are the engine's own, which rounds the income to whole
-/// crowns first: the profit of 2026 is 1 543 157 Kč and the base of the health insurance 771 578,50 Kč. The years the
-/// engine has no rules for, 2021 and 2027, take the settings of the sample's 2024 and 2026. In every expected string
-/// `\u{A0}` is the no-break space.
+/// The page of Odhad odvodů that the builder makes from a prediction and its levies: every text of the result card
+/// and of the card Příjmy, the banner, the months of each client and the two columns of the breakdown. The data is the
+/// prediction sample as of Saturday 17. 10. 2026, and its closed years 2025 and 2024; the incomes and the levies are
+/// those of `PredictionGoldenTests`. Below the income line the figures are the engine's own, which rounds the income
+/// to whole crowns first: the profit of 2026 is 1 543 157 Kč and the base of the health insurance 771 578,50 Kč. The
+/// years the engine has no rules for, 2021 and 2027, take the settings of the sample's 2024 and 2026. In every
+/// expected string `\u{A0}` is the no-break space.
 struct PredictionBuilderTests {
     // MARK: Helpers
 
@@ -142,18 +142,37 @@ struct PredictionBuilderTests {
         cells.map { "\($0.label)|\($0.value)|\($0.sub)" }
     }
 
-    /// Every text the page shows, for the checks that go through all of them.
-    private func texts(of page: PredictionPage) -> [String] {
-        var texts = [
-            page.label, page.hero, page.heroText, page.incomeHead, page.incomeTotal, page.banner, page.monthsHead,
-            page.monthsSub, page.othersTitle, page.othersSub,
-        ]
-        texts += page.levies.flatMap { [$0.title, $0.value] }
-        let settlement = page.settlement
-        texts += [settlement.label, settlement.amount, settlement.lead, settlement.advances, settlement.tail]
+    /// Every text of the result card: the key figure, the bar of the levies with its popovers and the figure of what
+    /// is left to settle.
+    private func resultTexts(of page: PredictionPage) -> [String] {
+        var texts = [page.keyFigure.eyebrow, page.keyFigure.figure]
+        texts += [page.keyFigure.share, page.keyFigure.sentence].compactMap { $0 }
+        texts += [page.levyBar.header, page.levyBar.accessibilityLabel]
+        texts += [page.levyBar.total, page.levyBar.totalShare].compactMap { $0 }
+        for part in page.levyBar.parts {
+            texts += [part.legendValue, part.accessibilityLabel]
+            texts += part.rows.flatMap { [$0.label, $0.value] }
+            texts += [part.shareLine, part.note].compactMap { $0 }
+        }
+        texts += [page.due.eyebrow, page.due.figure]
+        texts += [page.due.share, page.due.sentence].compactMap { $0 }
+        return texts
+    }
+
+    /// Every text of the card Příjmy: its subtitle, the income and the net income with their notes, the parts of the
+    /// income and the note of the money of next year.
+    private func incomeTexts(of page: PredictionPage) -> [String] {
+        var texts = [page.incomeSub, page.incomeNote, page.incomeHead, page.incomeTotal]
         texts += [page.netIncome.label, page.netIncome.amount, page.netIncome.sub]
         texts += page.parts.flatMap { [$0.text, $0.value] }
-        texts += [page.nextYearNote, page.noActiveText].compactMap { $0 }
+        return texts + [page.nextYearNote].compactMap { $0 }
+    }
+
+    /// Every text the page shows, for the checks that go through all of them.
+    private func texts(of page: PredictionPage) -> [String] {
+        var texts = resultTexts(of: page) + incomeTexts(of: page)
+        texts += [page.banner, page.monthsHead, page.monthsSub, page.othersTitle, page.othersSub]
+        texts += [page.noActiveText].compactMap { $0 }
         texts += page.legend.map(\.text)
         for row in page.activeRows + page.otherRows {
             texts += [row.name, row.how, row.adds] + [row.note].compactMap { $0 }
@@ -175,34 +194,90 @@ struct PredictionBuilderTests {
         }
     }
 
-    // MARK: The summary card
+    // MARK: The result card
 
-    /// 466 782 Kč of tax and insurance (114 786 + 247 832 + 104 164) from an income of 2 743 157 Kč: 2 191 771 Kč
-    /// received, nothing issued and unpaid, and 551 386 Kč expected. The advances of the year are 268 080 Kč, so
-    /// 198 702 Kč are owed with the returns beyond them, and 290 193 Kč are paid only in the next year. Nothing is
-    /// overpaid at any authority, and the income total has no sign of an estimate. The income less the levies leaves
-    /// 2 276 375 Kč, which is 83,0 % of the income and over the twelve months of the year 189 698 Kč a month
-    /// (189 697,92 rounded half up); the caption says that it is an estimate, and the figures have no sign.
-    @Test func theSummaryCardSaysTheSampleYear() throws {
+    /// 466 782 Kč of tax and insurance (114 786 + 247 832 + 104 164) from an income of 2 743 157 Kč, which is 17,0 % of
+    /// it. The advances of the year are 268 080 Kč, so 198 702 Kč are owed with the returns beyond them; the three
+    /// authorities are owed 68 786, 97 272 and 32 644 Kč of that, and nothing is overpaid at any of them. The key
+    /// figure has no sign of an estimate: its eyebrow says "Odhad". The levy bar has no total, as the figure beside it
+    /// is the total.
+    @Test func theResultCardSaysTheSampleYear() throws {
         let page = try makePage()
 
-        #expect(page.label == "Odhad odvodů za celý rok 2026")
-        #expect(page.hero == "466\u{A0}782\u{A0}Kč")
-        #expect(page.levies.map(\.title) == ["Daň", "Sociální", "Zdravotní"])
-        #expect(page.levies.map(\.authority) == [.tax, .social, .health])
-        #expect(page.levies.map(\.value) == ["114\u{A0}786\u{A0}Kč", "247\u{A0}832\u{A0}Kč", "104\u{A0}164\u{A0}Kč"])
         #expect(
-            page.heroText
-                == "Daň a pojistné z odhadovaného příjmu 2\u{A0}743\u{A0}157\u{A0}Kč za celý rok 2026"
-                + " – s odpočty a slevami ze Záloh a odpočtů a s minimálním pojistným za celý rok.")
+            page.keyFigure
+                == KeyFigureData(
+                    eyebrow: "Odhad odvodů za celý rok 2026", figure: "466\u{A0}782\u{A0}Kč",
+                    share: "17,0\u{A0}% z příjmů",
+                    sentence: "Odvody z odhadovaného příjmu 2\u{A0}743\u{A0}157\u{A0}Kč za celý rok 2026"
+                        + " – s odpočty a slevami ze Záloh a odpočtů a s minimálním pojistným za celý rok."))
+        #expect(page.levyBar.header == "Odvody za celý rok 2026 podle úřadů")
+        #expect(page.levyBar.total == nil)
+        #expect(page.levyBar.totalShare == nil)
+        #expect(page.levyBar.parts.map(\.authority) == [.tax, .social, .health])
+        #expect(page.levyBar.parts.map(\.weight) == [114_786, 247_832, 104_164])
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .owed, label: "Odhad doplatku odvodů bez záloh", amount: "198\u{A0}702\u{A0}Kč",
-                    lead: "Tolik si odložte stranou – navíc k zálohám ", advances: "268\u{A0}080\u{A0}Kč",
-                    tail: ", které platíte průběžně. Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP."))
+            page.levyBar.parts.map(\.legendValue) == [
+                "114\u{A0}786\u{A0}Kč", "247\u{A0}832\u{A0}Kč", "104\u{A0}164\u{A0}Kč",
+            ])
+        #expect(
+            page.levyBar.accessibilityLabel
+                == "Odvody za celý rok 2026 podle úřadů: Daň z příjmů 114\u{A0}786\u{A0}Kč,"
+                + " Sociální pojištění 247\u{A0}832\u{A0}Kč, Zdravotní pojištění 104\u{A0}164\u{A0}Kč")
+        #expect(
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Odhad doplatku odvodů bez záloh", figure: "198\u{A0}702\u{A0}Kč",
+                    sentence: "Tolik si odložte stranou – navíc k zálohám 268\u{A0}080\u{A0}Kč, které platíte průběžně."
+                        + " Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP.",
+                    sentenceEmphasis: "268\u{A0}080\u{A0}Kč"))
         // The advances are never broken across lines.
-        #expect(!page.settlement.advances.contains(" "))
+        #expect(try #require(page.due.sentenceEmphasis).allSatisfy { $0 != " " })
+    }
+
+    /// The popover of each authority has three rows in the words of a whole year: what the year's levy is, the advances
+    /// of all twelve months, and what is left to pay, with the share of the income in a line under them. The tax is
+    /// owed 68 786 Kč beyond its 46 000 Kč of advances, the social insurance 97 272 Kč beyond 150 560 Kč, and the
+    /// health insurance 32 644 Kč beyond 71 520 Kč. The shares of the income, 4,2, 9,0 and 3,8 %, add up to the 17,0 %
+    /// beside the key figure.
+    @Test func theLevyBarGivesEachAuthorityItsYearItsAdvancesAndWhatIsLeft() throws {
+        let page = try makePage()
+        let rows = page.levyBar.parts.map { part in part.rows.map { [$0.label, $0.value] } }
+
+        #expect(
+            rows == [
+                [["Odvody za rok", "114\u{A0}786\u{A0}Kč"], ["Zálohy za rok", "46\u{A0}000\u{A0}Kč"],
+                    ["Doplatek", "68\u{A0}786\u{A0}Kč"]],
+                [["Odvody za rok", "247\u{A0}832\u{A0}Kč"], ["Zálohy za rok", "150\u{A0}560\u{A0}Kč"],
+                    ["Doplatek", "97\u{A0}272\u{A0}Kč"]],
+                [["Odvody za rok", "104\u{A0}164\u{A0}Kč"], ["Zálohy za rok", "71\u{A0}520\u{A0}Kč"],
+                    ["Doplatek", "32\u{A0}644\u{A0}Kč"]],
+            ])
+        #expect(page.levyBar.parts.allSatisfy { $0.rows.map(\.style) == [.strong, .muted, .strong] })
+        #expect(
+            page.levyBar.parts.map(\.shareLine) == [
+                "4,2\u{A0}% z příjmů bez DPH", "9,0\u{A0}% z příjmů bez DPH", "3,8\u{A0}% z příjmů bez DPH",
+            ])
+        #expect(
+            page.levyBar.parts[0].accessibilityLabel
+                == "Daň z příjmů: odvody za rok 114\u{A0}786\u{A0}Kč, zálohy za rok 46\u{A0}000\u{A0}Kč,"
+                + " doplatek 68\u{A0}786\u{A0}Kč, 4,2\u{A0}% z příjmů bez DPH")
+        // The doplatky of the three add up to what is left to settle.
+        let owed = page.levyBar.parts.map { hundredths($0.rows[2].value) }.reduce(0, +)
+        #expect(owed == hundredths(page.due.figure))
+    }
+
+    /// The card Příjmy has its subtitle, the head, total and note of the income, and the parts of the income for the
+    /// bar: 2 191 771 Kč received, nothing issued and unpaid, and 551 386 Kč expected, with the 290 193 Kč that are
+    /// paid only in the next year. The income less the levies leaves 2 276 375 Kč, which is 83,0 % of the income and
+    /// over the twelve months 189 698 Kč a month (189 697,92 rounded half up); the caption says that it is an
+    /// estimate, and the figures have no sign. Nothing in the card has the sign of an estimate, as the whole card is
+    /// one.
+    @Test func theCardPrijmySaysTheIncomeAndTheNetIncomeOfTheSampleYear() throws {
+        let page = try makePage()
+
+        #expect(page.incomeSub == "Odhad za celý rok 2026 z faktur do 17.\u{A0}10.\u{A0}2026")
+        #expect(page.incomeNote == "bez DPH · peníze přijaté do 31.\u{A0}12.")
         #expect(page.incomeHead == "Příjmy za rok 2026 (odhad)")
         #expect(page.incomeTotal == "2\u{A0}743\u{A0}157\u{A0}Kč")
         #expect(page.parts.map(\.kind) == [.received, .waiting, .expected])
@@ -220,22 +295,26 @@ struct PredictionBuilderTests {
             page.netIncome
                 == PredictionNetIncome(
                     label: "Čistý příjem průměrně za měsíc (odhad)", amount: "189\u{A0}698\u{A0}Kč",
-                    sub: "za celý rok 2\u{A0}276\u{A0}375\u{A0}Kč · 83,0\u{A0}% příjmů po dani a pojistném"))
+                    sub: "za celý rok 2\u{A0}276\u{A0}375\u{A0}Kč · 83,0\u{A0}% příjmů po odvodech"))
         #expect(
             page.nextYearNote
-                == "≈\u{A0}290\u{A0}193\u{A0}Kč přijde až v roce 2027 (faktury zaplacené po 31.\u{A0}12.)"
+                == "290\u{A0}193\u{A0}Kč přijde až v roce 2027 (faktury zaplacené po 31.\u{A0}12.)"
                 + " – to už jsou příjmy roku 2027.")
+        #expect(
+            [page.incomeSub, page.incomeNote, page.incomeHead, page.incomeTotal, page.netIncome.amount]
+                .allSatisfy { !$0.contains("≈") })
     }
 
     /// The income total of a year in progress is what was received and what is expected, and it never carries the sign
-    /// of an estimate, not even in a year whose levies the engine works out with the rules of another year, which mark
-    /// their own figures instead.
+    /// of an estimate, not even in a year whose levies the engine works out with the rules of another year. Neither do
+    /// the levies of such a year in progress: the result card is an estimate as a whole, and the warning above the page
+    /// says that the rules are another year's.
     @Test func theIncomeTotalHasNoEstimateSign() throws {
         let sample = try makePage()
         let page2027 = PredictionBuilder.page(try outcomeOf2027())
 
         #expect(!sample.incomeTotal.contains("≈"))
-        #expect(page2027.hero.hasPrefix("≈\u{A0}"))
+        #expect(!page2027.keyFigure.figure.contains("≈"))
         #expect(!page2027.incomeTotal.contains("≈"))
     }
 
@@ -762,8 +841,11 @@ struct PredictionBuilderTests {
         let page = try makePage(of: inputWithOnePaymentThatLeavesTheTaxAsABonus())
         let tax = try section("Daň z příjmů", in: page)
 
-        #expect(page.levies[0].title == "Daň")
-        #expect(page.levies[0].value == "bonus 37\u{A0}524\u{A0}Kč")
+        let part = page.levyBar.parts[0]
+        #expect(part.authority == .tax)
+        #expect(part.legendValue == "bonus 37\u{A0}524\u{A0}Kč")
+        // A bonus is no levy to draw: the part of the bar has no width.
+        #expect(part.weight == -37_524)
         #expect(try row("Daň za rok (odhad)", in: tax).value == "\u{2212}37\u{A0}524")
         #expect(
             try row("Daň za rok (odhad)", in: tax).note == "záporná daň je daňový bonus – vyplatí ho finanční úřad")
@@ -834,7 +916,7 @@ struct PredictionBuilderTests {
                     label: "Průměrně za měsíc", value: "189\u{A0}698\u{A0}Kč", note: "čistý příjem na jeden měsíc",
                     sign: .equals, style: .total),
             ])
-        // The summary says the figures of the card.
+        // The card Příjmy says the figures of the card.
         #expect(try row("Průměrně za měsíc", in: card).value == page.netIncome.amount)
     }
 
@@ -848,7 +930,7 @@ struct PredictionBuilderTests {
             page.netIncome
                 == PredictionNetIncome(
                     label: "Čistý příjem průměrně za měsíc", amount: "199\u{A0}441\u{A0}Kč",
-                    sub: "za celý rok 2\u{A0}393\u{A0}295\u{A0}Kč · 81,7\u{A0}% příjmů po dani a pojistném"))
+                    sub: "za celý rok 2\u{A0}393\u{A0}295\u{A0}Kč · 81,7\u{A0}% příjmů po odvodech"))
         let card = try section("Čistý příjem", in: page)
         #expect(card.tag == "za rok 2025")
         #expect(try row("Čistý příjem za rok 2025", in: card).value == "2\u{A0}393\u{A0}295")
@@ -885,7 +967,7 @@ struct PredictionBuilderTests {
             page.netIncome
                 == PredictionNetIncome(
                     label: "Čistý příjem průměrně za měsíc (odhad)", amount: "\u{2212}7\u{A0}477\u{A0}Kč",
-                    sub: "za celý rok \u{2212}89\u{A0}720\u{A0}Kč · \u{2212}897,2\u{A0}% příjmů po dani a pojistném"))
+                    sub: "za celý rok \u{2212}89\u{A0}720\u{A0}Kč · \u{2212}897,2\u{A0}% příjmů po odvodech"))
         #expect(
             try row("Čistý příjem za rok (odhad)", in: section("Čistý příjem", in: page)).note
                 == "\u{2212}897,2\u{A0}% příjmů · skutečné výdaje podnikání tu odečtené nejsou")
@@ -900,15 +982,21 @@ struct PredictionBuilderTests {
     @Test func aClosedYearSaysSkutecnost() throws {
         let page = try makePage(year: 2025)
 
-        #expect(page.label == "Odvody za rok 2025 – skutečnost")
-        #expect(page.hero == "537\u{A0}865\u{A0}Kč")
-        #expect(page.heroText == "Daň a pojistné za celý rok 2025 ze všech přijatých plateb.")
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .owed, label: "Doplatek odvodů bez záloh", amount: "330\u{A0}065\u{A0}Kč",
-                    lead: "Za rok 2025 navíc k zálohám ", advances: "207\u{A0}800\u{A0}Kč",
-                    tail: " – daň, ČSSZ a VZP po podání přiznání a přehledů."))
+            page.keyFigure
+                == KeyFigureData(
+                    eyebrow: "Odvody za rok 2025 – skutečnost", figure: "537\u{A0}865\u{A0}Kč",
+                    share: "18,3\u{A0}% z příjmů", sentence: "Odvody za celý rok 2025 ze všech přijatých plateb."))
+        #expect(page.levyBar.header == "Odvody za rok 2025 podle úřadů")
+        #expect(page.levyBar.parts.map(\.weight) == [142_986, 278_025, 116_854])
+        #expect(
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Doplatek odvodů bez záloh", figure: "330\u{A0}065\u{A0}Kč",
+                    sentence: "Za rok 2025 navíc k zálohám 207\u{A0}800\u{A0}Kč"
+                        + " – daň, ČSSZ a VZP po podání přiznání a přehledů.",
+                    sentenceEmphasis: "207\u{A0}800\u{A0}Kč"))
+        #expect(page.incomeSub == "Rok 2025 · skutečnost")
         #expect(page.incomeHead == "Příjmy za rok 2025")
         #expect(page.incomeTotal == "2\u{A0}931\u{A0}160\u{A0}Kč")
         #expect(page.parts.map(\.text) == ["Přišlo do 31.\u{A0}12.\u{A0}2025"])
@@ -983,15 +1071,18 @@ struct PredictionBuilderTests {
     @Test func theLastDayOfTheYearClosesTheYearOfToday() throws {
         let page = try makePage(today: civilDate("2026-12-31"))
 
-        #expect(page.label == "Odvody za rok 2026 – skutečnost")
+        #expect(page.keyFigure.eyebrow == "Odvody za rok 2026 – skutečnost")
+        #expect(page.levyBar.header == "Odvody za rok 2026 podle úřadů")
+        #expect(page.incomeSub == "Rok 2026 · skutečnost")
         #expect(page.incomeTotal == "2\u{A0}191\u{A0}771\u{A0}Kč")
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .owed, label: "Doplatek odvodů bez záloh", amount: "8\u{A0}719\u{A0}Kč",
-                    lead: "Za rok 2026 navíc k zálohám ", advances: "268\u{A0}080\u{A0}Kč",
-                    tail: " – daň, ČSSZ a VZP po podání přiznání a přehledů."
-                        + " U některého úřadu vznikl přeplatek 18\u{A0}499\u{A0}Kč."))
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Doplatek odvodů bez záloh", figure: "8\u{A0}719\u{A0}Kč",
+                    sentence: "Za rok 2026 navíc k zálohám 268\u{A0}080\u{A0}Kč"
+                        + " – daň, ČSSZ a VZP po podání přiznání a přehledů."
+                        + " U některého úřadu vznikl přeplatek 18\u{A0}499\u{A0}Kč.",
+                    sentenceEmphasis: "268\u{A0}080\u{A0}Kč"))
         #expect(page.monthsHead == "Faktury po měsících")
         #expect(texts(of: page).filter { $0.contains("≈") }.isEmpty)
         #expect(!(page.activeRows + page.otherRows).flatMap(\.cells).contains { $0.isToggle })
@@ -1001,50 +1092,66 @@ struct PredictionBuilderTests {
 
     /// 2021 is over, and the engine has no rules for it: it works the levies out with those of 2022. The year has three
     /// payments of 100 000 Kč, and the sample's 2024 for the rest (`outcomeOf2021(advances:)`). The levies are an
-    /// estimate, so the sum of them, each of the three and the amount of the settlement have the sign of one, and so
-    /// have the average per month of the net income and the sum of the year, which is the income less the levies.
-    /// Nothing else of the page does: not the advances and not the income, which was received. The advances pay more
-    /// than the levies, so the settlement is the overpayment ("Přeplatek záloh"). The tax is a bonus, which reads so
-    /// after the sign. The label is that of a year that is over, and the banner no longer says that nothing is
-    /// estimated.
+    /// estimate, and the year is shown among facts ("– skutečnost"), so the sum of them, each of the three (in the
+    /// legend and in the rows of the popover that follow from the levy) and the amount of what is left to settle have
+    /// the sign of one, and so have the average per month of the net income and the sum of the year, which is the
+    /// income less the levies. Nothing else of the page does: not the advances, not the key figure's share and not the
+    /// income, which was received. The advances pay more than the levies, so what is left is the overpayment
+    /// ("Přeplatek záloh"). The tax is a bonus, which reads so after the sign. The label is that of a year that is
+    /// over, and the banner no longer says that nothing is estimated.
     @Test func aYearOverWithoutItsOwnRulesMarksItsLeviesAsEstimates() throws {
         let outcome = try outcomeOf2021()
         let page = PredictionBuilder.page(outcome)
+        let sign = "≈\u{A0}"
 
         #expect(outcome.result.rulesAreEstimate)
         #expect(outcome.result.rules.year == 2022)
-        #expect(page.hero.hasPrefix("≈\u{A0}"))
-        #expect(page.levies.map(\.value).allSatisfy { $0.hasPrefix("≈\u{A0}") })
-        #expect(page.levies[0].value.hasPrefix("≈\u{A0}bonus "))
+        #expect(page.keyFigure.figure.hasPrefix(sign))
+        #expect(page.levyBar.parts.map(\.legendValue).allSatisfy { $0.hasPrefix(sign) })
+        #expect(page.levyBar.parts[0].legendValue.hasPrefix(sign + "bonus "))
+        for part in page.levyBar.parts {
+            // The levy and what is left to pay of it follow from the rules of another year; the advances are the plan.
+            #expect(part.rows.filter { $0.style != .muted }.allSatisfy { $0.value.hasPrefix(sign) })
+            #expect(part.rows.filter { $0.style == .muted }.allSatisfy { !$0.value.contains("≈") })
+            #expect(part.accessibilityLabel.contains(sign))
+        }
+        #expect(page.levyBar.accessibilityLabel.contains(sign))
         #expect(outcome.owedTotal == 0)
         #expect(outcome.overpaidTotal > 0)
+        #expect(page.due.eyebrow == "Přeplatek záloh")
+        #expect(page.due.figure == sign + CzechFormat.wholeKc(outcome.overpaidTotal))
+        let advances = CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .overpaid, label: "Přeplatek záloh",
-                    amount: "≈\u{A0}" + CzechFormat.wholeKc(outcome.overpaidTotal), lead: "Zálohy ",
-                    advances: CzechFormat.wholeKc(outcome.result.advancesPaidTotal),
-                    tail: " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů."))
-        #expect(!page.settlement.advances.contains("≈"))
+            page.due.sentence
+                == "Zálohy " + advances + " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů.")
+        #expect(page.due.sentenceEmphasis == advances)
+        #expect(!advances.contains("≈"))
         #expect(!page.incomeTotal.contains("≈"))
         // The year is over, so the caption of the net income does not say that it is an estimate, but the figures have
         // the sign, the average and the sum of the year.
         #expect(page.netIncome.label == "Čistý příjem průměrně za měsíc")
-        #expect(page.netIncome.amount.hasPrefix("≈\u{A0}"))
-        #expect(page.netIncome.sub.hasPrefix("za celý rok ≈\u{A0}"))
-        // The sign is on the sum, the three levies, the amount of the settlement and the two figures of the net income,
-        // and on no other text of the page.
-        #expect(
-            texts(of: page).filter { $0.contains("≈") }
-                == [page.hero] + page.levies.map(\.value)
-                + [page.settlement.amount, page.netIncome.amount, page.netIncome.sub])
-        #expect(page.label == "Odvody za rok 2021 – skutečnost")
+        #expect(page.netIncome.amount.hasPrefix(sign))
+        #expect(page.netIncome.sub.hasPrefix("za celý rok " + sign))
+        // The sign is on the figures of the levies, in the legend, the rows and the readings of the bar, on the figure
+        // of what is left to settle and on the two figures of the net income, and on no other text of the page.
+        let marked = texts(of: page).filter { $0.contains("≈") }
+        #expect(marked.contains(page.keyFigure.figure))
+        #expect(marked.contains(page.due.figure))
+        #expect(marked.contains(page.netIncome.amount))
+        #expect(marked.contains(page.netIncome.sub))
+        let unmarked = [
+            page.keyFigure.eyebrow, page.keyFigure.sentence, page.keyFigure.share, page.due.eyebrow,
+            page.due.sentence, page.levyBar.header, page.incomeSub, page.incomeNote, page.incomeHead,
+            page.incomeTotal, page.netIncome.label,
+        ].compactMap { $0 }
+        #expect(unmarked.allSatisfy { !$0.contains("≈") }, "\(unmarked.filter { $0.contains("≈") })")
+        #expect(page.keyFigure.eyebrow == "Odvody za rok 2021 – skutečnost")
         #expect(
             page.banner
                 == "Rok 2021 skončil: všechny platby jsou známé. Měsíce ukazují, co se kdy vyfakturovalo.")
     }
 
-    /// The same year with no advance planned: the insurance is left to settle, so the settlement is the doplatek in the
+    /// The same year with no advance planned: the insurance is left to settle, so what is left is the doplatek in the
     /// texts of a year that is over, and its amount has the sign of an estimate as the přeplatek has in the year above.
     /// The advances, which are nothing, have none. The tax is a bonus, which is an overpayment at that authority, so
     /// the text names it beside what is owed.
@@ -1055,43 +1162,40 @@ struct PredictionBuilderTests {
         #expect(outcome.owedTotal > 0)
         #expect(outcome.overpaidTotal > 0)
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .owed, label: "Doplatek odvodů bez záloh",
-                    amount: "≈\u{A0}" + CzechFormat.wholeKc(outcome.owedTotal), lead: "Za rok 2021 navíc k zálohám ",
-                    advances: "0\u{A0}Kč",
-                    tail: " – daň, ČSSZ a VZP po podání přiznání a přehledů. U některého úřadu vznikl přeplatek "
-                        + CzechFormat.wholeKc(outcome.overpaidTotal) + "."))
-        #expect(!page.settlement.advances.contains("≈"))
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Doplatek odvodů bez záloh", figure: "≈\u{A0}" + CzechFormat.wholeKc(outcome.owedTotal),
+                    sentence: "Za rok 2021 navíc k zálohám 0\u{A0}Kč"
+                        + " – daň, ČSSZ a VZP po podání přiznání a přehledů. U některého úřadu vznikl přeplatek "
+                        + CzechFormat.wholeKc(outcome.overpaidTotal) + ".",
+                    sentenceEmphasis: "0\u{A0}Kč"))
     }
 
     /// The first weeks of 2027 are in progress, and the engine has no rules for the year yet: it works the levies out
-    /// with those of 2026. The sum of the levies, each of the three, the amount of the settlement and the two figures
-    /// of the net income have the sign because the rules are another year's, and in a year in progress the settlement
-    /// is the estimate of the přeplatek here. The label and the banner are those of a year in progress, and so is the
-    /// caption of the net income.
-    @Test func aYearInProgressWithoutItsOwnRulesMarksItsLeviesAsEstimates() throws {
+    /// with those of 2026. The result card is an estimate as a whole ("Odhad odvodů za celý rok 2027"), so none of its
+    /// figures has the sign "≈", and the warning above the page says that the rules are another year's: not the sum of
+    /// the levies, not the legend, rows and readings of the bar, not what is left to settle ("Odhad přeplatku záloh")
+    /// and not the figures of the net income, which sit in a card that is an estimate too. The label and the banner are
+    /// those of a year in progress, and so is the caption of the net income.
+    @Test func aYearInProgressWithoutItsOwnRulesHasNoApproximationInItsResultCard() throws {
         let outcome = try outcomeOf2027()
         let page = PredictionBuilder.page(outcome)
 
         #expect(outcome.result.rulesAreEstimate)
         #expect(outcome.result.rules.year == 2026)
-        #expect(page.hero.hasPrefix("≈\u{A0}"))
-        #expect(page.levies.map(\.value).allSatisfy { $0.hasPrefix("≈\u{A0}") })
         #expect(outcome.owedTotal == 0)
         #expect(outcome.overpaidTotal > 0)
+        #expect(page.keyFigure.eyebrow == "Odhad odvodů za celý rok 2027")
+        #expect(page.levyBar.header == "Odvody za celý rok 2027 podle úřadů")
+        #expect(page.due.eyebrow == "Odhad přeplatku záloh")
+        #expect(page.due.figure == CzechFormat.wholeKc(outcome.overpaidTotal))
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .overpaid, label: "Odhad přeplatku záloh",
-                    amount: "≈\u{A0}" + CzechFormat.wholeKc(outcome.overpaidTotal), lead: "Zálohy ",
-                    advances: CzechFormat.wholeKc(outcome.result.advancesPaidTotal),
-                    tail: " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů."))
-        #expect(!page.settlement.advances.contains("≈"))
+            page.due.sentence
+                == "Zálohy " + CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
+                + " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů.")
+        let marked = resultTexts(of: page) + [page.netIncome.amount, page.netIncome.sub, page.incomeTotal]
+        #expect(marked.filter { $0.contains("≈") }.isEmpty, "\(marked.filter { $0.contains("≈") })")
         #expect(page.netIncome.label == "Čistý příjem průměrně za měsíc (odhad)")
-        #expect(page.netIncome.amount.hasPrefix("≈\u{A0}"))
-        #expect(page.netIncome.sub.hasPrefix("za celý rok ≈\u{A0}"))
-        #expect(page.label == "Odhad odvodů za celý rok 2027")
         #expect(page.banner.hasPrefix("Odhad vychází z faktur do 15.\u{A0}1.\u{A0}2027"))
     }
 
@@ -1151,14 +1255,26 @@ struct PredictionBuilderTests {
     @Test func anOverpaidYearSaysPreplatek() throws {
         let page = try makePage(of: inputWithout())
 
-        #expect(page.hero == "99\u{A0}720\u{A0}Kč")
-        #expect(page.levies.map(\.value) == ["0\u{A0}Kč", "60\u{A0}056\u{A0}Kč", "39\u{A0}664\u{A0}Kč"])
+        #expect(page.keyFigure.figure == "99\u{A0}720\u{A0}Kč")
+        // There is no income for the levies to take a part of, so there is no share beside the figure or in a popover.
+        #expect(page.keyFigure.share == nil)
+        #expect(page.levyBar.parts.allSatisfy { $0.shareLine == nil })
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .overpaid, label: "Odhad přeplatku záloh", amount: "168\u{A0}360\u{A0}Kč", lead: "Zálohy ",
-                    advances: "268\u{A0}080\u{A0}Kč",
-                    tail: " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů."))
+            page.levyBar.parts.map(\.legendValue) == ["0\u{A0}Kč", "60\u{A0}056\u{A0}Kč", "39\u{A0}664\u{A0}Kč"])
+        // The advances pay more than every levy: the last row of each popover is what comes back, in green.
+        #expect(
+            page.levyBar.parts.map { $0.rows[2] } == [
+                LevyPopoverRow(label: "Přeplatek", value: "46\u{A0}000\u{A0}Kč", style: .positive),
+                LevyPopoverRow(label: "Přeplatek", value: "90\u{A0}504\u{A0}Kč", style: .positive),
+                LevyPopoverRow(label: "Přeplatek", value: "31\u{A0}856\u{A0}Kč", style: .positive),
+            ])
+        #expect(
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Odhad přeplatku záloh", figure: "168\u{A0}360\u{A0}Kč",
+                    sentence: "Zálohy 268\u{A0}080\u{A0}Kč převýší odvody"
+                        + " – rozdíl se vrátí po podání přiznání a přehledů.",
+                    sentenceEmphasis: "268\u{A0}080\u{A0}Kč"))
         #expect(page.incomeTotal == "0\u{A0}Kč")
         #expect(page.parts.map(\.fraction) == [0, 0, 0])
         #expect(page.nextYearNote == nil)
@@ -1178,11 +1294,12 @@ struct PredictionBuilderTests {
         let page = try makePage(of: input)
 
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .overpaid, label: "Přeplatek záloh", amount: "168\u{A0}360\u{A0}Kč", lead: "Zálohy ",
-                    advances: "268\u{A0}080\u{A0}Kč",
-                    tail: " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů."))
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Přeplatek záloh", figure: "168\u{A0}360\u{A0}Kč",
+                    sentence: "Zálohy 268\u{A0}080\u{A0}Kč převýší odvody"
+                        + " – rozdíl se vrátí po podání přiznání a přehledů.",
+                    sentenceEmphasis: "268\u{A0}080\u{A0}Kč"))
     }
 
     /// Advances that pay exactly what the levies come to leave nothing to settle and nothing to get back: that is a
@@ -1199,11 +1316,12 @@ struct PredictionBuilderTests {
             try PredictionOutcome.make(prediction: IncomePrediction.make(input), yearInput: yearInput))
 
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .owed, label: "Odhad doplatku odvodů bez záloh", amount: "0\u{A0}Kč",
-                    lead: "Tolik si odložte stranou – navíc k zálohám ", advances: "99\u{A0}720\u{A0}Kč",
-                    tail: ", které platíte průběžně. Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP."))
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Odhad doplatku odvodů bez záloh", figure: "0\u{A0}Kč",
+                    sentence: "Tolik si odložte stranou – navíc k zálohám 99\u{A0}720\u{A0}Kč, které platíte průběžně."
+                        + " Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP.",
+                    sentenceEmphasis: "99\u{A0}720\u{A0}Kč"))
         #expect(try row("Doplatek", in: section("Daň z příjmů", in: page)).value == "0\u{A0}Kč")
         #expect(
             try row("Zálohy za rok", in: section("Daň z příjmů", in: page)).note
@@ -1213,7 +1331,8 @@ struct PredictionBuilderTests {
     /// The sample year with health advances of 12 000 Kč a month, 144 000 Kč, which pay 39 836 Kč more than the health
     /// insurance of 104 164 Kč while the tax and the social insurance still owe: what is owed is the sum of what those
     /// two leave, 166 058 Kč, and the overpayment at the health insurance does not lower it but is named beside it. It
-    /// is still to arise in a year in progress.
+    /// is still to arise in a year in progress. The advances of the year are 340 560 Kč: the sample's 268 080 Kč with
+    /// the 144 000 Kč of health advances instead of its 71 520 Kč.
     @Test func aYearInProgressOverpaidAtOneAuthorityNamesThatOverpayment() throws {
         let outcome = try outcomeWithChangedAdvances(of: PredictionSample.input(year: 2026)) {
             $0.health = [Int64](repeating: 12_000, count: 12)
@@ -1222,18 +1341,25 @@ struct PredictionBuilderTests {
 
         #expect(outcome.owedTotal == 166_058)
         #expect(outcome.overpaidTotal == 39_836)
-        #expect(page.settlement.kind == .owed)
-        #expect(page.settlement.label == "Odhad doplatku odvodů bez záloh")
-        #expect(page.settlement.amount == "166\u{A0}058\u{A0}Kč")
+        #expect(page.due.eyebrow == "Odhad doplatku odvodů bez záloh")
+        #expect(page.due.figure == "166\u{A0}058\u{A0}Kč")
         #expect(
-            page.settlement.tail
-                == ", které platíte průběžně. Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP."
+            page.due.sentence
+                == "Tolik si odložte stranou – navíc k zálohám 340\u{A0}560\u{A0}Kč, které platíte průběžně."
+                + " Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP."
                 + " U některého úřadu vznikne přeplatek 39\u{A0}836\u{A0}Kč.")
+        #expect(page.due.sentenceEmphasis == "340\u{A0}560\u{A0}Kč")
+        // The health insurance is the one that is overpaid: the last row of its popover is the overpayment, in green.
+        #expect(
+            page.levyBar.parts[2].rows[2]
+                == LevyPopoverRow(label: "Přeplatek", value: "39\u{A0}836\u{A0}Kč", style: .positive))
+        #expect(page.levyBar.parts[0].rows[2].label == "Doplatek")
     }
 
     /// The same in 2025, which is over: health advances of 12 000 Kč a month pay 27 146 Kč more than the health
     /// insurance of 116 854 Kč while the tax and the social insurance owe 269 611 Kč beyond their advances. The
-    /// overpayment has arisen, so the verb is in the past.
+    /// overpayment has arisen, so the verb is in the past. The advances of the year are 295 400 Kč: the sample's
+    /// 207 800 Kč with the 144 000 Kč of health advances instead of its 56 400 Kč.
     @Test func aYearOverOverpaidAtOneAuthoritySaysVznikl() throws {
         let outcome = try outcomeWithChangedAdvances(of: PredictionSample.input(year: 2025)) {
             $0.health = [Int64](repeating: 12_000, count: 12)
@@ -1242,12 +1368,12 @@ struct PredictionBuilderTests {
 
         #expect(outcome.owedTotal == 269_611)
         #expect(outcome.overpaidTotal == 27_146)
-        #expect(page.settlement.kind == .owed)
-        #expect(page.settlement.label == "Doplatek odvodů bez záloh")
-        #expect(page.settlement.amount == "269\u{A0}611\u{A0}Kč")
+        #expect(page.due.eyebrow == "Doplatek odvodů bez záloh")
+        #expect(page.due.figure == "269\u{A0}611\u{A0}Kč")
         #expect(
-            page.settlement.tail
-                == " – daň, ČSSZ a VZP po podání přiznání a přehledů."
+            page.due.sentence
+                == "Za rok 2025 navíc k zálohám 295\u{A0}400\u{A0}Kč"
+                + " – daň, ČSSZ a VZP po podání přiznání a přehledů."
                 + " U některého úřadu vznikl přeplatek 27\u{A0}146\u{A0}Kč.")
     }
 
@@ -1262,9 +1388,13 @@ struct PredictionBuilderTests {
 
         #expect(outcome.overpaidTotal == 37_524)
         #expect(outcome.owedTotal == 99_720)
-        #expect(page.settlement.kind == .owed)
-        #expect(page.settlement.amount == "99\u{A0}720\u{A0}Kč")
-        #expect(page.settlement.tail.hasSuffix(" U některého úřadu vznikne přeplatek 37\u{A0}524\u{A0}Kč."))
+        #expect(page.due.eyebrow == "Odhad doplatku odvodů bez záloh")
+        #expect(page.due.figure == "99\u{A0}720\u{A0}Kč")
+        #expect(page.due.sentence?.hasSuffix(" U některého úřadu vznikne přeplatek 37\u{A0}524\u{A0}Kč.") == true)
+        // The tax is a bonus that comes back: its popover says "Vrátí se", the others what is left to pay.
+        let tax = page.levyBar.parts[0]
+        #expect(tax.rows[2] == LevyPopoverRow(label: "Vrátí se", value: "37\u{A0}524\u{A0}Kč", style: .positive))
+        #expect(page.levyBar.parts[1...].allSatisfy { $0.rows[2].label == "Doplatek" })
     }
 
     /// No advance is planned yet, as in every January before the advances are entered: the text keeps its words and
@@ -1276,12 +1406,15 @@ struct PredictionBuilderTests {
         let page = PredictionBuilder.page(outcome)
 
         #expect(outcome.result.advancesPaidTotal == 0)
+        // The figure repeats the sum of the levies and the sentence names 0 Kč, as the design draws it (D7).
+        #expect(page.due.figure == page.keyFigure.figure)
         #expect(
-            page.settlement
-                == PredictionSettlement(
-                    kind: .owed, label: "Odhad doplatku odvodů bez záloh", amount: "466\u{A0}782\u{A0}Kč",
-                    lead: "Tolik si odložte stranou – navíc k zálohám ", advances: "0\u{A0}Kč",
-                    tail: ", které platíte průběžně. Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP."))
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Odhad doplatku odvodů bez záloh", figure: "466\u{A0}782\u{A0}Kč",
+                    sentence: "Tolik si odložte stranou – navíc k zálohám 0\u{A0}Kč, které platíte průběžně."
+                        + " Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP.",
+                    sentenceEmphasis: "0\u{A0}Kč"))
     }
 
     // MARK: The tax in the higher band
@@ -1385,10 +1518,12 @@ struct PredictionBuilderTests {
 
     // MARK: The approximation sign
 
-    /// Every sign of an estimate in a year in progress has a no-break space after it, in the summary, the months, the
-    /// notes and the breakdown, so that a line never ends with the sign alone. The pages are the sample's, the sample
-    /// with other months chosen, a single invoice with a month on, and a year with the rules of another year, whose
-    /// levies and settlement have the sign too.
+    /// Every sign of an estimate in a year in progress has a no-break space after it, in the months, the notes and the
+    /// breakdown, so that a line never ends with the sign alone. The pages are the sample's, the sample with other
+    /// months chosen, a single invoice with a month on, and a year with the rules of another year, whose levies and
+    /// settlement have no sign, as the result card of a year in progress is an estimate as a whole. The pages of the
+    /// first three have an amount that is expected of a client, which has the sign; the page of the fourth, in the
+    /// first weeks of a year, expects nothing.
     @Test func everyApproximationOfAYearInProgressIsFollowedByANoBreakSpace() throws {
         let client = Client(id: 1, name: "Jediný s.r.o.", dueDays: 14)
         var invoice = Invoice.fixture(
@@ -1399,15 +1534,21 @@ struct PredictionBuilderTests {
         single.changes = [1: [11: true]]
         let pages = [
             try makePage(), try makePage(changes: [foxtrot: [11: false], sierra: [11: true, 12: true]]),
-            try makePage(of: single), PredictionBuilder.page(try outcomeOf2027()),
+            try makePage(of: single),
         ]
+        let page2027 = PredictionBuilder.page(try outcomeOf2027())
 
         for page in pages {
             let all = texts(of: page)
             #expect(all.contains { $0.contains("≈") })
             #expect(approximationsWithoutNoBreakSpace(in: all).isEmpty, "\(approximationsWithoutNoBreakSpace(in: all))")
+            // None of them is in the result card or in the card Příjmy.
+            #expect((resultTexts(of: page) + incomeTexts(of: page)).filter { $0.contains("≈") }.isEmpty)
         }
+        #expect(approximationsWithoutNoBreakSpace(in: texts(of: page2027)).isEmpty)
+        #expect((resultTexts(of: page2027) + incomeTexts(of: page2027)).filter { $0.contains("≈") }.isEmpty)
     }
+
     /// An annual CZK caption explains the qualifying payments and their separate daily conversions.
     @Test func theCaptionExplainsAnnualDailyCZKAverages() throws {
         let page = try makePage()
@@ -1433,12 +1574,11 @@ struct PredictionBuilderTests {
         let outcome = try outcome(of: input)
         try #require(!outcome.prediction.isComplete)
         let page = PredictionBuilder.page(outcome)
-        #expect(page.hero == "—")
-        #expect(page.heroShare == nil)
-        #expect(page.levies.allSatisfy { $0.value == "—" })
+        #expect(page.keyFigure.figure == "—")
+        #expect(page.keyFigure.share == nil)
+        #expect(page.due.figure == "—")
         #expect(page.incomeTotal == "—")
         #expect(page.netIncome.amount == "—")
-        #expect(page.settlement.amount == "—")
         #expect(page.left.isEmpty && page.right.isEmpty)
         #expect(page.parts.allSatisfy { $0.fraction == 0 })
         #expect(page.parts[0].value == PredictionBuilder.kc(ofHalere: outcome.prediction.receivedHalere))
@@ -1451,6 +1591,53 @@ struct PredictionBuilderTests {
         #expect(card.stats.allSatisfy { $0.value == "—" && $0.share == nil })
         #expect(card.stats[0].sub.contains(page.parts[0].value))
         #expect(card.sub.contains("chybí kurz"))
+    }
+
+    /// An estimate that is not complete has an empty bar of the levies: no part has a width, the legend says "—" for
+    /// each authority, and a popover has no figure that follows from the unknown amounts, only the advances, which the
+    /// plan knows, and no share. The sentence that the estimate is incomplete stands once in the result card, under the
+    /// key figure; what is left to settle names the planned advances only. The banner keeps its sentence, as it did.
+    @Test func anIncompleteEstimateHasAnEmptyLevyBarAndSaysSoOnceInTheResultCard() throws {
+        var input = PredictionSample.input(year: 2026)
+        input.averageRates = [:]
+        let waitingClient = Client(id: 4, name: "Čekající", dueDays: 14)
+        var waiting = Invoice.fixture(
+            number: "WAITING-1", issued: "2026-10-01", duzp: "2026-10-01", dueDate: "2026-10-15",
+            items: [.fixture("1", at: 1_000_000)])
+        waiting.clientID = waitingClient.id
+        input.clients.append(waitingClient)
+        input.invoices.append(waiting)
+        let outcome = try outcome(of: input)
+        try #require(!outcome.prediction.isComplete)
+        let page = PredictionBuilder.page(outcome)
+        let advances = CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
+
+        #expect(page.keyFigure.eyebrow == "Odhad odvodů za celý rok 2026")
+        #expect(page.keyFigure.sentence == PredictionBuilder.incompleteText)
+        #expect(page.levyBar.header == "Odvody za celý rok 2026 podle úřadů")
+        #expect(page.levyBar.parts.map(\.weight) == [0, 0, 0])
+        #expect(page.levyBar.parts.map(\.legendValue) == ["—", "—", "—"])
+        #expect(page.levyBar.parts.allSatisfy { $0.shareLine == nil && $0.note == nil })
+        for part in page.levyBar.parts {
+            #expect(part.rows.map(\.label) == ["Odvody za rok", "Zálohy za rok", "Doplatek"])
+            #expect(part.rows[0].value == "—" && part.rows[2].value == "—")
+            #expect(part.rows[1].value == CzechFormat.wholeKc(outcome.result.balance(part.authority).advancesPaid))
+            #expect(
+                part.accessibilityLabel
+                    == part.authority.title + ": odvody za rok —, zálohy za rok "
+                    + CzechFormat.wholeKc(outcome.result.balance(part.authority).advancesPaid) + ", doplatek —")
+        }
+        #expect(
+            page.levyBar.accessibilityLabel
+                == "Odvody za celý rok 2026 podle úřadů: Daň z příjmů —, Sociální pojištění —, Zdravotní pojištění —")
+        #expect(
+            page.due
+                == KeyFigureData(
+                    eyebrow: "Odhad doplatku odvodů bez záloh", figure: "—",
+                    sentence: "Plánované zálohy " + advances + " za celý rok.", sentenceEmphasis: advances))
+        let sentence = PredictionBuilder.incompleteText
+        #expect(resultTexts(of: page).filter { $0.contains(sentence) }.count == 1)
+        #expect(page.banner.hasSuffix(sentence))
     }
 
     /// A known zero and an unknown month remain distinct even when both retain a zero subtotal.

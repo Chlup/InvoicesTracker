@@ -68,20 +68,26 @@ private nonisolated enum KeyFigureMetrics {
     /// How far the figure may be scaled down before it is cut, where the room is narrower than it.
     static let minimumFigureScale: CGFloat = 0.6
 
-    /// The widest the sentence is set, 32 em of its 13-point type, so that it does not run to the whole width of a wide
+    /// The widest the sentence is set unless a screen gives it another width, which the initializer of the view takes
+    /// (`sentenceMaximumWidth`): 32 em of its 13-point type, so that it does not run to the whole width of a wide
     /// window.
     static let sentenceMaximumWidth: CGFloat = 416
 }
 
 /// The key figure of a screen: the eyebrow over it in grey capitals, the figure in the display size with its share on
-/// the same baseline, or under it where the room is too narrow for both, and the sentence under them in secondary text.
-/// VoiceOver reads the lot as one phrase.
+/// the same baseline, or under it where the room is too narrow for both, and the sentence under them in secondary text,
+/// at most `sentenceMaximumWidth` points wide: 416 unless the screen gives it the width its design has. VoiceOver reads
+/// the lot as one phrase.
 struct KeyFigureView: View {
     let data: KeyFigureData
 
-    /// A key figure that shows `data`.
-    init(_ data: KeyFigureData) {
+    /// The widest the sentence under the figure is set, in points.
+    let sentenceMaximumWidth: CGFloat
+
+    /// A key figure that shows `data`, its sentence at most `sentenceMaximumWidth` points wide.
+    init(_ data: KeyFigureData, sentenceMaximumWidth: CGFloat = KeyFigureMetrics.sentenceMaximumWidth) {
         self.data = data
+        self.sentenceMaximumWidth = sentenceMaximumWidth
     }
 
     var body: some View {
@@ -95,7 +101,7 @@ struct KeyFigureView: View {
                     .font(Typography.body)
                     .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: KeyFigureMetrics.sentenceMaximumWidth, alignment: .leading)
+                    .frame(maxWidth: sentenceMaximumWidth, alignment: .leading)
             }
         }
         .accessibilityElement(children: .combine)

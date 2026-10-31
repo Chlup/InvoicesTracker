@@ -258,6 +258,27 @@ struct CardAndFigureTests {
         #expect(height(inRoomOf: 300) > height(inRoomOf: 416) + 10)
     }
 
+    /// A screen may give the sentence another width than the 416 points of the default, as the design does for the
+    /// key figures of Odhad odvodů, whose sentences are 34 em and 36 em of the 13-point type (442 and 468 points): a
+    /// long sentence stops there in a wide room, and a room narrower than the width gives the room it has.
+    @Test func theSentenceOfAKeyFigureWrapsAtTheWidthItIsGiven() {
+        let long = String(repeating: "Tolik si odložte stranou – navíc k zálohám 268 080 Kč, které platíte. ", count: 6)
+        let data = KeyFigureData(eyebrow: "Odhad doplatku", figure: "198\u{00A0}702\u{00A0}Kč", sentence: long)
+
+        for width in [CGFloat(442), 468] {
+            let view = KeyFigureView(data, sentenceMaximumWidth: width)
+            #expect(abs(NSHostingView(rootView: view).fittingSize.width - width) < 0.5, "\(width)")
+            func height(inRoomOf room: CGFloat) -> CGFloat {
+                NSHostingView(rootView: view.frame(width: room, alignment: .leading)).fittingSize.height
+            }
+            #expect(abs(height(inRoomOf: 900) - height(inRoomOf: width)) < 0.5, "\(width)")
+            #expect(height(inRoomOf: 300) > height(inRoomOf: width) + 10, "\(width)")
+        }
+        // Without a width of its own, the sentence is held to 416 points.
+        let held = NSHostingView(rootView: KeyFigureView(data)).fittingSize.width
+        #expect(abs(held - 416) < 0.5, "\(held)")
+    }
+
     @Test func aKeyFigureIsReadAsOnePhrase() async throws {
         let data = KeyFigureData(
             eyebrow: "Odhad odvodů za celý rok 2026", figure: "449\u{00A0}868\u{00A0}Kč",

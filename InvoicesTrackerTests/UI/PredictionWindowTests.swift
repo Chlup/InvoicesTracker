@@ -18,18 +18,18 @@ import Testing
 ///   datu" on another internal day, which leaves the reporting cutoff alone while the reload key follows today.
 /// - The toolbar offers the working year menu and new-invoice action without date controls. Switching screens leaves
 ///   an internally picked reporting cutoff alone, and choosing the current year resumes its automatic month end.
-/// - The warnings stand above the summary: 2027, on 15. 1. 2027, has no rules of its own, so the page says that it is
-///   an estimate with the rules of 2026, and a payment at a provisional rate has its line under that.
+/// - The warnings stand above the result card: 2027, on 15. 1. 2027, has no rules of its own, so the page says that it
+///   is an estimate with the rules of 2026, and a payment at a provisional rate has its line under that.
 /// - VoiceOver reads the breakdown of the levies as one group under the name of the screen.
 ///
 /// Parts of the page are also shown alone in a window of their own, with the pages the builder makes for the sample:
 /// - A change that could not be saved is said under the heading of the months, and the months of a client that cannot
 ///   be chosen for are not buttons. Just above the width that has room for the legend beside the heading, the legend
 ///   keeps its one row there, and a cell has no line for a text it does not have.
-/// - The summary of a year in progress has the three parts of the income and the note of what is paid next year, and
-///   that of a year that is over has none of them but the part that was received. Both have the block of what is left
-///   to settle beyond the advances, which VoiceOver reads as one. The sentence that no invoice is expected shows where
-///   no client is.
+/// - The result card has the key figure, the bar of the levies and what is left to settle beyond the advances, each
+///   read as one phrase, and the sentence that the estimate is incomplete once. The card Příjmy of a year in progress
+///   has the three parts of the income and the note of what is paid next year, and that of a year that is over has none
+///   of them but the part that was received. The sentence that no invoice is expected shows where no client is.
 ///
 /// The elements are found by what VoiceOver reads for them. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.serialized, .settlesBackups)
@@ -272,18 +272,18 @@ struct PredictionWindowTests {
     // MARK: The warnings
 
     /// 2027 has no tax rules of its own yet, so on 15. 1. 2027 the page says that it is an estimate with the rules of
-    /// 2026, in the box above the summary card. No payment is at a provisional rate, so the line about one is not
+    /// 2026, in the box above the result card. No payment is at a provisional rate, so the line about one is not
     /// there.
-    @Test func aYearWithoutItsOwnRulesShowsTheWarningAboveTheSummary() async throws {
+    @Test func aYearWithoutItsOwnRulesShowsTheWarningAboveTheResultCard() async throws {
         try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
-                    try await showPrediction(of: app, in: window, summary: Self.summaryOf2027)
+                    try await showPrediction(of: app, in: window)
 
                     let message = RulesWarning.message(year: 2027, rulesYear: 2026)
                     #expect(showsText(message, in: window))
                     let warning = try #require(frameOfText(startingWith: message, in: window))
-                    let summary = try #require(frameOfCard(labelled: Self.summaryOf2027, in: window))
+                    let summary = try #require(frameOfCard(labelled: "Výsledek", in: window))
                     // The origin of the screen is at the bottom left, so what is above has the larger y.
                     #expect(warning.minY >= summary.maxY - 0.5, "\(warning) is not above \(summary)")
                     #expect(frameOfText(startingWith: RulesWarning.provisionalIncome, in: window) == nil)
@@ -292,19 +292,19 @@ struct PredictionWindowTests {
         }
     }
 
-    /// A payment at a provisional rate has its line under the warning of the rules and above the summary, as on
+    /// A payment at a provisional rate has its line under the warning of the rules and above the result card, as on
     /// Výpočet.
     @Test func theLineOfAProvisionalRateStandsUnderTheWarningOfTheRules() async throws {
         try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
             try await #require(app.database).saveInvoiceWithProvisionalPayment(on: "2027-01-10")
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
-                    try await showPrediction(of: app, in: window, summary: Self.summaryOf2027)
+                    try await showPrediction(of: app, in: window)
 
                     let message = RulesWarning.message(year: 2027, rulesYear: 2026)
                     let rules = try #require(frameOfText(startingWith: message, in: window))
                     let notice = try #require(frameOfText(startingWith: RulesWarning.provisionalIncome, in: window))
-                    let summary = try #require(frameOfCard(labelled: Self.summaryOf2027, in: window))
+                    let summary = try #require(frameOfCard(labelled: "Výsledek", in: window))
                     // The origin of the screen is at the bottom left, so what is above has the larger y.
                     #expect(rules.minY >= notice.maxY - 0.5, "\(rules) is not above \(notice)")
                     #expect(notice.minY >= summary.maxY - 0.5, "\(notice) is not above \(summary)")
@@ -454,8 +454,8 @@ struct PredictionWindowTests {
         let atTheEdge = try await roomRightOfTheHeading(of: page, inACardOf: 836)
         let wide = try await roomRightOfTheHeading(of: page, inACardOf: 1_200)
 
-        // The legend stands beside the heading, after its gap of 16 points and before the margin of 22.
-        #expect(atTheEdge > 22 + 16 + 100, "the heading leaves only \(atTheEdge) points")
+        // The legend stands beside the heading, after its gap of 16 points and before the margin of 20.
+        #expect(atTheEdge > 20 + 16 + 100, "the heading leaves only \(atTheEdge) points")
         #expect((atTheEdge - wide).magnitude <= 1, "\(atTheEdge) points beside the heading at 836, \(wide) at 1 200")
     }
 
@@ -490,62 +490,190 @@ struct PredictionWindowTests {
         }
     }
 
-    @Test func theSummaryOfAYearInProgressHasItsThreePartsTheNoteOfNextYearAndTheSettlement() async throws {
-        let page = try PredictionSample.page(year: 2026)
-        try await withHostedView(PredictionSummaryCard(page: page).padding(24)) { window in
-            try await withAccessibilityElements {
-                try await waitUntil { showsText("466\u{00A0}782\u{00A0}Kč", in: window) }
+    // MARK: The result card
 
-                #expect(showsText("ODHAD ODVODŮ ZA CELÝ ROK 2026", in: window))
-                #expect(!showsText("odhad", in: window))
+    /// The result card of a year in progress is one group, "Výsledek", with three readings that stand for the three
+    /// things on it: the key figure (the eyebrow as it is written, the figure, its share and the sentence), the bar of
+    /// the levies as a picture named by its header and the three authorities, with an item of the legend for each that
+    /// reads what its popover shows, and under them what is left to settle (its eyebrow, its figure and the whole
+    /// sentence, with the advances in it). Nothing of the old card is left in it.
+    @Test func theResultCardOfAYearInProgressReadsItsKeyFigureItsBarAndWhatIsLeftToSettle() async throws {
+        let page = try PredictionSample.page(year: 2026)
+        try await withCard(PredictionResultCard(page: page)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
+
                 let readings = accessibilityReadings(in: window)
-                for part in page.parts {
-                    #expect(readings.contains("\(part.text), \(part.value)"), "no part \(part.text) in \(readings)")
+                let key =
+                    "Odhad odvodů za celý rok 2026, 466\u{00A0}782\u{00A0}Kč, 17,0\u{00A0}% z příjmů,"
+                    + " Odvody z odhadovaného příjmu 2\u{00A0}743\u{00A0}157\u{00A0}Kč za celý rok 2026"
+                    + " – s odpočty a slevami ze Záloh a odpočtů a s minimálním pojistným za celý rok."
+                #expect(readings.contains(key), "read as \(readings)")
+                #expect(readings.contains(page.levyBar.accessibilityLabel))
+                for part in page.levyBar.parts {
+                    #expect(readings.contains(part.accessibilityLabel), "no item \(part.accessibilityLabel)")
                 }
-                #expect(page.parts.count == 3)
-                let income = "Příjmy za rok 2026 (odhad): 2\u{00A0}743\u{00A0}157\u{00A0}Kč"
-                #expect(accessibilityElement(labelled: income, in: window) != nil)
-                let note = try #require(page.nextYearNote)
-                #expect(showsText(note, in: window))
-                #expect(readings.contains("Daň, 114\u{00A0}786\u{00A0}Kč"))
+                #expect(
+                    readings.contains(
+                        "Daň z příjmů: odvody za rok 114\u{00A0}786\u{00A0}Kč, zálohy za rok 46\u{00A0}000\u{00A0}Kč,"
+                            + " doplatek 68\u{00A0}786\u{00A0}Kč, 4,2\u{00A0}% z příjmů bez DPH"))
                 // The caption, the amount and the whole sentence are one reading, in this order, and nothing of them is
                 // read apart. The caption reads as it is written, not in capitals.
-                let settlement =
+                let due =
                     "Odhad doplatku odvodů bez záloh, 198\u{00A0}702\u{00A0}Kč,"
                     + " Tolik si odložte stranou – navíc k zálohám 268\u{00A0}080\u{00A0}Kč, které platíte průběžně."
                     + " Platí se po skončení roku s přiznáním a přehledy pro ČSSZ a VZP."
                 #expect(
-                    readings.filter { $0.contains("198\u{00A0}702") || $0.contains("navíc k zálohám") } == [settlement])
-                for gone in ["Doplatek s přiznáním", "Zálohy za rok", "Z další koruny příjmu"] {
+                    readings.filter { $0.contains("198\u{00A0}702") || $0.contains("navíc k zálohám") } == [due])
+                for gone in ["Daň a pojistné", "Doplatek s přiznáním", "Z další koruny příjmu", "≈"] {
                     #expect(!readings.contains { $0.contains(gone) }, "\(gone) is still there")
                 }
+                // Not the old card: it was named by its eyebrow, and the income was in it.
+                #expect(frameOfCard(labelled: page.keyFigure.eyebrow, in: window) == nil)
+                let income = "Příjmy za rok 2026 (odhad): 2\u{00A0}743\u{00A0}157\u{00A0}Kč"
+                #expect(accessibilityElement(labelled: income, in: window) == nil)
             }
         }
     }
 
-    @Test func theSummaryOfAYearThatIsOverHasOnlyWhatWasReceivedAndTheSettlement() async throws {
+    /// In a year that is over the eyebrows, the sentences and the header of the bar say so ("skutečnost"), and what is
+    /// left to settle is the doplatek.
+    @Test func theResultCardOfAYearThatIsOverSaysSkutecnost() async throws {
         let page = try PredictionSample.page(year: 2025)
-        try await withHostedView(PredictionSummaryCard(page: page).padding(24)) { window in
+        try await withCard(PredictionResultCard(page: page)) { window in
             try await withAccessibilityElements {
-                try await waitUntil { showsText("537\u{00A0}865\u{00A0}Kč", in: window) }
+                try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
 
-                #expect(showsText("ODVODY ZA ROK 2025 – SKUTEČNOST", in: window))
-                #expect(!showsText("odhad", in: window))
+                let readings = accessibilityReadings(in: window)
+                #expect(
+                    readings.contains(
+                        "Odvody za rok 2025 – skutečnost, 537\u{00A0}865\u{00A0}Kč, 18,3\u{00A0}% z příjmů,"
+                            + " Odvody za celý rok 2025 ze všech přijatých plateb."))
+                #expect(readings.contains { $0.hasPrefix("Odvody za rok 2025 podle úřadů: Daň z příjmů 142") })
+                let due =
+                    "Doplatek odvodů bez záloh, 330\u{00A0}065\u{00A0}Kč,"
+                    + " Za rok 2025 navíc k zálohám 207\u{00A0}800\u{00A0}Kč"
+                    + " – daň, ČSSZ a VZP po podání přiznání a přehledů."
+                #expect(
+                    readings.filter { $0.contains("330\u{00A0}065") || $0.contains("navíc k zálohám") } == [due])
+                #expect(!readings.contains { $0.contains("odhad") || $0.contains("Odhad") })
+            }
+        }
+    }
+
+    /// An estimate that is not complete has the sentence that it is not, once, under the key figure. The bar of the
+    /// levies is an empty track named by "—" for each authority, what is left to settle names the planned advances
+    /// only, and the card Příjmy shows no total.
+    @Test func anIncompleteEstimateExplainsUnavailableFiguresOnceInTheResultCard() async throws {
+        var input = PredictionSample.input(year: 2026)
+        input.averageRates = [:]
+        let outcome = try PredictionOutcome.make(
+            prediction: IncomePrediction.make(input), yearInput: PredictionSample.yearInput(year: 2026))
+        let page = PredictionBuilder.page(outcome)
+        try await withCard(PredictionResultCard(page: page)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
+
+                let readings = accessibilityReadings(in: window)
+                #expect(readings.filter { $0.contains(PredictionBuilder.incompleteText) }.count == 1, "\(readings)")
+                #expect(
+                    readings.contains(
+                        "Odhad odvodů za celý rok 2026, —, \(PredictionBuilder.incompleteText)"))
+                #expect(
+                    readings.contains(
+                        "Odvody za celý rok 2026 podle úřadů: Daň z příjmů —, Sociální pojištění —,"
+                            + " Zdravotní pojištění —"))
+                #expect(!readings.contains { $0.contains("466\u{00A0}782") || $0.contains("17,0") })
+                let advances = CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
+                #expect(
+                    readings.contains(
+                        "Odhad doplatku odvodů bez záloh, —, Plánované zálohy \(advances) za celý rok."))
+            }
+        }
+    }
+
+    // MARK: The card Příjmy
+
+    /// The card is a group, "Příjmy", with its subtitle, two figures next to each other (the income, and the net income
+    /// per month under a green dot), the bar of the income as a picture, the legend with an item for each part and the
+    /// note of the money of next year. Each figure and each item of the legend is read as one phrase.
+    @Test func theCardPrijmyOfAYearInProgressHasItsFiguresItsBarItsLegendAndTheNoteOfNextYear() async throws {
+        let page = try PredictionSample.page(year: 2026)
+        try await withCard(PredictionIncomeCard(page: page)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
+
+                #expect(showsText("Odhad za celý rok 2026 z faktur do 17.\u{00A0}10.\u{00A0}2026", in: window))
+                let readings = accessibilityReadings(in: window)
+                #expect(
+                    readings.contains(
+                        "Příjmy za rok 2026 (odhad), 2\u{00A0}743\u{00A0}157\u{00A0}Kč,"
+                            + " bez DPH · peníze přijaté do 31.\u{00A0}12."))
+                #expect(
+                    readings.contains(
+                        "Čistý příjem průměrně za měsíc (odhad), 189\u{00A0}698\u{00A0}Kč,"
+                            + " za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč · 83,0\u{00A0}% příjmů po odvodech"))
+                let barLabel = "Příjmy za rok 2026 (odhad): 2\u{00A0}743\u{00A0}157\u{00A0}Kč"
+                let bar = try #require(accessibilityElement(labelled: barLabel, in: window))
+                #expect(bar.accessibilityRole?() == .image)
+                for part in page.parts {
+                    #expect(readings.contains("\(part.text), \(part.value)"), "no part \(part.text) in \(readings)")
+                }
+                #expect(page.parts.count == 3)
+                let note = try #require(page.nextYearNote)
+                #expect(
+                    note
+                        == "290\u{00A0}193\u{00A0}Kč přijde až v roce 2027 (faktury zaplacené po 31.\u{00A0}12.)"
+                        + " – to už jsou příjmy roku 2027.")
+                #expect(showsText(note, in: window))
+                #expect(!readings.contains { $0.contains("≈") })
+            }
+        }
+    }
+
+    /// In a year that is over the card has only the part that was received and no note, and its subtitle says
+    /// "skutečnost".
+    @Test func theCardPrijmyOfAYearThatIsOverHasOnlyWhatWasReceived() async throws {
+        let page = try PredictionSample.page(year: 2025)
+        try await withCard(PredictionIncomeCard(page: page)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
+
+                #expect(showsText("Rok 2025 · skutečnost", in: window))
                 #expect(page.nextYearNote == nil)
                 let readings = accessibilityReadings(in: window)
                 #expect(readings.contains("Přišlo do 31.\u{00A0}12.\u{00A0}2025, 2\u{00A0}931\u{00A0}160\u{00A0}Kč"))
                 #expect(!readings.contains { $0.hasPrefix("Vystaveno") || $0.hasPrefix("Koncepty") })
                 let income = "Příjmy za rok 2025: 2\u{00A0}931\u{00A0}160\u{00A0}Kč"
                 #expect(accessibilityElement(labelled: income, in: window) != nil)
-                let settlement =
-                    "Doplatek odvodů bez záloh, 330\u{00A0}065\u{00A0}Kč,"
-                    + " Za rok 2025 navíc k zálohám 207\u{00A0}800\u{00A0}Kč"
-                    + " – daň, ČSSZ a VZP po podání přiznání a přehledů."
                 #expect(
-                    readings.filter { $0.contains("330\u{00A0}065") || $0.contains("navíc k zálohám") } == [settlement])
-                for gone in ["Doplatek s přiznáním", "Zálohy za rok", "Z další koruny příjmu"] {
-                    #expect(!readings.contains { $0.contains(gone) }, "\(gone) is still there")
-                }
+                    readings.contains {
+                        $0.hasPrefix("Čistý příjem průměrně za měsíc, 199\u{00A0}441\u{00A0}Kč, za celý rok")
+                    })
+                #expect(!readings.contains { $0.contains("odhad") })
+            }
+        }
+    }
+
+    /// The card Příjmy of an estimate that is not complete shows no total, and its net income says why; what was
+    /// received is still a part of the bar with its amount.
+    @Test func anIncompleteEstimateShowsNoTotalInTheCardPrijmy() async throws {
+        var input = PredictionSample.input(year: 2026)
+        input.averageRates = [:]
+        let outcome = try PredictionOutcome.make(
+            prediction: IncomePrediction.make(input), yearInput: PredictionSample.yearInput(year: 2026))
+        let page = PredictionBuilder.page(outcome)
+        try await withCard(PredictionIncomeCard(page: page)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
+
+                let readings = accessibilityReadings(in: window)
+                #expect(readings.contains("Příjmy za rok 2026 (odhad): —"))
+                #expect(readings.contains("Přišlo do 17.\u{00A0}10.\u{00A0}2026, 2\u{00A0}191\u{00A0}771\u{00A0}Kč"))
+                #expect(
+                    readings.contains(
+                        "Čistý příjem průměrně za měsíc (odhad), —, \(PredictionBuilder.incompleteText)"))
+                #expect(!readings.contains { $0.contains("2\u{00A0}743\u{00A0}157") || $0.contains("83,0") })
             }
         }
     }
@@ -560,8 +688,6 @@ struct PredictionWindowTests {
     /// The group of the other clients of the sample's 2026, folded.
     private static let others = "Ostatní odběratelé (1)"
 
-    /// The label of the summary card of 2027 as of 15. 1. 2027.
-    private static let summaryOf2027 = "Odhad odvodů za celý rok 2027"
 
     private static let foxtrotJune = "Červen: faktura 20260601, 288\u{00A0}806\u{00A0}Kč, zaplaceno"
     private static let foxtrotJuly = "Červenec: faktura 20260701, 268\u{00A0}806\u{00A0}Kč, zaplaceno"
@@ -647,14 +773,17 @@ struct PredictionWindowTests {
         return found
     }
 
-    /// Shows Odhad odvodů in `window` and waits until its page is there, which has the summary card labelled `summary`
-    /// (the one of the year in progress unless told otherwise). Needs the accessibility elements.
-    private func showPrediction(
-        of app: AppModel, in window: NSWindow, summary: String = "Odhad odvodů za celý rok 2026"
-    ) async throws {
+    /// Shows `card` alone in a window, 24 points from its edges, as wide as a large window's page has room for.
+    private func withCard<Content: View>(_ card: Content, _ body: (NSWindow) async throws -> Void) async throws {
+        try await withHostedView(card.padding(24), size: CGSize(width: 1_000, height: 600), body)
+    }
+
+    /// Shows Odhad odvodů in `window` and waits until its page is there, which has the result card, "Výsledek". Needs
+    /// the accessibility elements.
+    private func showPrediction(of app: AppModel, in window: NSWindow) async throws {
         app.screen = .prediction
         try await waitUntil { window.title == "Odhad odvodů" }
-        try await waitUntil { frameOfCard(labelled: summary, in: window) != nil }
+        try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
         try await layOut(window)
     }
 
@@ -671,22 +800,4 @@ struct PredictionWindowTests {
         let text = (value?() ?? nil) as? String
         return text?.isEmpty == false ? text : nil
     }
-    /// The real summary exposes the incomplete explanation and known receipt labels without calculated totals.
-    @Test func anIncompleteSummaryExplainsUnavailableFiguresInTheWindow() async throws {
-        var input = PredictionSample.input(year: 2026)
-        input.averageRates = [:]
-        let outcome = try PredictionOutcome.make(
-            prediction: IncomePrediction.make(input), yearInput: PredictionSample.yearInput(year: 2026))
-        let page = PredictionBuilder.page(outcome)
-        try await withHostedView(PredictionSummaryCard(page: page).padding(24)) { window in
-            try await withAccessibilityElements {
-                try await waitUntil { showsText(PredictionBuilder.incompleteText, in: window) }
-                let readings = accessibilityReadings(in: window)
-                #expect(readings.contains("Příjmy za rok 2026 (odhad): —"))
-                #expect(readings.contains("Přišlo do 17.\u{00A0}10.\u{00A0}2026, 2\u{00A0}191\u{00A0}771\u{00A0}Kč"))
-                #expect(!readings.contains { $0.contains("466\u{00A0}782") || $0.contains("17,0") })
-            }
-        }
-    }
-
 }

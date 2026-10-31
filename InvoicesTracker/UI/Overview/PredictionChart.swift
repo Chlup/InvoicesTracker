@@ -273,45 +273,10 @@ struct PredictionChart: View {
 
     // MARK: The hatching
 
-    /// The paint of the part of a bar that is still to be issued, and of its key in the legend: stripes of two light
-    /// tints of the blue of the bars (`hatchTile(blue:background:)`), on the background of the card, both as the
-    /// appearance of the window has them.
+    /// The paint of the part of a bar that is still to be issued, and of its key in the legend: the hatching that marks
+    /// an estimate everywhere (`Hatching`), in the colours the appearance of the window gives it.
     private var hatching: ImagePaint {
-        ImagePaint(
-            image: Self.hatchTile(
-                blue: Palette.accent.resolve(in: environment), background: Palette.bgCard.resolve(in: environment)))
-    }
-
-    /// The tile that the hatching repeats: `background` tinted with a fifth of `blue`, and stripes of half of `blue`
-    /// rising to the right, 8 points apart along a side and as wide as the gaps between them, that run on into the
-    /// stripes of the tiles beside it and under it. The pattern starts at the corner of each bar, and the tile is wider
-    /// than a bar (46 points at most) and taller than the chart (220 points), so that one tile paints a whole bar:
-    /// where tiles met, the backdrop showed through in specks. The tile is opaque, and the image says so. The image
-    /// draws it whenever it is drawn, so it is made apart from the main actor.
-    nonisolated private static func hatchTile(blue: Color.Resolved, background: Color.Resolved) -> Image {
-        let period: CGFloat = 8
-        let width: CGFloat = 48
-        let height: CGFloat = 224
-        return Image(size: CGSize(width: width, height: height), opaque: true) { context in
-            let tile = Path(CGRect(x: 0, y: 0, width: width, height: height))
-            context.fill(tile, with: .color(Color(background)))
-            context.fill(tile, with: .color(Color(blue).opacity(0.2)))
-            // A stripe is where x + y, from the top left corner, is in the first half of a period: a band between the
-            // lines x + y = start and x + y = start + period / 2, drawn past the edges of the tile and cut by them.
-            var stripes = Path()
-            var start = -period
-            while start < width + height {
-                stripes.addLines([
-                    CGPoint(x: start + 1, y: -1), CGPoint(x: start + period / 2 + 1, y: -1),
-                    CGPoint(x: start + period / 2 - height - 1, y: height + 1),
-                    CGPoint(x: start - height - 1, y: height + 1),
-                ])
-                stripes.closeSubpath()
-                start += period
-            }
-            context.clip(to: tile)
-            context.fill(stripes, with: .color(Color(blue).opacity(0.5)))
-        }
+        Hatching.paint(in: environment)
     }
 
     // MARK: Hover and VoiceOver
