@@ -68,7 +68,7 @@ struct TestWindowTests {
     @Test func thePointerIsMovedByHandOnlyInAWindowThatIsClosedToTheRealPointer() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
-                await withKnownIssue("A window that is open to the real pointer is refused") {
+                withKnownIssue("A window that is open to the real pointer is refused") {
                     try movePointer(to: CGPoint(x: 40, y: 40), in: window)
                 }
             }
