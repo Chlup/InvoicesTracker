@@ -3,7 +3,8 @@ import Observation
 
 /// The model of Faktury: loads what the screen shows for the selected year as of the day of "K datu", in the chosen
 /// scope, status chip and search, and turns it into view data (`InvoiceListBuilder`); keeps the detail of one invoice
-/// open or closed; and deletes an invoice once its number is typed.
+/// open or closed; issues a draft from its detail in one click, without the editor; and deletes an invoice once its
+/// number is typed.
 ///
 /// The money is as of the day of "K datu", but the status of an invoice is as of today, whatever year or day is shown:
 /// it drives the pill, the chips and their counts, the chosen chip and the detail with its buttons. A payment of
@@ -62,12 +63,14 @@ final class InvoicesModel {
     nonisolated static let invoiceGoneText = "Faktura mezitím byla smazána."
 
     /// The invoice whose detail is open, or nil when it is closed. Setting it shows that invoice's detail as far as
-    /// the list can tell, until `loadDetail()` has the rest.
+    /// the list can tell, until `loadDetail()` has the rest; why the draft of the detail before could not be issued
+    /// goes with that detail.
     var openInvoiceID: Int64? {
         didSet {
             guard openInvoiceID != oldValue else { return }
             openInvoice = nil
             detail = nil
+            issueProblem = nil
             if let id = openInvoiceID, let invoice = loadedInvoices[id] {
                 openInvoice = invoice
                 detail = InvoiceDetailBuilder.build(
@@ -83,6 +86,15 @@ final class InvoicesModel {
 
     /// What the detail says about the open invoice.
     private(set) var detail: InvoiceDetail?
+
+    /// Why the draft whose detail is open could not be issued in one click (`issue(_:)`), in the words of the editor
+    /// (`InvoiceEditorModel.failureText(for:)`), or nil. It goes when the detail moves to another invoice or closes,
+    /// and when the draft is issued after all.
+    private(set) var issueProblem: String?
+
+    /// Whether a draft is being issued in one click (`issue(_:)`): "Vystavit" is off meanwhile, and a press of it does
+    /// nothing.
+    private(set) var isIssuing = false
 
     private let app: AppModel
 
@@ -318,6 +330,39 @@ final class InvoicesModel {
     /// Zrušit hledání: the search of the app is empty, and the list is the whole category.
     func clearSearch() {
         app.searchText = ""
+    }
+
+    // MARK: Issuing
+
+    /// "Vystavit" in the detail of a draft: issues the draft `id` in one click, as "Vystavit fakturu" in the editor
+    /// would, without showing the editor (`InvoiceEditorModel.issueDraft(_:app:)`). The detail stays where it is, and
+    /// once the draft is issued it shows the invoice as issued, without a notice; the app is told of the write, so the
+    /// list loads again. A draft that cannot be issued stays a draft: the reason the editor gives is kept for its
+    /// detail (`issueProblem`) and told to VoiceOver, as long as the detail is still on it. A draft that is issued
+    /// already, meanwhile in another window, is what was asked for, and its detail shows it so; a draft deleted
+    /// meanwhile closes its detail, and the screen says so (`invoiceIsGone(_:)`). One draft is issued at a time: a
+    /// press while one is being issued does nothing (`isIssuing`), and the detail is loaded again before the next press
+    /// can come.
+    func issue(_ id: Int64) async {
+        guard !isIssuing else { return }
+        isIssuing = true
+        defer { isIssuing = false }
+        do {
+            try await InvoiceEditorModel.issueDraft(id, app: app)
+            issueProblem = nil
+            await loadDetail()
+        } catch InvoiceError.notFound {
+            invoiceIsGone(id)
+        } catch InvoiceEditorError.notAvailable {
+            issueProblem = nil
+            await loadDetail()
+        } catch {
+            AppModel.log("Issuing a draft from its detail", failedWith: error)
+            guard openInvoiceID == id else { return }
+            let problem = InvoiceEditorModel.failureText(for: error)
+            issueProblem = problem
+            app.announceWhenUnlocked(problem)
+        }
     }
 
     // MARK: Deleting

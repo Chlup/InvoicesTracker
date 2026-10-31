@@ -48,6 +48,10 @@ nonisolated struct EditorTotals: Equatable, Sendable {
 ///   A draft takes the data of its client again whenever it is saved, and the rate of the day it is issued.
 /// - Nothing that is typed can stop the app: a date outside the years of an invoice, a due time outside its range and
 ///   amounts too high to add up are problems of the invoice, not traps.
+///
+/// "Vystavit" in the detail of a draft in Faktury issues the draft with an editor that is never shown
+/// (`issueDraft(_:app:)`): it opens the draft as the editor shown for it would and issues it with the work of "Vystavit
+/// fakturu", but its save leaves the window as it is.
 @MainActor
 @Observable
 final class InvoiceEditorModel {
@@ -67,6 +71,11 @@ final class InvoiceEditorModel {
     /// The client a blank new invoice starts with, or nil for the first one. A client that was deleted meanwhile is the
     /// first one too.
     private let startingClientID: Int64?
+
+    /// Whether the editor is never shown, as the one that issues a draft from its detail in Faktury
+    /// (`issueDraft(_:app:)`): its save leaves the screen, the editor that is open and the detail as they are, and no
+    /// banner says that it saved.
+    private let isHeadless: Bool
 
     // MARK: What the person edits
 
@@ -194,12 +203,16 @@ final class InvoiceEditorModel {
     @ObservationIgnored private var starting: Inputs?
 
     /// `startingClientID` is the client a blank new invoice starts with, rather than the first one; it counts for
-    /// nothing else.
-    init(app: AppModel, template: InvoiceTemplate?, editing: Invoice?, startingClientID: Int64? = nil) {
+    /// nothing else. A `headless` editor is never shown (`isHeadless`).
+    init(
+        app: AppModel, template: InvoiceTemplate?, editing: Invoice?, startingClientID: Int64? = nil,
+        headless: Bool = false
+    ) {
         self.app = app
         self.template = template
         self.editing = editing
         self.startingClientID = startingClientID
+        isHeadless = headless
         if let invoice = editing {
             clientID = invoice.clientID ?? 0
             number = invoice.number
@@ -819,6 +832,30 @@ final class InvoiceEditorModel {
         return try await save(as: .issued)
     }
 
+    /// "Vystavit" in the detail of a draft in Faktury: makes the editor of the draft `id` as `opening(_:in:)` makes it
+    /// for `.edit(id)` and loads it as the window does (`load()`), without showing it, and issues the draft with the
+    /// work of "Vystavit fakturu" (`issue()`): the invoice worked out afresh with the data of its client as they are
+    /// then, the ČNB rate of the DUZP fixed on it, the same checks, the same refusal of an invoice that was changed
+    /// meanwhile, and the same writes, conversions and reloads after it. The window stays as it is: the screen, the
+    /// editor that is open and the detail, and no banner says that it saved. The files of the ČNB that a rate missing
+    /// in the cache may be in are not asked for here; the editor asks for them once it is shown.
+    ///
+    /// Returns the id. Throws `InvoiceError.notFound` when there is no such invoice, `InvoiceEditorError.invalid` with
+    /// `EditorText.notPrepared` when what the invoice is made of cannot be read, and what `issue()` throws: among it
+    /// `InvoiceEditorError.notAvailable` for an invoice that is issued already, and `InvoiceEditorError.invalid` with
+    /// the first problem of a draft that cannot be issued.
+    @discardableResult
+    static func issueDraft(_ id: Int64, app: AppModel) async throws -> Int64 {
+        guard let database = app.database else { throw VaultError.locked }
+        guard let invoice = try await database.invoice(id: id) else { throw InvoiceError.notFound }
+        let model = InvoiceEditorModel(app: app, template: nil, editing: invoice, headless: true)
+        await model.load()
+        if model.loadFailed {
+            throw InvoiceEditorError.invalid(EditorText.notPrepared)
+        }
+        return try await model.issue()
+    }
+
     /// "Uložit změny": stores the changes of an invoice that exists, which stays what it is, a draft or issued. The
     /// number, the rate of the DUZP (unless the DUZP or the currency changed), the data of the client (unless another
     /// client was chosen) and the payment (worked out again) of an issued invoice stay. Returns its id. Throws what
@@ -905,18 +942,22 @@ final class InvoiceEditorModel {
     /// of its day of issue, which is the year of the list it is in, when that is not in the future; a change of an
     /// invoice says so in a banner. The app is told of the write, when there was one, and the years of the payment the
     /// invoice has and had are converted again by the method each uses then, as a change of its currency may change
-    /// what they have the uniform rate for (`AppModel.recomputePaymentsAfterChanges(inYears:)`).
+    /// what they have the uniform rate for (`AppModel.recomputePaymentsAfterChanges(inYears:)`). An editor that is
+    /// never shown (`isHeadless`) leaves the window as it is, the editor that is open, the screen and the detail, and
+    /// shows no banner; the rest is the same.
     private func finishSaving(_ id: Int64, of invoice: Invoice, wrote: Bool) async {
         guard let app else { return }
         let paymentYears = Set([invoice.payment?.date.year, editing?.payment?.date.year].compactMap { $0 })
-        app.editorRequest = nil
-        app.openInvoice(id)
+        if !isHeadless {
+            app.editorRequest = nil
+            app.openInvoice(id)
+        }
         guard wrote else { return }
         await app.recomputePaymentsAfterChanges(inYears: paymentYears)
         if editing == nil, invoice.issueDate.year != app.asOf.year, invoice.issueDate.year <= app.today.year {
             app.selectYear(invoice.issueDate.year)
         }
-        if editing != nil {
+        if editing != nil, !isHeadless {
             app.showBanner("Změny faktury \(invoice.number) jsou uložené.")
         }
         await app.didWrite()

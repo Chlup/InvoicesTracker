@@ -7,13 +7,22 @@ import SwiftUI
 ///
 /// A draft is issued, edited and shown as a PDF; an invoice that waits for its payment is marked paid, edited and
 /// shown; one that has a payment has the payment changed and is shown. A paid invoice is not edited, only its payment,
-/// so its detail has no "Upravit", not even one that is off. The card is `width` points wide and as high as its
-/// content, or as the room it is given where that is less, and what does not fit in it then scrolls.
+/// so its detail has no "Upravit", not even one that is off. A draft is issued in one click, without the editor:
+/// "Vystavit" is off while it is being issued, and where it could not be issued a red note right under the buttons
+/// says why, while the buttons stay. The card is `width` points wide and as high as its content, or as the room it is
+/// given where that is less, and what does not fit in it then scrolls.
 struct InvoiceDetailCard: View {
     /// The width of the card: 300 points, as the design's panel beside a table.
     static let width: CGFloat = 300
 
     let detail: InvoiceDetail
+
+    /// Why the draft could not be issued in one click, in the words of the editor, or nil: a red note right under the
+    /// buttons says it.
+    var issueProblem: String?
+
+    /// Whether the draft is being issued in one click: "Vystavit" is off meanwhile.
+    var isIssuing = false
 
     /// The ✕ of the header.
     let close: () -> Void
@@ -21,7 +30,7 @@ struct InvoiceDetailCard: View {
     /// Označit jako uhrazenou, or Upravit platbu for an invoice that has a payment: both open the sheet of the payment.
     let pay: () -> Void
 
-    /// Vystavit, for a draft: opens the editor on it, where "Vystavit fakturu" issues it.
+    /// Vystavit, for a draft: issues it in one click, as "Vystavit fakturu" in the editor would, without the editor.
     let issue: () -> Void
 
     /// Upravit.
@@ -40,6 +49,9 @@ struct InvoiceDetailCard: View {
         ) {
             actions
         } content: {
+            if let issueProblem {
+                Note(.error, icon: .info, text: issueProblem)
+            }
             figure
             DetailFacts(detail.facts)
             if let payment = detail.payment {
@@ -60,8 +72,9 @@ struct InvoiceDetailCard: View {
     // MARK: Parts
 
     /// The buttons under the header, the main one in the accent: Označit jako uhrazenou for an invoice that waits for
-    /// its payment, or Vystavit for a draft, then Upravit where the invoice can be edited, or Upravit platbu where it
-    /// has a payment that can be changed, and Zobrazit PDF always. A button that does not apply is not there.
+    /// its payment, or Vystavit for a draft, off while the draft is being issued, then Upravit where the invoice can be
+    /// edited, or Upravit platbu where it has a payment that can be changed, and Zobrazit PDF always. A button that
+    /// does not apply is not there.
     @ViewBuilder
     private var actions: some View {
         if detail.canPay {
@@ -69,6 +82,7 @@ struct InvoiceDetailCard: View {
         }
         if detail.canIssue {
             button("Vystavit", .primary, action: issue)
+                .disabled(isIssuing)
         }
         if detail.canEdit {
             button("Upravit", .secondary, action: edit)

@@ -1184,3 +1184,223 @@ struct InvoicesModelTests {
         #expect(try await model.pdfDocument(for: 999) == nil)
     }
 }
+
+/// "Vystavit" in the detail of a draft on Faktury, which issues the draft in one click without the editor: the rate of
+/// the DUZP fixed on it and the detail that stays on it, the reason of the editor where the draft cannot be issued and
+/// when that reason goes, a second press while the draft is being issued, and a draft that was issued or deleted
+/// meanwhile. The data is that of the tests of the editor (`EditorFixture`): the sample year 2026 with invented
+/// clients, the supplier and the accounts of the invoice page, and the ČNB rates of 2025 and 2026; the app is as of
+/// 17. 10. 2026.
+@Suite(.settlesBackups)
+@MainActor
+struct InvoicesModelIssuingTests {
+    /// An invoice that is issued is measured on its page in the font the page is set in, so the fonts are registered
+    /// before any test, as the app does at its launch.
+    init() {
+        InvoiceFonts.register()
+    }
+
+    // MARK: Helpers
+
+    /// The model of Faktury of `f`, loaded on the screen Faktury (a banner belongs to the screen that is shown), with
+    /// the detail of the invoice `id` open and loaded.
+    private func model(withTheDetailOf id: Int64, in f: EditorFixture) async -> InvoicesModel {
+        f.app.screen = .invoices
+        let model = InvoicesModel(app: f.app)
+        await model.load()
+        model.openInvoiceID = id
+        await model.loadDetail()
+        return model
+    }
+
+    /// Stores a draft of 10 hours at 70,00 USD for Bravo numbered `number`, supplied and issued on `duzp` and due on
+    /// `dueDate` (both `YYYY-MM-DD`), tells the app of the write and returns the id of the draft. The cache of the ČNB
+    /// holds the rates of 2025 and 2026 alone, so a draft of another year has no rate of its DUZP to be issued with.
+    private func storeDollarDraft(
+        number: String, duzp: String, dueDate: String, in f: EditorFixture
+    ) async throws -> Int64 {
+        var draft = Invoice.fixture(
+            number: number, currency: .usd, duzp: duzp, dueDate: dueDate,
+            items: [InvoiceItem(description: "Vývoj", quantity: decimal("10"), unit: "h", unitPriceMinor: 7_000)],
+            vatMode: .outsideCountry, status: .draft)
+        draft.clientID = f.bravoID
+        draft.client = ClientSnapshot(client: SearchFixtures.bravo)
+        draft.language = .en
+        draft.paymentMethod = "ACH (USD)"
+        let id = try await f.database.saveInvoice(draft)
+        await f.app.didWrite()
+        return id
+    }
+
+    // MARK: Issuing
+
+    /// A draft in dollars supplied on 30. 9. 2026, saved with the rate known then (21,359), is issued with the ČNB rate
+    /// of its DUZP as the editor issues it (21,522), and with the data of its client as they are now. The detail stays
+    /// on it and shows it issued, waiting for its payment. The editor does not open, the screen does not move, and no
+    /// banner says so; the app is told of the write once.
+    @Test func issuingADraftInOneClickFixesItsRateAndKeepsTheDetailOpen() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            var bravo = try #require(try await f.database.client(id: f.bravoID))
+            bravo.street = "Nová 7"
+            try await f.database.saveClient(bravo)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            #expect(model.detail?.canIssue == true)
+            let version = f.app.dataVersion
+
+            await model.issue(draft.id)
+
+            let issued = try await f.stored(draft.id)
+            #expect(issued.status == .issued)
+            #expect(issued.number == "20260905")
+            #expect(issued.invoiceRate == storedRate("USD", "21.522", declaredOn: "2026-09-30"))
+            #expect(issued.client.street == "Nová 7")
+            #expect(model.openInvoiceID == draft.id)
+            #expect(model.issueProblem == nil)
+            #expect(model.isIssuing == false)
+            #expect(model.detail?.invoiceID == draft.id)
+            #expect(model.detail?.statusLabel == "Čeká na platbu")
+            #expect(model.detail?.canIssue == false)
+            #expect(model.detail?.canPay == true)
+            #expect(f.app.banner == nil)
+            #expect(f.app.editorRequest == nil)
+            #expect(f.app.screen == .invoices)
+            #expect(f.app.pendingDetailInvoiceID == nil)
+            #expect(f.app.dataVersion == version + 1)
+        }
+    }
+
+    /// A draft in dollars supplied on 31. 5. 2024, a day the cache of the ČNB has no rate of, cannot be issued: it
+    /// stays a draft with its detail open, and the detail keeps the reason the editor gives, which VoiceOver is told.
+    /// Nothing is written.
+    @Test func aDraftThatCannotBeIssuedSaysWhyAndStaysADraft() async throws {
+        try await EditorFixture.with { f in
+            let id = try await storeDollarDraft(number: "20240501", duzp: "2024-05-31", dueDate: "2024-06-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+            var announced: [String] = []
+            f.app.announce = { announced.append($0) }
+            let version = f.app.dataVersion
+
+            await model.issue(id)
+
+            #expect(try await f.stored(id).status == .draft)
+            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+            #expect(announced == [EditorText.ratesNotDownloaded])
+            #expect(model.openInvoiceID == id)
+            #expect(model.detail?.canIssue == true)
+            #expect(model.isIssuing == false)
+            #expect(f.app.banner == nil)
+            #expect(f.app.editorRequest == nil)
+            #expect(f.app.dataVersion == version)
+        }
+    }
+
+    /// The reason belongs to the detail of its draft: it goes when the detail moves to another invoice, and when the
+    /// detail closes.
+    @Test func theReasonGoesWhenTheDetailMovesToAnotherInvoiceOrCloses() async throws {
+        try await EditorFixture.with { f in
+            let id = try await storeDollarDraft(number: "20240501", duzp: "2024-05-31", dueDate: "2024-06-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+            await model.issue(id)
+            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+
+            model.click(10)
+
+            #expect(model.openInvoiceID == 10)
+            #expect(model.issueProblem == nil)
+
+            model.openInvoiceID = id
+            await model.issue(id)
+            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+
+            model.closeDetail()
+
+            #expect(model.openInvoiceID == nil)
+            #expect(model.issueProblem == nil)
+        }
+    }
+
+    /// A draft that could not be issued is issued once what stopped it is put right, here once the rates of its year
+    /// are in the cache: the reason goes, and the draft has the rate of its DUZP, 30. 6. 2022.
+    @Test func theReasonGoesOnceTheDraftIsIssuedAfterAll() async throws {
+        try await EditorFixture.with { f in
+            let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+            await model.issue(id)
+            #expect(model.issueProblem == EditorText.ratesNotDownloaded)
+
+            try await f.addDollarRates(ofYears: [2022])
+            await model.issue(id)
+
+            #expect(model.issueProblem == nil)
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.invoiceRate?.rate.currency == .usd)
+            #expect(issued.invoiceRate?.declaredOn == civilDate("2022-06-30"))
+            #expect(model.openInvoiceID == id)
+            #expect(model.detail?.canIssue == false)
+        }
+    }
+
+    /// A press of "Vystavit" while the draft is being issued starts no other issue: the button is off meanwhile
+    /// (`isIssuing`), and the model does nothing with the press. The draft is issued once, and nothing fails.
+    @Test func aSecondPressWhileTheDraftIsBeingIssuedStartsNoOtherIssue() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            let version = f.app.dataVersion
+
+            // The first issue has begun, and waits for the data, when its task is made.
+            let first = Task.immediate { await model.issue(draft.id) }
+            #expect(model.isIssuing)
+            await model.issue(draft.id)
+            // The second press is done with at once: the first issue is still the one that runs.
+            #expect(model.isIssuing)
+            await first.value
+
+            #expect(model.isIssuing == false)
+            #expect(model.issueProblem == nil)
+            #expect(try await f.stored(draft.id).status == .issued)
+            #expect(f.app.dataVersion == version + 1)
+        }
+    }
+
+    /// A draft that was issued meanwhile, in another window, is what "Vystavit" asks for: the detail shows it issued,
+    /// with no reason, and nothing is written again.
+    @Test func aDraftIssuedMeanwhileIsShownIssuedWithoutAReason() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            var issued = try await f.stored(draft.id)
+            issued.status = .issued
+            try await f.database.saveInvoice(issued)
+            let version = f.app.dataVersion
+
+            await model.issue(draft.id)
+
+            #expect(model.issueProblem == nil)
+            #expect(model.openInvoiceID == draft.id)
+            #expect(model.detail?.canIssue == false)
+            #expect(model.detail?.canPay == true)
+            #expect(try await f.stored(draft.id) == issued)
+            #expect(f.app.dataVersion == version)
+        }
+    }
+
+    /// A draft that was deleted meanwhile is not there to issue: its detail closes, and the screen says that it was
+    /// deleted, as it does for the other actions on an invoice that is gone.
+    @Test func aDraftDeletedMeanwhileClosesItsDetailAndTheScreenSaysSo() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            try await f.database.deleteInvoice(id: draft.id)
+
+            await model.issue(draft.id)
+
+            #expect(model.openInvoiceID == nil)
+            #expect(model.issueProblem == nil)
+            #expect(model.actionFailure == "Faktura mezitím byla smazána.")
+            #expect(try await f.database.invoice(id: draft.id) == nil)
+        }
+    }
+}

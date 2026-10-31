@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Faktury: the choice of the invoices (the segment of the scope and the status chips, with the search field at the end
 /// of the same row), the line about the search, the card of the table with its summary row on top and the detail of the
-/// open invoice beside it, and the sheets that mark an invoice paid and show its PDF. Deleting an invoice is asked in a
+/// open invoice beside it, and the sheets that mark an invoice paid and show its PDF. A draft is issued from its detail
+/// in one click, without the editor, and the detail says why where it cannot be. Deleting an invoice is asked in a
 /// dialog inside the window, which the window shows (`AppModel.invoiceDeletion`) and which goes when the screen does.
 /// ⌘F focuses the search field (`AppModel.focusSearch()`), Esc or × clears it, and the text stays until it is cleared,
 /// also across screens and years. The toolbar is the shell's, the same on every screen, as are the title and the line
@@ -143,9 +144,11 @@ struct InvoicesScreen: View {
         if let detail = model.detail, detail.invoiceID == model.openInvoiceID {
             InvoiceDetailCard(
                 detail: detail,
+                issueProblem: model.issueProblem,
+                isIssuing: model.isIssuing,
                 close: { model.closeDetail() },
                 pay: { markPaid() },
-                issue: { app.editorRequest = .edit(detail.invoiceID) },
+                issue: { issue(detail.invoiceID) },
                 edit: { app.editorRequest = .edit(detail.invoiceID) },
                 showPDF: { showPDF(of: detail.invoiceID) },
                 delete: { askToDelete(detail.invoiceID) })
@@ -163,6 +166,14 @@ struct InvoicesScreen: View {
     private func markPaid() {
         guard let invoice = model.openInvoice else { return }
         paying = PaymentSheetModel(app: app, invoice: invoice)
+    }
+
+    /// Issues the draft `id` in one click, without the editor: the detail stays on it and shows it issued, or says why
+    /// it could not be issued.
+    private func issue(_ id: Int64) {
+        Task {
+            await model.issue(id)
+        }
     }
 
     /// Opens the page of the invoice as it prints.

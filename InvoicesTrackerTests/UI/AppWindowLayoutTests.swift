@@ -12,7 +12,8 @@ import Testing
 /// and the card of the table of Faktury starts with its summary row, above the names of the columns (32 points) and
 /// rows of 40 points. The detail of an invoice is a card beside the table, level with it, and the window does not grow
 /// for it; the table follows the width of the window both ways down to its least width, below which it scrolls sideways
-/// under the summary row, which does not; a click on a row opens it and the arrow keys open the rows around it. The
+/// under the summary row, which does not; a click on a row opens it and the arrow keys open the rows around it, and
+/// "Vystavit" in the detail of a draft issues it where it is, without the editor, or its detail says why it cannot. The
 /// search of Faktury is a field of its page, at the end of the filter row, not in the toolbar: Hledat (⌘F) focuses it,
 /// Esc and its × clear it, and it stays the same field with its focus when the row wraps. The toolbar offers the
 /// reporting year and no date or simulation controls. Reporting follows month end automatically while income headings
@@ -384,6 +385,69 @@ struct AppWindowLayoutTests {
 
                     #expect(detailActionNames(in: window) == ["Vystavit", "Upravit", "Zobrazit PDF"])
                     #expect(problems(ofTheDetailActionsIn: window) == [])
+                }
+            }
+        }
+    }
+
+    /// "Vystavit" issues a draft where it is, in one click: the editor does not open, and Faktury keeps the detail of
+    /// the invoice, which shows it issued, with the buttons of an invoice that waits for its payment; no banner says
+    /// so. The rate of its DUZP is fixed on it as the editor fixes it: 21,522, declared on 30. 9. 2026.
+    @Test func vystavitIssuesADraftWhereItIsWithoutTheEditor() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260904", status: .draft)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(draft.id)
+                    try await waitUntil { detailActionNames(in: window) == ["Vystavit", "Upravit", "Zobrazit PDF"] }
+
+                    let issue = try #require(accessibilityButton(labelled: "Vystavit", in: window))
+                    #expect(issue.accessibilityPerformPress?() == true)
+                    try await waitUntil {
+                        detailActionNames(in: window) == ["Označit jako uhrazenou", "Upravit", "Zobrazit PDF"]
+                    }
+
+                    let issued = try await f.stored(draft.id)
+                    #expect(issued.status == .issued)
+                    #expect(issued.invoiceRate == storedRate("USD", "21.522", declaredOn: "2026-09-30"))
+                    #expect(f.app.editorRequest == nil)
+                    #expect(window.title == "Faktury")
+                    #expect(f.app.banner == nil)
+                    #expect(detailCardFrame(in: window) != nil)
+                    #expect(showsText("Čeká na platbu", in: window))
+                    #expect(problems(ofTheDetailActionsIn: window) == [])
+                }
+            }
+        }
+    }
+
+    /// A draft that cannot be issued stays a draft, and its detail says why under its buttons in the words of the
+    /// editor: here its DUZP, 31. 5. 2024, has no rate in the cache of the ČNB. The buttons stay as they were and on,
+    /// "Upravit" among them, and the editor does not open.
+    @Test func aDraftThatCannotBeIssuedSaysWhyInItsDetailAndCanStillBeEdited() async throws {
+        try await EditorFixture.with { f in
+            var draft = try await f.storeIssuedDollarInvoice(number: "20240501", status: .draft)
+            draft.issueDate = civilDate("2024-05-31")
+            draft.duzp = civilDate("2024-05-31")
+            draft.dueDate = civilDate("2024-06-30")
+            draft.invoiceRate = nil
+            try await f.database.saveInvoice(draft)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                try await withAccessibilityElements {
+                    f.app.openInvoice(draft.id)
+                    try await waitUntil { detailActionNames(in: window) == ["Vystavit", "Upravit", "Zobrazit PDF"] }
+
+                    let issue = try #require(accessibilityButton(labelled: "Vystavit", in: window))
+                    #expect(issue.accessibilityPerformPress?() == true)
+                    try await waitUntil { showsText(EditorText.ratesNotDownloaded, in: window) }
+
+                    #expect(try await f.stored(draft.id).status == .draft)
+                    #expect(detailActionNames(in: window) == ["Vystavit", "Upravit", "Zobrazit PDF"])
+                    #expect(problems(ofTheDetailActionsIn: window) == [])
+                    #expect(f.app.editorRequest == nil)
+                    #expect(window.title == "Faktury")
                 }
             }
         }

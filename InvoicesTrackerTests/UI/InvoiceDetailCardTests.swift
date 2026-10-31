@@ -4,7 +4,8 @@ import Testing
 @testable import InvoicesTracker
 
 /// The card of the detail of an invoice on its own, in a window: its header and its buttons for each state of an
-/// invoice, its size, the parts that stand on the tokens of the design, and the row "Čistý příjem", which is in the
+/// invoice, the note that says why a draft could not be issued and the "Vystavit" that is off while a draft is being
+/// issued, its size, the parts that stand on the tokens of the design, and the row "Čistý příjem", which is in the
 /// grey box of the payment, under the day and the amount received, and is there exactly when the section "Dopad na
 /// odvody" is. The tests read the card as VoiceOver does, through the accessibility tree, and take a picture of its
 /// window where they look at colours. In every expected string `\u{00A0}` is the no-break space.
@@ -57,10 +58,15 @@ struct InvoiceDetailCardTests {
         var names: [String] = []
     }
 
-    /// The card of `detail`, with buttons that do nothing, or that record the name of what they do in `presses`.
-    private func card(of detail: InvoiceDetail, presses: Presses = Presses()) -> InvoiceDetailCard {
+    /// The card of `detail`, with buttons that do nothing, or that record the name of what they do in `presses`, and
+    /// with why the draft could not be issued (`issueProblem`) and whether it is being issued (`isIssuing`), as the
+    /// model of Faktury hands them to it.
+    private func card(
+        of detail: InvoiceDetail, presses: Presses = Presses(), issueProblem: String? = nil, isIssuing: Bool = false
+    ) -> InvoiceDetailCard {
         InvoiceDetailCard(
-            detail: detail, close: { presses.names.append("close") }, pay: { presses.names.append("pay") },
+            detail: detail, issueProblem: issueProblem, isIssuing: isIssuing,
+            close: { presses.names.append("close") }, pay: { presses.names.append("pay") },
             issue: { presses.names.append("issue") }, edit: { presses.names.append("edit") },
             showPDF: { presses.names.append("showPDF") }, delete: { presses.names.append("delete") })
     }
@@ -183,6 +189,77 @@ struct InvoiceDetailCardTests {
         }
     }
 
+    // MARK: Issuing in one click
+
+    /// A draft that could not be issued says why in a note right under its buttons, before the client and the amount,
+    /// in the words of the editor. Its buttons all stay: "Upravit", where what stops the draft can be put right, and
+    /// "Vystavit", for another try. The note is the shared note of an error, on the red tint with its icon in red, in a
+    /// light and in a dark window; a draft without a reason has no such note.
+    @Test func aDraftThatCouldNotBeIssuedSaysWhyInARedNoteUnderItsButtons() async throws {
+        let presses = Presses()
+        let detail = detail(of: invoice(in: .draft))
+        let problem = EditorText.ratesNotDownloaded
+
+        try await withHostedView(
+            card(of: detail, presses: presses, issueProblem: problem), size: CGSize(width: 400, height: 1_000)
+        ) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { showsText(problem, in: window) }
+
+                let group = try #require(accessibilityElement(labelled: "Detail faktury", in: window))
+                let readings = accessibilityReadings(under: group)
+                let buttons = try #require(readings.lastIndex(of: "Zobrazit PDF"), "read as \(readings)")
+                let note = try #require(readings.firstIndex(of: problem), "read as \(readings)")
+                let client = try #require(readings.firstIndex(of: detail.client), "read as \(readings)")
+                #expect(buttons < note && note < client, "read as \(readings)")
+                for name in ["Vystavit", "Upravit", "Zobrazit PDF"] {
+                    let button = try #require(accessibilityButton(labelled: name, in: window), "No \(name)")
+                    #expect(button.isAccessibilityEnabled?() != false, "\(name) is off")
+                }
+                let edit = try #require(accessibilityButton(labelled: "Upravit", in: window))
+                #expect(edit.accessibilityPerformPress?() == true)
+                #expect(presses.names == ["edit"])
+            }
+        }
+        for scheme in [ColorScheme.light, .dark] {
+            let tint = try OffscreenPicture.bytes(of: Palette.redTint, in: scheme)
+            let red = try OffscreenPicture.bytes(of: Palette.red, in: scheme)
+            try await withPictureOfTheCard(of: detail, issueProblem: problem, in: scheme) { picture in
+                let whole = CGRect(origin: .zero, size: picture.size)
+
+                #expect(!picture.rows(near: tint, from: 40, to: 260, by: 1).isEmpty, "\(scheme): the note has no tint")
+                #expect(picture.count(near: red, in: whole, by: 2) > 5, "\(scheme): the icon is not red")
+            }
+            try await withPictureOfTheCard(of: detail, in: scheme) { picture in
+                #expect(picture.rows(near: tint, from: 40, to: 260, by: 1).isEmpty, "\(scheme): a note without reason")
+            }
+        }
+    }
+
+    /// While the draft is being issued, "Vystavit" is off, and a press of it does nothing, so that it starts no other
+    /// issue; "Upravit" and "Zobrazit PDF" stay on.
+    @Test func vystavitIsOffWhileTheDraftIsBeingIssued() async throws {
+        let presses = Presses()
+        let detail = detail(of: invoice(in: .draft))
+
+        try await withHostedView(
+            card(of: detail, presses: presses, isIssuing: true), size: CGSize(width: 400, height: 1_000)
+        ) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Vystavit", in: window) != nil }
+
+                let issue = try #require(accessibilityButton(labelled: "Vystavit", in: window))
+                #expect(issue.isAccessibilityEnabled?() == false)
+                _ = issue.accessibilityPerformPress?()
+                #expect(presses.names.isEmpty)
+                for name in ["Upravit", "Zobrazit PDF"] {
+                    let button = try #require(accessibilityButton(labelled: name, in: window), "No \(name)")
+                    #expect(button.isAccessibilityEnabled?() != false, "\(name) is off")
+                }
+            }
+        }
+    }
+
     // MARK: The header
 
     /// The header says the number as the title, then the status in a pill that keeps the day of the payment, and ends
@@ -277,11 +354,13 @@ struct InvoiceDetailCardTests {
 
     /// Shows the card of `detail` in a window of `scheme`, 300 points wide as the card is, and gives `body` a picture
     /// of it. The picture is of the window, as a scroll view, in which the card keeps its content, is not drawn by
-    /// `ImageRenderer`.
+    /// `ImageRenderer`. The card says `issueProblem` where it is given one.
     private func withPictureOfTheCard(
-        of detail: InvoiceDetail, in scheme: ColorScheme, _ body: (OffscreenPicture) async throws -> Void
+        of detail: InvoiceDetail, issueProblem: String? = nil, in scheme: ColorScheme,
+        _ body: (OffscreenPicture) async throws -> Void
     ) async throws {
-        try await withHostedView(card(of: detail), size: CGSize(width: 300, height: 1_000)) { window in
+        let hosted = card(of: detail, issueProblem: issueProblem)
+        try await withHostedView(hosted, size: CGSize(width: 300, height: 1_000)) { window in
             window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
             try await layOut(window)
             try await body(try OffscreenPicture(of: window))
