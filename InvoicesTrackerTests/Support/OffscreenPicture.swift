@@ -38,6 +38,11 @@ struct OffscreenPicture {
         size = CGSize(width: image.width / Self.scale, height: image.height / Self.scale)
     }
 
+    /// Whether `other` shows exactly the same pixels as this picture, and is as large.
+    func isSame(as other: OffscreenPicture) -> Bool {
+        size == other.size && bytes == other.bytes
+    }
+
     /// The red, green and blue bytes of `color` in a window of `scheme`, drawn the way the picture draws everything,
     /// for a test to compare the pixels of a picture with.
     static func bytes(of color: Color, in scheme: ColorScheme) throws -> [Int] {
@@ -64,6 +69,28 @@ struct OffscreenPicture {
         count(in: region) { pixel in
             zip(colour, pixel).contains { $1 - $0 > margin }
         }
+    }
+
+    /// How many pixels of `region`, in points from the top left, are within `margin` levels of `colour` in every
+    /// channel.
+    func count(near colour: [Int], in region: CGRect, by margin: Int) -> Int {
+        count(in: region) { pixel in
+            zip(colour, pixel).allSatisfy { abs($0 - $1) <= margin }
+        }
+    }
+
+    /// The pixel rows of the picture, as the points from its top that they start at, in which every pixel from `start`
+    /// to `end` points from the left edge is within `margin` levels of `colour` in every channel: the rows of a line
+    /// that runs across that width. A line a point thick is two pixel rows (or three, where it lies between pixels).
+    func rows(near colour: [Int], from start: CGFloat, to end: CGFloat, by margin: Int) -> [CGFloat] {
+        let scale = CGFloat(Self.scale)
+        let rowCount = bytes.count / (pixelsPerRow * 4)
+        let columns = Int(start * scale)..<Int(end * scale)
+        return (0..<rowCount).filter { row in
+            columns.allSatisfy { column in
+                zip(colour, pixel(row: row, column: column)).allSatisfy { abs($0 - $1) <= margin }
+            }
+        }.map { CGFloat($0) / scale }
     }
 
     /// The red, green and blue bytes of the pixel in `row` and `column`, counted in pixels from the top left.

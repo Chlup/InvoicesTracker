@@ -1349,12 +1349,13 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The page fits the window with the card of the estimate, and the card holds its parts: the title with its pill
+    /// The page fits the window with the card of the estimate, and the card holds its parts: the title (with no pill)
     /// and the line under it, the button to the right of them, under them the four figures (the income, the levies,
-    /// the settlement and the net income), none of them beyond the card or on another, and under the figures the chart
-    /// of the year, whose months VoiceOver reads within the card. At the least room (828 points of page, 740 with the
-    /// sidebar as wide as it goes) the figures stand in two rows, the first three side by side and the net income under
-    /// the income; in a large window all four stand side by side in one row.
+    /// the settlement and the net income) 40 points apart and none of them more than 240 wide or beyond the card or on
+    /// another, and under the figures the chart of the year, whose months VoiceOver reads within the card. At the
+    /// least room (828 points of page, 740 with the sidebar as wide as it goes) the figures stand in two rows, the
+    /// first three side by side and the net income under the income; in a large window all four stand side by side in
+    /// one row. No sign of an estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -1465,13 +1466,14 @@ struct AppWindowLayoutTests {
         return found
     }
 
-    /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the pill, the line
-    /// under the title, the four figures, the button or the months of the chart are not there, are beyond the card, lie
-    /// on one another, or are not arranged as the card arranges them. The button stands to the right of the title, the
-    /// pill and the line, in a row level with the title's: its middle is within the height of the title and the line.
-    /// The figures stand under the title and the button, in rows of `figureRows` figures from the top; the figures of a
-    /// row are level and side by side in the order income, levies, settlement, net income, and each row is under the
-    /// one before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
+    /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the line under the
+    /// title, the four figures, the button or the months of the chart are not there, are beyond the card, lie on one
+    /// another, or are not arranged as the card arranges them; the card has a pill "odhad" or a sign "≈" among
+    /// what VoiceOver reads. The button stands to the right of the title and the line, in a row level with the title's:
+    /// its middle is within the height of the title and the line. The figures stand under the title and the button, in
+    /// rows of `figureRows` figures from the top; the figures of a row are level, side by side in the order income,
+    /// levies, settlement, net income, 40 points apart and at most 240 points wide, and each row is under the one
+    /// before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
     /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
     /// has the smaller y. Needs the accessibility elements.
     private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
@@ -1482,9 +1484,9 @@ struct AppWindowLayoutTests {
         }
         // What VoiceOver reads for each part of the card, which starts with the words that find it.
         let parts = [
-            (name: "the title", reading: "Odhad za celý rok 2026"), (name: "the pill", reading: "odhad"),
+            (name: "the title", reading: "Odhad za celý rok 2026"),
             (name: "the line under the title", reading: "z faktur do "), (name: "the income", reading: "Příjmy za rok"),
-            (name: "the levies", reading: "Daň a pojistné"), (name: "the settlement", reading: "Doplatek s přiznáním"),
+            (name: "the levies", reading: "Odvody, "), (name: "the settlement", reading: "Doplatek, "),
             (name: "the net income", reading: "Čistý příjem průměrně za měsíc"),
             (name: "the button", reading: "Odhad odvodů"),
         ]
@@ -1506,8 +1508,16 @@ struct AppWindowLayoutTests {
                 found.append("\(name) is not within the card: \(frame), the card \(cardFrame)")
             }
         }
-        guard found.isEmpty, let title = frames["the title"], let pill = frames["the pill"],
-            let line = frames["the line under the title"], let button = frames["the button"]
+        // The card is an area of estimates as a whole: it has no pill that says so and no sign "≈" before a figure.
+        let readings = accessibilityReadings(under: card)
+        if readings.contains("odhad") {
+            found.append("The card has the pill odhad")
+        }
+        if let approximate = readings.first(where: { $0.contains("≈") }) {
+            found.append("The card reads a sign of an estimate: \(approximate)")
+        }
+        guard found.isEmpty, let title = frames["the title"], let line = frames["the line under the title"],
+            let button = frames["the button"]
         else {
             return found
         }
@@ -1522,10 +1532,10 @@ struct AppWindowLayoutTests {
                 }
             }
         }
-        // The button is to the right of the title, the pill and the line, in a row level with the title's.
-        let titleRight = max(title.maxX, pill.maxX, line.maxX)
-        let titleTop = max(title.maxY, pill.maxY, line.maxY)
-        let titleBottom = min(title.minY, pill.minY, line.minY)
+        // The button is to the right of the title and the line, in a row level with the title's.
+        let titleRight = max(title.maxX, line.maxX)
+        let titleTop = max(title.maxY, line.maxY)
+        let titleBottom = min(title.minY, line.minY)
         if button.minX < titleRight - 0.5 {
             found.append("The button is not to the right of the title: \(button), the title ends at \(titleRight)")
         }
@@ -1554,6 +1564,12 @@ struct AppWindowLayoutTests {
             for (left, right) in zip(row, row.dropFirst()) where left.maxX > right.minX + 0.5 {
                 found.append("The figures of a row are not side by side in their order: \(row)")
             }
+            for (left, right) in zip(row, row.dropFirst()) where (right.minX - left.maxX - 40).magnitude > 1 {
+                found.append("The figures of a row are not 40 points apart: \(left), \(right)")
+            }
+        }
+        for figure in figures where figure.width > 240.5 {
+            found.append("A figure is \(figure.width) points wide, not at most 240: \(figure)")
         }
         for (above, below) in zip(rows, rows.dropFirst()) {
             if let bottom = above.map(\.minY).min(), let top = below.map(\.maxY).max(), top > bottom + 0.5 {
@@ -1585,7 +1601,8 @@ struct AppWindowLayoutTests {
 
     /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today: the strip of the net income stands in the
     /// card "Příjmy" above the legend of the chart, the net income of the year so far and its average per month side by
-    /// side, level, at the least room, at a large size and at the least room again, with the page fitting the window.
+    /// side, level and 48 points apart, at the least room, at a large size and at the least room again, with the page
+    /// fitting the window.
     @Test func theNetIncomeStripStandsInThePrijmyCardAboveTheChart() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -1618,7 +1635,7 @@ struct AppWindowLayoutTests {
         let phrases = [
             (
                 words: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.", figure: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-                line: "88,2\u{00A0}% příjmů bez DPH po dani a pojistném"
+                line: "88,2\u{00A0}% příjmů bez DPH po odvodech"
             ),
             (
                 words: "Čistý příjem průměrně za měsíc", figure: "193\u{00A0}347\u{00A0}Kč",
@@ -1659,6 +1676,12 @@ struct AppWindowLayoutTests {
         if year.maxX > average.minX + 0.5 {
             found.append("The net income is not to the left of its average: \(year), \(average)")
         }
+        if (average.minX - year.maxX - 48).magnitude > 1 {
+            found.append("The net income and its average are not 48 points apart: \(year), \(average)")
+        }
+        if (year.minX - card.minX - 20).magnitude > 1 {
+            found.append("The net income is not 20 points from the edge of the card: \(year), the card \(card)")
+        }
         if min(year.minY, average.minY) < legend.maxY - 0.5 {
             found.append("The net income and its average are not above the legend: \(year), \(average), \(legend)")
         }
@@ -1670,7 +1693,7 @@ struct AppWindowLayoutTests {
     }
 
     /// What the legend of the chart by years says of the line of the net income, the third key of the legend.
-    private static let netIncomeKeyByYears = "Čistý příjem za rok (po dani a pojistném, vždy bez DPH)"
+    private static let netIncomeKeyByYears = "Čistý příjem za rok (po odvodech, vždy bez DPH)"
 
     /// What the legend of the chart by months says of the line of the net income, the third key of the legend.
     private static let netIncomeKeyByMonths = "Čistý příjem (součet za faktury zaplacené v měsíci, bez DPH)"
@@ -1727,11 +1750,11 @@ struct AppWindowLayoutTests {
         let readings = accessibilityReadings(in: window)
         let years = [
             (
-                title: "Rok 2025:", net: "2\u{00A0}393\u{00A0}295,00\u{00A0}Kč",
+                title: "Rok 2025:", net: "2\u{00A0}393\u{00A0}295\u{00A0}Kč",
                 average: "Průměrný čistý příjem za měsíc v roce 2025 199\u{00A0}441\u{00A0}Kč"
             ),
             (
-                title: "Rok 2026:", net: "1\u{00A0}933\u{00A0}471,00\u{00A0}Kč",
+                title: "Rok 2026:", net: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
                 average: "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) 193\u{00A0}347\u{00A0}Kč"
             ),
         ]
@@ -1799,9 +1822,9 @@ struct AppWindowLayoutTests {
         // same words ("Únor 2026:"), so the columns are looked for in the card "Příjmy" alone.
         let readings = accessibilityReadings(under: cardElement)
         let months = [
-            (title: "Únor 2026:", net: "253\u{00A0}401,00\u{00A0}Kč"),
-            (title: "Říjen 2026:", net: "219\u{00A0}810,75\u{00A0}Kč"),
-            (title: "Listopad 2026:", net: "0,00\u{00A0}Kč"),
+            (title: "Únor 2026:", net: "253\u{00A0}401\u{00A0}Kč"),
+            (title: "Říjen 2026:", net: "219\u{00A0}811\u{00A0}Kč"),
+            (title: "Listopad 2026:", net: "0\u{00A0}Kč"),
         ]
         let average2026 = "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) 193\u{00A0}347\u{00A0}Kč"
         for (title, net) in months {
@@ -1811,6 +1834,44 @@ struct AppWindowLayoutTests {
             }
         }
         return found
+    }
+
+    /// The card "Příjmy" groups its chart with the segmented control of the design: a group "Seskupit" on a track of 32
+    /// points in the card, with the buttons Měsíce and Roky of 28 points, the chosen one selected. The press of Roky,
+    /// as VoiceOver makes it, groups the chart by years, keeps the choice in the settings and moves the mark; the
+    /// press of Měsíce undoes it.
+    @Test func theSegmentedControlOfPrijmyChoosesMonthsOrYears() async throws {
+        try await PredictionSample.withStoredSample { app in
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+                    try await waitUntil { accessibilityElement(labelled: "Seskupit", in: window) != nil }
+                    let group = try #require(accessibilityElement(labelled: "Seskupit", in: window))
+                    let track = try #require(group.accessibilityFrame?())
+                    let card = try #require(frameOfCard(labelled: "Příjmy", in: window))
+                    #expect(group.accessibilityRole?() == .group)
+                    #expect(abs(track.height - 32) < 0.5, "The track is \(track.height) points tall")
+                    #expect(card.insetBy(dx: -0.5, dy: -0.5).contains(track), "The control is outside the card")
+                    let months = try #require(accessibilityButton(labelled: "Měsíce", in: window))
+                    #expect(abs(try #require(months.accessibilityFrame?()).height - 28) < 0.5)
+                    #expect(months.isAccessibilitySelected?() == true)
+                    #expect(accessibilityButton(labelled: "Roky", in: window)?.isAccessibilitySelected?() != true)
+                    #expect(app.appSettings.chartMode == .months)
+
+                    let years = try #require(accessibilityButton(labelled: "Roky", in: window))
+                    #expect(years.accessibilityPerformPress?() == true)
+                    try await waitUntil { app.appSettings.chartMode == .years }
+                    try await waitUntil { frameOfText(startingWith: Self.netIncomeKeyByYears, in: window) != nil }
+                    #expect(accessibilityButton(labelled: "Roky", in: window)?.isAccessibilitySelected?() == true)
+                    #expect(accessibilityButton(labelled: "Měsíce", in: window)?.isAccessibilitySelected?() != true)
+
+                    let back = try #require(accessibilityButton(labelled: "Měsíce", in: window))
+                    #expect(back.accessibilityPerformPress?() == true)
+                    try await waitUntil { app.appSettings.chartMode == .months }
+                    try await waitUntil { frameOfText(startingWith: Self.netIncomeKeyByMonths, in: window) != nil }
+                }
+            }
+        }
     }
 
     // MARK: Zálohy a odpočty

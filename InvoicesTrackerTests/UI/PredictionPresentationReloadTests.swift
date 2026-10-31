@@ -66,7 +66,7 @@ struct PredictionPresentationReloadTests {
             await reopened.load()
             await overview.load()
             #expect(reopened.page?.incomeTotal == "2\u{00A0}773\u{00A0}855\u{00A0}Kč")
-            #expect(overview.data?.prediction?.stats[0].value == "≈\u{00A0}2\u{00A0}773\u{00A0}855\u{00A0}Kč")
+            #expect(overview.data?.prediction?.stats[0].value == "2\u{00A0}773\u{00A0}855\u{00A0}Kč")
             #expect(reopened.page?.activeRows[0].how.contains("316\u{00A0}391\u{00A0}Kč") == true)
             #expect(try await database.predictionInvoices(year: 2026) == invoicesBefore)
             var invoice = try #require(invoicesBefore.first { $0.number == "20260601" })
@@ -111,6 +111,6 @@ struct PredictionPresentationReloadTests {
         #expect(prediction.errorText == nil)
         #expect(overview.errorText == nil)
         #expect(prediction.page?.incomeTotal == "2\u{00A0}773\u{00A0}855\u{00A0}Kč")
-        #expect(overview.data?.prediction?.stats[0].value == "≈\u{00A0}2\u{00A0}773\u{00A0}855\u{00A0}Kč")
+        #expect(overview.data?.prediction?.stats[0].value == "2\u{00A0}773\u{00A0}855\u{00A0}Kč")
     }
 }

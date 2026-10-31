@@ -101,8 +101,8 @@ nonisolated struct OverviewNetIncome: Sendable, Hashable {
     /// The net income of the year so far: "1 933 471 Kč", or "−12 345 Kč" where the levies are more than the income.
     var yearValue: String
 
-    /// What the net income is a part of: "88,2 % příjmů bez DPH po dani a pojistném", or while the income is not above
-    /// zero, as there is nothing to take a part of, "příjmy bez DPH po dani a pojistném".
+    /// What the net income is a part of: "88,2 % příjmů bez DPH po odvodech", or while the income is not above zero,
+    /// as there is nothing to take a part of, "příjmy bez DPH po odvodech".
     var yearSub: String
 
     /// What the second figure is: "Čistý příjem průměrně za měsíc".
@@ -135,7 +135,8 @@ nonisolated struct ChartNetAverage: Sendable, Hashable {
 }
 
 /// A column of the income chart: a month or a year, with what was issued (the bars) and what was received (the line),
-/// each without and with VAT, in haléře. Where the levies of its year are known it also tells what is left of the
+/// each without and with VAT, in haléře, which the chart is drawn from; the hover box and VoiceOver tell them in whole
+/// Kč (`issuedNetText` and its like). Where the levies of its year are known it also tells what is left of the
 /// income after them (the green line). A month has the net income of the invoices paid in it, and the average per
 /// month of the selected year; a year of the years chart that has been worked out has the net income of the year and
 /// its average. Where the engine worked the year out with the rules of another year, the net income and the average
@@ -153,7 +154,8 @@ nonisolated struct ChartColumn: Sendable, Hashable {
 
     /// Whether an issued amount of the column is approximate: an invoice in a foreign currency, not paid, whose ČNB
     /// rate of the day of issue is not declared yet is worth what the latest declared rate makes of it. The tooltip
-    /// and VoiceOver put "≈" before the issued amounts and say why (`approximateIssuedNote`).
+    /// and VoiceOver put "≈" before the issued amounts, a lone estimate among actual figures, and say why
+    /// (`approximateIssuedNote`).
     var issuedIsApproximate = false
 
     /// A month after the chosen day: its bar is drawn faded and the lines stop before it.
@@ -180,29 +182,25 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// own.
     var netAverage: ChartNetAverage? = nil
 
-    /// The net income as the row of the tooltip and VoiceOver tell it: `netIncomeHalere` in crowns and haléře,
-    /// "1 933 471,00 Kč" or, below zero, "−12 345,00 Kč". When the engine worked the year out with the rules of another
-    /// year, the sign of an estimate stands in front of it, "≈ 880 922,00 Kč", also for a month with nothing in it,
-    /// "≈ 0,00 Kč". It is set exactly when `netIncomeHalere` is.
+    /// The net income as the row of the tooltip and VoiceOver tell it: `netIncomeHalere` in whole Kč, "1 933 471 Kč"
+    /// or, below zero, "−12 345 Kč". When the engine worked the year out with the rules of another year, the sign of
+    /// an estimate stands in front of it, "≈ 880 922 Kč", also for a month with nothing in it, "≈ 0 Kč". It is set
+    /// exactly when `netIncomeHalere` is.
     var netIncomeText: String? = nil
 
     /// The words under the net income row of the tooltip that say what the figure covers: for a month "součet za
-    /// faktury zaplacené v měsíci", for a year of the years chart "za celý rok, po dani a pojistném" or, while the year
-    /// is in progress, "od 1. 1. do 17. 10., po dani a pojistném". They are for the tooltip alone, as VoiceOver reads
-    /// the figure without them. Nil where the column has no net income.
+    /// faktury zaplacené v měsíci", for a year of the years chart "za celý rok, po odvodech" or, while the year is in
+    /// progress, "od 1. 1. do 17. 10., po odvodech". They are for the tooltip alone, as VoiceOver reads the figure
+    /// without them. Nil where the column has no net income.
     var netIncomeNote: String? = nil
 
     /// What VoiceOver reads for the column, and what the tooltip says but for the words under its net income row
-    /// (`netIncomeNote`): the amounts issued and received, then the net income and its average per month where the
-    /// column has them, and after the average the sentence that the year is computed with the rules of another year
-    /// where it is.
+    /// (`netIncomeNote`): the amounts issued and received in whole Kč, then the net income and its average per month
+    /// where the column has them, and after the average the sentence that the year is computed with the rules of
+    /// another year where it is.
     var accessibilityLabel: String {
-        func both(_ net: Int64, _ gross: Int64, sign: String = "") -> String {
-            sign + CzechFormat.halere(net) + " bez DPH, " + sign + CzechFormat.halere(gross) + " s DPH"
-        }
-        let issued = both(
-            issuedNetHalere, issuedGrossHalere, sign: issuedIsApproximate ? PredictionBuilder.estimateSign : "")
-        let received = both(receivedNetHalere, receivedGrossHalere)
+        let issued = issuedNetText + " bez DPH, " + issuedGrossText + " s DPH"
+        let received = receivedNetText + " bez DPH, " + receivedGrossText + " s DPH"
         var label = "\(title): vystaveno \(issued); přijato \(received)"
         if issuedIsApproximate {
             label += "; " + Self.approximateIssuedNote
@@ -221,6 +219,34 @@ nonisolated struct ChartColumn: Sendable, Hashable {
 }
 
 nonisolated extension ChartColumn {
+    /// What was issued without VAT as the hover box and VoiceOver tell it, in whole Kč, rounded half up, "310 227 Kč",
+    /// and with the sign of an estimate in front of it, "≈ 310 227 Kč", where the amount is approximate
+    /// (`issuedIsApproximate`).
+    var issuedNetText: String {
+        issuedSign + PredictionBuilder.kc(ofHalere: issuedNetHalere)
+    }
+
+    /// What was issued with VAT, in whole Kč (`issuedNetText`).
+    var issuedGrossText: String {
+        issuedSign + PredictionBuilder.kc(ofHalere: issuedGrossHalere)
+    }
+
+    /// What was received without VAT, in whole Kč, "279 433 Kč".
+    var receivedNetText: String {
+        PredictionBuilder.kc(ofHalere: receivedNetHalere)
+    }
+
+    /// What was received with VAT, in whole Kč.
+    var receivedGrossText: String {
+        PredictionBuilder.kc(ofHalere: receivedGrossHalere)
+    }
+
+    /// The sign "≈", with its no-break space, before the issued amounts of a column whose amounts are approximate,
+    /// otherwise nothing.
+    private var issuedSign: String {
+        issuedIsApproximate ? PredictionBuilder.estimateSign : ""
+    }
+
     /// Why the issued amounts of a column are approximate: the sentence of the tooltip and of VoiceOver.
     static let approximateIssuedNote = "kurz ČNB ke dni vystavení zatím není, přepočteno posledním vyhlášeným"
 }
@@ -464,8 +490,8 @@ nonisolated enum OverviewBuilder {
             ? "Čistý příjem za rok \(input.year)"
             : "Čistý příjem od 1.\u{00A0}1. do " + BuilderText.date(input.receivedThrough, omittingYear: input.year)
         let yearSub =
-            shares.map { BuilderText.share(tenths: $0.netTenths) + " příjmů bez DPH po dani a pojistném" }
-            ?? "příjmy bez DPH po dani a pojistném"
+            shares.map { BuilderText.share(tenths: $0.netTenths) + " příjmů bez DPH po odvodech" }
+            ?? "příjmy bez DPH po odvodech"
         return OverviewNetIncome(
             yearLabel: yearLabel, yearValue: CzechFormat.wholeKc(net.yearKc), yearSub: yearSub,
             monthLabel: "Čistý příjem průměrně za měsíc", monthValue: CzechFormat.wholeKc(net.monthlyKc),
@@ -530,19 +556,19 @@ nonisolated enum OverviewBuilder {
         result.rulesAreEstimate ? PredictionBuilder.estimateSign + text : text
     }
 
-    /// The net income of the year of `result` in crowns and haléře as the row of the tooltip and VoiceOver tell it
+    /// The net income of the year of `result` in whole Kč as the row of the tooltip and VoiceOver tell it
     /// (`ChartColumn.netIncomeText`), marked as an estimate when the year's rules are another year's.
     private static func netIncomeText(of result: TaxResult) -> String {
-        estimate(CzechFormat.halere(NetIncome(result).yearKc * 100), of: result)
+        estimate(CzechFormat.wholeKc(NetIncome(result).yearKc), of: result)
     }
 
     /// The words under the net income row of the tooltip of the year of `result` (`ChartColumn.netIncomeNote`): "za
-    /// celý rok, po dani a pojistném" for a year worked out for its last day, otherwise the span it was worked out
-    /// for, "od 1. 1. do 17. 10., po dani a pojistném".
+    /// celý rok, po odvodech" for a year worked out for its last day, otherwise the span it was worked out for, "od
+    /// 1. 1. do 17. 10., po odvodech".
     private static func netIncomeNote(of result: TaxResult) -> String {
         NetIncome(result).isWholeYear
-            ? "za celý rok, po dani a pojistném"
-            : "od 1.\u{00A0}1. do " + BuilderText.date(result.asOf, omittingYear: result.year) + ", po dani a pojistném"
+            ? "za celý rok, po odvodech"
+            : "od 1.\u{00A0}1. do " + BuilderText.date(result.asOf, omittingYear: result.year) + ", po odvodech"
     }
 
     /// The average net income per month of the year of `result` as the tooltip tells it, worded for the months its net
@@ -627,7 +653,7 @@ nonisolated enum OverviewBuilder {
                     isFuture: !isOver && index > currentMonth, isCurrent: !isOver && index == currentMonth,
                     hasLinePoint: isOver || index <= currentMonth, netIncomeHalere: monthNets[index],
                     netAverage: selectedYearAverage,
-                    netIncomeText: estimate(CzechFormat.halere(monthNets[index]), of: input.result),
+                    netIncomeText: estimate(PredictionBuilder.kc(ofHalere: monthNets[index]), of: input.result),
                     netIncomeNote: "součet za faktury zaplacené v měsíci"
                 )
             case .years:
@@ -764,9 +790,9 @@ nonisolated enum OverviewBuilder {
 
     /// The next payments after the chosen day, nearest first: the advances of the months after its month, one item a
     /// month and only for a month that has any, and the VAT return of every month of the year that is not due yet, as
-    /// "DPH na výstupu za září": the output VAT, that of the invoices of the month. The VAT of a month with an invoice
-    /// to check says that such invoices are not counted in it, and a month without any VAT only says to file the
-    /// return.
+    /// "DPH za září": the output VAT, that of the invoices of the month. The VAT of a month with an invoice to check
+    /// says that such invoices are not counted in it, and a month without any VAT says to file the return, with
+    /// nothing to pay.
     private static func upcoming(_ input: OverviewInput) -> [UpcomingItem] {
         var items: [UpcomingItem] = []
         for month in (input.asOf.month + 1)..<13 {
@@ -796,14 +822,14 @@ nonisolated enum OverviewBuilder {
                 if input.vatToCheckMonths.contains(month) {
                     "faktury ke kontrole nejsou započtené"
                 } else if vat == 0 {
-                    "podat přiznání"
+                    "podat přiznání · nic k úhradě"
                 } else {
                     "přiznání a kontrolní hlášení · mimo odvody z příjmů"
                 }
             items.append(
                 UpcomingItem(
                     date: due, day: String(due.day), month: CzechFormat.monthShort[due.month - 1] + yearMark,
-                    title: "DPH na výstupu za " + CzechFormat.monthNames[month - 1], subtitle: subtitle,
+                    title: "DPH za " + CzechFormat.monthNames[month - 1], subtitle: subtitle,
                     amount: vat == 0 ? "0\u{00A0}Kč" : CzechFormat.halere(vat), isVAT: true
                 ))
         }

@@ -2,8 +2,8 @@ import Foundation
 
 // MARK: - The card of Přehled
 
-/// One of the four figures of the card of Přehled, with its caption and the line under it: "Doplatek s přiznáním",
-/// "≈ 198 702 Kč", "po zálohách 268 080 Kč za celý rok".
+/// One of the four figures of the card of Přehled, with its caption and the line under it: "Doplatek", "198 702 Kč",
+/// "po zálohách 268 080 Kč za celý rok".
 nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
     var label: String
     var value: String

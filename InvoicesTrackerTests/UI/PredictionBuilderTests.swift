@@ -795,15 +795,15 @@ struct PredictionBuilderTests {
     // MARK: The net income
 
     /// The average per month and the sum of the year it is the average of are the figures that Přehled's card of the
-    /// estimate gives for the year. The card writes the sign of an estimate in front of the average, as it does in
-    /// front of every figure of it, and has no caption of an estimate.
+    /// estimate gives for the year. The card is an area of estimates as a whole, so it has no sign of an estimate in
+    /// front of the average and no caption of an estimate.
     @Test func theNetIncomeIsTheSameAsOnPrehledsEstimateCard() throws {
         let outcome = try PredictionSample.outcome(year: 2026)
         let page = PredictionBuilder.page(outcome)
         let card = try #require(PredictionBuilder.card(outcome).stats.last)
 
         #expect(card.label + " (odhad)" == page.netIncome.label)
-        #expect(card.value == PredictionBuilder.estimateSign + page.netIncome.amount)
+        #expect(card.value == page.netIncome.amount)
         #expect(page.netIncome.sub.hasPrefix(card.sub))
     }
 

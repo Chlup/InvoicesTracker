@@ -96,8 +96,9 @@ struct OverviewScreen: View {
                     showInvoices: { app.screen = .invoices })
             }
         } else if let errorText = model.errorText {
-            Text(errorText)
-                .foregroundStyle(.secondary)
+            Text(verbatim: errorText)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         }

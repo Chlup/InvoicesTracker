@@ -5,12 +5,13 @@ import Testing
 /// The twelve months of the chart on the card of the estimate in Přehled: the actual months up to today, which come
 /// from the invoices and the payments in the data, and the rest of the year, which comes from the prediction. The
 /// figures of the prediction sample's 2026 as of Saturday 17. 10. 2026 were worked out for the same data by a separate
-/// implementation. In every expected string `\u{00A0}` is the no-break space.
+/// implementation, in crowns and haléře; the texts of the months tell them in whole Kč, rounded half up. In every
+/// expected string `\u{00A0}` is the no-break space.
 struct PredictionChartBuilderTests {
     // MARK: Helpers
 
-    /// "0,00 Kč": what a part that applies shows when nothing is in it.
-    private let zero = "0,00\u{00A0}Kč"
+    /// "0 Kč": what a part that applies shows when nothing is in it.
+    private let zero = "0\u{00A0}Kč"
 
     /// What each payment of an invoice in the prediction sample's 2026 adds to the levies of the year on its own day:
     /// the engine's effect of each receipt of the year whose source is an invoice.
@@ -157,8 +158,8 @@ struct PredictionChartBuilderTests {
         #expect(september.netEstimateHalere == 0)
         #expect(
             texts(of: september) == [
-                "310\u{00A0}226,75\u{00A0}Kč", "—", "279\u{00A0}433,00\u{00A0}Kč", "—",
-                "237\u{00A0}168,00\u{00A0}Kč", "—",
+                "310\u{00A0}227\u{00A0}Kč", "—", "279\u{00A0}433\u{00A0}Kč", "—",
+                "237\u{00A0}168\u{00A0}Kč", "—",
             ])
     }
 
@@ -172,8 +173,8 @@ struct PredictionChartBuilderTests {
         #expect(amounts(of: october) == [0, 26_119_280, 31_022_675, 0, 21_981_075, 0])
         #expect(
             texts(of: october) == [
-                "0,00\u{00A0}Kč", "261\u{00A0}192,80\u{00A0}Kč", "310\u{00A0}226,75\u{00A0}Kč", "0,00\u{00A0}Kč",
-                "219\u{00A0}810,75\u{00A0}Kč", "0,00\u{00A0}Kč",
+                "0\u{00A0}Kč", "261\u{00A0}193\u{00A0}Kč", "310\u{00A0}227\u{00A0}Kč", "0\u{00A0}Kč",
+                "219\u{00A0}811\u{00A0}Kč", "0\u{00A0}Kč",
             ])
     }
 
@@ -190,9 +191,9 @@ struct PredictionChartBuilderTests {
         #expect(november.issuedActualText == "—")
         #expect(november.receivedActualText == "—")
         #expect(november.netActualText == "—")
-        #expect(november.issuedEstimateText == "290\u{00A0}192,84\u{00A0}Kč")
-        #expect(november.receivedEstimateText == "261\u{00A0}192,80\u{00A0}Kč")
-        #expect(november.netEstimateText == "162\u{00A0}433,80\u{00A0}Kč")
+        #expect(november.issuedEstimateText == "290\u{00A0}193\u{00A0}Kč")
+        #expect(november.receivedEstimateText == "261\u{00A0}193\u{00A0}Kč")
+        #expect(november.netEstimateText == "162\u{00A0}434\u{00A0}Kč")
         #expect(december.title == "Prosinec 2026 · odhad")
         #expect(amounts(of: december) == [0, 29_019_284, 0, 29_019_284, 0, 18_046_984])
     }
@@ -205,11 +206,11 @@ struct PredictionChartBuilderTests {
         let months = try sampleMonths()
 
         #expect(
-            months[8].accessibilityLabel == "Září 2026: vystaveno 310\u{00A0}226,75\u{00A0}Kč; přijato "
-                + "279\u{00A0}433,00\u{00A0}Kč; čistý příjem 237\u{00A0}168,00\u{00A0}Kč")
+            months[8].accessibilityLabel == "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč; přijato "
+                + "279\u{00A0}433\u{00A0}Kč; čistý příjem 237\u{00A0}168\u{00A0}Kč")
         #expect(
-            months[10].accessibilityLabel == "Listopad 2026 · odhad: vystaveno 290\u{00A0}192,84\u{00A0}Kč; přijato "
-                + "261\u{00A0}192,80\u{00A0}Kč; čistý příjem 162\u{00A0}433,80\u{00A0}Kč")
+            months[10].accessibilityLabel == "Listopad 2026 · odhad: vystaveno 290\u{00A0}193\u{00A0}Kč; přijato "
+                + "261\u{00A0}193\u{00A0}Kč; čistý příjem 162\u{00A0}434\u{00A0}Kč")
     }
 
     /// The current month is read with both of its parts in each phrase, the actual one first.
@@ -218,9 +219,51 @@ struct PredictionChartBuilderTests {
 
         #expect(
             october.accessibilityLabel
-                == "Říjen 2026 · do 17.\u{00A0}10. skutečnost, dál odhad: vystaveno 0,00\u{00A0}Kč skutečnost, "
-                + "261\u{00A0}192,80\u{00A0}Kč odhad; přijato 310\u{00A0}226,75\u{00A0}Kč skutečnost, "
-                + "0,00\u{00A0}Kč odhad; čistý příjem 219\u{00A0}810,75\u{00A0}Kč skutečnost, 0,00\u{00A0}Kč odhad")
+                == "Říjen 2026 · do 17.\u{00A0}10. skutečnost, dál odhad: vystaveno 0\u{00A0}Kč skutečnost, "
+                + "261\u{00A0}193\u{00A0}Kč odhad; přijato 310\u{00A0}227\u{00A0}Kč skutečnost, "
+                + "0\u{00A0}Kč odhad; čistý příjem 219\u{00A0}811\u{00A0}Kč skutečnost, 0\u{00A0}Kč odhad")
+    }
+
+    /// Half a crown is rounded up, as everywhere else in whole Kč: a payment of 1 000,50 Kč is read as 1 001 Kč, and
+    /// one of 0,49 Kč as nothing.
+    @Test func halfACrownIsRoundedUpAndLessThanHalfIsDropped() throws {
+        let rows = [
+            row(201, issued: "2026-04-01", net: 100_050, paidOn: "2026-04-02", paymentNet: 100_050),
+            row(202, issued: "2026-05-01", net: 49, paidOn: "2026-05-02", paymentNet: 49),
+        ]
+
+        let chart = try monthsOfRows(rows, today: civilDate("2026-06-15"))
+
+        #expect(chart[3].issuedActualText == "1\u{00A0}001\u{00A0}Kč")
+        #expect(chart[3].receivedActualText == "1\u{00A0}001\u{00A0}Kč")
+        #expect(chart[4].issuedActualText == zero)
+        #expect(chart[4].receivedActualText == zero)
+        // The amounts themselves stay in haléře, as the chart is drawn from them.
+        #expect(chart[3].issuedActualHalere == 100_050 && chart[4].receivedActualHalere == 49)
+    }
+
+    /// An unpaid invoice in dollars is worth the latest declared rate while the ČNB has not declared the rate of its
+    /// day of issue, and its amount is approximate. The card of the estimate is an area of estimates as a whole, so the
+    /// amount has no sign "≈" there, in the hover box or for VoiceOver; the note that explains the rate stays under the
+    /// figures and is read after them.
+    @Test func anApproximateIssuedAmountHasNoSignButKeepsItsNote() throws {
+        var provisional = row(
+            203, issued: "2026-10-10", net: 1_000_000, currency: .usd,
+            issueDayRate: ExchangeRate(currency: .usd, amount: 1, rate: decimal("21.5")))
+        provisional.issueDayRateIsProvisional = true
+
+        let october = try monthsOfRows([provisional], today: civilDate("2026-10-17"))[9]
+
+        #expect(october.issuedActualIsApproximate)
+        #expect(october.issuedActualHalere == 21_500_000)
+        #expect(october.issuedActualText == "215\u{00A0}000\u{00A0}Kč")
+        #expect(october.notes == [ChartColumn.approximateIssuedNote])
+        #expect(
+            october.accessibilityLabel == "Říjen 2026 · do 17.\u{00A0}10. skutečnost, dál odhad: vystaveno "
+                + "215\u{00A0}000\u{00A0}Kč skutečnost, \(zero) odhad; přijato \(zero) skutečnost, \(zero) odhad; "
+                + "čistý příjem \(zero) skutečnost, \(zero) odhad; " + ChartColumn.approximateIssuedNote)
+        let everyText = texts(of: october) + [october.accessibilityLabel, october.title] + october.notes
+        #expect(everyText.allSatisfy { !$0.contains("≈") }, "\(everyText)")
     }
 
     // MARK: Where an invoice is counted
@@ -292,7 +335,7 @@ struct PredictionChartBuilderTests {
 
         #expect(june.part == .future)
         #expect(june.issuedEstimateHalere == 250_000)
-        #expect(june.issuedEstimateText == "2\u{00A0}500,00\u{00A0}Kč")
+        #expect(june.issuedEstimateText == "2\u{00A0}500\u{00A0}Kč")
         #expect(june.issuedActualHalere == 0)
         #expect(june.issuedActualText == "—")
         #expect(june.receivedActualText == "—")

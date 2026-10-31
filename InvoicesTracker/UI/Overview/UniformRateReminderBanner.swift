@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// The banner at the top of Přehled that reminds the person to enter the uniform rate of a finished year by hand: the
-/// search for it ended on 31 March without finding it. It offers Zadat ručně, which shows the form in Nastavení › Rok,
-/// and Zavřít. VoiceOver is told of it by the app model when the reminder comes (`AppModel.uniformRateReminderYear`).
+/// search for it ended on 31 March without finding it. A note of the attention tone, in orange, with the buttons Zadat
+/// ručně, which shows the form in Nastavení › Rok, and Zavřít. VoiceOver is told of it by the app model when the
+/// reminder comes (`AppModel.uniformRateReminderYear`), and reads the sentence and reaches each button on its own.
 struct UniformRateReminderBanner: View {
     /// The year whose rate was not found.
     let year: Int
@@ -19,26 +20,13 @@ struct UniformRateReminderBanner: View {
     }
 
     var body: some View {
-        let text = Self.text(year: year)
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            Text(verbatim: text)
-                .fontWeight(.semibold)
-                .foregroundStyle(Color(.simulationText))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Zadat ručně", action: enterManually)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            Button("Zavřít", action: close)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+        Note(.attention, icon: .warning, title: Self.text(year: year), text: "") {
+            HStack(spacing: 8) {
+                Button("Zadat ručně", action: enterManually)
+                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+                Button("Zavřít", action: close)
+                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .contain)
     }
 }

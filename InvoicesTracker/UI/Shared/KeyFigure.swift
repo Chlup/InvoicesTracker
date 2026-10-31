@@ -68,9 +68,9 @@ private nonisolated enum KeyFigureMetrics {
     /// How far the figure may be scaled down before it is cut, where the room is narrower than it.
     static let minimumFigureScale: CGFloat = 0.6
 
-    /// The widest the sentence is set, about 35 em of its type, so that it does not run to the whole width of a wide
+    /// The widest the sentence is set, 32 em of its 13-point type, so that it does not run to the whole width of a wide
     /// window.
-    static let sentenceMaximumWidth: CGFloat = 460
+    static let sentenceMaximumWidth: CGFloat = 416
 }
 
 /// The key figure of a screen: the eyebrow over it in grey capitals, the figure in the display size with its share on

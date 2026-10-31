@@ -327,7 +327,7 @@ struct OverviewModelTests {
         let upcoming = try #require(model.data).upcoming
         #expect(
             upcoming.map(\.title) == [
-                "DPH na výstupu za září", "Zálohy za listopad", "DPH na výstupu za říjen", "Zálohy za prosinec",
+                "DPH za září", "Zálohy za listopad", "DPH za říjen", "Zálohy za prosinec",
             ])
         #expect(
             upcoming.map(\.date) == [
@@ -342,7 +342,7 @@ struct OverviewModelTests {
             upcoming.map(\.subtitle) == [
                 "přiznání a kontrolní hlášení · mimo odvody z příjmů",
                 "sociální 12\u{00A0}150 · zdravotní 5\u{00A0}480",
-                "podat přiznání",
+                "podat přiznání · nic k úhradě",
                 "sociální 12\u{00A0}150 · zdravotní 5\u{00A0}480 · daň 23\u{00A0}000",
             ])
         #expect(upcoming.map(\.isVAT) == [true, false, true, false])
@@ -360,7 +360,7 @@ struct OverviewModelTests {
 
         let model = await loadedModel(of: app)
 
-        let september = try #require(model.data?.upcoming.first { $0.title == "DPH na výstupu za září" })
+        let september = try #require(model.data?.upcoming.first { $0.title == "DPH za září" })
         #expect(september.amount == "0\u{00A0}Kč")
         #expect(september.subtitle == "faktury ke kontrole nejsou započtené")
     }
@@ -506,7 +506,7 @@ struct OverviewModelTests {
             let columns = try #require(model.data).columns
             #expect(columns.count == 12)
             #expect(columns[1].netIncomeHalere == 25_340_100)
-            #expect(columns[1].netIncomeText == "253\u{00A0}401,00\u{00A0}Kč")
+            #expect(columns[1].netIncomeText == "253\u{00A0}401\u{00A0}Kč")
             #expect(columns[1].netIncomeNote == "součet za faktury zaplacené v měsíci")
             #expect(
                 columns.map(\.netIncomeHalere) == [
@@ -520,7 +520,7 @@ struct OverviewModelTests {
 
             let untilMarch = try #require(model.data).columns
             #expect(untilMarch.map(\.netIncomeHalere) == [0, 25_340_100, 17_752_100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-            #expect(untilMarch[3].netIncomeText == "0,00\u{00A0}Kč")
+            #expect(untilMarch[3].netIncomeText == "0\u{00A0}Kč")
         }
     }
 
@@ -703,19 +703,19 @@ struct OverviewModelTests {
 
             try #require(chart.count == 12)
             let september = chart[8]
-            #expect(september.issuedActualText == "310\u{00A0}226,75\u{00A0}Kč")
-            #expect(september.receivedActualText == "279\u{00A0}433,00\u{00A0}Kč")
-            #expect(september.netActualText == "237\u{00A0}168,00\u{00A0}Kč")
+            #expect(september.issuedActualText == "310\u{00A0}227\u{00A0}Kč")
+            #expect(september.receivedActualText == "279\u{00A0}433\u{00A0}Kč")
+            #expect(september.netActualText == "237\u{00A0}168\u{00A0}Kč")
             let october = chart[9]
             #expect(october.title == "Říjen 2026 · do 17.\u{00A0}10. skutečnost, dál odhad")
-            #expect(october.issuedEstimateText == "261\u{00A0}192,80\u{00A0}Kč")
-            #expect(october.receivedActualText == "310\u{00A0}226,75\u{00A0}Kč")
-            #expect(october.netActualText == "219\u{00A0}810,75\u{00A0}Kč")
+            #expect(october.issuedEstimateText == "261\u{00A0}193\u{00A0}Kč")
+            #expect(october.receivedActualText == "310\u{00A0}227\u{00A0}Kč")
+            #expect(october.netActualText == "219\u{00A0}811\u{00A0}Kč")
             let november = chart[10]
             #expect(november.title == "Listopad 2026 · odhad")
-            #expect(november.issuedEstimateText == "290\u{00A0}192,84\u{00A0}Kč")
-            #expect(november.receivedEstimateText == "261\u{00A0}192,80\u{00A0}Kč")
-            #expect(november.netEstimateText == "162\u{00A0}433,80\u{00A0}Kč")
+            #expect(november.issuedEstimateText == "290\u{00A0}193\u{00A0}Kč")
+            #expect(november.receivedEstimateText == "261\u{00A0}193\u{00A0}Kč")
+            #expect(november.netEstimateText == "162\u{00A0}434\u{00A0}Kč")
             #expect(november.netActualText == "—")
 
             for day in ["2026-07-15", "2026-11-30"] {

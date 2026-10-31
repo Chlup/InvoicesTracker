@@ -9,8 +9,8 @@ import SwiftUI
 /// are the sums of both parts, and the solid lines end and the dashed ones begin there. The point of a month to come is
 /// filled with a light tint of its line. The scale is that of the chart of Příjmy (`IncomeChartLayout`), and the net
 /// income is drawn from zero like the axis. Hovering over a month highlights it and shows a tooltip with its actual
-/// figures and its estimates; the chart has a hover of its own, apart from that of the chart of Příjmy. VoiceOver reads
-/// each month in the words of its tooltip.
+/// figures and its estimates, all in whole Kč; the chart has a hover of its own, apart from that of the chart of
+/// Příjmy. VoiceOver reads each month in the words of its tooltip.
 struct PredictionChart: View {
     /// The twelve months of the year, January first (`PredictionChartBuilder.months`).
     let months: [PredictionChartMonth]
@@ -44,27 +44,27 @@ struct PredictionChart: View {
     // MARK: Legend
 
     /// What the bars and the lines are, a key for each, and a key for the estimate: its hatching and its dashes, in the
-    /// secondary colour. The keys stand side by side where the card has room for them and on a further row where it has
-    /// not, so that no key breaks in two.
+    /// faint grey of text. The keys stand side by side where the card has room for them and on a further row where it
+    /// has not, so that no key breaks in two.
     private func legend(hatching: ImagePaint) -> some View {
         FlowLayout(spacing: 16, lineSpacing: 6) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(.chartIssued))
+                    .fill(Palette.accent)
                     .frame(width: 12, height: 12)
                     .accessibilityHidden(true)
                 Text("Vystaveno")
             }
             HStack(spacing: 6) {
                 Capsule()
-                    .fill(Color(.chartReceived))
+                    .fill(Palette.orange)
                     .frame(width: 16, height: 3)
                     .accessibilityHidden(true)
                 Text("Přijato")
             }
             HStack(spacing: 6) {
                 Capsule()
-                    .fill(Color(.netIncome))
+                    .fill(Palette.green)
                     .frame(width: 16, height: 3)
                     .accessibilityHidden(true)
                 Text("Čistý příjem (součet za platby v měsíci)")
@@ -78,14 +78,14 @@ struct PredictionChart: View {
                     path.move(to: CGPoint(x: 0, y: 1.5))
                     path.addLine(to: CGPoint(x: 16, y: 1.5))
                 }
-                .stroke(Color.secondary, style: StrokeStyle(lineWidth: 2.5, dash: Self.estimateDash))
+                .stroke(Palette.text4, style: StrokeStyle(lineWidth: 2.5, dash: Self.estimateDash))
                 .frame(width: 16, height: 3)
                 .accessibilityHidden(true)
                 Text("odhad (šrafovaně a čárkovaně)")
             }
         }
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(Typography.callout)
+        .foregroundStyle(Palette.text2)
     }
 
     // MARK: The plot
@@ -111,12 +111,12 @@ struct PredictionChart: View {
             AxisMarks(position: .leading, values: (0...4).map { Double($0) * step }) { value in
                 let isBaseLine = value.as(Double.self) == 0
                 AxisGridLine()
-                    .foregroundStyle(isBaseLine ? Color.secondary.opacity(0.5) : Color(nsColor: .separatorColor))
+                    .foregroundStyle(isBaseLine ? Palette.sepStrong : Palette.fill)
                 AxisValueLabel {
                     if let kc = value.as(Double.self) {
                         Text(verbatim: IncomeChartLayout.label(forKc: Int64(kc.rounded())))
-                            .font(.subheadline)
-                            .foregroundStyle(Color.secondary)
+                            .font(Typography.subheadline)
+                            .foregroundStyle(Palette.text3)
                     }
                 }
             }
@@ -125,10 +125,10 @@ struct PredictionChart: View {
             AxisMarks(values: months.map(\.label)) { value in
                 AxisValueLabel {
                     if let label = value.as(String.self), let month = months.first(where: { $0.label == label }) {
+                        let isCurrent = month.part == .current
                         Text(verbatim: label)
-                            .font(.callout)
-                            .fontWeight(month.part == .current ? .bold : .medium)
-                            .foregroundStyle(month.part == .current ? Color(.chartIssued) : Color.secondary)
+                            .font(isCurrent ? Typography.callout.bold() : Typography.callout.weight(.medium))
+                            .foregroundStyle(isCurrent ? Palette.accentText : Palette.text2)
                     }
                 }
             }
@@ -152,7 +152,7 @@ struct PredictionChart: View {
     private var highlight: some ChartContent {
         if let hoveredMonth {
             RectangleMark(x: .value("Měsíc", months[hoveredMonth].label), width: .ratio(1))
-                .foregroundStyle(Color.primary.opacity(0.06))
+                .foregroundStyle(Palette.text.opacity(0.05))
                 .accessibilityHidden(true)
         }
     }
@@ -171,7 +171,7 @@ struct PredictionChart: View {
                     x: .value("Měsíc", month.label), yStart: .value("Vystaveno", 0),
                     yEnd: .value("Vystaveno", crowns(actual)), width: barWidth
                 )
-                .foregroundStyle(Color(.chartIssued))
+                .foregroundStyle(Palette.accent)
                 .clipShape(Self.barShape(roundedOnTop: estimate == 0))
                 .accessibilityHidden(true)
             }
@@ -201,8 +201,8 @@ struct PredictionChart: View {
     @ChartContentBuilder
     private var lines: some ChartContent {
         ForEach(months) { month in
-            lineMarks(of: month, series: "Přijato", at: receivedPoint(of: month), color: Color(.chartReceived))
-            lineMarks(of: month, series: "Čistý příjem", at: netPoint(of: month), color: Color(.netIncome))
+            lineMarks(of: month, series: "Přijato", at: receivedPoint(of: month), color: Palette.orange)
+            lineMarks(of: month, series: "Čistý příjem", at: netPoint(of: month), color: Palette.green)
         }
     }
 
@@ -236,8 +236,8 @@ struct PredictionChart: View {
     @ChartContentBuilder
     private var points: some ChartContent {
         ForEach(months) { month in
-            pointMark(of: month, line: "Přijato", at: receivedPoint(of: month), color: Color(.chartReceived))
-            pointMark(of: month, line: "Čistý příjem", at: netPoint(of: month), color: Color(.netIncome))
+            pointMark(of: month, line: "Přijato", at: receivedPoint(of: month), color: Palette.orange)
+            pointMark(of: month, line: "Čistý příjem", at: netPoint(of: month), color: Palette.green)
         }
     }
 
@@ -279,8 +279,7 @@ struct PredictionChart: View {
     private var hatching: ImagePaint {
         ImagePaint(
             image: Self.hatchTile(
-                blue: Color(.chartIssued).resolve(in: environment),
-                background: Color(nsColor: .controlBackgroundColor).resolve(in: environment)))
+                blue: Palette.accent.resolve(in: environment), background: Palette.bgCard.resolve(in: environment)))
     }
 
     /// The tile that the hatching repeats: `background` tinted with a fifth of `blue`, and stripes of half of `blue`
@@ -364,11 +363,11 @@ struct PredictionChart: View {
 
 /// The popover of a month of the chart of the estimate: its title in bold, and what was issued, what was received and
 /// what the payments left after the levies, each in a row with its actual figure under "skutečnost" and its estimate
-/// under "odhad", in the texts the month gives ("—" where a part does not apply to the month). The estimates are in the
-/// secondary colour, and the figures of the net income in bold. Under them stand the notes of the month, which wrap
-/// (`PredictionChartMonth.notes`): that what was issued is of the whole current month while the money received stops
-/// at today, and why an amount is approximate. The tooltip is as wide as its lines are long, so that none of them
-/// wraps. It is in a material, as a popover is.
+/// under "odhad", in the texts the month gives, all in whole Kč ("—" where a part does not apply to the month). The
+/// estimates are in the grey of secondary text, and the figures of the net income in semibold. Under them stand the
+/// notes of the month, which wrap (`PredictionChartMonth.notes`): that what was issued is of the whole current month
+/// while the money received stops at today, and why an amount is approximate. The tooltip is as wide as its lines are
+/// long, so that none of them wraps. It is a panel of the colour of a card, raised off the chart as a popover is.
 struct PredictionChartTooltip: View {
     /// The width of the notes under the figures, in points: they are long, so they wrap at this width and the tooltip
     /// does not grow as wide as they are long.
@@ -379,7 +378,7 @@ struct PredictionChartTooltip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: month.title)
-                .fontWeight(.bold)
+                .font(Typography.bodyBold)
             Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 5) {
                 GridRow {
                     Color.clear
@@ -387,56 +386,62 @@ struct PredictionChartTooltip: View {
                     Text("skutečnost")
                     Text("odhad")
                 }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(Typography.subheadline)
+                .foregroundStyle(Palette.text3)
                 GridRow {
                     HStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(.chartIssued))
+                            .fill(Palette.accent)
                             .frame(width: 10, height: 10)
                         Text("Vystaveno")
+                            .fixedSize()
                     }
                     .gridColumnAlignment(.leading)
                     Text(verbatim: month.issuedActualText)
                     Text(verbatim: month.issuedEstimateText)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.text2)
                 }
                 GridRow {
                     HStack(spacing: 6) {
-                        ChartRing(color: Color(.chartReceived))
+                        ChartRing(color: Palette.orange)
                         Text("Přijato")
+                            .fixedSize()
                     }
                     Text(verbatim: month.receivedActualText)
                     Text(verbatim: month.receivedEstimateText)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.text2)
                 }
                 GridRow {
                     HStack(spacing: 6) {
-                        ChartRing(color: Color(.netIncome))
+                        ChartRing(color: Palette.green)
                         Text("Čistý příjem")
+                            .fixedSize()
                     }
                     Text(verbatim: month.netActualText)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
                     Text(verbatim: month.netEstimateText)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text2)
                 }
             }
             .monospacedDigit()
             ForEach(month.notes, id: \.self) { note in
                 Text(verbatim: note)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.subheadline)
+                    .foregroundStyle(Palette.text3)
                     .frame(width: Self.notesWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .font(Typography.body)
+        .foregroundStyle(Palette.text)
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .fixedSize(horizontal: true, vertical: false)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
-        .shadow(color: .black.opacity(0.16), radius: 14, y: 8)
+        .background {
+            RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
+                .surface(Palette.bgCard, elevation: .pop)
+        }
         // The month itself speaks the same words for VoiceOver.
         .accessibilityHidden(true)
     }

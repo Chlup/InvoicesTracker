@@ -4,8 +4,8 @@ import Testing
 @testable import InvoicesTracker
 
 /// The shared card and the figures that stand in it: how VoiceOver reads a card, how the card pads its content, how the
-/// sentence of a key figure is split at its emphasis, where the share of a key figure stands, and how a figure tile is
-/// read.
+/// sentence of a key figure is split at its emphasis and how wide it is set, where the share of a key figure stands,
+/// and how a figure tile is read and marked.
 @Suite(.serialized)
 @MainActor
 struct CardAndFigureTests {
@@ -236,6 +236,28 @@ struct CardAndFigureTests {
         #expect(height(of: withShare, width: 300) > height(of: withoutShare, width: 300) + 10)
     }
 
+    /// The sentence under the figure is set at most 416 points wide, the 32 em of the 13-point type that the design
+    /// gives it (about 35 em of it would have been 460), so a long sentence breaks there in a wide window; a short one
+    /// is not widened to it.
+    @Test func theSentenceOfAKeyFigureWrapsAt416Points() {
+        let long = String(repeating: "Odvody z příjmů od 1. 1. do 17. 10. 2026 po odečtení záloh. ", count: 5)
+        let wrapped = KeyFigureData(eyebrow: "Zbývá zaplatit", figure: "42\u{00A0}159\u{00A0}Kč", sentence: long)
+        let short = KeyFigureData(eyebrow: "Zbývá zaplatit", figure: "42\u{00A0}159\u{00A0}Kč", sentence: "Hotovo.")
+
+        let wrappedWidth = NSHostingView(rootView: KeyFigureView(wrapped)).fittingSize.width
+        let shortWidth = NSHostingView(rootView: KeyFigureView(short)).fittingSize.width
+
+        #expect(abs(wrappedWidth - 416) < 0.5, "A long sentence makes the key figure \(wrappedWidth) points wide")
+        #expect(shortWidth < 416 - 100, "A short sentence makes the key figure \(shortWidth) points wide")
+        // In a window as wide as 800 points the sentence still stops at 416: the height is that of the same sentence in
+        // a room of exactly that width.
+        func height(inRoomOf width: CGFloat) -> CGFloat {
+            NSHostingView(rootView: KeyFigureView(wrapped).frame(width: width, alignment: .leading)).fittingSize.height
+        }
+        #expect(abs(height(inRoomOf: 800) - height(inRoomOf: 416)) < 0.5)
+        #expect(height(inRoomOf: 300) > height(inRoomOf: 416) + 10)
+    }
+
     @Test func aKeyFigureIsReadAsOnePhrase() async throws {
         let data = KeyFigureData(
             eyebrow: "Odhad odvodů za celý rok 2026", figure: "449\u{00A0}868\u{00A0}Kč",
@@ -281,6 +303,67 @@ struct CardAndFigureTests {
             ])
         // The green dot of the net income is only for the eyes.
         #expect(try await readings(marksNetIncome: true) == plain)
+    }
+
+    /// The tile of the net income carries a mark in the green of the net income in front of its label, 20 points from
+    /// the left of the picture where the tile stands in a padding of 20: a dot of 8 points where it is the card of
+    /// Odhad odvodů, a line of 16 by 3 points, like the key of the net income in the legend of a chart, where it is the
+    /// strip of Příjmy; no mark where the tile is not about the net income.
+    @Test func aTileAboutTheNetIncomeIsMarkedWithADotOrALine() throws {
+        let green = try OffscreenPicture.bytes(of: Palette.green, in: .light)
+        func picture(marksNetIncome: Bool, marker: NetIncomeMarker) throws -> OffscreenPicture {
+            let tile = FigureTile(
+                FigureTileData(
+                    label: "Čistý příjem průměrně za měsíc", figure: "190\u{00A0}037\u{00A0}Kč",
+                    note: "průměr za leden–říjen", marksNetIncome: marksNetIncome, marker: marker))
+            return try OffscreenPicture(of: tile.padding(20), in: .light)
+        }
+        /// The green pixels in the strip from `x` to `x + width` points, down the whole picture.
+        func greens(_ picture: OffscreenPicture, x: CGFloat, width: CGFloat) -> Int {
+            picture.count(
+                near: green, in: CGRect(x: x, y: 0, width: width, height: picture.size.height), by: 24)
+        }
+        /// The pixel rows, in a strip 2 points wide down the middle of a dot and in the first 8 points of a line, that
+        /// are green: the height of the mark, 2 rows to the point.
+        func greenRows(_ picture: OffscreenPicture) -> Int {
+            picture.rows(near: green, from: 23, to: 25, by: 24).count
+        }
+
+        let line = try picture(marksNetIncome: true, marker: .line)
+        let dot = try picture(marksNetIncome: true, marker: .dot)
+        let none = try picture(marksNetIncome: false, marker: .line)
+
+        // The line is 16 points wide: green in its last 6 points, 30 to 36 points from the left, and not beyond.
+        #expect(greens(line, x: 30, width: 6) >= 6 * 2 * 2, "The line ends before 36 points")
+        #expect(greens(line, x: 36, width: 4) == 0)
+        #expect(greens(line, x: 0, width: 20) == 0)
+        // Of its height of 3 points (6 rows of pixels) the rows that are whole are at least 4 and at most 6.
+        #expect((4...6).contains(greenRows(line)), "The line is \(greenRows(line)) rows of pixels tall")
+        // The dot is 8 points wide: nothing is green from 28 points on, and its middle is 8 points tall.
+        #expect(greens(dot, x: 20, width: 8) >= 150)
+        #expect(greens(dot, x: 28, width: 12) == 0)
+        #expect(greens(dot, x: 0, width: 20) == 0)
+        #expect(greenRows(dot) >= 12, "The dot is \(greenRows(dot)) rows of pixels tall")
+        // A tile that is not about the net income has no mark, whatever shape it is given.
+        #expect(greens(none, x: 0, width: none.size.width) == 0)
+    }
+
+    /// The line is centred on the line of the label, as the key of a legend is: the label is a line of callout text
+    /// of 15 points at the top of the tile, which stands 20 points from the top of the picture, so its middle is 27,5
+    /// points down.
+    @Test func theLineOfTheNetIncomeIsCentredOnTheLineOfItsLabel() throws {
+        let green = try OffscreenPicture.bytes(of: Palette.green, in: .light)
+        let tile = FigureTile(
+            FigureTileData(
+                label: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.", figure: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
+                note: "88,2\u{00A0}% příjmů bez DPH po odvodech", marksNetIncome: true, marker: .line))
+        let picture = try OffscreenPicture(of: tile.padding(20), in: .light)
+
+        let rows = picture.rows(near: green, from: 23, to: 25, by: 24)
+
+        let first = try #require(rows.first)
+        let last = try #require(rows.last)
+        #expect(abs((first + last + 0.5) / 2 - 27.5) <= 1, "The line is from \(first) to \(last + 0.5) points down")
     }
 
     @Test func aFigureTileStacksItsLabelItsFigureAndItsNoteWith2PointsBetween() throws {
