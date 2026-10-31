@@ -16,11 +16,16 @@ The release is created as a draft with the disk image and appcast.xml attached,
 and only then published and marked Latest, the moment installed apps are
 offered the update. The script stops before it creates anything when a file
 does not match its SHA-256 in release.json, when a release or a git tag of that
-name exists, or when the Latest release is not the one the build saw. A run
-that fails or is stopped after the draft was created asks GitHub whether the
-release is still a draft, and deletes it only if the answer is yes. A release
-that is not a draft any more, or that cannot be asked about, is left alone and
-reported, and the run still fails.
+name exists, or when the Latest release is not the one the build saw. Once the
+draft exists, every call names it by the release ID that GitHub answered when it
+was created, never by its tag. A run that fails or is stopped after that asks
+GitHub whether the release is still a draft, and deletes it only if the answer
+is yes. A release that is not a draft any more, or that cannot be asked about,
+is left alone and reported, and the run still fails. A create that GitHub
+refuses makes no draft. One that fails in another way, answers without an ID, or
+is stopped before the ID was read may have made a draft all the same, which the
+script cannot tell from a draft of that tag that someone else made, so it
+deletes nothing and says where to look.
 
 Environment:
   GITHUB_REPOSITORY    the repository as owner/name (required)
@@ -32,12 +37,23 @@ EOF
 
 # The exit trap deals with the release when CREATE_ATTEMPTED is set and
 # PUBLISHED is not: a draft may exist, or the release may be published
-# although the script has not seen the edit that did it succeed.
+# although the script has not seen the call that did it succeed.
 CREATE_ATTEMPTED=false
 PUBLISHED=false
 
-# The file that holds what gh prints on standard error, and what the last call
-# of call_gh printed on standard output and on standard error.
+# The ID that GitHub answered when it created the draft: empty until a create
+# succeeded with an answer that is nothing but a release ID. From then on it is
+# the one name the script uses for the release, and never the tag, because a tag
+# can belong to a draft that someone else made after the checks.
+RELEASE_ID=""
+
+# Whether GitHub refused the create with an HTTP status of 4xx, which means that
+# it made no draft.
+CREATE_REFUSED=false
+
+# The files that hold what gh prints on standard output and on standard error,
+# and what the last call of call_gh printed on each of the two.
+STDOUT_FILE=""
 STDERR_FILE=""
 GH_OUT=""
 GH_ERR=""
@@ -51,13 +67,30 @@ fail() {
   exit 1
 }
 
-# Runs on every exit. When the release may exist and the script has not seen it
-# published, discards it if it is a draft, and keeps the status the run ends
-# with.
+# Runs on every exit. When the create was attempted and the script has not seen
+# the release published, it deals with the draft by the ID that the create
+# answered: it discards the draft if it is still one. Without an ID there is no
+# release it can name, and a draft of the tag may be one that someone else made,
+# so nothing is deleted. It says instead that GitHub refused the create, which
+# made no draft, or that GitHub may have made the draft all the same, which is
+# the case after a create that failed in another way, one that answered without
+# an ID, and a stop before the script had read the ID. It keeps the status the
+# run ends with.
 cleanup() {
   local status=$?
   if [[ $CREATE_ATTEMPTED == true && $PUBLISHED != true ]]; then
-    discard_draft
+    if [[ -n $RELEASE_ID ]]; then
+      discard_draft
+    elif [[ $CREATE_REFUSED == true ]]; then
+      echo "GitHub refused to create the release $TAG, so no draft was made."
+    else
+      echo "error: GitHub may have made the draft release $TAG all the same, so nothing was deleted." \
+        "Check https://github.com/$REPO/releases and delete a draft of $TAG there if this run left one:" \
+        "the next run stops at it." >&2
+    fi
+  fi
+  if [[ -n $STDOUT_FILE ]]; then
+    rm -f "$STDOUT_FILE"
   fi
   if [[ -n $STDERR_FILE ]]; then
     rm -f "$STDERR_FILE"
@@ -65,40 +98,41 @@ cleanup() {
   exit "$status"
 }
 
-# Deletes the release of the tag when it is still a draft, and only then. The
-# checks before the create found no release of that name, so a draft of that
-# name is this run's. But a run that fails or is stopped after the create may
-# have published it all the same: `gh release edit` can fail after GitHub
-# applied the change, and a signal can end the script when gh is done with an
-# edit that went through. A published release is the Latest one, and deleting
-# it would take the update away from every app and leave the git tag behind.
-# So the release is asked whether it is a draft first. Only an answer of
-# exactly true from a call that succeeded lets the delete follow; what a failed
-# call printed is not an answer. A release that is not a draft, that is not
-# there, or that cannot be asked about is left alone and reported.
+# Deletes the release with RELEASE_ID when it is still a draft, and only then.
+# The ID is the one the create answered, so the release is this run's own and
+# not a draft of the same tag that someone else made. But a run that fails or is
+# stopped after the create may have published it all the same: the publish call
+# can fail after GitHub applied the change, and a signal can end the script when
+# gh is done with a publish that went through. A published release is the
+# Latest one, and deleting it would take the update away from every app and
+# leave the git tag behind. So the release is asked whether it is a draft first.
+# Only an answer of exactly true from a call that succeeded lets the delete
+# follow; what a failed call printed is not an answer. A release that is not a
+# draft, that is not there, or that cannot be asked about is left alone and
+# reported.
 discard_draft() {
   local status=0 releases="https://github.com/$REPO/releases"
-  call_gh release view "$TAG" --repo "$REPO" --json isDraft --jq .isDraft || status=$?
+  call_gh api "repos/$REPO/releases/$RELEASE_ID" --jq .draft || status=$?
   if [[ $status -eq 0 && $GH_OUT == true ]]; then
     delete_draft
   elif [[ $status -eq 0 && $GH_OUT == false ]]; then
     echo "error: the release $TAG is not a draft any more, so it was not deleted." \
       "It may be published and Latest. Check $releases" >&2
-  elif [[ $status -ne 0 && $GH_ERR == *"release not found"* ]]; then
-    echo "There is no release $TAG on GitHub, so no draft was left behind. Check $releases"
+  elif [[ $status -ne 0 && $GH_ERR == *"HTTP 404"* ]]; then
+    echo "There is no release $TAG on GitHub any more, so no draft was left behind."
   else
     echo "error: could not tell whether the release $TAG is a draft$(http_status), so it was not deleted." \
       "Check $releases and delete the draft there if one was left behind." >&2
   fi
 }
 
-# Deletes the release of the tag, which discard_draft found to be a draft. A
-# draft that cannot be deleted is reported with where to delete it by hand,
+# Deletes the release with RELEASE_ID, which discard_draft found to be a draft.
+# A draft that cannot be deleted is reported with where to delete it by hand,
 # because the next run stops at it.
 delete_draft() {
   local status=0
   echo "Deleting the draft release $TAG, which was not published..."
-  call_gh release delete "$TAG" --repo "$REPO" --yes || status=$?
+  call_gh api --method DELETE "repos/$REPO/releases/$RELEASE_ID" --silent || status=$?
   if [[ $status -eq 0 ]]; then
     echo "Deleted the draft release $TAG."
   else
@@ -107,13 +141,17 @@ delete_draft() {
   fi
 }
 
-# Runs gh with the arguments. Its standard output goes to GH_OUT and its
-# standard error to GH_ERR, and the status it ends with is the status of the
-# function. Only the calls that ask a question go through here: the answer to
-# one tells a release that is not there from a call that failed.
+# Runs gh with the arguments. What it prints on standard output goes to GH_OUT
+# and what it prints on standard error to GH_ERR, and the status it ends with is
+# the status of the function. Every call of gh goes through here. Both streams
+# go to files and gh is a direct child of the script, not of a command
+# substitution, so a signal for the script is handled as soon as gh is done,
+# before the script has read anything that gh printed: a run that is stopped
+# while the create runs has not kept the ID that the create answered.
 call_gh() {
   local status=0
-  GH_OUT=$("$GH_CMD" "$@" 2>"$STDERR_FILE") || status=$?
+  "$GH_CMD" "$@" >"$STDOUT_FILE" 2>"$STDERR_FILE" || status=$?
+  GH_OUT=$(<"$STDOUT_FILE")
   GH_ERR=$(<"$STDERR_FILE")
   return "$status"
 }
@@ -125,6 +163,15 @@ http_status() {
   if [[ $GH_ERR =~ $pattern ]]; then
     echo " (HTTP ${BASH_REMATCH[1]})"
   fi
+}
+
+# Whether the call that just failed was refused by GitHub, which is when gh
+# printed an HTTP status of 4xx for it. A request that GitHub refused made
+# nothing. A failure without a status, such as a connection that was lost, and a
+# status of 5xx say nothing about whether GitHub did what it was asked.
+refused_by_github() {
+  local pattern='HTTP ([0-9]{3})'
+  [[ $GH_ERR =~ $pattern && ${BASH_REMATCH[1]} == 4* ]]
 }
 
 # Stops after a gh call that failed in a way the script has no use for. The
@@ -176,6 +223,47 @@ write_summary() {
   } >>"$GITHUB_STEP_SUMMARY" || echo "warning: could not write the summary of the job" >&2
 }
 
+# Creates the release of the tag as a draft and keeps the ID that GitHub
+# answers in RELEASE_ID. The title reaches gh as a raw field (-f), so that a
+# title that looks like @file, true or a number stays the text it is, and the
+# notes as a file that gh reads (-F body=@file), so nothing in either is read by
+# the shell. The draft has no git tag yet: publishing it makes the tag, at the
+# commit the build was made from. A create that fails is reported with its HTTP
+# status and nothing else, because a message that repeated the call would print
+# the title. One that GitHub refused with a status of 4xx made nothing, which
+# CREATE_REFUSED records for the exit trap. After any other failure, and after
+# an answer that is no release ID, GitHub may have made the draft all the same,
+# and the exit trap deletes nothing.
+create_draft() {
+  local status=0 pattern='^[1-9][0-9]*$'
+  call_gh api --method POST "repos/$REPO/releases" -f "tag_name=$TAG" -f "target_commitish=$COMMIT" \
+    -f "name=$TITLE" -F "body=@$FEED_DIR/$NOTES" -F draft=true --jq .id || status=$?
+  if [[ $status -ne 0 ]]; then
+    if refused_by_github; then
+      CREATE_REFUSED=true
+    fi
+    fail "creating the draft release $TAG failed$(http_status)"
+  fi
+  [[ $GH_OUT =~ $pattern ]] || fail "the answer to creating the draft release $TAG has no release ID"
+  RELEASE_ID=$GH_OUT
+}
+
+# upload_asset NAME TYPE attaches the file NAME of the feed folder to the draft,
+# with the content type TYPE. The address names the release by its ID, and the
+# asset gets the name of the file.
+upload_asset() {
+  local name=$1 type=$2
+  call_gh api --method POST "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$name" \
+    -H "Content-Type: $type" --input "$FEED_DIR/$name" --silent ||
+    fail "uploading $name to the draft release $TAG failed$(http_status)"
+}
+
+# Publishes the draft and marks it as the Latest release.
+publish_release() {
+  call_gh api --method PATCH "repos/$REPO/releases/$RELEASE_ID" -F draft=false -f make_latest=true --silent ||
+    fail "publishing the release $TAG failed$(http_status)"
+}
+
 # --- the arguments and the environment ---------------------------------------
 
 if [[ $# -ge 1 ]]; then
@@ -203,11 +291,12 @@ for tool in jq shasum "$GH_CMD"; do
 done
 
 # A signal, like the cancelling of the job, ends the script with the status a
-# shell gives for it, and the exit trap deletes the draft on the way out.
+# shell gives for it, and the exit trap deals with the draft on the way out.
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+STDOUT_FILE=$(mktemp "${TMPDIR:-/tmp}/publish-release.XXXXXX")
 STDERR_FILE=$(mktemp "${TMPDIR:-/tmp}/publish-release.XXXXXX")
 
 # --- the feed folder ---------------------------------------------------------
@@ -297,17 +386,16 @@ fi
 
 # --- the release -------------------------------------------------------------
 
-# The notes reach gh as a file and the title as one argument, so nothing in
-# them is read by the shell. The draft has no git tag yet: publishing it makes
-# the tag, at the commit the build was made from.
+# The create answers the ID of the draft, and the uploads and the publish name
+# the draft by it: see create_draft.
 echo "Creating the draft release $TAG with $DMG and $APPCAST..."
 CREATE_ATTEMPTED=true
-"$GH_CMD" release create "$TAG" --repo "$REPO" --draft --target "$COMMIT" --title "$TITLE" \
-  --notes-file "$FEED_DIR/$NOTES" "$FEED_DIR/$DMG" "$FEED_DIR/$APPCAST" ||
-  fail "gh release create failed"
+create_draft
+upload_asset "$DMG" application/x-apple-diskimage
+upload_asset "$APPCAST" "text/xml; charset=utf-8"
 
 echo "Publishing $TAG as the Latest release..."
-"$GH_CMD" release edit "$TAG" --repo "$REPO" --draft=false --latest || fail "gh release edit failed"
+publish_release
 PUBLISHED=true
 
 RELEASE_URL=https://github.com/$REPO/releases/tag/$TAG
