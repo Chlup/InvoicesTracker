@@ -130,7 +130,7 @@ private struct AppWindow: View {
     }
 
     /// The selected screen: Přehled, Faktury (or the invoice editor in its place), Zálohy a odpočty, Výpočet,
-    /// Odhad odvodů, Odběratelé, Šablony faktur, Simulátor, Nastavení and Import.
+    /// Odhad odvodů, Odběratelé, Simulátor, Nastavení and Import.
     @ViewBuilder
     private var screenContent: some View {
         switch model.screen {
@@ -150,8 +150,6 @@ private struct AppWindow: View {
             PredictionScreen(app: model)
         case .clients:
             ClientsScreen(app: model)
-        case .templates:
-            TemplatesScreen(app: model)
         case .simulator:
             SimulatorScreen(app: model)
         case .settings:

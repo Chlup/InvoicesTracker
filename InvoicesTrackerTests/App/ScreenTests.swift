@@ -9,9 +9,16 @@ struct ScreenTests {
     @Test func theSidebarNamesTheScreens() {
         #expect(
             Screen.allCases.map(\.title) == [
-                "Přehled", "Faktury", "Zálohy a odpočty", "Výpočet", "Odhad odvodů", "Odběratelé", "Šablony faktur",
-                "Simulátor", "Nastavení", "Import",
+                "Přehled", "Faktury", "Zálohy a odpočty", "Výpočet", "Odhad odvodů", "Odběratelé", "Simulátor",
+                "Nastavení", "Import",
             ])
+    }
+
+    /// The templates have no page of their own: a client's templates are kept in the detail of Odběratelé, so there is
+    /// no screen for them, in the sidebar or anywhere else.
+    @Test func thereIsNoScreenForTheTemplates() {
+        #expect(!Screen.allCases.map(\.rawValue).contains("templates"))
+        #expect(!Screen.allCases.map(\.title).contains("Šablony faktur"))
     }
 
     @Test func eachScreenNamesItsCashCutoffEvenWhenReportingReachesMonthEnd() {
@@ -37,7 +44,6 @@ struct ScreenTests {
                     title: "Odhad odvodů",
                     subtitle: "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{00A0}10.\u{00A0}2026"),
                 ScreenHeader(title: "Odběratelé", subtitle: "Výchozí údaje a šablony pro nové faktury"),
-                ScreenHeader(title: "Šablony faktur", subtitle: "Opakované faktury jedním klikem"),
                 ScreenHeader(title: "Simulátor", subtitle: "Kolik zaplatíte na odvodech při zvoleném příjmu"),
                 ScreenHeader(title: "Nastavení", subtitle: "Aplikace, moje údaje, zabezpečení a rok 2026"),
                 ScreenHeader(

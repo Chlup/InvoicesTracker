@@ -20,7 +20,6 @@ struct SidebarView: View {
             }
             Section("Evidence") {
                 row(.clients)
-                row(.templates)
             }
             Section("Nástroje") {
                 row(.simulator)
@@ -131,7 +130,6 @@ private extension Screen {
         case .computation: "sum"
         case .prediction: "chart.line.uptrend.xyaxis"
         case .clients: "person.2"
-        case .templates: "doc.on.doc"
         case .simulator: "plus.forwardslash.minus"
         case .settings: "gearshape"
         case .importer: "square.and.arrow.down"

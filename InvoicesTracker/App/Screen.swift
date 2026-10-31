@@ -8,7 +8,6 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
     case computation
     case prediction
     case clients
-    case templates
     case simulator
     case settings
     case importer
@@ -22,7 +21,6 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
         case .computation: "Výpočet"
         case .prediction: "Odhad odvodů"
         case .clients: "Odběratelé"
-        case .templates: "Šablony faktur"
         case .simulator: "Simulátor"
         case .settings: "Nastavení"
         case .importer: "Import"
@@ -69,8 +67,6 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
             return ScreenHeader(title: "Odhad odvodů", subtitle: ofYear + line)
         case .clients:
             return ScreenHeader(title: "Odběratelé", subtitle: "Výchozí údaje a šablony pro nové faktury")
-        case .templates:
-            return ScreenHeader(title: "Šablony faktur", subtitle: "Opakované faktury jedním klikem")
         case .simulator:
             return ScreenHeader(title: "Simulátor", subtitle: "Kolik zaplatíte na odvodech při zvoleném příjmu")
         case .settings:

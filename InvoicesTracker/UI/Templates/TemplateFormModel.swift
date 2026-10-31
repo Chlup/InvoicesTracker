@@ -30,10 +30,6 @@ final class TemplateFormModel {
     nonisolated static let saveFailed = "Šablonu se nepodařilo uložit."
     nonisolated static let deleteFailed = "Šablonu se nepodařilo smazat."
 
-    /// What a description may hold, over the cards of Šablony faktur.
-    nonisolated static let placeholderHint =
-        "V popisu lze použít {měsíc}, {rok}, {month} a {year} – doplní se podle DUZP."
-
     /// What a description may hold, after the preview of the first item of the form.
     nonisolated static let previewHint = "{měsíc}, {rok}, {month} a {year} se doplní podle DUZP"
 

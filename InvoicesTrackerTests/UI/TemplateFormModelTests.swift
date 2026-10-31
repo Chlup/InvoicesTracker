@@ -17,12 +17,6 @@ struct TemplateFormModelTests {
 
     // MARK: The previews
 
-    @Test func theHintSaysWhatADescriptionMayHold() {
-        #expect(
-            TemplateFormModel.placeholderHint
-                == "V popisu lze použít {měsíc}, {rok}, {month} a {year} – doplní se podle DUZP.")
-    }
-
     @Test func theDescriptionOfANewTemplateIsFilledInForTheDUZP() async throws {
         try await ClientsFixture.with { f in
             let model = TemplateFormModel(app: f.app, template: nil)

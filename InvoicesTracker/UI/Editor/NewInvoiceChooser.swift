@@ -20,7 +20,8 @@ nonisolated struct ChooserRow: Identifiable, Equatable, Sendable {
 
 /// The chooser "Nová faktura": a blank invoice or one of the templates. Choosing opens the editor on Faktury (after the
 /// question "Zahodit rozepsanou fakturu?" if it would throw away an invoice that is being written), Zrušit closes the
-/// chooser, and Spravovat šablony goes to the templates and leaves that invoice where it is.
+/// chooser, and the link "Šablony upravíte u odběratelů" goes to Odběratelé, where every client keeps its templates,
+/// and leaves that invoice where it is.
 @MainActor
 @Observable
 final class NewInvoiceChooserModel {
@@ -64,11 +65,11 @@ final class NewInvoiceChooserModel {
         app.cancelChooser()
     }
 
-    /// Spravovat šablony: the chooser closes and the templates are shown. An invoice that is being written stays, and
-    /// is there when Faktury is shown again.
-    func manageTemplates() {
+    /// "Šablony upravíte u odběratelů": the chooser closes and Odběratelé is shown, where the templates of every client
+    /// are edited. An invoice that is being written stays, and is there when Faktury is shown again.
+    func showClients() {
         app.cancelChooser()
-        app.screen = .templates
+        app.screen = .clients
     }
 
     // MARK: Rows
@@ -133,9 +134,9 @@ final class NewInvoiceChooserModel {
     }
 }
 
-/// The sheet "Nová faktura": the blank invoice and every template as a button, with the link to the templates and
-/// Zrušit under them. A choice that would throw away the invoice that is being written asks "Zahodit rozepsanou
-/// fakturu?" in a box in place of the link and Zrušit, and the choices wait for the answer.
+/// The sheet "Nová faktura": the blank invoice and every template as a button, with the link to Odběratelé, where the
+/// templates are edited, and Zrušit under them. A choice that would throw away the invoice that is being written asks
+/// "Zahodit rozepsanou fakturu?" in a box in place of the link and Zrušit, and the choices wait for the answer.
 struct NewInvoiceChooser: View {
     let app: AppModel
     @State private var model: NewInvoiceChooserModel
@@ -191,8 +192,8 @@ struct NewInvoiceChooser: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Button("Spravovat šablony") {
-                model.manageTemplates()
+            Button("Šablony upravíte u odběratelů") {
+                model.showClients()
             }
             .buttonStyle(.link)
             Spacer()

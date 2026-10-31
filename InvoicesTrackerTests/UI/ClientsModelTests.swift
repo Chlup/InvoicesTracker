@@ -873,6 +873,26 @@ struct ClientsModelTests {
         }
     }
 
+    /// What the question before a deletion in the form of a template says: the invoices that were made from the
+    /// template are not touched when the template is deleted, and the other templates stay.
+    @Test func anInvoiceMadeFromATemplateStaysAsItWasAfterTheTemplateIsDeleted() async throws {
+        try await EditorFixture.with { f in
+            let editor = await f.newEditor(template: f.dollarTemplate)
+            let id = try await editor.saveDraft()
+            let before = try await f.stored(id)
+            #expect(before.items.map(\.description) == ["Software development October 2026"])
+            #expect(before.note == "Payment due within 30 days.")
+            let model = await loaded(f.app)
+            let form = try #require(model.templateForm(editing: f.dollarTemplate.id))
+
+            form.askToDelete()
+            try await form.delete()
+
+            #expect(try await f.database.templates().map(\.id) == [f.crownTemplate.id])
+            #expect(try await f.stored(id) == before)
+        }
+    }
+
     /// Vystavit podle šablony on a template in the detail opens the editor on a new invoice made from the template, on
     /// Faktury.
     @Test func vystavitPodleSablonyOpensTheEditorOnAnInvoiceFromTheTemplate() async throws {

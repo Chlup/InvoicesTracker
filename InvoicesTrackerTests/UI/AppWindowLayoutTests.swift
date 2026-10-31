@@ -2520,7 +2520,7 @@ struct AppWindowLayoutTests {
         accessibilityReadings(in: window).first { $0.hasPrefix(prefix) }
     }
 
-    // MARK: Odběratelé and Šablony faktur
+    // MARK: Odběratelé
 
     /// Odběratelé fits the window at the least room, at a large size and at the least room again, with the detail of a
     /// client closed and open, on the data of `EditorFixture`: Nový odběratel stands at the right margin of the page
@@ -2544,31 +2544,6 @@ struct AppWindowLayoutTests {
                     window.setContentSize(AppWindowSize.minimum)
                     try await expectSettled(window) { problems(ofOdberateleIn: window, detailOpen: detailOpen) }
                 }
-            }
-        }
-    }
-
-    @Test func sablonyFakturFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
-        try await expectCardsFit(on: .templates, titled: "Šablony faktur")
-    }
-
-    /// Shows the screen `screen` in the window at the least room, at a large size and at the least room again, on the
-    /// data of `EditorFixture`, whose two templates make two or three columns of cards on Šablony faktur by the width
-    /// of the window. Records an issue for every problem of the page.
-    private func expectCardsFit(on screen: Screen, titled title: String) async throws {
-        try await EditorFixture.with { f in
-            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
-                f.app.screen = screen
-                try await waitUntil { window.title == title }
-                // The page scrolls; with the cards it is taller than the line over them and its margins, which is
-                // all it has while they load.
-                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 150 }
-
-                try await expectSettled(window) { problems(ofPageIn: window) }
-                window.setContentSize(AppWindowSize.large)
-                try await expectSettled(window) { problems(ofPageIn: window) }
-                window.setContentSize(AppWindowSize.minimum)
-                try await expectSettled(window) { problems(ofPageIn: window) }
             }
         }
     }

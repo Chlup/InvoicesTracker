@@ -11,10 +11,10 @@ import Testing
 @MainActor
 struct SidebarSelectionTests {
     /// The rows of the list from the top: the heading of the year with its five screens, then the heading "Evidence"
-    /// with its two, then the heading "Nástroje" with Simulátor and Import.
+    /// with Odběratelé (the templates have no row: they are kept with their clients), then the heading "Nástroje" with
+    /// Simulátor and Import.
     private static let rows: [Screen?] = [
-        nil, .overview, .invoices, .advances, .computation, .prediction, nil, .clients, .templates, nil, .simulator,
-        .importer,
+        nil, .overview, .invoices, .advances, .computation, .prediction, nil, .clients, nil, .simulator, .importer,
     ]
 
     @Test func aClickOnTheRowOfAScreenShowsTheScreen() async throws {

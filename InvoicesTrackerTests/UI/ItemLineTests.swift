@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// The line that says an item on the detail of an invoice, on the card of a template and in the chooser of a new
-/// invoice.
+/// The line that says an item on the detail of an invoice, on the panel of a template in the detail of its client and
+/// in the chooser of a new invoice.
 struct ItemLineTests {
     @Test func anItemIsSaidWithItsQuantityUnitPriceAndDescription() {
         let line = ItemLine.text(

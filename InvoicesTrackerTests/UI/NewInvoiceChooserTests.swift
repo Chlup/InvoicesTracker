@@ -3,8 +3,8 @@ import Testing
 @testable import InvoicesTracker
 
 /// The chooser of a new invoice: a blank invoice and the templates, each with what it starts the invoice with, and what
-/// choosing one, cancelling and going to the templates do. The data is the invented clients and templates of
-/// `EditorFixture`. In every expected string `\u{00A0}` is the no-break space.
+/// choosing one, cancelling and going to Odběratelé, where the templates are edited, do. The data is the invented
+/// clients and templates of `EditorFixture`. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct NewInvoiceChooserTests {
@@ -125,31 +125,33 @@ struct NewInvoiceChooserTests {
         }
     }
 
-    @Test func spravovatSablonyGoesToTheTemplates() async throws {
+    /// "Šablony upravíte u odběratelů": the templates have no page of their own, so the link goes to Odběratelé, where
+    /// every client keeps its templates, and the chooser closes.
+    @Test func theChooserLinkOpensOdberatele() async throws {
         try await EditorFixture.with { f in
             let chooser = NewInvoiceChooserModel(app: f.app)
             f.app.screen = .overview
             f.app.editorRequest = .chooser
 
-            chooser.manageTemplates()
+            chooser.showClients()
 
             #expect(f.app.editorRequest == nil)
-            #expect(f.app.screen == .templates)
+            #expect(f.app.screen == .clients)
         }
     }
 
-    @Test func spravovatSablonyLeavesTheEditorItWasOpenOverWhereItIs() async throws {
+    @Test func theChooserLinkLeavesTheEditorItWasOpenOverWhereItIs() async throws {
         try await EditorFixture.with { f in
             let chooser = NewInvoiceChooserModel(app: f.app)
             f.app.startNewInvoice(templateID: nil)
             f.app.editorRequest = .chooser
 
-            chooser.manageTemplates()
+            chooser.showClients()
 
             #expect(f.app.editorRequest == .new(templateID: nil))
             #expect(f.app.requestBeforeChooser == nil)
             #expect(f.app.shownEditorRequest == .new(templateID: nil))
-            #expect(f.app.screen == .templates)
+            #expect(f.app.screen == .clients)
         }
     }
 
