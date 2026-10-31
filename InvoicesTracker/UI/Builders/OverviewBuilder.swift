@@ -919,6 +919,10 @@ nonisolated enum BuilderText {
     /// longer does, and for a year that has rates but not that of a currency it was paid in "chybí jednotný kurz EUR –
     /// zadáte ho v Nastavení › Rok 2025", or "chybí jednotný kurz GBP – ručně ho zadat nelze" when Nastavení › Rok does
     /// not take the rate of that currency (`UniformRate.currenciesEnteredByHand`). Nil while the year can use its rate.
+    ///
+    /// One screen shortens it: the choice of the conversion in Nastavení › Rok says only "zatím nevyšel" while the
+    /// GFŘ has not published the rate, as the design draws it, because a menu is as wide as its longest item
+    /// (`YearTabModel.uniformOptionLabel`). It gives the reason of this function in every other case.
     static func uniformRateMissing(_ availability: UniformAvailability, year: Int) -> String? {
         switch availability {
         case .ready: nil

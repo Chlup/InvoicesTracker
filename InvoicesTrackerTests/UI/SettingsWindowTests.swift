@@ -218,8 +218,9 @@ struct SettingsWindowTests {
                     let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
                     let link = try OffscreenPicture.bytes(of: Palette.accentText, in: scheme)
 
+                    // Inside the padding of the note, to the left of its words, where no glyph stands.
                     #expect(
-                        isColour(tint, at: CGPoint(x: note.minX + 4, y: note.minY + 4), in: picture),
+                        isColour(tint, at: CGPoint(x: note.minX - 6, y: note.midY), in: picture),
                         "\(scheme): the note is not the information tint")
                     #expect(picture.count(near: text, in: note, by: 8) > 40, "\(scheme): the words are not text")
                     #expect(abs(button.height - 28) < 0.5, "\(scheme): the button is \(button.height) points tall")

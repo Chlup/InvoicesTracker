@@ -92,18 +92,28 @@ struct Note<Actions: View>: View {
         6
     }
 
+    /// A note with all its parts, the space between its title and its paragraphs included; the initialisers below
+    /// choose that space by what the note says.
+    private init(
+        _ tone: NoteTone, icon: NoteIcon, title: String?, paragraphs: [String], gap: CGFloat, actions: Actions
+    ) {
+        self.tone = tone
+        self.icon = icon
+        self.title = title
+        self.paragraphs = paragraphs
+        self.gap = gap
+        self.actions = actions
+    }
+
     /// A note of `tone` that says `text`, under `title` if there is one, with `actions` at its end. A note that is a
     /// title alone, such as the banner with the result of an action, passes an empty `text`.
     init(
         _ tone: NoteTone, icon: NoteIcon = .info, title: String? = nil, text: String,
         @ViewBuilder actions: () -> Actions
     ) {
-        self.tone = tone
-        self.icon = icon
-        self.title = title
-        self.paragraphs = text.isEmpty ? [] : [text]
-        self.gap = Self.textGap
-        self.actions = actions()
+        self.init(
+            tone, icon: icon, title: title, paragraphs: text.isEmpty ? [] : [text], gap: Self.textGap,
+            actions: actions())
     }
 
     /// A note of `tone` that says `paragraphs`, one under the other, under `title` if there is one, with `actions` at
@@ -112,12 +122,8 @@ struct Note<Actions: View>: View {
         _ tone: NoteTone, icon: NoteIcon = .info, title: String? = nil, paragraphs: [String],
         @ViewBuilder actions: () -> Actions
     ) {
-        self.tone = tone
-        self.icon = icon
-        self.title = title
-        self.paragraphs = paragraphs
-        self.gap = Self.paragraphGap
-        self.actions = actions()
+        self.init(
+            tone, icon: icon, title: title, paragraphs: paragraphs, gap: Self.paragraphGap, actions: actions())
     }
 
     var body: some View {
