@@ -66,6 +66,30 @@ struct TemplateFormModelTests {
         }
     }
 
+    /// The line under the description of the first item is its preview and, after it, what the descriptions may hold;
+    /// the lines of the other items are their previews alone, as that is said once. The previews are for the DUZP a
+    /// new invoice starts with: today is 17. 10. 2026, so the end of October.
+    @Test func thePreviewLineOfTheFirstItemEndsWithWhatTheDescriptionsMayHold() async throws {
+        try await ClientsFixture.with { f in
+            let model = TemplateFormModel(app: f.app, template: nil)
+            model.addItem()
+            model.items[1].description = "Hosting {month}"
+            model.addItem()
+
+            #expect(
+                model.previewLine(ofItem: 0)
+                    == "Náhled: Vývoj – říjen 2026 · {měsíc}, {rok}, {month} a {year} se doplní podle DUZP")
+            #expect(model.previewLine(ofItem: 1) == "Náhled: Hosting October")
+            #expect(model.previewLine(ofItem: 2) == "Náhled: —")
+            #expect(TemplateFormModel.previewHint == "{měsíc}, {rok}, {month} a {year} se doplní podle DUZP")
+
+            model.removeItem(at: 0)
+            #expect(
+                model.previewLine(ofItem: 0)
+                    == "Náhled: Hosting October · {měsíc}, {rok}, {month} a {year} se doplní podle DUZP")
+        }
+    }
+
     @Test func thePreviewUsesRealCurrentMonthEvenWhenAnotherYearIsSelected() async throws {
         try await ClientsFixture.with { f in
             let model = TemplateFormModel(app: f.app, template: nil)
@@ -102,6 +126,32 @@ struct TemplateFormModelTests {
             #expect(model.items[0].quantityText == "1")
             #expect(model.items[0].unit == "hod")
             #expect(model.items[0].unitPriceText == "")
+        }
+    }
+
+    /// The form of a new template for a client, which Nová šablona in the detail of the client opens, starts with that
+    /// client, its VAT mode and its due days, and keeps them once it has loaded the clients, where the form of a new
+    /// template takes the first of them otherwise. The rest is that of any new template.
+    @Test func aNewTemplateForAClientStartsWithThatClientAndItsTermsAndKeepsThem() async throws {
+        try await ClientsFixture.with { f in
+            let bravo = try await f.storedClient(f.bravoID)
+            let model = TemplateFormModel(app: f.app, preselectedClient: bravo)
+            #expect(model.isNew)
+            #expect(model.title == "Nová šablona")
+            #expect(model.clientID == f.bravoID)
+            #expect(model.vatMode == .outsideCountry)
+            #expect(model.dueDaysText == "30")
+
+            await model.load()
+
+            // Alfa comes before Bravo by name, and is not taken.
+            #expect(model.clientID == f.bravoID)
+            #expect(model.pickedClient?.name == "Bravo Labs, Inc.")
+            #expect(model.vatMode == .outsideCountry)
+            #expect(model.dueDaysText == "30")
+            #expect(model.currencyCode == "USD")
+            #expect(model.name == "")
+            #expect(model.items.map(\.description) == ["Vývoj – {měsíc} {rok}"])
         }
     }
 

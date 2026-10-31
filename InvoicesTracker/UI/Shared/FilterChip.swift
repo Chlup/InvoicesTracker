@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// A capsule 28 points tall that chooses one of several filters, such as the states of the invoices: the chosen one is
-/// filled with the accent and has its title in semibold on it, the others stand off the page in the colour of a card
-/// with a title in medium. VoiceOver reads each as a button that is selected while it is chosen.
+/// A capsule 28 points tall that chooses one of several filters or values, such as the states of the invoices or the
+/// client of an invoice or of a template: the chosen one is filled with the accent and has its title in semibold on it,
+/// the others stand off the page in the colour of a card with a title in medium. The title is shown as it is, never
+/// looked up as a key of the string catalog, as the name of a client is data. VoiceOver reads each as a button that is
+/// selected while it is chosen.
 struct FilterChip: View {
     let title: String
     let isSelected: Bool

@@ -155,7 +155,7 @@ struct InvoiceEditorView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     FlowLayout(spacing: 6) {
                         ForEach(model.clients) { client in
-                            ClientChip(name: client.name, isOn: client.id == model.clientID) {
+                            FilterChip(client.name, isSelected: client.id == model.clientID) {
                                 model.pickClient(client.id)
                             }
                         }

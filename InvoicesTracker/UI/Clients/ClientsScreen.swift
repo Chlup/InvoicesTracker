@@ -2,25 +2,26 @@ import SwiftUI
 
 /// Odběratelé: Nový odběratel at the trailing side of the row above the card of the table, which opens the form of a
 /// new client; the table of the clients with its summary row on top (`ClientTableView`); and beside the table the
-/// detail of the selected client, with its name, Nová faktura, which starts an invoice for the client, and Upravit,
-/// which opens the form of the client. A click on a row selects its client and opens the detail, and a second click or
-/// the ✕ of the detail closes it; a client saved in its form becomes the selected one. The title and the line under it
-/// are the shell's. The data is loaded again whenever what it depends on changes.
+/// detail of the selected client (`ClientDetailCard`), with Nová faktura, which starts an invoice for the client,
+/// Upravit, which opens the form of the client, and its templates: Nová šablona opens the form of a new template for
+/// the client, and the panel of a template starts an invoice from it or opens its form. A click on a row selects its
+/// client and opens the detail, and a second click or the ✕ of the detail closes it; a client saved in its form becomes
+/// the selected one, and a template saved or deleted in its form leaves the selection as it is. The title and the line
+/// under it are the shell's. The data is loaded again whenever what it depends on changes.
 ///
 /// The page is laid out as Faktury is: it fills the room the window gives it and asks for no minimum size of its own,
 /// the card of the table reaches down to the bottom of the page and its rows scroll in it, and the detail stands beside
 /// the card at the top, as high as its content and no higher than the card. Where the card is narrower than the table,
 /// as in the least window with the detail open, the table scrolls sideways in its card.
 struct ClientsScreen: View {
-    /// The width of the detail beside the table: 300 points, as the design's panel beside a table, and as the detail of
-    /// an invoice.
-    private static let detailWidth: CGFloat = 300
-
     let app: AppModel
     @State private var model: ClientsModel
 
-    /// The form that is open as a sheet.
+    /// The form of a client that is open as a sheet.
     @State private var form: ClientFormModel?
+
+    /// The form of a template that is open as a sheet.
+    @State private var templateForm: TemplateFormModel?
 
     init(app: AppModel) {
         self.app = app
@@ -47,6 +48,12 @@ struct ClientsScreen: View {
                     self.form = nil
                     model.didSaveClient(id)
                 }
+            )
+            .idleLockCover()
+        }
+        .sheet(item: $templateForm) { templateForm in
+            TemplateForm(
+                model: templateForm, cancel: { self.templateForm = nil }, finished: { self.templateForm = nil }
             )
             .idleLockCover()
         }
@@ -89,27 +96,19 @@ struct ClientsScreen: View {
 
     // MARK: The detail
 
-    /// The detail of the selected client, once its row is in `data`; nothing while no client is selected. It has the
-    /// name of the client and the buttons for what can be done with it: Nová faktura, which VoiceOver reads with the
-    /// name of the client, as the toolbar has a Nová faktura of its own, and Upravit.
+    /// The detail of the selected client, once the client is in `data`; nothing while no client is selected. Its
+    /// buttons open the forms as sheets of the page, and start an invoice on Faktury.
     @ViewBuilder
     private func detailCard(in data: ClientsData) -> some View {
-        if let id = model.selectedClientID, let row = data.rows.first(where: { $0.id == id }) {
-            DetailPanel(title: row.name, pill: nil, close: { model.closeDetail() }, scrolls: true) {
-                Button("Nová faktura") {
-                    model.newInvoice(forClient: row.id)
-                }
-                .buttonStyle(CapsuleButtonStyle(.primary, size: .small))
-                .accessibilityLabel(Text(verbatim: "Nová faktura pro \(row.name)"))
-                Button("Upravit") {
-                    form = model.form(editing: row.id)
-                }
-                .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
-            } content: {
-                EmptyView()
-            }
-            .frame(width: Self.detailWidth)
-            .accessibilityLabel("Detail odběratele")
+        if let detail = data.detail {
+            ClientDetailCard(
+                detail: detail,
+                close: { model.closeDetail() },
+                newInvoice: { model.newInvoice(forClient: detail.id) },
+                edit: { form = model.form(editing: detail.id) },
+                newTemplate: { templateForm = model.newTemplateForm(forClient: detail.id) },
+                useTemplate: { model.newInvoice(fromTemplate: $0) },
+                editTemplate: { templateForm = model.templateForm(editing: $0) })
         }
     }
 }

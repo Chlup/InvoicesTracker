@@ -10,8 +10,12 @@ nonisolated struct DetailFact: Sendable, Hashable {
     var note: String?
 }
 
-/// The sizes of the parts of a detail panel, in points.
-private nonisolated enum DetailPanelMetrics {
+/// The sizes of a detail panel and of its parts, in points. The screens that stand a panel beside a table, Faktury and
+/// Odběratelé, take its width from here.
+nonisolated enum DetailPanelMetrics {
+    /// The width of a panel beside a table: 300 points, as the design's panel beside a table.
+    static let width: CGFloat = 300
+
     /// The space between the header and the content, and between the parts of the content.
     static let partSpacing: CGFloat = 16
 
@@ -32,6 +36,12 @@ private nonisolated enum DetailPanelMetrics {
 
     /// How far a figure is scaled down before it is cut, where the room is narrower than it.
     static let minimumFigureScale: CGFloat = 0.6
+
+    /// The space between the hairline over a section and the content of the section.
+    static let sectionTopSpacing: CGFloat = 14
+
+    /// The space between the parts of a section, unless the section asks for another.
+    static let sectionSpacing: CGFloat = 8
 }
 
 /// The card beside a table that shows one of its rows: a header with the title in title 2 on one line, an optional
@@ -88,11 +98,17 @@ struct DetailPanel<Actions: View, Content: View>: View {
     /// The panel on its card. Where the panel scrolls, it is the panel as it is, as high as its content, where that
     /// fits in the room it is given, and otherwise the card is the background of a scroll view that is as high as the
     /// room, clipped to the corners of the card, so that the card stays where it is and its content moves.
+    ///
+    /// The panel that fits is laid out at the height it was measured at, its ideal one, as the content of the scroll
+    /// view is: under the height of the room the table of the facts would give its values less width than it measured
+    /// them with, so long values would break into more lines (an e-mail address into two), and a panel measured to fit
+    /// could be a few points higher than the room and push the card of the table beside it out of the page.
     @ViewBuilder
     private var panelOnItsCard: some View {
         if scrolls {
             ViewThatFits(in: .vertical) {
                 panel
+                    .fixedSize(horizontal: false, vertical: true)
                     .card()
                 ScrollView {
                     panel
@@ -219,17 +235,22 @@ struct DetailFacts: View {
 
 /// The figure a detail is about: the label over it in callout and secondary text, the figure in the large title with
 /// digits of one width, and under it the context in body and secondary text. The figure is never broken; it is scaled
-/// down before it is cut, where the room is narrower than it, as an amount cut short would read as a smaller one.
+/// down before it is cut, where the room is narrower than it, as an amount cut short would read as a smaller one. A
+/// figure that says nothing has come, such as "0 Kč" for a client that has paid nothing, is muted: it is in tertiary
+/// text, as a value that is missing in a table is.
 struct DetailFigure: View {
     let label: String?
     let figure: String
     let context: String?
+    let figureIsMuted: Bool
 
-    /// The figure `figure`, with `label` over it and `context` under it where there are any.
-    init(label: String?, figure: String, context: String?) {
+    /// The figure `figure`, with `label` over it and `context` under it where there are any, muted where
+    /// `figureIsMuted` says so.
+    init(label: String?, figure: String, context: String?, figureIsMuted: Bool = false) {
         self.label = label
         self.figure = figure
         self.context = context
+        self.figureIsMuted = figureIsMuted
     }
 
     var body: some View {
@@ -242,7 +263,7 @@ struct DetailFigure: View {
             }
             Text(verbatim: figure)
                 .font(Typography.largeTitle)
-                .foregroundStyle(Palette.text)
+                .foregroundStyle(figureIsMuted ? Palette.text3 : Palette.text)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(DetailPanelMetrics.minimumFigureScale)
@@ -251,6 +272,28 @@ struct DetailFigure: View {
                     .font(Typography.body)
                     .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// A part of a detail that stands under a hairline, such as the payment of an invoice or the templates of a client:
+/// 14 points under the line, and then `content`, `spacing` points apart.
+struct DetailSection<Content: View>: View {
+    let spacing: CGFloat
+    private let content: Content
+
+    /// A section of `content`, 8 points apart unless told otherwise.
+    init(spacing: CGFloat = DetailPanelMetrics.sectionSpacing, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DetailPanelMetrics.sectionTopSpacing) {
+            Hairline()
+            VStack(alignment: .leading, spacing: spacing) {
+                content
             }
         }
     }

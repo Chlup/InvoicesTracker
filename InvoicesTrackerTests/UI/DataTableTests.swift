@@ -419,6 +419,34 @@ struct DataTableTests {
         #expect(abs(tall.0 - 400) < 1 && tall.1 > 100, "\(tall)")
     }
 
+    /// A panel of facts whose values are long enough to break into lines is never higher than its room, also in the
+    /// few points around the height it is measured at: where the room is at least that height, the panel is as high as
+    /// its content with nothing to scroll, and where it is less, as high as the room with the rest scrolling. A table
+    /// of facts laid out under the height of the room would give its values less width than it measured them with,
+    /// and they would break into more lines than measured.
+    @Test func aPanelOfLongFactsIsNeverHigherThanItsRoom() async throws {
+        let panel = DetailPanel(title: "20260902", pill: nil, close: {}, scrolls: true) {
+            DetailFacts([
+                DetailFact(label: "Adresa", value: "100 Congress Avenue, 78701 Austin, TX, Spojené státy americké"),
+                DetailFact(label: "E-mail", value: "fakturace@example.com"),
+                DetailFact(label: "DPH", value: "Mimo tuzemsko – § 9 odst. 1 (bez DPH)"),
+                DetailFact(label: "Jazyk faktury", value: "anglicky"),
+            ])
+        }
+        let natural = frames(of: panel, width: 300).size.height
+
+        for room in [natural - 6, natural - 1, natural + 1, natural + 6, natural + 60] {
+            let (height, overflow) = try await heightAndOverflow(of: panel, offered: room)
+
+            #expect(height <= room + 0.5, "The panel is \(height) points high in a room of \(room)")
+            if room > natural {
+                #expect(abs(height - natural) <= 1 && overflow < 0.5, "\(height), \(overflow) in \(room)")
+            } else {
+                #expect(abs(height - room) <= 1 && overflow > 0, "\(height), \(overflow) in \(room)")
+            }
+        }
+    }
+
     // MARK: The facts and the figure
 
     @Test func theFactsOfADetailStandInTwoColumnsAndTheNoteStandsUnderItsValue() async throws {
@@ -484,5 +512,29 @@ struct DataTableTests {
         #expect(height(of: amount, width: 90) <= height(of: amount, width: 400))
         // The label and the context add a line each, and the 2 points between the lines.
         #expect(height(of: full, width: 400) > height(of: amount, width: 400) + 2 * (12 + 2))
+    }
+
+    /// A figure is in the colour of text, and a muted one, such as "0 Kč" for a client that has paid nothing, in
+    /// tertiary text: no pixel of it is then in the colour of text. On the background of a card, in a light and in a
+    /// dark window.
+    @Test func aMutedFigureOfADetailIsInTertiaryText() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
+            let tertiary = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
+            for muted in [false, true] {
+                let figure = DetailFigure(label: nil, figure: "0\u{00A0}Kč", context: nil, figureIsMuted: muted)
+                    .padding(8)
+                    .background(Palette.bgCard)
+                let picture = try OffscreenPicture(of: figure, in: scheme)
+                let whole = CGRect(origin: .zero, size: picture.size)
+
+                if muted {
+                    #expect(picture.count(near: text, in: whole, by: 8) == 0, "\(scheme): the figure is not muted")
+                    #expect(picture.count(near: tertiary, in: whole, by: 2) > 20, "\(scheme): no tertiary text")
+                } else {
+                    #expect(picture.count(near: text, in: whole, by: 2) > 20, "\(scheme): the figure is muted")
+                }
+            }
+        }
     }
 }

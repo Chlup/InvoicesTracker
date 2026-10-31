@@ -9,12 +9,9 @@ import SwiftUI
 /// shown; one that has a payment has the payment changed and is shown. A paid invoice is not edited, only its payment,
 /// so its detail has no "Upravit", not even one that is off. A draft is issued in one click, without the editor:
 /// "Vystavit" is off while it is being issued, and where it could not be issued a red note right under the buttons
-/// says why, while the buttons stay. The card is `width` points wide and as high as its content, or as the room it is
-/// given where that is less, and what does not fit in it then scrolls.
+/// says why, while the buttons stay. The card is as wide as a detail panel (`DetailPanelMetrics.width`) and as high as
+/// its content, or as the room it is given where that is less, and what does not fit in it then scrolls.
 struct InvoiceDetailCard: View {
-    /// The width of the card: 300 points, as the design's panel beside a table.
-    static let width: CGFloat = 300
-
     let detail: InvoiceDetail
 
     /// Why the draft could not be issued in one click, the reason the editor gives, or nil: a red note right under the
@@ -65,7 +62,7 @@ struct InvoiceDetailCard: View {
             }
             deletion
         }
-        .frame(width: Self.width)
+        .frame(width: DetailPanelMetrics.width)
         .accessibilityLabel("Detail faktury")
     }
 
@@ -119,30 +116,6 @@ struct InvoiceDetailCard: View {
                 }
             }
             .buttonStyle(CapsuleButtonStyle(.destructive, size: .small))
-        }
-    }
-}
-
-// MARK: - Sections
-
-/// A part of the detail that stands under a hairline: 14 points under the line, and then `content`, `spacing` points
-/// apart.
-private struct DetailSection<Content: View>: View {
-    let spacing: CGFloat
-    private let content: Content
-
-    /// A section of `content`, 8 points apart unless told otherwise.
-    init(spacing: CGFloat = 8, @ViewBuilder content: () -> Content) {
-        self.spacing = spacing
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Hairline()
-            VStack(alignment: .leading, spacing: spacing) {
-                content
-            }
         }
     }
 }

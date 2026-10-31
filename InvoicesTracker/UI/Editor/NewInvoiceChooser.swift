@@ -122,8 +122,8 @@ final class NewInvoiceChooserModel {
     }
 
     /// The items of the template added up, rounded the way an invoice rounds them, or "—" where the amount is beyond
-    /// what an invoice carries.
-    private nonisolated static func netAmount(of template: InvoiceTemplate, in currency: CurrencyCode) -> String {
+    /// what an invoice carries. The panel of a template in the detail of its client shows the same amount.
+    nonisolated static func netAmount(of template: InvoiceTemplate, in currency: CurrencyCode) -> String {
         let total = InvoiceEditorChecks.total(
             of: template.items.map {
                 InvoiceEditorChecks.amount(quantity: $0.quantity, unitPriceMinor: $0.unitPriceMinor)

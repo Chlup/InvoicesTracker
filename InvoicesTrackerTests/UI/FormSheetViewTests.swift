@@ -6,8 +6,9 @@ import Testing
 /// The sheets of the forms of a client and of a template, shown in a window with what they load (the currencies, the
 /// clients): they are 620 points wide, as the other sheets of the app are, and never taller than the window that
 /// carries them, however much they hold. A hosting view that is in no window never runs the `.task` of its content, so
-/// the sheets are measured in one. The row of the template form that names the bank account, and the box that asks
-/// before a template is deleted, are read as VoiceOver reads them.
+/// the sheets are measured in one. The row of the template form that names the bank account, the box that asks before
+/// a template is deleted, the line of the preview under the first description, the chips of the clients and the
+/// buttons of the template form are read as VoiceOver reads them.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct FormSheetViewTests {
@@ -184,6 +185,69 @@ struct FormSheetViewTests {
                 #expect(model.errors.count > 10 && model.confirmsDeletion)
                 #expect(size.width == 620)
                 #expect(size.height <= 700, "The sheet is \(size.height) points tall")
+            }
+        }
+    }
+
+    // MARK: The parts of the template form
+
+    /// What a description may hold is said at the end of the line of the preview under the first description, and in
+    /// no line of its own under the items. The form takes the focus in its name field, so the test takes its turn among
+    /// the tests that type into a window (`whileTypingAlone`).
+    @Test func theTemplateFormSaysWhatADescriptionMayHoldAtTheEndOfThePreview() async throws {
+        try await whileTypingAlone {
+            try await ClientsFixture.with { f in
+                let model = TemplateFormModel(app: f.app, template: nil)
+                let form = TemplateForm(model: model, cancel: {}, finished: {})
+                // Today is 17. 10. 2026: the preview is for the end of October.
+                let line = "Náhled: Vývoj – říjen 2026 · {měsíc}, {rok}, {month} a {year} se doplní podle DUZP"
+
+                try await withHostedView(form, size: CGSize(width: 700, height: 900)) { window in
+                    try await withAccessibilityElements {
+                        try await waitUntil { frameOfText(startingWith: line, in: window) != nil }
+
+                        #expect(frameOfText(startingWith: "V popisu lze použít", in: window) == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The form of a stored template chooses its client among filter chips of 28 points, its own client's selected,
+    /// and its buttons are the capsules of a dialog, 32 points high: Smazat šablonu at the leading end, then Zrušit
+    /// and Uložit šablonu at the trailing end. The form takes the focus in a field, so the test takes its turn among
+    /// the tests that type into a window (`whileTypingAlone`).
+    @Test func theTemplateFormChoosesItsClientWithChipsAndHasTheButtonsOfADialog() async throws {
+        try await whileTypingAlone {
+            try await ClientsFixture.with { f in
+                let stored = try await f.store(ClientsFixture.template(for: f.bravoID, name: "Služby pro Bravo"))
+                let model = TemplateFormModel(app: f.app, template: stored)
+                let form = TemplateForm(model: model, cancel: {}, finished: {})
+
+                try await withHostedView(form, size: CGSize(width: 700, height: 900)) { window in
+                    try await withAccessibilityElements {
+                        try await waitUntil { accessibilityButton(labelled: "Alfa Systems s.r.o.", in: window) != nil }
+                        @MainActor func frame(of label: String) throws -> CGRect {
+                            try #require(accessibilityButton(labelled: label, in: window)?.accessibilityFrame?())
+                        }
+
+                        let bravo = try #require(accessibilityButton(labelled: "Bravo Labs, Inc.", in: window))
+                        let alfa = try #require(accessibilityButton(labelled: "Alfa Systems s.r.o.", in: window))
+                        #expect(bravo.isAccessibilitySelected?() == true)
+                        #expect(alfa.isAccessibilitySelected?() != true)
+                        for chip in ["Alfa Systems s.r.o.", "Bravo Labs, Inc."] {
+                            let height = try frame(of: chip).height
+                            #expect((height - DesignMetrics.smallControlHeight).magnitude < 0.5, "\(chip): \(height)")
+                        }
+                        for button in ["Smazat šablonu", "Zrušit", "Uložit šablonu"] {
+                            let height = try frame(of: button).height
+                            let off = (height - DesignMetrics.regularControlHeight).magnitude
+                            #expect(off < 0.5, "\(button): \(height)")
+                        }
+                        #expect(try frame(of: "Smazat šablonu").maxX < frame(of: "Zrušit").minX)
+                        #expect(try frame(of: "Zrušit").maxX < frame(of: "Uložit šablonu").minX)
+                    }
+                }
             }
         }
     }

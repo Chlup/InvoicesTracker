@@ -25,9 +25,12 @@ import Testing
 /// not the form, and a second click closes it; the selection stays when the year changes, and a client saved in the
 /// form of Nový odběratel becomes the selected one, its row scrolled into view. With the detail open in the least
 /// window the table scrolls sideways in its card, and a wheel over the rows scrolls them up and down and the table
-/// sideways. Zálohy a odpočty fits with the note about rent (§ 9) under the menu of its rate of 30 %, whole and clear
-/// of the box of the reduced base, and with the cards of a family whose texts are the longest, every text whole, and
-/// so does the dialog of a child, a sheet with the lock after inactivity over it.
+/// sideways. The detail of a client is as high as its content and no higher than the card of the table, in which it
+/// scrolls what does not fit, and its figure is muted where the client has paid nothing; its Nová šablona opens the
+/// form of a template for its client, whose new template then shows in the detail, and the panel of a template opens
+/// its form and starts an invoice from it. Zálohy a odpočty fits with the note about rent (§ 9) under the menu of its
+/// rate of 30 %, whole and clear of the box of the reduced base, and with the cards of a family whose texts are the
+/// longest, every text whole, and so does the dialog of a child, a sheet with the lock after inactivity over it.
 /// Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the family as tall as its texts
 /// need and the bar of the tax whole. The Simulátor fits with the cards of the family after its deductions, empty and
 /// with the sample family copied into them, and with a secondary activity chosen and the rate of 30 % taken from the
@@ -280,12 +283,19 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// How much higher than the part of it that the card of the detail in `window` shows its content is, which is what
-    /// scrolls in it. Nothing where the card is as high as its content, which then has no scroll view of its own. Needs
-    /// the accessibility elements (`withAccessibilityElements(_:)`).
+    /// How much higher than the part of it that the card of the detail of Faktury in `window` shows its content is,
+    /// which is what scrolls in it (`overflow(ofTheCardFramed:in:)`). Needs the accessibility elements
+    /// (`withAccessibilityElements(_:)`).
     private func detailOverflow(in window: NSWindow) -> CGFloat {
-        guard let detail = detailCardFrame(in: window), let content = window.contentView else { return 0 }
-        let scrolled = scrollViews(in: content).first { detail.insetBy(dx: -1, dy: -1).contains(frameInWindow($0)) }
+        overflow(ofTheCardFramed: detailCardFrame(in: window), in: window)
+    }
+
+    /// How much higher than the part of it that the card framed `card` in `window` shows its content is, which is what
+    /// scrolls in it: the scroll view within the card. Nothing where the card is as high as its content, which then has
+    /// no scroll view of its own, and where there is no card.
+    private func overflow(ofTheCardFramed card: CGRect?, in window: NSWindow) -> CGFloat {
+        guard let card, let content = window.contentView else { return 0 }
+        let scrolled = scrollViews(in: content).first { card.insetBy(dx: -1, dy: -1).contains(frameInWindow($0)) }
         guard let scrolled, let document = scrolled.documentView else { return 0 }
         return max(0, document.frame.height - scrolled.contentView.bounds.height)
     }
@@ -644,16 +654,17 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
-    /// page `room`, all in the coordinates of `window`: the detail is 300 points wide at the right margin of the page
-    /// (16 points), starts at the height of the card of the table (to a point), never reaches below it, and that card
-    /// ends 16 points before it. The detail is as high as its content, so where it ends above the bottom of the card of
-    /// the table it ends 20 points under its last button, Smazat fakturu…, and has nothing to scroll.
+    /// page `room`, all in the coordinates of `window`: the detail is as wide as a detail panel (300 points,
+    /// `DetailPanelMetrics.width`) at the right margin of the page (16 points), starts at the height of the card of the
+    /// table (to a point), never reaches below it, and that card ends 16 points before it. The detail is as high as its
+    /// content, so where it ends above the bottom of the card of the table it ends 20 points under its last button,
+    /// Smazat fakturu…, and has nothing to scroll.
     private func problems(
         ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect, of window: NSWindow
     ) -> [String] {
         var problems: [String] = []
-        if (detail.width - 300).magnitude >= 0.5 {
-            problems.append("The detail is not 300 points wide: \(detail)")
+        if (detail.width - DetailPanelMetrics.width).magnitude >= 0.5 {
+            problems.append("The detail is not \(DetailPanelMetrics.width) points wide: \(detail)")
         }
         if (detail.maxX - (room.maxX - 16)).magnitude >= 0.5 {
             problems.append("The detail does not stand at the right margin of the page: \(detail)")
@@ -2873,6 +2884,190 @@ struct AppWindowLayoutTests {
         }
     }
 
+    // MARK: The detail of a client
+
+    /// A detail of a client that fits beside the table is as high as its content, as the prototype's panel is, and no
+    /// higher: in a large window the detail of Cetus, which has no template, starts with the card of the table and
+    /// ends 20 points under the sentence that says what a template does, well above the bottom of that card, and it
+    /// has nothing to scroll.
+    @Test func aClientDetailThatFitsIsAsHighAsItsContentAndShorterThanTheTable() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    press(try #require(clientRow(named: "Cetus Data s.r.o.", in: window)))
+                    try await waitUntil { frameOfText(startingWith: "Zatím žádná šablona.", in: window) != nil }
+                    try await expectSettled(window) { problems(ofOdberateleIn: window, detailOpen: true) }
+
+                    let detail = try #require(clientDetailFrame(in: window))
+                    let table = try #require(clientTableCardFrame(in: window))
+                    let empty = try #require(frameOfText(startingWith: "Zatím žádná šablona.", in: window))
+                    let last = window.convertFromScreen(empty)
+                    #expect(detail.height < table.height - 50, "The detail \(detail) is not shorter than \(table)")
+                    #expect((detail.maxY - table.maxY).magnitude <= 1, "\(detail) does not start with \(table)")
+                    #expect((last.minY - detail.minY - 20).magnitude <= 1.5, "\(last) in \(detail)")
+                    #expect(clientDetailOverflow(in: window) <= 0.5, "It scrolls \(clientDetailOverflow(in: window))")
+                }
+            }
+        }
+    }
+
+    /// A detail of a client whose content is higher than the card of the table is as high as that card and no higher,
+    /// and the part of the content that does not fit scrolls inside it: in the least window the detail of Bravo with
+    /// a dozen templates starts with the card of the table and ends where it ends, and its content is higher than the
+    /// card shows.
+    @Test func aClientDetailHigherThanTheTableIsCappedAtItAndScrollsInsideIt() async throws {
+        try await EditorFixture.with { f in
+            for number in 1...11 {
+                var template = f.dollarTemplate
+                template.id = 0
+                template.name = "Software development \(number)"
+                try await f.database.saveTemplate(template)
+            }
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                    let last = "Upravit šablonu Software development 11"
+                    try await waitUntil { accessibilityButton(labelled: last, in: window) != nil }
+                    try await expectSettled(window) { problems(ofOdberateleIn: window, detailOpen: true) }
+
+                    let detail = try #require(clientDetailFrame(in: window))
+                    let table = try #require(clientTableCardFrame(in: window))
+                    #expect((detail.maxY - table.maxY).magnitude <= 1, "\(detail) does not start with \(table)")
+                    #expect((detail.minY - table.minY).magnitude <= 1, "\(detail) does not end with \(table)")
+                    #expect(clientDetailOverflow(in: window) > 50, "It scrolls \(clientDetailOverflow(in: window))")
+                }
+            }
+        }
+    }
+
+    /// The figure of a client that has paid nothing in the year, "0 Kč" for Alfa, is muted, in tertiary text, with no
+    /// pixel of it in the colour of text, and that of a client that has paid, 305 727 Kč for Bravo, is in the colour
+    /// of text. The window is light, whatever the Mac's appearance is.
+    @Test func theFigureOfAClientThatPaidNothingIsInTertiaryText() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                window.appearance = NSAppearance(named: .aqua)
+                f.app.screen = .clients
+                let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
+                let tertiary = try OffscreenPicture.bytes(of: Palette.text3, in: .light)
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    let figures = [
+                        ("Alfa Systems s.r.o.", "0\u{00A0}Kč", true),
+                        ("Bravo Labs, Inc.", "305\u{00A0}727\u{00A0}Kč", false),
+                    ]
+                    for (name, figure, muted) in figures {
+                        press(try #require(clientRow(named: name, in: window)))
+                        try await waitUntil { frameOfText(startingWith: figure, in: window) != nil }
+                        try await layOut(window)
+                        let onScreen = try #require(frameOfText(startingWith: figure, in: window))
+                        let frame = window.convertFromScreen(onScreen)
+                        let height = try #require(window.contentView).bounds.height
+                        // The picture counts its points from the top left, the window from the bottom left.
+                        let region = CGRect(
+                            x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
+                        let picture = try OffscreenPicture(of: window)
+
+                        if muted {
+                            #expect(picture.count(near: text, in: region, by: 8) == 0, "\(figure) is not muted")
+                            #expect(picture.count(near: tertiary, in: region, by: 2) > 20, "\(figure) is not tertiary")
+                        } else {
+                            #expect(picture.count(near: text, in: region, by: 2) > 20, "\(figure) is muted")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Nová šablona in the detail of a client opens the form of a new template for that client: the chip of Cetus is
+    /// chosen in it, not the one of Alfa, which comes first. Once the template is saved, the sheet closes, Cetus stays
+    /// selected and its detail has a panel for the new template in place of the sentence that said it had none.
+    @Test func novaSablonaInTheDetailOfAClientOpensTheFormOfATemplateForThatClient() async throws {
+        // The sheet takes the focus of the window, and the test types into it.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    f.app.screen = .clients
+                    try await withAccessibilityElements {
+                        try await waitUntil { clientRows(in: window).count == 3 }
+                        press(try #require(clientRow(named: "Cetus Data s.r.o.", in: window)))
+                        try await waitUntil { frameOfText(startingWith: "Zatím žádná šablona.", in: window) != nil }
+
+                        press(try #require(accessibilityButton(labelled: "Nová šablona", in: window)))
+                        try await waitUntil { window.attachedSheet != nil }
+                        let sheet = try #require(window.attachedSheet)
+                        try await waitUntil { accessibilityButton(labelled: "Alfa Systems s.r.o.", in: sheet) != nil }
+                        let cetus = try #require(accessibilityButton(labelled: "Cetus Data s.r.o.", in: sheet))
+                        let alfa = try #require(accessibilityButton(labelled: "Alfa Systems s.r.o.", in: sheet))
+                        #expect(cetus.isAccessibilitySelected?() == true)
+                        #expect(alfa.isAccessibilitySelected?() != true)
+
+                        let name = try #require(textField(labelled: "Název šablony", in: sheet))
+                        try type("Konzultace", into: name, in: sheet)
+                        press(try #require(accessibilityButton(labelled: "Uložit šablonu", in: sheet)))
+                        try await waitUntil { window.attachedSheet == nil }
+
+                        let newPanel = "Vystavit podle šablony Konzultace"
+                        try await waitUntil { accessibilityButton(labelled: newPanel, in: window) != nil }
+                        #expect(isClientSelected("Cetus Data s.r.o.", in: window))
+                        #expect(clientDetailShows("Cetus Data s.r.o.", in: window))
+                        #expect(frameOfText(startingWith: "Zatím žádná šablona.", in: window) == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The panel of a template in the detail of its client: Upravit opens the form of the template, "Upravit šablonu",
+    /// as a sheet, and Zrušit closes it with the detail still open; Vystavit podle šablony opens the editor on a new
+    /// invoice made from the template, on Faktury, and no sheet. The two buttons are 28 points high, as the buttons
+    /// inside a card are.
+    @Test func theButtonsOfATemplateInTheDetailEditItAndStartAnInvoiceFromIt() async throws {
+        // The sheet takes the focus of the window, so the test takes its turn among the tests that type.
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    f.app.screen = .clients
+                    try await withAccessibilityElements {
+                        try await waitUntil { clientRows(in: window).count == 3 }
+                        press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                        let edit = "Upravit šablonu Software development"
+                        let use = "Vystavit podle šablony Software development"
+                        try await waitUntil { accessibilityButton(labelled: use, in: window) != nil }
+                        for label in [use, edit] {
+                            let height = buttonFrame(label, in: window)?.height ?? 0
+                            #expect((height - DesignMetrics.smallControlHeight).magnitude < 0.5, "\(label): \(height)")
+                        }
+
+                        press(try #require(accessibilityButton(labelled: edit, in: window)))
+                        try await waitUntil { window.attachedSheet != nil }
+                        let sheet = try #require(window.attachedSheet)
+                        // The title of the sheet is a heading, which VoiceOver reads by its label; the chips of the
+                        // clients come once the form has loaded them.
+                        try await waitUntil { accessibilityElement(labelled: "Upravit šablonu", in: sheet) != nil }
+                        try await waitUntil { accessibilityButton(labelled: "Bravo Labs, Inc.", in: sheet) != nil }
+                        let bravo = try #require(accessibilityButton(labelled: "Bravo Labs, Inc.", in: sheet))
+                        #expect(bravo.isAccessibilitySelected?() == true)
+                        press(try #require(accessibilityButton(labelled: "Zrušit", in: sheet)))
+                        try await waitUntil { window.attachedSheet == nil }
+                        #expect(clientDetailShows("Bravo Labs, Inc.", in: window))
+
+                        press(try #require(accessibilityButton(labelled: use, in: window)))
+                        try await waitUntil { f.app.screen == .invoices }
+                        #expect(f.app.editorRequest == .new(templateID: f.dollarTemplate.id, clientID: nil))
+                        #expect(window.attachedSheet == nil)
+                    }
+                }
+            }
+        }
+    }
+
     /// A wheel event of the mouse that scrolls by `upAndDown` points up and down and by `sideways` points sideways.
     private func wheelEvent(upAndDown: Int32, sideways: Int32) throws -> NSEvent {
         let event = try #require(
@@ -2971,6 +3166,13 @@ struct AppWindowLayoutTests {
         return window.convertFromScreen(frame)
     }
 
+    /// How much higher than the part of it that the card of the detail of Odběratelé in `window` shows its content is,
+    /// which is what scrolls in it (`overflow(ofTheCardFramed:in:)`). Needs the accessibility elements
+    /// (`withAccessibilityElements(_:)`).
+    private func clientDetailOverflow(in window: NSWindow) -> CGFloat {
+        overflow(ofTheCardFramed: clientDetailFrame(in: window), in: window)
+    }
+
     /// Whether the detail of Odběratelé in `window` is that of the client called `name`: VoiceOver reads the name in
     /// it, as its title.
     private func clientDetailShows(_ name: String, in window: NSWindow) -> Bool {
@@ -3053,13 +3255,13 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card of the detail of a client, `detail`, beside the card of the table, `table`, in the
-    /// room of the page `room`, all in the coordinates of the window: the detail is 300 points wide at the right margin
-    /// of the page (16 points), starts at the height of the card of the table (to a point) and never reaches below it,
-    /// and the card of the table ends 16 points before it.
+    /// room of the page `room`, all in the coordinates of the window: the detail is as wide as a detail panel (300
+    /// points, `DetailPanelMetrics.width`) at the right margin of the page (16 points), starts at the height of the
+    /// card of the table (to a point) and never reaches below it, and the card of the table ends 16 points before it.
     private func problems(ofTheClientDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
         var problems: [String] = []
-        if (detail.width - 300).magnitude >= 0.5 {
-            problems.append("The detail is not 300 points wide: \(detail)")
+        if (detail.width - DetailPanelMetrics.width).magnitude >= 0.5 {
+            problems.append("The detail is not \(DetailPanelMetrics.width) points wide: \(detail)")
         }
         if (detail.maxX - (room.maxX - 16)).magnitude >= 0.5 {
             problems.append("The detail does not stand at the right margin of the page: \(detail)")
