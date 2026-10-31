@@ -116,7 +116,7 @@ struct OverviewCardsTests {
         try await withHostedView(view, size: CGSize(width: 1_048, height: 400)) { window in
             try await withAccessibilityElements {
                 try await waitUntil { frameOfText(startingWith: "Příjmy za rok, ", in: window) != nil }
-                let group = try #require(accessibilityElement(labelled: card.head, in: window))
+                let group = try #require(accessibilityElement(labelled: "Odhad za celý rok", in: window))
                 let groupFrame = try #require(group.accessibilityFrame?())
                 let readings = accessibilityReadings(under: group)
                 #expect(!readings.contains("odhad"), "The pill is read: \(readings)")
