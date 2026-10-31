@@ -2,7 +2,7 @@ import Foundation
 
 /// A tab of Nastavení.
 nonisolated enum SettingsTab: CaseIterable, Hashable, Sendable {
-    /// Aplikace: the appearance, the rates and the licences.
+    /// Aplikace: the appearance, the updates, the rates and the licences.
     case application
 
     /// Moje údaje: the supplier's details and bank accounts.
