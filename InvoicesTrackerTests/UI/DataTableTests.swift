@@ -229,6 +229,13 @@ struct DataTableTests {
         }
     }
 
+    /// A detail panel beside a table is 340 points wide, as the prototype's panel is: its 300 points are those of its
+    /// content, to which its padding of 20 points on either side adds, as nothing in the prototype makes a box hold
+    /// its padding.
+    @Test func aDetailPanelBesideATableIs340PointsWide() {
+        #expect(DetailPanelMetrics.width == 340)
+    }
+
     @Test func theDetailPanelClosesFromItsCloseButton() async throws {
         let closings = Closings()
         let panel = detailPanel(close: { closings.count += 1 })

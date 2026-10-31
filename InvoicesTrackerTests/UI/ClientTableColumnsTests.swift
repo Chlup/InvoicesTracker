@@ -48,7 +48,7 @@ struct ClientTableColumnsTests {
     }
 
     @Test func belowItsLeastWidthTheColumnsAreThoseOfTheLeastWidth() {
-        for table: CGFloat in [0, 300, 512, 534, 539] {
+        for table: CGFloat in [0, 300, 472, 534, 539] {
             let columns = ClientTableColumns.columnWidths(inTableOf: table)
             #expect(isClose(columns, to: atTheLeastWidth), "a table of \(table): \(columns)")
         }

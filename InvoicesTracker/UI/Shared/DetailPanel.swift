@@ -13,8 +13,11 @@ nonisolated struct DetailFact: Sendable, Hashable {
 /// The sizes of a detail panel and of its parts, in points. The screens that stand a panel beside a table, Faktury and
 /// Odběratelé, take its width from here.
 nonisolated enum DetailPanelMetrics {
-    /// The width of a panel beside a table: 300 points, as the design's panel beside a table.
-    static let width: CGFloat = 300
+    /// The width of a panel beside a table: 340 points, as the prototype's panel beside a table is. Its 300 points are
+    /// those of its content, to which its padding of 20 points on either side adds: the prototype's panel is a box of
+    /// `flex: 1 1 300px; padding: 20px`, and nothing in the prototype makes a box hold its padding (`box-sizing`), so
+    /// it is 300 + 2 × 20 points wide.
+    static let width: CGFloat = 340
 
     /// The space between the header and the content, and between the parts of the content.
     static let partSpacing: CGFloat = 16

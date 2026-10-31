@@ -221,7 +221,7 @@ struct AppWindowLayoutTests {
     }
 
     /// The detail of an invoice is a card of the page beside the table: it starts where the card of the table starts,
-    /// under the filters, and is as high as its content, or as that card where its content is higher; it is 300 points
+    /// under the filters, and is as high as its content, or as that card where its content is higher; it is 340 points
     /// wide and stands at the right margin of the page, the card of the table ending 16 points before it. The window
     /// has no inspector beside the page: its split views hold the sidebar and the page alone.
     @Test func theDetailCardStandsBesideTheTableAndStartsWithIt() async throws {
@@ -654,7 +654,7 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
-    /// page `room`, all in the coordinates of `window`: the detail is as wide as a detail panel (300 points,
+    /// page `room`, all in the coordinates of `window`: the detail is as wide as a detail panel (340 points,
     /// `DetailPanelMetrics.width`) at the right margin of the page (16 points), starts at the height of the card of the
     /// table (to a point), never reaches below it, and that card ends 16 points before it. The detail is as high as its
     /// content, so where it ends above the bottom of the card of the table it ends 20 points under its last button,
@@ -2580,9 +2580,9 @@ struct AppWindowLayoutTests {
     /// width of the table (`ClientTableColumns`). The card starts with its summary row, above the names of the columns
     /// (32 points), and its rows are one line each, 40 points high, whatever they say: among the clients of the fixture
     /// stand one that says as little as can be and one whose name is far too long for its column. With the detail open
-    /// the card of the least window is 512 points wide, narrower than the table: the detail stays beside the card, and
-    /// the table keeps its least width and scrolls sideways in the card under the summary row, as the table of Faktury
-    /// does. A large window holds the table and the detail side by side again.
+    /// (340 points) the card of the least window is 472 points wide, narrower than the table: the detail stays beside
+    /// the card, and the table keeps its least width and scrolls sideways in the card under the summary row, as the
+    /// table of Faktury does. A large window holds the table and the detail side by side again.
     @Test func theClientTableFillsItsCardAndScrollsSidewaysBesideTheDetailInTheLeastWindow() async throws {
         try await EditorFixture.with { f in
             try await f.database.saveClient(Client(name: "Bez údajů", country: ""))
@@ -2614,7 +2614,7 @@ struct AppWindowLayoutTests {
                     let card = try #require(clientTableScrollView(in: window)).contentView.bounds.width
                     #expect((card - 828).magnitude <= 1)
 
-                    // The detail open: the card of 512 points is narrower than the table, which keeps its least
+                    // The detail open: the card of 472 points is narrower than the table, which keeps its least
                     // width and scrolls sideways, under the summary row, which stays as wide as the card.
                     press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
                     try await waitUntil { clientDetailFrame(in: window) != nil }
@@ -2625,16 +2625,16 @@ struct AppWindowLayoutTests {
                             + problems(ofTheSummaryAndTheRowsOf: clientList(in: window), rows: clientRows(in: window))
                     }
                     let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
-                    #expect((narrow - 512).magnitude <= 1)
+                    #expect((narrow - 472).magnitude <= 1)
 
-                    // A large window again: the card beside the detail, 1 012 points, holds the table.
+                    // A large window again: the card beside the detail, 972 points, holds the table.
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
                             + problems(ofTheClientTableFillingItsCardIn: window)
                             + problems(ofOdberateleIn: window, detailOpen: true)
                     }
-                    #expect((try clientTableWidth(in: window) - 1_012).magnitude <= 1)
+                    #expect((try clientTableWidth(in: window) - 972).magnitude <= 1)
                 }
             }
         }
@@ -3024,6 +3024,30 @@ struct AppWindowLayoutTests {
         }
     }
 
+    /// The two buttons of the panel of a template, Vystavit podle šablony and Upravit, share one line in the detail of
+    /// its client, which is as wide as a detail panel, 6 points apart: the panel of Bravo's template "Software
+    /// development" in the least window.
+    @Test func theTwoButtonsOfATemplatePanelShareOneLine() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .clients
+                try await withAccessibilityElements {
+                    try await waitUntil { clientRows(in: window).count == 3 }
+                    press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
+                    let use = "Vystavit podle šablony Software development"
+                    let edit = "Upravit šablonu Software development"
+                    try await waitUntil { buttonFrame(edit, in: window) != nil }
+                    try await layOut(window)
+
+                    let first = try #require(buttonFrame(use, in: window))
+                    let second = try #require(buttonFrame(edit, in: window))
+                    #expect((first.midY - second.midY).magnitude < 0.5, "Not on one line: \(first), \(second)")
+                    #expect((second.minX - first.maxX - 6).magnitude < 0.5, "Not 6 points apart: \(first), \(second)")
+                }
+            }
+        }
+    }
+
     /// The panel of a template in the detail of its client: Upravit opens the form of the template, "Upravit šablonu",
     /// as a sheet, and Zrušit closes it with the detail still open; Vystavit podle šablony opens the editor on a new
     /// invoice made from the template, on Faktury, and no sheet. The two buttons are 28 points high, as the buttons
@@ -3255,7 +3279,7 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card of the detail of a client, `detail`, beside the card of the table, `table`, in the
-    /// room of the page `room`, all in the coordinates of the window: the detail is as wide as a detail panel (300
+    /// room of the page `room`, all in the coordinates of the window: the detail is as wide as a detail panel (340
     /// points, `DetailPanelMetrics.width`) at the right margin of the page (16 points), starts at the height of the
     /// card of the table (to a point) and never reaches below it, and the card of the table ends 16 points before it.
     private func problems(ofTheClientDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {

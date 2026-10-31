@@ -298,10 +298,11 @@ struct InvoiceDetailCardTests {
         return (card, delete)
     }
 
-    /// The card is 300 points wide, as the design's panel beside a table is, and as high as its content where that fits
-    /// in the room it is given, as the prototype's panel is: it is no higher in a room of 1 000 points than in one of
-    /// 900, and ends 20 points under its last button, Smazat fakturu…, with the room under it left empty.
-    @Test func theCardIs300PointsWideAndAsHighAsItsContentWhereThatFitsInTheRoom() async throws {
+    /// The card is 340 points wide, as the prototype's panel beside a table is (its content 300 points, with its
+    /// padding of 20 on either side), and as high as its content where that fits in the room it is given, as the
+    /// prototype's panel is: it is no higher in a room of 1 000 points than in one of 900, and ends 20 points under its
+    /// last button, Smazat fakturu…, with the room under it left empty.
+    @Test func theCardIs340PointsWideAndAsHighAsItsContentWhereThatFitsInTheRoom() async throws {
         let detail = detail(paymentEffect: levies)
         var heights: [CGFloat] = []
 
@@ -310,7 +311,7 @@ struct InvoiceDetailCardTests {
                 try await withAccessibilityElements {
                     let (frame, delete) = try await cardAndDeleteButton(in: window)
 
-                    #expect(abs(frame.width - 300) < 0.5, "\(frame)")
+                    #expect(abs(frame.width - 340) < 0.5, "\(frame)")
                     #expect(frame.height < room - 100, "\(frame) in a room of \(room)")
                     #expect(abs(delete.minY - frame.minY - 20) < 1.5, "\(delete) in \(frame)")
                     heights.append(frame.height)
@@ -352,15 +353,15 @@ struct InvoiceDetailCardTests {
 
     // MARK: The tokens
 
-    /// Shows the card of `detail` in a window of `scheme`, 300 points wide as the card is, and gives `body` a picture
-    /// of it. The picture is of the window, as a scroll view, in which the card keeps its content, is not drawn by
-    /// `ImageRenderer`. The card says `issueProblem` where it is given one.
+    /// Shows the card of `detail` in a window of `scheme`, as wide as the card is (`DetailPanelMetrics.width`), and
+    /// gives `body` a picture of it. The picture is of the window, as a scroll view, in which the card keeps its
+    /// content, is not drawn by `ImageRenderer`. The card says `issueProblem` where it is given one.
     private func withPictureOfTheCard(
         of detail: InvoiceDetail, issueProblem: String? = nil, in scheme: ColorScheme,
         _ body: (OffscreenPicture) async throws -> Void
     ) async throws {
         let hosted = card(of: detail, issueProblem: issueProblem)
-        try await withHostedView(hosted, size: CGSize(width: 300, height: 1_000)) { window in
+        try await withHostedView(hosted, size: CGSize(width: DetailPanelMetrics.width, height: 1_000)) { window in
             window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
             try await layOut(window)
             try await body(try OffscreenPicture(of: window))
@@ -447,7 +448,7 @@ struct InvoiceDetailCardTests {
                 let rows = picture.rows(near: inset, from: 40, to: 260, by: 1)
                 let top = try #require(rows.min(), "\(scheme): no box")
                 let bottom = try #require(rows.max(), "\(scheme): no box")
-                let box = CGRect(x: 20, y: top, width: 260, height: bottom - top)
+                let box = CGRect(x: 20, y: top, width: DetailPanelMetrics.width - 40, height: bottom - top)
 
                 var cells: [(name: String, colour: Color)] = [
                     ("the amount", Palette.text), ("příjem pro daň", Palette.text2),
@@ -462,8 +463,10 @@ struct InvoiceDetailCardTests {
                         picture.extent(near: colour, in: box, by: 2), "\(scheme): no \(cell.name) in the box")
                     edges[cell.name] = found.maxX
                 }
+                // The right edge of the content of the box: 12 points inside the box, 20 inside the card.
+                let end = DetailPanelMetrics.width - 32
                 for (name, edge) in edges {
-                    #expect(abs(edge - 268) <= 2, "\(scheme): \(name) ends at \(edge), not at 268 (\(edges))")
+                    #expect(abs(edge - end) <= 2, "\(scheme): \(name) ends at \(edge), not at \(end) (\(edges))")
                 }
             }
         }
