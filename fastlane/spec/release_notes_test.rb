@@ -5,16 +5,36 @@ require "invoices_tracker/release_notes"
 
 class InvoicesTrackerReleaseNotesTest < Minitest::Test
   def test_normalize_turns_a_typed_backslash_n_into_a_new_line
-    assert_equal "- Oprava\n- Nová funkce\n",
+    assert_equal "- Oprava  \n- Nová funkce\n",
                  InvoicesTracker::ReleaseNotes.normalize("- Oprava\\n- Nová funkce")
   end
 
-  def test_normalize_drops_carriage_returns_trailing_spaces_and_blank_edges
-    assert_equal "  - a\nb\n", InvoicesTracker::ReleaseNotes.normalize("\r\n\n  - a  \r\nb\r\n\n")
+  # Sparkle's update window reads the notes as CommonMark, where a lone line break inside a paragraph is only a space:
+  # these notes once showed there as one line. Two spaces before a line break make it a hard line break.
+  def test_normalize_makes_each_typed_line_break_a_markdown_hard_line_break
+    assert_equal "Testing  \n First  \n Update with Sparkle\n",
+                 InvoicesTracker::ReleaseNotes.normalize("Testing \\n First \\n Update with Sparkle")
+  end
+
+  def test_normalize_makes_a_real_line_break_a_markdown_hard_line_break_too
+    assert_equal "Line one  \nLine two\n", InvoicesTracker::ReleaseNotes.normalize("Line one\nLine two")
+  end
+
+  def test_normalize_ends_a_line_that_another_follows_with_exactly_two_spaces
+    assert_equal "a  \nb\n", InvoicesTracker::ReleaseNotes.normalize("a \nb")
+    assert_equal "a  \nb\n", InvoicesTracker::ReleaseNotes.normalize("a     \nb")
+  end
+
+  def test_normalize_drops_trailing_spaces_where_no_line_follows
+    assert_equal "a\n\nb\n", InvoicesTracker::ReleaseNotes.normalize("a   \n\nb   ")
+  end
+
+  def test_normalize_drops_carriage_returns_and_blank_edges
+    assert_equal "  - a  \nb\n", InvoicesTracker::ReleaseNotes.normalize("\r\n\n  - a\r\nb\r\n\n")
   end
 
   def test_normalize_turns_a_lone_carriage_return_into_a_new_line
-    assert_equal "- a\n- b\n", InvoicesTracker::ReleaseNotes.normalize("- a\r- b")
+    assert_equal "- a  \n- b\n", InvoicesTracker::ReleaseNotes.normalize("- a\r- b")
   end
 
   def test_normalize_keeps_blank_lines_between_paragraphs
