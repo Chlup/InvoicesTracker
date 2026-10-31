@@ -33,14 +33,9 @@ final class ClientsModel {
 
     private let app: AppModel
 
-    /// The clients of the last load, by id, which Upravit hands to the form.
-    @ObservationIgnored private var clients: [Int64: Client] = [:]
-
-    /// The templates of the last load, by id, which Upravit of a template hands to its form.
-    @ObservationIgnored private var templates: [Int64: InvoiceTemplate] = [:]
-
-    /// What the last load found, which `data` is built from again when the selection changes, or nil before the first
-    /// load and after one that failed. Its selection is not kept up to date: `selectedClientID` is.
+    /// What the last load found, or nil before the first load and after one that failed: the clients and the
+    /// templates that the forms are made of, and what `data` is built from, again whenever the selection changes,
+    /// without a load.
     @ObservationIgnored private var loaded: ClientsInput?
 
     /// How many loads have started. Only the latest one may show its result: a load that was started for a year or a
@@ -69,9 +64,7 @@ final class ClientsModel {
             let figures = try await database.clientFigures(
                 year: shown.year, asOf: shown.asOf, receivedThrough: received)
             guard thisLoad == loadsStarted else { return }
-            clients = Dictionary(uniqueKeysWithValues: loadedClients.map { ($0.id, $0) })
-            templates = Dictionary(uniqueKeysWithValues: loadedTemplates.map { ($0.id, $0) })
-            if let selected = selectedClientID, clients[selected] == nil {
+            if let selected = selectedClientID, !loadedClients.contains(where: { $0.id == selected }) {
                 selectedClientID = nil
             }
             loaded = ClientsInput(
@@ -81,20 +74,17 @@ final class ClientsModel {
         } catch {
             guard thisLoad == loadsStarted else { return }
             AppModel.log("Loading Odběratelé", failedWith: error)
-            clients = [:]
-            templates = [:]
             loaded = nil
             data = nil
             errorText = Self.loadFailureText
         }
     }
 
-    /// Builds `data` again from what the last load found, with the client selected now. Nothing while there is no
-    /// load to build from.
+    /// Builds `data` again from what the last load found, with the detail of the client selected now. Nothing while
+    /// there is no load to build from.
     private func rebuild() {
-        guard var input = loaded else { return }
-        input.selectedClientID = selectedClientID
-        data = ClientsBuilder.build(input)
+        guard let loaded else { return }
+        data = ClientsBuilder.build(loaded, selectedClientID: selectedClientID)
     }
 
     // MARK: The selection
@@ -132,19 +122,24 @@ final class ClientsModel {
     /// The form of the client with this id, as it was loaded: Upravit in its detail. Nil for a client that is not there
     /// (any more).
     func form(editing id: Int64) -> ClientFormModel? {
-        clients[id].map { ClientFormModel(app: app, client: $0) }
+        loadedClient(id).map { ClientFormModel(app: app, client: $0) }
     }
 
     /// The form of the template with this id, as it was loaded: Upravit of a template of a client. Nil for a template
     /// that is not there (any more).
     func templateForm(editing id: Int64) -> TemplateFormModel? {
-        templates[id].map { TemplateFormModel(app: app, template: $0) }
+        loaded?.templates.first { $0.id == id }.map { TemplateFormModel(app: app, template: $0) }
     }
 
     /// The form of a new template for the client with this id, as it was loaded, with its VAT mode and due days: Nová
     /// šablona in its detail. Nil for a client that is not there (any more).
     func newTemplateForm(forClient id: Int64) -> TemplateFormModel? {
-        clients[id].map { TemplateFormModel(app: app, preselectedClient: $0) }
+        loadedClient(id).map { TemplateFormModel(app: app, preselectedClient: $0) }
+    }
+
+    /// The client with this id as the last load found it, or nil.
+    private func loadedClient(_ id: Int64) -> Client? {
+        loaded?.clients.first { $0.id == id }
     }
 
     /// Vystavit podle šablony on a template in the detail of its client: the editor opens on a new invoice made from

@@ -1,7 +1,6 @@
 import Foundation
 
-/// What Odběratelé is built from: the clients, the templates of invoices, what each client did in the year shown, and
-/// which client is selected.
+/// What Odběratelé is built from: the clients, the templates of invoices and what each client did in the year shown.
 nonisolated struct ClientsInput: Sendable {
     /// The year shown, which names the column of the money received.
     var year: Int
@@ -15,9 +14,6 @@ nonisolated struct ClientsInput: Sendable {
     /// What each client did in the year (`Database.clientFigures`), by the id of the client. A client without figures
     /// did nothing in the year.
     var figures: [Int64: ClientFigures]
-
-    /// The client whose detail stands beside the table, or nil while no client is selected.
-    var selectedClientID: Int64? = nil
 }
 
 /// What Odběratelé shows: the summary row on top of the table, the name of the column of the money received, the rows,
@@ -92,6 +88,7 @@ nonisolated struct TemplatePanel: Sendable, Hashable, Identifiable {
     /// The id of the template.
     var id: Int64
 
+    /// The name of the template, which its panel starts with.
     var name: String
 
     /// The items added up without VAT, in the currency of the client, as the chooser of a new invoice shows a template:
@@ -120,8 +117,8 @@ nonisolated enum ClientsBuilder {
     /// The summary row, the rows and the detail of `input`. Every template counts in the summary, and each in the row
     /// of its own client. The total is the sum of what the clients paid in the year, in haléře, rounded to whole Kč
     /// once, so it can differ by a crown or two from the sum of the rows, which are rounded each. The detail is that of
-    /// the selected client, where it is among the clients.
-    static func build(_ input: ClientsInput) -> ClientsData {
+    /// the client `selectedClientID`, where it is among the clients, and there is none while no client is selected.
+    static func build(_ input: ClientsInput, selectedClientID: Int64? = nil) -> ClientsData {
         var templateCounts: [Int64: Int] = [:]
         for template in input.templates {
             templateCounts[template.clientID, default: 0] += 1
@@ -129,7 +126,7 @@ nonisolated enum ClientsBuilder {
         let received = input.clients.reduce(Int64(0)) { sum, client in
             sum + (input.figures[client.id]?.receivedHalere ?? 0)
         }
-        let selected = input.selectedClientID.flatMap { id in input.clients.first { $0.id == id } }
+        let selected = selectedClientID.flatMap { id in input.clients.first { $0.id == id } }
         return ClientsData(
             countText: counted(input.clients.count, one: "odběratel", few: "odběratelé", many: "odběratelů"),
             templatesText: " · " + counted(input.templates.count, one: "šablona", few: "šablony", many: "šablon")
@@ -155,7 +152,7 @@ nonisolated enum ClientsBuilder {
 
     /// The detail of `client` in `year`: what it did in the year (`figures`, nothing where there are none) and a panel
     /// for each of `templates`, its own, in their order.
-    static func detail(
+    private static func detail(
         of client: Client, year: Int, figures: ClientFigures?, templates: [InvoiceTemplate]
     ) -> ClientDetail {
         let figures = figures ?? ClientFigures(invoiceCount: 0, receivedHalere: 0, lastIssueDate: nil)

@@ -47,11 +47,9 @@ struct ClientsModelTests {
     private func builtDetail(
         of client: Client, templates: [InvoiceTemplate] = [], figures: ClientFigures? = nil, year: Int = 2026
     ) throws -> ClientDetail {
-        let data = ClientsBuilder.build(
-            ClientsInput(
-                year: year, clients: [client], templates: templates, figures: figures.map { [client.id: $0] } ?? [:],
-                selectedClientID: client.id))
-        return try #require(data.detail)
+        let input = ClientsInput(
+            year: year, clients: [client], templates: templates, figures: figures.map { [client.id: $0] } ?? [:])
+        return try #require(ClientsBuilder.build(input, selectedClientID: client.id).detail)
     }
 
     /// The only template panel of the detail of a client in crowns, with the VAT mode Tuzemsko 21 % and 14 days, that
@@ -443,19 +441,21 @@ struct ClientsModelTests {
         }
     }
 
-    /// A load that finds the selected client gone (deleted in another window, or by a restore) clears the selection; a
-    /// load that finds it keeps it.
+    /// A load that finds the selected client gone (deleted in another window, or by a restore) clears the selection,
+    /// and with it the detail; a load that finds it keeps it.
     @Test func theSelectionIsClearedWhenItsClientDisappears() async throws {
         try await ClientsFixture.with { f in
             let model = await loaded(f.app)
             model.click(f.bravoID)
             await model.load()
             #expect(model.selectedClientID == f.bravoID)
+            #expect(model.data?.detail?.id == f.bravoID)
 
             try await f.deleteClient(f.bravoID)
             await model.load()
 
             #expect(model.selectedClientID == nil)
+            #expect(model.data?.detail == nil)
             #expect(model.data?.rows.map(\.name) == ["Alfa Systems s.r.o."])
         }
     }

@@ -87,6 +87,11 @@ struct TemplateFormModelTests {
             #expect(
                 model.previewLine(ofItem: 0)
                     == "Náhled: Hosting October · {měsíc}, {rok}, {month} a {year} se doplní podle DUZP")
+
+            // A first item without a description previews as a dash, and the line still says what one may hold.
+            model.items[0].description = "  "
+            #expect(
+                model.previewLine(ofItem: 0) == "Náhled: — · {měsíc}, {rok}, {month} a {year} se doplní podle DUZP")
         }
     }
 
