@@ -123,19 +123,19 @@ struct ClientForm: View {
 
     // MARK: The buttons
 
+    /// The buttons of the sheet, the capsules of a dialog, 32 points high: Zrušit, which Esc presses, on the grey fill,
+    /// and Uložit odběratele in the accent, which Return presses, at the trailing end.
     private var footer: some View {
         HStack(spacing: 8) {
             Spacer()
             Button("Zrušit", action: cancel)
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
             Button("Uložit odběratele", action: save)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.isSaving)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
     }
 
     private func save() {

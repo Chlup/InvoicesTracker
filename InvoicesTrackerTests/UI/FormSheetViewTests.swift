@@ -252,6 +252,49 @@ struct FormSheetViewTests {
         }
     }
 
+    /// The buttons of the form of a client are the capsules of a dialog, as those of the other sheets are, 32 points
+    /// high: Zrušit on the grey fill and Uložit odběratele in the accent, at the trailing end. The form takes the focus
+    /// in a field, so the test takes its turn among the tests that type into a window (`whileTypingAlone`).
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theClientFormHasTheButtonsOfADialog(scheme: ColorScheme) async throws {
+        try await whileTypingAlone {
+            try await ClientsFixture.with { f in
+                let model = ClientFormModel(app: f.app, client: try await f.storedClient(f.bravoID))
+                let form = ClientForm(model: model, cancel: {}, saved: { _ in })
+
+                try await withHostedView(form, size: CGSize(width: 700, height: 900)) { window in
+                    window.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+                    try await withAccessibilityElements {
+                        try await waitUntil { accessibilityButton(labelled: "Uložit odběratele", in: window) != nil }
+                        try await layOut(window)
+                        @MainActor func frame(of label: String) throws -> CGRect {
+                            try #require(accessibilityButton(labelled: label, in: window)?.accessibilityFrame?())
+                        }
+
+                        for button in ["Zrušit", "Uložit odběratele"] {
+                            let height = try frame(of: button).height
+                            let off = (height - DesignMetrics.regularControlHeight).magnitude
+                            #expect(off < 0.5, "\(scheme): \(button) is \(height) points tall")
+                        }
+                        #expect(try frame(of: "Zrušit").maxX < frame(of: "Uložit odběratele").minX)
+
+                        let picture = try OffscreenPicture(of: window)
+                        let cancel = try pictureFrame(ofScreenFrame: frame(of: "Zrušit"), in: window)
+                        let save = try pictureFrame(ofScreenFrame: frame(of: "Uložit odběratele"), in: window)
+                        let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                        let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
+                        let onFill = picture.extent(near: fill, in: cancel.insetBy(dx: -2, dy: -2), by: 2)
+                        let inAccent = picture.extent(near: accent, in: save.insetBy(dx: -2, dy: -2), by: 2)
+                        #expect(onFill != nil, "\(scheme): Zrušit is not on the grey fill")
+                        #expect(inAccent != nil, "\(scheme): Uložit odběratele is not in the accent")
+                        let capsule = try #require(inAccent, "\(scheme): no accent capsule")
+                        #expect(abs(capsule.height - DesignMetrics.regularControlHeight) <= 1.5, "\(capsule)")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: The bank account of a template
 
     /// "Bankovní účet": the account that the invoices of the template print stands under the terms of the template (the
