@@ -201,7 +201,11 @@ discard_tag() {
 # object because an annotated tag replaced it, is someone else's now. A
 # published release with the tag would be left without it. A tag that is gone is
 # nothing to delete. A question that fails leaves the tag where it is and says
-# which question it was, and what the failed call printed is not an answer.
+# which question it was, and what the failed call printed is not an answer. The
+# delete follows the two answers, where the tag points and whether a published
+# release uses it, by one round trip, and GitHub has no conditional delete of a
+# ref, so a tag that is moved or a release that is published in exactly that
+# moment would still be deleted.
 discard_made_tag() {
   local status=0 tags="https://github.com/$REPO/tags"
   call_gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.type + ":" + .object.sha' || status=$?
@@ -260,12 +264,24 @@ call_gh() {
   return "$status"
 }
 
+# The three digits of the HTTP status that gh printed for the call that just
+# failed, and nothing when it printed none. This is the one place that reads the
+# status out of what gh printed: http_status, refused_by_github and
+# workflow_hint all go through it, so that they cannot disagree about it.
+http_status_code() {
+  local pattern='HTTP ([0-9]{3})'
+  if [[ $GH_ERR =~ $pattern ]]; then
+    echo "${BASH_REMATCH[1]}"
+  fi
+}
+
 # The HTTP status that gh printed for the call that just failed, as " (HTTP
 # 502)", and nothing when it printed none.
 http_status() {
-  local pattern='HTTP ([0-9]{3})'
-  if [[ $GH_ERR =~ $pattern ]]; then
-    echo " (HTTP ${BASH_REMATCH[1]})"
+  local code
+  code=$(http_status_code)
+  if [[ -n $code ]]; then
+    echo " (HTTP $code)"
   fi
 }
 
@@ -274,8 +290,7 @@ http_status() {
 # nothing. A failure without a status, such as a connection that was lost, and a
 # status of 5xx say nothing about whether GitHub did what it was asked.
 refused_by_github() {
-  local pattern='HTTP ([0-9]{3})'
-  [[ $GH_ERR =~ $pattern && ${BASH_REMATCH[1]} == 4* ]]
+  [[ $(http_status_code) == 4* ]]
 }
 
 # Stops after a gh call that failed in a way the script has no use for. The
@@ -283,6 +298,32 @@ refused_by_github() {
 # which may be the body of the response.
 fail_gh_call() {
   fail "gh $* failed$(http_status)"
+}
+
+# Prints the likely cause of the step that just failed, as one line of standard
+# error, when GitHub answered it with HTTP 404 or 403: GitHub refuses the
+# workflow's token a release or a tag of a commit that adds or changes files
+# under .github/workflows/ compared with the default branch, and it answers with
+# one of those two statuses. Any other status, and none at all, says nothing
+# about that rule and gets no line.
+workflow_hint() {
+  case $(http_status_code) in
+    403|404)
+      echo "GitHub answers 404 or 403 here when the built commit adds or changes files under .github/workflows/" \
+        "compared with the default branch, which the workflow's token may not publish. Merge the default branch" \
+        "into the branch, or land the workflow change there first, then run the release again." >&2
+      ;;
+  esac
+}
+
+# Stops as fail does, with the line of workflow_hint right after the one that
+# names the step: a call of workflow_hint before fail would print it first. Only
+# the create, the tag and the publish end here, the three steps that the rule can
+# make GitHub refuse.
+fail_with_workflow_hint() {
+  echo "error: $*" >&2
+  workflow_hint
+  exit 1
 }
 
 # A tag for a message: "none" for no tag, else the tag with every character
@@ -335,10 +376,11 @@ write_summary() {
 # build was made from, right before the publish. The commit is named here too,
 # so that a tag which has vanished again by the publish is made at it. A create
 # that fails is reported with its HTTP status and nothing else, because a
-# message that repeated the call would print the title. One that GitHub refused
-# with a status of 4xx made nothing, which CREATE_REFUSED records for the exit
-# trap. After any other failure, and after an answer that is no release ID,
-# GitHub may have made the draft all the same, and the exit trap deletes nothing.
+# message that repeated the call would print the title, and a 404 or 403 adds
+# the line of workflow_hint. One that GitHub refused with a status of 4xx made
+# nothing, which CREATE_REFUSED records for the exit trap. After any other
+# failure, and after an answer that is no release ID, GitHub may have made the
+# draft all the same, and the exit trap deletes nothing.
 create_draft() {
   local status=0 pattern='^[1-9][0-9]*$'
   call_gh api --method POST "repos/$REPO/releases" -f "tag_name=$TAG" -f "target_commitish=$COMMIT" \
@@ -347,7 +389,7 @@ create_draft() {
     if refused_by_github; then
       CREATE_REFUSED=true
     fi
-    fail "creating the draft release $TAG failed$(http_status)"
+    fail_with_workflow_hint "creating the draft release $TAG failed$(http_status)"
   fi
   [[ $GH_OUT =~ $pattern ]] || fail "the answer to creating the draft release $TAG has no release ID"
   RELEASE_ID=$GH_OUT
@@ -372,7 +414,7 @@ upload_asset() {
 # for the exit trap: a failure that is neither that refusal nor another one of
 # 4xx leaves it unknown, because it says nothing about whether GitHub did what
 # it was asked. A failure is reported with its HTTP status and nothing else of
-# what gh printed.
+# what gh printed, and a 404 or 403 adds the line of workflow_hint.
 make_tag() {
   local status=0
   TAG_STATE=unknown
@@ -387,14 +429,15 @@ make_tag() {
     if refused_by_github; then
       TAG_STATE=refused
     fi
-    fail "creating the git tag $TAG failed$(http_status)"
+    fail_with_workflow_hint "creating the git tag $TAG failed$(http_status)"
   fi
 }
 
-# Publishes the draft and marks it as the Latest release.
+# Publishes the draft and marks it as the Latest release. A failure is reported
+# with its HTTP status, and a 404 or 403 adds the line of workflow_hint.
 publish_release() {
   call_gh api --method PATCH "repos/$REPO/releases/$RELEASE_ID" -F draft=false -f make_latest=true --silent ||
-    fail "publishing the release $TAG failed$(http_status)"
+    fail_with_workflow_hint "publishing the release $TAG failed$(http_status)"
 }
 
 # --- the arguments and the environment ---------------------------------------

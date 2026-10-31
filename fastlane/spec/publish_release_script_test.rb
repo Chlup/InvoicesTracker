@@ -51,6 +51,13 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   TAG_DELETE_CALL = "api --method DELETE repos/Chlup/InvoicesTracker/git/refs/tags/v1.7.0-10 --silent"
   TAG_CLEANUP_CALLS = [TAG_POINTS_CALL, RELEASE_ON_TAG_CALL, TAG_DELETE_CALL].freeze
 
+  # The line that names the rule of workflow files after a step that GitHub answered with HTTP 404 or 403: one line of
+  # standard error, right after the line that names the step.
+  WORKFLOW_HINT = "GitHub answers 404 or 403 here when the built commit adds or changes files under " \
+                  ".github/workflows/ compared with the default branch, which the workflow's token may not publish. " \
+                  "Merge the default branch into the branch, or land the workflow change there first, then run the " \
+                  "release again."
+
   # What the fake answers unless a test says otherwise: no release and no tag yet, the Latest release is the one
   # the feed was made against, every write works, a release that is asked about is a draft, and the git tag the run
   # made points at the built commit and has no published release.
@@ -72,20 +79,23 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   # A stand-in for gh that answers the way the real tool does: `release view` says "release not found" for a release
   # that is not there, and a failed `gh api` call prints the body of the error on standard output and its status on
   # standard error. The fake knows one release, number 1001 (RELEASE_ID), which the create answers with. The
-  # create is answered from FAKE_GH_CREATE: ok, refused (HTTP 422), error (HTTP 502), answer:<text>, which prints the
-  # text although it is no release ID, or signal:<SIG>, which kills the script that called it, as a cancelled job does
-  # while gh runs, and then answers the ID. The uploads, the publish and the delete are answered from FAKE_GH_UPLOAD,
-  # FAKE_GH_PUBLISH and FAKE_GH_DELETE: ok or fail, and for the uploads and the publish signal:<SIG> too, which kills
-  # the script and then succeeds. The question whether the release is a draft is answered from FAKE_GH_IS_DRAFT: true,
-  # false, null (an answer that is none of the two), missing (HTTP 404), error, which prints true on standard output
-  # although the call fails, as a failed gh call may, or signal:<SIG>, which kills the script and then answers true.
-  # The calls about the git tag are answered from four variables. FAKE_GH_TAG_CREATE, the call that makes the tag: ok,
-  # exists (HTTP 422 with "Reference already exists"), refused (HTTP 422 with another message), error (HTTP 502) or
-  # signal:<SIG>, which kills the script and then succeeds. FAKE_GH_TAG_POINTS, the question where the tag points:
-  # commit (at the built commit, which the fake gets as FAKE_GH_COMMIT), moved (at another commit), annotated (at a tag
-  # object), missing (HTTP 404) or error (HTTP 502). FAKE_GH_RELEASE_ON_TAG, the question whether a published release
-  # has the tag: missing (HTTP 404), found or error (HTTP 502). FAKE_GH_TAG_DELETE: ok or fail (HTTP 500). A call or an
-  # answer it does not know ends with status 99, so a typo in a test cannot pass quietly.
+  # create is answered from FAKE_GH_CREATE: ok, refused (HTTP 422), not_found (HTTP 404), forbidden (HTTP 403 with
+  # "Resource not accessible by integration"), error (HTTP 502), dropped, which fails without any HTTP status, as a
+  # connection that is lost does, answer:<text>, which prints the text although it is no release ID, or signal:<SIG>,
+  # which kills the script that called it, as a cancelled job does while gh runs, and then answers the ID. The
+  # uploads, the publish and the delete are answered from FAKE_GH_UPLOAD, FAKE_GH_PUBLISH and FAKE_GH_DELETE: ok or
+  # fail, for the uploads and the publish not_found (HTTP 404) and signal:<SIG> too, which kills the script and then
+  # succeeds, and for the publish forbidden (HTTP 403) too. The question whether the release is a draft is answered
+  # from FAKE_GH_IS_DRAFT: true, false, null (an answer that is none of the two), missing (HTTP 404), error, which
+  # prints true on standard output although the call fails, as a failed gh call may, or signal:<SIG>, which kills the
+  # script and then answers true. The calls about the git tag are answered from four variables. FAKE_GH_TAG_CREATE,
+  # the call that makes the tag: ok, exists (HTTP 422 with "Reference already exists"), refused (HTTP 422 with another
+  # message), not_found (HTTP 404), forbidden (HTTP 403), error (HTTP 502) or signal:<SIG>, which kills the script and
+  # then succeeds. FAKE_GH_TAG_POINTS, the question where the tag points: commit (at the built commit, which the fake
+  # gets as FAKE_GH_COMMIT), moved (at another commit), annotated (at a tag object), missing (HTTP 404) or error
+  # (HTTP 502). FAKE_GH_RELEASE_ON_TAG, the question whether a published release has the tag: missing (HTTP 404),
+  # found or error (HTTP 502). FAKE_GH_TAG_DELETE: ok or fail (HTTP 500). A call or an answer it does not know ends
+  # with status 99, so a typo in a test cannot pass quietly.
   FAKE_GH = <<~'SH'
     #!/bin/sh
     printf '%s\n' "$*" >> "$FAKE_GH_LOG"
@@ -113,7 +123,10 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       case "$FAKE_GH_CREATE" in
         ok) echo 1001 ;;
         refused) http_error "Validation Failed" 422 ;;
+        not_found) http_error "Not Found" 404 ;;
+        forbidden) http_error "Resource not accessible by integration" 403 ;;
         error) http_error "Bad Gateway" 502 ;;
+        dropped) echo "error connecting to api.github.com" >&2 ; exit 1 ;;
         answer:*) printf '%s\n' "${FAKE_GH_CREATE#answer:}" ;;
         signal:*) kill -"${FAKE_GH_CREATE#signal:}" "$PPID" ; echo 1001 ;;
         *) unknown FAKE_GH_CREATE "$FAKE_GH_CREATE" ;;
@@ -123,6 +136,7 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       case "$FAKE_GH_UPLOAD" in
         ok) ;;
         fail) http_error "Bad Gateway" 502 ;;
+        not_found) http_error "Not Found" 404 ;;
         signal:*) kill -"${FAKE_GH_UPLOAD#signal:}" "$PPID" ;;
         *) unknown FAKE_GH_UPLOAD "$FAKE_GH_UPLOAD" ;;
       esac
@@ -131,6 +145,8 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       case "$FAKE_GH_PUBLISH" in
         ok) ;;
         fail) http_error "Server Error" 500 ;;
+        not_found) http_error "Not Found" 404 ;;
+        forbidden) http_error "Resource not accessible by integration" 403 ;;
         signal:*) kill -"${FAKE_GH_PUBLISH#signal:}" "$PPID" ;;
         *) unknown FAKE_GH_PUBLISH "$FAKE_GH_PUBLISH" ;;
       esac
@@ -156,6 +172,8 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         ok) ;;
         exists) http_error "Reference already exists" 422 ;;
         refused) http_error "Object does not exist" 422 ;;
+        not_found) http_error "Not Found" 404 ;;
+        forbidden) http_error "Resource not accessible by integration" 403 ;;
         error) http_error "Bad Gateway" 502 ;;
         signal:*) kill -"${FAKE_GH_TAG_CREATE#signal:}" "$PPID" ;;
         *) unknown FAKE_GH_TAG_CREATE "$FAKE_GH_TAG_CREATE" ;;
@@ -535,6 +553,26 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     end
   end
 
+  # A create that fails without any HTTP status, such as a connection that was lost, says nothing about whether GitHub
+  # did what it was asked, unlike one that GitHub refused. The script cannot tell a draft that this run made from one of
+  # the same tag that someone else made, so it deletes nothing and says where to look, and never that no draft was made.
+  def test_a_create_that_fails_without_a_status_is_ambiguous
+    with_scratch do |scratch|
+      write_feed(scratch)
+
+      stdout, stderr, status = publish(scratch, answers: { "FAKE_GH_CREATE" => "dropped" })
+
+      assert_equal 1, status.exitstatus
+      assert_equal [*CHECKS, create_call(scratch)], calls(scratch)
+      assert_includes stderr.lines(chomp: true), "error: creating the draft release v1.7.0-10 failed"
+      assert_includes stderr, "GitHub may have made the draft release v1.7.0-10 all the same, so nothing was deleted"
+      assert_includes stderr, "https://github.com/Chlup/InvoicesTracker/releases"
+      refute_includes stdout, "so no draft was made"
+      refute_includes stdout, "Deleting"
+      assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+    end
+  end
+
   # Only an answer that is exactly a release ID counts. With any other, GitHub may have made the draft all the same,
   # and the script has no ID to name it by.
   def test_a_create_whose_answer_is_no_release_id_deletes_nothing
@@ -586,6 +624,7 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
       assert_includes stdout, "Deleted the draft release v1.7.0-10."
       refute_includes stdout, "Deleted the git tag"
       refute_includes stderr, "may have made the git tag"
+      refute_includes stdout + stderr, "so this run made no tag"
       assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
     end
   end
@@ -825,6 +864,82 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         assert_equal [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL], calls(scratch), answer
         refute_includes stdout, "Deleted the git tag", answer
         refute_includes stderr, "git tag", answer
+      end
+    end
+  end
+
+  # GitHub refuses the workflow's token a release or a tag of a commit that adds or changes files under
+  # .github/workflows/ compared with the default branch, and answers HTTP 404 or 403 (the second with "Resource not
+  # accessible by integration"). So the create, the tag and the publish add one line that names that rule as the likely
+  # cause when GitHub answers one of the two, right after the line that names the step. Nothing of what gh printed is
+  # quoted, and what is cleaned up is what any other refusal of the step cleans up.
+  def test_a_404_or_403_names_the_workflow_files_rule
+    steps = {
+      "the create" => {
+        variable: "FAKE_GH_CREATE", failure: "creating the draft release v1.7.0-10 failed",
+        calls: ->(scratch) { [*CHECKS, create_call(scratch)] },
+        stdout: ["GitHub refused to create the release v1.7.0-10, so no draft was made."]
+      },
+      "the tag" => {
+        variable: "FAKE_GH_TAG_CREATE", failure: "creating the git tag v1.7.0-10 failed",
+        calls: ->(scratch) { [*CHECKS, *calls_to_make_the_tag(scratch), IS_DRAFT_CALL, DELETE_CALL] },
+        stdout: ["Deleted the draft release v1.7.0-10.",
+                 "GitHub refused to create the git tag v1.7.0-10, so this run made no tag."]
+      },
+      "the publish" => {
+        variable: "FAKE_GH_PUBLISH", failure: "publishing the release v1.7.0-10 failed",
+        calls: ->(scratch) { [*CHECKS, *publish_calls(scratch), IS_DRAFT_CALL, DELETE_CALL, *TAG_CLEANUP_CALLS] },
+        stdout: ["Deleted the draft release v1.7.0-10.", "Deleted the git tag v1.7.0-10, which this run made."]
+      }
+    }
+    { "not_found" => 404, "forbidden" => 403 }.each do |answer, code|
+      steps.each do |step, expected|
+        label = "#{step} answered with #{answer}"
+        with_scratch do |scratch|
+          write_feed(scratch)
+
+          stdout, stderr, status = publish(scratch, answers: { expected[:variable] => answer })
+
+          assert_equal 1, status.exitstatus, label
+          assert_equal expected[:calls].call(scratch), calls(scratch), label
+          lines = stderr.lines(chomp: true)
+          failure = lines.index("error: #{expected[:failure]} (HTTP #{code})")
+          refute_nil failure, "#{label}: #{stderr}"
+          assert_equal WORKFLOW_HINT, lines[failure + 1], label
+          assert_includes stderr, "adds or changes files under .github/workflows/", label
+          expected[:stdout].each { |line| assert_includes stdout, line, label }
+          refute_includes stderr, "may have made", label
+          refute_includes stdout + stderr, "Resource not accessible", label
+          assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+        end
+      end
+    end
+  end
+
+  # Any other failure says nothing about the rule of workflow files, so none of them gets its line: a refusal of
+  # another kind (HTTP 422), a server that fails (HTTP 5xx), a connection that is lost (no status at all) and an
+  # upload, even one that GitHub answers with HTTP 404, because it is not one of the three steps. Each row names the
+  # line of its step, so that an answer of the fake that was not meant cannot make a row pass for nothing.
+  def test_other_failures_get_no_workflow_hint
+    [
+      [{ "FAKE_GH_CREATE" => "refused" }, "creating the draft release v1.7.0-10 failed (HTTP 422)"],
+      [{ "FAKE_GH_CREATE" => "error" }, "creating the draft release v1.7.0-10 failed (HTTP 502)"],
+      [{ "FAKE_GH_CREATE" => "dropped" }, "creating the draft release v1.7.0-10 failed"],
+      [{ "FAKE_GH_UPLOAD" => "fail" }, "uploading #{DMG_NAME} to the draft release v1.7.0-10 failed (HTTP 502)"],
+      [{ "FAKE_GH_UPLOAD" => "not_found" }, "uploading #{DMG_NAME} to the draft release v1.7.0-10 failed (HTTP 404)"],
+      [{ "FAKE_GH_TAG_CREATE" => "refused" }, "creating the git tag v1.7.0-10 failed (HTTP 422)"],
+      [{ "FAKE_GH_TAG_CREATE" => "exists" }, "the git tag v1.7.0-10 appeared after the checks"],
+      [{ "FAKE_GH_TAG_CREATE" => "error" }, "creating the git tag v1.7.0-10 failed (HTTP 502)"],
+      [{ "FAKE_GH_PUBLISH" => "fail" }, "publishing the release v1.7.0-10 failed (HTTP 500)"]
+    ].each do |answers, failure|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, stderr, status = publish(scratch, answers: answers)
+
+        assert_equal 1, status.exitstatus, answers.inspect
+        assert_includes stderr, "error: #{failure}", answers.inspect
+        refute_includes stdout + stderr, ".github/workflows/", answers.inspect
       end
     end
   end
