@@ -23,8 +23,28 @@ nonisolated struct PaymentOption: Equatable, Sendable {
     var value: String
 }
 
-/// The sheet "Označit jako uhrazenou": the day the money arrived, the income in crowns it is worth, what it adds to the
-/// levies of its year, and saving it.
+/// Why the payment by the method of the year is converted at a rate that stands in for the ČNB rate of its day (a
+/// provisional payment), as the option of the method says it.
+nonisolated enum PaymentStandIn: Equatable, Sendable {
+    /// The ČNB has not declared the rate of the day yet.
+    case notDeclaredYet
+
+    /// The ČNB has declared the rate of the day by now, and only the database lacks it: its yearly file could not be
+    /// downloaded.
+    case notDownloaded
+
+    /// The database has the rate of the day by now. The payment is the stored one, kept as it is, which was worked out
+    /// before the rate came; the app converts it again with the rate (`AppModel.ratesUpdated()`), not the sheet.
+    case rateCameSince
+}
+
+/// The sheet of the payment of an invoice: "Označit jako uhrazenou" for an invoice that has none, "Upravit platbu" for
+/// one that has a payment, which the sheet opens on. It shows the day the money arrived, the income in crowns it is
+/// worth and what it adds to the levies of its year, and saves it.
+///
+/// A stored payment is kept exactly as it is, with its rate, while the day, the choice between the method of the year
+/// and the amount from the bank, and that amount are as stored (`work(out:)`): the sheet shows it, and saving it writes
+/// nothing. Only another day, another choice or another amount works the payment out afresh.
 ///
 /// The income is converted by the method the year the money arrived in uses (`YearFXState.effective`): the ČNB rate of
 /// the day, or the uniform rate of the year when it is chosen and the year has it, unless the person says the bank
@@ -34,7 +54,8 @@ nonisolated struct PaymentOption: Equatable, Sendable {
 /// uniform rate of another currency it was paid in is converted at the ČNB rate of the day too, and the notice names
 /// that currency. An invoice that has no rate of its own (imported unpaid) is converted with the latest rate known on
 /// or before its DUZP when the rate of the day is not there yet, never at nothing. A rate of the day that the ČNB has
-/// declared but the database lacks (a past year whose file could not be downloaded) is asked for (`recompute()`).
+/// declared but the database lacks (a past year whose file could not be downloaded) is asked for when the payment is
+/// worked out afresh (`recompute()`).
 ///
 /// The day the money arrived lies between a year before the invoice was issued and today (`dateError`): a mistyped
 /// year would quietly move the income into another year.
@@ -51,7 +72,8 @@ final class PaymentSheetModel {
     var useBankCZK = false
     var bankCZKText = ""
 
-    /// The payment as it would be stored for the day and the choice, or nil while there is none to save.
+    /// The payment as it would be stored for the day and the choice, or nil while there is none to save. While the day,
+    /// the choice and the amount typed are as stored, it is the stored payment itself.
     private(set) var preview: Payment?
 
     /// What the payment adds to the levies of its year on its day.
@@ -66,20 +88,23 @@ final class PaymentSheetModel {
     /// What is wrong with the amount typed, or nil.
     private(set) var bankCZKError: String?
 
-    /// The payment by the method of the year, whichever is chosen, so that its option can show its value.
+    /// The payment by the method of the year, whichever is chosen, so that its option can show its value: the stored
+    /// payment while the day is the stored one and the stored payment is converted the way the year converts now.
     private(set) var methodPayment: Payment?
 
     /// The method the payment is converted with by the method of the year the money arrived in: the uniform rate when
     /// the year uses it and has it for the currency, otherwise the ČNB rate of the day.
     private(set) var method = IncomeFXMethod.cnbDaily
 
-    /// Whether the payment by the method of the year is worked out with a rate that stands in for the ČNB rate of the
-    /// day, which the database does not have.
-    private(set) var usesStandInRate = false
+    /// Why the payment by the method of the year is worked out with a rate that stands in for the ČNB rate of its day,
+    /// or nil when it is not.
+    private(set) var standIn: PaymentStandIn?
 
-    /// Whether the ČNB has declared the rate of the day by now and only the database lacks it (its yearly file could
-    /// not be downloaded), rather than the rate not being declared yet.
-    private(set) var rateIsNotDownloaded = false
+    /// Whether the payment by the method of the year is worked out with a rate that stands in for the ČNB rate of its
+    /// day: it is provisional (`standIn`).
+    var usesStandInRate: Bool {
+        standIn != nil
+    }
 
     /// The payment by the amount typed, when it is an amount.
     private var bankPayment: Payment?
@@ -120,10 +145,21 @@ final class PaymentSheetModel {
 
     // MARK: Texts
 
+    /// Whether the sheet changes the payment the invoice has already, rather than recording its first one.
+    var isEditing: Bool {
+        invoice.payment != nil
+    }
+
     /// The title of the sheet: "Označit jako uhrazenou", or "Upravit platbu" for an invoice that has a payment
     /// already, which the sheet opens on.
     var title: String {
-        invoice.payment == nil ? "Označit jako uhrazenou" : "Upravit platbu"
+        isEditing ? "Upravit platbu" : "Označit jako uhrazenou"
+    }
+
+    /// The label of the button that saves: "Označit jako uhrazenou", or "Uložit platbu" for an invoice that has a
+    /// payment already.
+    var saveTitle: String {
+        isEditing ? "Uložit platbu" : "Označit jako uhrazenou"
     }
 
     /// Why the day the money arrived cannot be saved, or nil when it can: it is after today (`AppModel.today`), or more
@@ -171,7 +207,9 @@ final class PaymentSheetModel {
 
     /// The method of the year: the ČNB rate of the day, or the uniform rate of the year. Nil for an invoice in crowns.
     /// The rate is written with the quantity it is quoted for, "6,220 Kč/100 HUF". While there is no payment worked out
-    /// with a rate, it says that the rate is not available yet.
+    /// with a rate, it says that the rate is not available yet. A rate that stands in for the rate of the day says so
+    /// and why (`standIn`): "kurz zatím nevyhlášen, předběžně 21,522 Kč/USD"; a stored payment kept as it is after the
+    /// rate of its day came says only "předběžně 21,522 Kč/USD", as the reason it was given no longer holds.
     var methodOption: PaymentOption? {
         guard !invoice.currency.isCZK else { return nil }
         let cnbTitle = "Kurz ČNB ke dni přijetí"
@@ -188,11 +226,11 @@ final class PaymentSheetModel {
         }
         let day = CzechFormat.date(payment.date)
         let detail: String
-        if usesStandInRate {
-            let why = rateIsNotDownloaded ? "kurz ČNB zatím není stažený" : "kurz zatím nevyhlášen"
-            detail = "\(day) · \(why), předběžně \(rateLabel)"
-        } else {
-            detail = "\(day) · \(rateLabel)"
+        switch standIn {
+        case .notDeclaredYet: detail = "\(day) · kurz zatím nevyhlášen, předběžně \(rateLabel)"
+        case .notDownloaded: detail = "\(day) · kurz ČNB zatím není stažený, předběžně \(rateLabel)"
+        case .rateCameSince: detail = "\(day) · předběžně \(rateLabel)"
+        case nil: detail = "\(day) · \(rateLabel)"
         }
         return PaymentOption(title: cnbTitle, detail: detail, value: value)
     }
@@ -205,9 +243,10 @@ final class PaymentSheetModel {
             value: bankPayment?.bankCZKTotalHalere.map { CzechFormat.halere($0) } ?? "—")
     }
 
-    /// "Odvody za rok 2026 vzrostou o".
+    /// The heading of what the payment adds to the levies of the year of the day in the sheet: "Odvody za rok 2026
+    /// vzrostou o", or "Dopad platby na odvody 2026" for an invoice that has a payment already.
     var effectHeading: String {
-        "Odvody za rok \(date.year) vzrostou o"
+        isEditing ? "Dopad platby na odvody \(date.year)" : "Odvody za rok \(date.year) vzrostou o"
     }
 
     /// "+1 702 Kč".
@@ -249,7 +288,8 @@ final class PaymentSheetModel {
     ///
     /// When the ČNB has declared the rate of the day but the database does not have it (the yearly file of a past year
     /// could not be downloaded), the yearly files that bring it are asked for, each once while the sheet is open, and
-    /// the payment is worked out again when they brought rates.
+    /// the payment is worked out again when they brought rates. A stored payment that is kept as it is needs no rate,
+    /// and nothing is asked for it.
     func recompute() async {
         recomputesStarted += 1
         let thisRun = recomputesStarted
@@ -263,8 +303,7 @@ final class PaymentSheetModel {
             preview = nil
             methodPayment = nil
             bankPayment = nil
-            usesStandInRate = false
-            rateIsNotDownloaded = false
+            standIn = nil
             notice = "Příjem se nepodařilo přepočítat."
             bankCZKError = nil
             effect = nil
@@ -276,8 +315,7 @@ final class PaymentSheetModel {
         methodPayment = worked.methodPayment
         bankPayment = worked.bankPayment
         method = worked.method
-        usesStandInRate = worked.usesStandInRate
-        rateIsNotDownloaded = worked.rateIsNotDownloaded
+        standIn = worked.standIn
         notice = worked.notice
         bankCZKError = worked.bankCZKError
         effect = worked.effect
@@ -297,22 +335,29 @@ final class PaymentSheetModel {
         return await Task { await refresh.fetchYears(new) }.value
     }
 
+    /// What `work(out:)` worked out for the date and the choices of one recomputation, which `recompute()` shows when
+    /// it is still the latest one.
     private struct Worked {
         var preview: Payment?
         var methodPayment: Payment?
         var bankPayment: Payment?
         var method: IncomeFXMethod
-        var usesStandInRate = false
-        var rateIsNotDownloaded = false
+        var standIn: PaymentStandIn?
 
         /// The yearly ČNB files that would bring the rate of the day, which the ČNB has declared and the database
-        /// lacks.
+        /// lacks, for a payment by the method of the year that is worked out afresh.
         var rateYears: [Int] = []
         var notice: String?
         var bankCZKError: String?
         var effect: ReceiptEffect?
     }
 
+    /// Works out the payment for `inputs` with the rates and the method of the year of its day, as the database has
+    /// them now: the payment by the method of the year, the one by the amount typed, which of them is the preview, the
+    /// notice and what the preview adds to the levies. The stored payment of the invoice is kept exactly as it is: as
+    /// the payment by the method while its day is the day of `inputs` and it is converted the way the year converts
+    /// now, and as the payment by the amount from the bank while that amount is the one typed. Throws what the
+    /// database throws, and `VaultError.locked` while the data is locked.
     private func work(out inputs: Inputs) async throws -> Worked {
         guard let database = app.database else { throw VaultError.locked }
         let day = inputs.date
@@ -366,19 +411,39 @@ final class PaymentSheetModel {
         } else {
             requested = worked.method == .uniform ? .uniform : .cnbDaily
         }
-        let byMethod = PaymentConverter.convert(
-            invoice: basis, date: day, requested: requested, bankCZKTotalHalere: nil, cnbRate: cnbRate,
-            uniformRate: uniformRate)
+        // The keep rule: the stored payment stays exactly as it is, with its rate, while its day is the day in the
+        // sheet and it is converted the way the year converts now; an amount from the bank stays while the amount
+        // typed is the one stored. A rate that stood in for the rate of the day stays too, even once that rate has
+        // come: the app converts the stored payment again then, not the sheet. Anything else is worked out afresh.
+        let storedOfTheDay = invoice.payment.flatMap { $0.date == day ? $0 : nil }
+        let keptByMethod = storedOfTheDay.flatMap { $0.conversion == requested ? $0 : nil }
+        let byMethod =
+            keptByMethod
+            ?? PaymentConverter.convert(
+                invoice: basis, date: day, requested: requested, bankCZKTotalHalere: nil, cnbRate: cnbRate,
+                uniformRate: uniformRate)
         let methodIsWorthNothing = isForeign && byMethod.rate == nil
         worked.methodPayment = methodIsWorthNothing ? nil : byMethod
-        worked.usesStandInRate = byMethod.provisional && !isDeclared
         // The ČNB rate of the day is what the method needs (the uniform rate needs none), and the ČNB has declared it
-        // by now: only the database lacks it, and the yearly files may bring it.
+        // by now: only the database lacks it, and the yearly files may bring it. A payment that is kept as it is needs
+        // no rate, so nothing is asked for it.
+        var rateIsNotDownloaded = false
         if isForeign, requested == .cnbDaily, case .notYetAvailable = cnbRate {
             let expected = RefreshPlanner.expectedNewestDeclaration(now: app.dependencies.clock.now())
             if CzechCalendar.rateDeclarationDay(for: day) <= expected {
-                worked.rateIsNotDownloaded = true
-                worked.rateYears = InvoiceRateFixing.yearsToFetch(duzp: day, expectedNewestDeclaration: expected)
+                rateIsNotDownloaded = true
+                if keptByMethod == nil {
+                    worked.rateYears = InvoiceRateFixing.yearsToFetch(duzp: day, expectedNewestDeclaration: expected)
+                }
+            }
+        }
+        // A payment worked out afresh is provisional only while the rate of the day is not declared; a stored one
+        // that is kept may be provisional once it is.
+        if byMethod.provisional {
+            if isDeclared {
+                worked.standIn = .rateCameSince
+            } else {
+                worked.standIn = rateIsNotDownloaded ? .notDownloaded : .notDeclaredYet
             }
         }
 
@@ -391,9 +456,13 @@ final class PaymentSheetModel {
                 case let halere? where halere <= 0:
                     worked.bankCZKError = "Zadejte částku větší než nula."
                 case let halere?:
-                    worked.bankPayment = PaymentConverter.convert(
-                        invoice: basis, date: day, requested: .bankCZK, bankCZKTotalHalere: halere, cnbRate: cnbRate,
-                        uniformRate: uniformRate)
+                    if let stored = storedOfTheDay, stored.conversion == .bankCZK, stored.bankCZKTotalHalere == halere {
+                        worked.bankPayment = stored
+                    } else {
+                        worked.bankPayment = PaymentConverter.convert(
+                            invoice: basis, date: day, requested: .bankCZK, bankCZKTotalHalere: halere,
+                            cnbRate: cnbRate, uniformRate: uniformRate)
+                    }
                 }
             }
         }
@@ -431,15 +500,18 @@ final class PaymentSheetModel {
 
     // MARK: Saving
 
-    /// Stores the payment on the invoice, tells the app of the write, shows the detail of the invoice and says so in a
-    /// banner. An invoice to check is resolved by it: the review flag goes, and an imported invoice is marked as
-    /// changed in the app, so that a later import keeps this version. A payment after the day shown moves the day shown
-    /// to it (within its year), so that it counts in what the screens show. The year of the payment, and the year of
-    /// the payment it replaces, are converted again by the method each uses then, as the payment may give them a
-    /// currency without the uniform rate, and a choice made while the sheet was open may have changed the method
-    /// (`AppModel.recomputePaymentsAfterChanges(inYears:)`).
+    /// Stores the payment on the invoice, tells the app of the write and shows the detail of the invoice, which shows
+    /// the payment; no banner says so. An invoice to check is resolved by it: the review flag goes, and an imported
+    /// invoice is marked as changed in the app, so that a later import keeps this version. The year of the payment,
+    /// and the year of the payment it replaces, are converted again by the method each uses then, as the payment may
+    /// give them a currency without the uniform rate, and a choice made while the sheet was open may have changed the
+    /// method (`AppModel.recomputePaymentsAfterChanges(inYears:)`).
     ///
-    /// The payment is saved in one call on the database, and only while the invoice is still as the sheet knows it.
+    /// The stored payment that the sheet keeps as it is, while the day, the choice and the amount typed are as stored
+    /// (`work(out:)`), changes nothing, and nothing is written: the database is not called, an imported invoice is not
+    /// marked as changed in the app, no year is converted again and the app is told of no write. The sheet just closes.
+    ///
+    /// A payment is saved in one call on the database, and only while the invoice is still as the sheet knows it.
     /// Throws `PaymentSheetError.dateOutOfRange` for a day that `dateError` refuses, `PaymentSheetError.noPayment`
     /// when there is no payment to save, `InvoiceError.notFound` when the invoice was deleted meanwhile (it is never
     /// brought back), `PaymentSheetError.invoiceChanged` when it was changed, and what the database throws.
@@ -451,10 +523,12 @@ final class PaymentSheetModel {
             await recompute()
         }
         guard let payment = preview else { throw PaymentSheetError.noPayment }
-        guard let database = app.database else { throw VaultError.locked }
         var updated = invoice
         updated.payment = payment
         updated.review = nil
+        // Nothing changed: the payment is the stored one, kept as it is, and the invoice has nothing to resolve.
+        guard updated != invoice else { return }
+        guard let database = app.database else { throw VaultError.locked }
         if case .imported(let fakturoidID, let fingerprint, _) = updated.source {
             updated.source = .imported(fakturoidID: fakturoidID, fingerprint: fingerprint, changedInApp: true)
         }
@@ -468,10 +542,6 @@ final class PaymentSheetModel {
         let years = Set([payment.date.year] + [invoice.payment?.date.year].compactMap { $0 })
         await app.recomputePaymentsAfterChanges(inYears: years)
         app.pendingDetailInvoiceID = invoice.id
-        if payment.date.year == app.asOf.year && payment.date > app.asOf.asOf {
-            app.pickAsOf(payment.date)
-        }
-        app.showBanner("Změny faktury \(invoice.number) jsou uložené.")
         await app.didWrite()
     }
 }
