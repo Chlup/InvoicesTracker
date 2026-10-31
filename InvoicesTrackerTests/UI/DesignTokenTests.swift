@@ -220,6 +220,23 @@ struct DesignTokenTests {
         }
     }
 
+    /// The colours of the design before V2, which the tokens replaced: the sets of the open row, of the text that asks
+    /// for attention, of the banner, of the charts, of the simulation, of the uniform rate and of the authorities.
+    private static let replacedColours = [
+        "AttentionTextColor", "BannerTextColor", "ChartIssuedColor", "ChartReceivedColor", "FutureDateBackgroundColor",
+        "NetIncomeColor", "SelectedRowColor", "SelectedRowEdgeColor", "SimulationBackgroundColor",
+        "SimulationTextColor", "UniformRateBackgroundColor", "UniformRateTextColor", "TaxColor", "SocialColor",
+        "HealthColor",
+    ]
+
+    @Test func theCatalogHoldsNoneOfTheColoursThatTheTokensReplaced() {
+        for name in Self.replacedColours {
+            #expect(
+                NSColor(named: NSColor.Name(name), bundle: .main) == nil,
+                "\(name) is still in the catalog, and a token has taken its place")
+        }
+    }
+
     @Test func thePaletteHandsOutEachTokenUnderItsOwnName() throws {
         #expect(Self.palette.count == 36)
         for entry in Self.palette {
