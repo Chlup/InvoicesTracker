@@ -496,6 +496,8 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     refute_includes JSON.generate(publish), "secrets.", "the publish job must not read a secret"
   end
 
+  # When a job is cancelled the runner signals only the entry process of the step, which is bash for a `run` step. The
+  # script cleans up after a signal, so it has to be that process: `exec` makes it replace the bash.
   def test_the_publish_job_runs_the_script_of_the_workflows_own_commit
     checkout = step_using("publish", "actions/checkout")
     download = step_using("publish", "actions/download-artifact")
@@ -504,7 +506,7 @@ class InvoicesTrackerReleaseWorkflowTest < Minitest::Test
     assert_equal "${{ github.sha }}", checkout.dig("with", "ref")
     assert_equal false, checkout.dig("with", "persist-credentials")
     assert_equal "release-feed", download.dig("with", "name")
-    assert_equal "Scripts/ci/publish-release.sh #{download.dig('with', 'path')}", publish.fetch("run").strip
+    assert_equal "exec Scripts/ci/publish-release.sh #{download.dig('with', 'path')}", publish.fetch("run").strip
     assert_equal({ "GH_TOKEN" => "${{ github.token }}" }, publish.fetch("env"))
     assert_equal %w[actions/checkout actions/download-artifact],
                  steps_of("publish").filter_map { |step| step["uses"]&.split("@")&.first }

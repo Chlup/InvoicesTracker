@@ -85,7 +85,9 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
   # which kills the script that called it, as a cancelled job does while gh runs, and then answers the ID. The
   # uploads, the publish and the delete are answered from FAKE_GH_UPLOAD, FAKE_GH_PUBLISH and FAKE_GH_DELETE: ok or
   # fail, for the uploads and the publish not_found (HTTP 404) and signal:<SIG> too, which kills the script and then
-  # succeeds, and for the publish forbidden (HTTP 403) too. The question whether the release is a draft is answered
+  # succeeds, for the uploads signals:<SIG>,<SIG> too, which kills the script with the first signal and then with the
+  # second before it succeeds, as a gh call does that is still running when the TERM of a cancelled job follows its
+  # INT, and for the publish forbidden (HTTP 403) too. The question whether the release is a draft is answered
   # from FAKE_GH_IS_DRAFT: true, false, null (an answer that is none of the two), missing (HTTP 404), error, which
   # prints true on standard output although the call fails, as a failed gh call may, or signal:<SIG>, which kills the
   # script and then answers true. The calls about the git tag are answered from four variables. FAKE_GH_TAG_CREATE,
@@ -138,6 +140,7 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
         fail) http_error "Bad Gateway" 502 ;;
         not_found) http_error "Not Found" 404 ;;
         signal:*) kill -"${FAKE_GH_UPLOAD#signal:}" "$PPID" ;;
+        signals:*) IFS=, ; for signal in ${FAKE_GH_UPLOAD#signals:} ; do kill -"$signal" "$PPID" ; done ;;
         *) unknown FAKE_GH_UPLOAD "$FAKE_GH_UPLOAD" ;;
       esac
     }
@@ -1052,8 +1055,35 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
 
   # A cancelled job gets INT and, some seconds later, TERM. The cleanup makes calls that take their time, so the
   # second signal comes while it runs, and it must not cut the cleanup short: the draft would be left behind. The run
-  # still ends with the status of the first signal.
+  # still ends with the status of the first signal. Each of HUP, INT and TERM comes as the second one, so that traps
+  # and a cleanup which ignore only two of them are cut short by the third.
   def test_a_second_signal_during_the_cleanup_does_not_cut_it_short
+    %w[HUP INT TERM].each do |signal|
+      skip "#{signal} is ignored in this environment, so no shell can trap it" if signal_ignored?(signal)
+    end
+
+    %w[HUP INT TERM].each do |second|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_UPLOAD" => "signal:INT",
+                                                              "FAKE_GH_IS_DRAFT" => "signal:#{second}" })
+
+        assert_equal 128 + Signal.list.fetch("INT"), status.exitstatus, "a second #{second}"
+        assert_equal [*CHECKS, create_call(scratch), upload_calls(scratch).first, IS_DRAFT_CALL, DELETE_CALL],
+                     calls(scratch), "a second #{second}"
+        assert_includes stdout, "Deleted the draft release v1.7.0-10.", "a second #{second}"
+        assert_empty Dir.children(scratch.tmp), "a second #{second}: the script must remove the files it made"
+      end
+    end
+  end
+
+  # A gh call that is still running when the TERM of a cancelled job follows its INT leaves both signals pending when
+  # it is done. Either may end the run, and the cleanup has to finish whichever it is. This checks that behaviour and
+  # cannot fail for the old traps, which did not ignore the signals before they exited. What those let through is a
+  # second signal that arrives after the first trap has started and before the cleanup ignores the signals, and no fake
+  # gh can time a signal to land there.
+  def test_two_signals_at_once_still_let_the_cleanup_finish
     %w[INT TERM].each do |signal|
       skip "#{signal} is ignored in this environment, so no shell can trap it" if signal_ignored?(signal)
     end
@@ -1061,14 +1091,37 @@ class InvoicesTrackerPublishReleaseScriptTest < Minitest::Test
     with_scratch do |scratch|
       write_feed(scratch)
 
-      stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_UPLOAD" => "signal:INT",
-                                                            "FAKE_GH_IS_DRAFT" => "signal:TERM" })
+      stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_UPLOAD" => "signals:INT,TERM" })
 
-      assert_equal 128 + Signal.list.fetch("INT"), status.exitstatus
+      assert_includes [130, 143], status.exitstatus
       assert_equal [*CHECKS, create_call(scratch), upload_calls(scratch).first, IS_DRAFT_CALL, DELETE_CALL],
                    calls(scratch)
       assert_includes stdout, "Deleted the draft release v1.7.0-10."
       assert_empty Dir.children(scratch.tmp), "the script must remove the files it made"
+    end
+  end
+
+  # The traps of the signals ignore all three before they exit, so a cleanup that a signal started has nothing left to
+  # ignore. A run that fails starts its cleanup without a signal, and a job that is cancelled while that runs must not
+  # cut it short either: the cleanup ignores the signals itself. The run still ends with the status of the failure.
+  def test_a_signal_during_the_cleanup_of_a_failed_run_does_not_cut_it_short
+    %w[HUP INT TERM].each do |signal|
+      skip "#{signal} is ignored in this environment, so no shell can trap it" if signal_ignored?(signal)
+    end
+
+    %w[HUP INT TERM].each do |signal|
+      with_scratch do |scratch|
+        write_feed(scratch)
+
+        stdout, _stderr, status = publish(scratch, answers: { "FAKE_GH_UPLOAD" => "fail",
+                                                              "FAKE_GH_IS_DRAFT" => "signal:#{signal}" })
+
+        assert_equal 1, status.exitstatus, "a #{signal}"
+        assert_equal [*CHECKS, create_call(scratch), upload_calls(scratch).first, IS_DRAFT_CALL, DELETE_CALL],
+                     calls(scratch), "a #{signal}"
+        assert_includes stdout, "Deleted the draft release v1.7.0-10.", "a #{signal}"
+        assert_empty Dir.children(scratch.tmp), "a #{signal}: the script must remove the files it made"
+      end
     end
   end
 

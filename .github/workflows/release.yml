@@ -269,7 +269,11 @@ jobs:
           name: release-feed
           path: feed
 
+      # When a job is cancelled the runner signals only the entry process of a step, which is bash for a `run` step: it
+      # sends SIGINT, SIGTERM if the process has not exited after 7500 ms, and 2500 ms later it kills the process tree.
+      # With `exec` the script replaces that bash and is the process that gets the signals, so its cleanup can run
+      # before the process tree is killed.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: Scripts/ci/publish-release.sh feed
+        run: exec Scripts/ci/publish-release.sh feed

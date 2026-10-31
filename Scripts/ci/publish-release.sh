@@ -94,7 +94,7 @@ fail() {
 # the status the run ends with. A cancelled job gets INT and, some seconds
 # later, TERM, and the trap for the second would end the script in the middle of
 # the cleanup, which makes several calls. So the cleanup ignores HUP, INT and
-# TERM from its first line, and runs to its end.
+# TERM right after it reads the status it ends with, and runs to its end.
 cleanup() {
   local status=$?
   trap '' HUP INT TERM
@@ -468,10 +468,17 @@ done
 
 # A signal, like the cancelling of the job, ends the script with the status a
 # shell gives for it, and the exit trap deals with the draft on the way out.
+# Each trap ignores all three signals before it exits. The cleanup ignores them
+# too, but only after it has read the status it ends with. A second signal, the
+# TERM that follows the INT of a cancelled job, say, can arrive in the gap
+# between the start of the first trap and the cleanup's own ignoring. Were the
+# signals not ignored first, its trap would run its own exit inside the cleanup
+# and end it in the middle. As it is, the signal is ignored, or its trap ignores
+# all three as well before it exits.
 trap cleanup EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'trap "" HUP INT TERM; exit 129' HUP
+trap 'trap "" HUP INT TERM; exit 130' INT
+trap 'trap "" HUP INT TERM; exit 143' TERM
 STDOUT_FILE=$(mktemp "${TMPDIR:-/tmp}/publish-release.XXXXXX")
 STDERR_FILE=$(mktemp "${TMPDIR:-/tmp}/publish-release.XXXXXX")
 
