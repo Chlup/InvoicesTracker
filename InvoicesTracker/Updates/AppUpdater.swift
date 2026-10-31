@@ -44,9 +44,22 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
         let updater = controller.updater
         let model = self.model
         let refresh: @Sendable (SPUUpdater, NSKeyValueObservedChange<Bool>) -> Void = { _, _ in
-            // Sparkle uses its updater on the main thread alone, so its changes are posted there.
-            MainActor.assumeIsolated {
-                model.refresh()
+            // Sparkle reports a change on the thread that makes it. It makes nearly all of them on the main thread: the
+            // start, the setters and the checks. The exception is the app's user defaults: Sparkle observes four of
+            // their keys (SUEnableAutomaticChecks, SUScheduledCheckInterval, SUAutomaticallyUpdate and
+            // SUSendProfileInfo) with plain key-value observation (`SUHost`, `SPUUpdaterSettings`), which calls through
+            // synchronously. A write of one of them from another thread therefore changes Sparkle's settings on that
+            // thread, and a write of SUEnableAutomaticChecks runs this handler there. On the main thread `model` reads
+            // the updater at once, which the start relies on. On any other thread it reads it in a task on the main
+            // actor, as `MainActor.assumeIsolated` would stop the app there.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    model.refresh()
+                }
+            } else {
+                Task { @MainActor in
+                    model.refresh()
+                }
             }
         }
         observations = [
