@@ -160,9 +160,26 @@ nonisolated struct InvoiceDeletionSummary: Sendable, Hashable {
     var lines: [String]
 }
 
+/// What the step of the payment sheet that removes the payment of an invoice says.
+nonisolated struct PaymentRemovalSummary: Sendable, Hashable {
+    /// "Odebrat platbu faktury 20260601?"
+    var title: String
+
+    /// "Bravo Labs, Inc. · zaplaceno 7. 7. 2026 · 13 720,00 USD": the client, the day of the payment and the amount
+    /// of the invoice with VAT, in its currency.
+    var subtitle: String
+
+    /// The number to type to confirm.
+    var number: String
+
+    /// What removing the payment does, one sentence each.
+    var lines: [String]
+}
+
 // MARK: - Builder
 
-/// Turns an invoice into the texts of its detail and of the dialog that deletes it.
+/// Turns an invoice into the texts of its detail, of the dialog that deletes it and of the step that removes its
+/// payment.
 nonisolated enum InvoiceDetailBuilder {
     static func build(_ input: InvoiceDetailInput) -> InvoiceDetail {
         let invoice = input.invoice
@@ -213,6 +230,33 @@ nonisolated enum InvoiceDetailBuilder {
         return InvoiceDeletionSummary(
             title: "Smazat fakturu \(invoice.number)?", subtitle: "\(invoice.client.name) · \(total)",
             number: invoice.number, lines: lines)
+    }
+
+    /// What the step of the payment sheet that removes the payment of `invoice` says: that the invoice will be unpaid
+    /// and editable again, what income of the year of the payment goes with it, and that a return or a report that
+    /// holds the payment has to be corrected too. `effect` is what the payment adds to the levies of its year, the
+    /// "Dopad na odvody" of the detail, for a payment that counts as income; without it the sentence about the income
+    /// leaves the levies out. The payment of an invoice that does not count as income (one to check) takes no income
+    /// away, so that sentence is left out; so is it, with the day in the sub-line, for an invoice without a payment.
+    static func paymentRemoval(of invoice: Invoice, effect: ReceiptEffect?) -> PaymentRemovalSummary {
+        var subtitle = invoice.client.name
+        var lines = ["Faktura bude znovu nezaplacená a půjde upravit."]
+        if let payment = invoice.payment {
+            subtitle += " · zaplaceno \(CzechFormat.date(payment.date))"
+            if countsAsIncome(invoice) {
+                var line =
+                    "Příjem za rok \(payment.date.year) klesne o \(CzechFormat.halere(payment.czkNetHalere))"
+                if let effect {
+                    line += " a odvody o \(CzechFormat.wholeKc(effect.total))"
+                }
+                lines.append(line + ".")
+            }
+        }
+        lines.append("Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.")
+        return PaymentRemovalSummary(
+            title: "Odebrat platbu faktury \(invoice.number)?",
+            subtitle: subtitle + " · " + money(invoice.totalMinor, invoice.currency), number: invoice.number,
+            lines: lines)
     }
 
     // MARK: What an effect says

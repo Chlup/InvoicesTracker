@@ -4,9 +4,11 @@ import SwiftUI
 
 /// Faktury: the choice of the invoices (the segment of the scope and the status chips, with the search field at the end
 /// of the same row), the line about the search, the card of the table with its summary row on top and the detail of the
-/// open invoice beside it, and the sheets that mark an invoice paid and show its PDF. A draft is issued from its detail
-/// in one click, without the editor, and the detail says why where it cannot be. Deleting an invoice is asked in a
-/// dialog inside the window, which the window shows (`AppModel.invoiceDeletion`) and which goes when the screen does.
+/// open invoice beside it, and the sheets that mark an invoice paid and show its PDF. The sheet of a payment the
+/// invoice has changes the payment, or removes it in a second step once the number of the invoice is typed; the detail
+/// stays on the invoice, unpaid again. A draft is issued from its detail in one click, without the editor, and the
+/// detail says why where it cannot be. Deleting an invoice is asked in a dialog inside the window, which the window
+/// shows (`AppModel.invoiceDeletion`) and which goes when the screen does.
 /// ⌘F focuses the search field (`AppModel.focusSearch()`), Esc or × clears it, and the text stays until it is cleared,
 /// also across screens and years. The toolbar is the shell's, the same on every screen, as are the title and the line
 /// under it. The data is loaded again whenever what it depends on changes.
@@ -60,7 +62,10 @@ struct InvoicesScreen: View {
                 MarkPaidSheet(
                     model: payment, timeZone: app.dependencies.timeZone(),
                     cancel: { paying = nil },
-                    saved: { paying = nil }
+                    saved: { paying = nil },
+                    removalSummary: { await model.paymentRemovalSummary(for: payment.invoice.id) },
+                    removePayment: { typed in try await model.removePayment(payment.invoice.id, typed: typed) },
+                    removed: { paying = nil }
                 )
                 .idleLockCover()
             }

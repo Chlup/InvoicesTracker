@@ -11,8 +11,13 @@ extension PaymentSheetModel: Identifiable {
 /// day the money arrived, with why it cannot be saved when it is out of range, how the income in crowns is worked out
 /// (the method of the year, or the amount the bank credited), the notice about a rate that is not published yet, and
 /// what the payment adds to the levies of its year. The footer has Zrušit and the button that saves at its trailing
-/// end; its leading end is the place of the way into removing a stored payment. The numbers and the texts are the
-/// model's (`PaymentSheetModel`); the sheet only shows them, in the colours and the type of the design.
+/// end, and, for a payment the invoice has, "Odebrat platbu…" at its leading end.
+///
+/// "Odebrat platbu…" takes the same sheet to its second step, which removes the payment: in a narrower sheet, what
+/// removing it does, in the red note of an error with the triangle of a warning, and the field where the number of the
+/// invoice is typed. Odebrat platbu is off until the number (or its digits) is typed, and Zpět, or Esc, goes back to
+/// the payment with what was typed in either step. The numbers and the texts are the model's (`PaymentSheetModel`);
+/// the sheet only shows them, in the colours and the type of the design.
 struct MarkPaidSheet: View {
     @Bindable var model: PaymentSheetModel
 
@@ -25,11 +30,46 @@ struct MarkPaidSheet: View {
     /// The payment was saved, or there was nothing to save: the payment is the stored one, kept as it is.
     let saved: () -> Void
 
-    /// Why the latest save failed, over the footer, until the next save starts.
+    /// What the removal step says about removing the payment the invoice has, read when "Odebrat platbu…" is pressed:
+    /// nil when there is no payment to remove, or it could not be read.
+    let removalSummary: () async -> PaymentRemovalSummary?
+
+    /// Removes the payment the invoice has if the text is the number of the invoice: true when it was removed. Throws
+    /// what the database throws.
+    let removePayment: (String) async throws -> Bool
+
+    /// The payment was removed.
+    let removed: () -> Void
+
+    /// Why the latest save, or the latest step towards removing the payment, failed, over the footer, until the next
+    /// one starts or the sheet goes to its other step.
     @State private var failure: String?
 
-    /// Whether the payment is being saved: the button that saves is off meanwhile.
+    /// Whether the payment is being saved: the button that saves, and the way into removing the payment, are off
+    /// meanwhile.
     @State private var isSaving = false
+
+    /// Whether what the removal step says is being read: the way into it, and the button that saves, are off
+    /// meanwhile.
+    @State private var isPreparingRemoval = false
+
+    /// Whether the payment is being removed: Odebrat platbu and Zpět are off meanwhile.
+    @State private var isRemoving = false
+
+    /// Whether the field of the number in the removal step has the focus, which it takes when the step opens.
+    @FocusState private var numberFocused: Bool
+
+    /// What the removal step says when nothing was removed: the number typed is not the invoice's, or the payment is
+    /// not there any more.
+    nonisolated static let removalRefusedText =
+        "Platbu se nepodařilo odebrat – číslo nesouhlasí nebo platba už neexistuje."
+
+    /// What the removal step says when removing the payment failed.
+    nonisolated static let removalFailedText = "Platbu se nepodařilo odebrat."
+
+    /// What the sheet says when the removal step cannot be shown: the payment could not be read, or is not there any
+    /// more.
+    nonisolated static let removalUnavailableText = "Platbu se nepodařilo načíst."
 
     /// What the payment depends on: the sheet works it out again whenever one of them changes.
     private struct Inputs: Hashable {
@@ -41,34 +81,17 @@ struct MarkPaidSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-            facts
-            if model.methodOption != nil {
-                foreignChoices
-            } else if let text = model.crownText {
-                Text(verbatim: text)
-                    .font(Typography.body)
-                    .foregroundStyle(Palette.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Palette.bgInset, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
+            if let removal = model.removal {
+                removalStep(removal)
+            } else {
+                paymentStep
             }
-            if model.effect != nil {
-                effectBox
-            }
-            if let failure {
-                Text(verbatim: failure)
-                    .font(Typography.body)
-                    .foregroundStyle(Palette.redText)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            footer
         }
         .padding(.top, 22)
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
-        .frame(width: 620)
+        // The removal step is a narrower sheet than the payment, as the design draws it.
+        .frame(width: model.removal == nil ? 620 : 520)
         .task(id: Inputs(date: model.date, useBankCZK: model.useBankCZK, bankCZKText: model.bankCZKText)) {
             await model.recompute()
         }
@@ -76,7 +99,8 @@ struct MarkPaidSheet: View {
 
     // MARK: Parts
 
-    /// The title, "Označit jako uhrazenou" or "Upravit platbu", and under it the invoice the payment is for.
+    /// The title, "Označit jako uhrazenou" or "Upravit platbu", and under it the invoice the payment is for; in the
+    /// removal step, its own title and the payment it removes.
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: model.title)
@@ -86,6 +110,44 @@ struct MarkPaidSheet: View {
             Text(verbatim: model.subtitle)
                 .font(Typography.body)
                 .foregroundStyle(Palette.text2)
+        }
+    }
+
+    /// The payment: the day and the amount, how the income in crowns is worked out (or, for an invoice in crowns, what
+    /// it is), what the payment adds to the levies, why the latest save failed, and the footer.
+    @ViewBuilder
+    private var paymentStep: some View {
+        facts
+        if model.methodOption != nil {
+            foreignChoices
+        } else if let text = model.crownText {
+            Text(verbatim: text)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.bgInset, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
+        }
+        if model.effect != nil {
+            effectBox
+        }
+        failureLine
+        footer
+    }
+
+    /// Why the latest save, or the latest step towards removing the payment, failed, at the trailing end over the
+    /// footer, in the red of text.
+    @ViewBuilder
+    private var failureLine: some View {
+        if let failure {
+            Text(verbatim: failure)
+                .font(Typography.body)
+                .foregroundStyle(Palette.redText)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
@@ -230,13 +292,14 @@ struct MarkPaidSheet: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The buttons at the end of the sheet. At the leading end `removal`; at the trailing end Zrušit, which Esc
-    /// presses, and the button that saves, "Označit jako uhrazenou" or "Uložit platbu", which Return presses and which
-    /// is off while there is no payment to save, the day cannot be saved or the payment is being saved. The buttons are
-    /// the capsules of a dialog, 32 points high.
+    /// The buttons at the end of the payment. At the leading end the way into removing a payment the invoice has
+    /// (`removalLink`); at the trailing end Zrušit, which Esc presses, and the button that saves, "Označit jako
+    /// uhrazenou" or "Uložit platbu", which Return presses and which is off while there is no payment to save, the day
+    /// cannot be saved, the payment is being saved or the removal step is being prepared. The buttons are the capsules
+    /// of a dialog, 32 points high.
     private var footer: some View {
         HStack(spacing: 8) {
-            removal
+            removalLink
             Spacer(minLength: 0)
             Button("Zrušit", action: cancel)
                 .buttonStyle(CapsuleButtonStyle(.secondary))
@@ -244,16 +307,72 @@ struct MarkPaidSheet: View {
             Button(model.saveTitle, action: save)
                 .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
-                .disabled(model.preview == nil || model.dateError != nil || isSaving)
+                .disabled(model.preview == nil || model.dateError != nil || isSaving || isPreparingRemoval)
         }
         .padding(.top, 4)
     }
 
-    /// The leading end of the footer, the place of the way into removing a payment the invoice has. The sheet does not
-    /// remove a payment, so the place is empty.
+    /// "Odebrat platbu…", the way into removing a payment the invoice has, at the leading end of the footer: a link in
+    /// the red of text, as the way into what cannot be undone is, with no key of its own. It is there only for a
+    /// payment the invoice has, and is off while the payment is being saved or the removal step is being prepared.
     @ViewBuilder
-    private var removal: some View {
-        EmptyView()
+    private var removalLink: some View {
+        if model.isEditing {
+            Button("Odebrat platbu…", action: openRemovalStep)
+                .buttonStyle(TextLinkButtonStyle(.destructive))
+                .font(Typography.body)
+                .disabled(isSaving || isPreparingRemoval)
+        }
+    }
+
+    // MARK: The removal step
+
+    /// The removal step: what removing the payment does, in the red note of an error with the triangle of a warning;
+    /// the field where the number of the invoice is typed to confirm, which has the focus when the step opens and is
+    /// framed in red once the number matches, and where Return removes the payment as Odebrat platbu does; why the
+    /// latest removal failed; and the footer.
+    @ViewBuilder
+    private func removalStep(_ summary: PaymentRemovalSummary) -> some View {
+        Note(.error, icon: .warning, title: "Jen pro opravu omylu.", text: summary.lines.joined(separator: "\n"))
+        VStack(alignment: .leading, spacing: 6) {
+            let number = Text(verbatim: summary.number).font(Typography.bodySemibold).monospacedDigit()
+            Text("Pro potvrzení napište číslo faktury \(number)")
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
+            TextField("Číslo faktury", text: $model.typedNumber)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .monospacedDigit()
+                .autocorrectionDisabled()
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
+                        .strokeBorder(Palette.red, lineWidth: model.typedNumberMatches ? 1.5 : 0)
+                )
+                .focused($numberFocused)
+                .onSubmit(removePaymentIfConfirmed)
+                .onAppear {
+                    numberFocused = true
+                }
+        }
+        failureLine
+        removalFooter
+    }
+
+    /// The buttons at the end of the removal step, at its trailing end: Zpět, which Esc presses and which goes back to
+    /// the payment, and Odebrat platbu in solid red, which is off until the number of the invoice is typed. Both are
+    /// off while the payment is being removed.
+    private var removalFooter: some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            Button("Zpět", action: backToPayment)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
+                .keyboardShortcut(.cancelAction)
+                .disabled(isRemoving)
+            Button("Odebrat platbu", action: removePaymentIfConfirmed)
+                .buttonStyle(CapsuleButtonStyle(.destructiveConfirm))
+                .disabled(!model.typedNumberMatches || isRemoving)
+        }
+        .padding(.top, 4)
     }
 
     // MARK: Actions
@@ -272,6 +391,48 @@ struct MarkPaidSheet: View {
                 failure = PaymentSheetModel.failureText(for: error)
             }
             isSaving = false
+        }
+    }
+
+    /// "Odebrat platbu…": reads what the removal step says about the payment as it is stored now (`removalSummary`)
+    /// and shows the step, or says that the payment could not be read.
+    private func openRemovalStep() {
+        failure = nil
+        isPreparingRemoval = true
+        Task {
+            if let summary = await removalSummary() {
+                model.showRemoval(summary)
+            } else {
+                failure = Self.removalUnavailableText
+            }
+            isPreparingRemoval = false
+        }
+    }
+
+    /// Zpět, or Esc, in the removal step: the payment again, as it was typed.
+    private func backToPayment() {
+        failure = nil
+        model.showPayment()
+    }
+
+    /// Odebrat platbu, or Return in the field of the number: once the number of the invoice is typed, removes the
+    /// payment (`removePayment`) and closes the sheet, or says why nothing was removed, which is logged when it failed.
+    private func removePaymentIfConfirmed() {
+        guard model.typedNumberMatches, !isRemoving else { return }
+        failure = nil
+        isRemoving = true
+        Task {
+            do {
+                if try await removePayment(model.typedNumber) {
+                    removed()
+                } else {
+                    failure = Self.removalRefusedText
+                }
+            } catch {
+                AppModel.log("Removing a payment", failedWith: error)
+                failure = Self.removalFailedText
+            }
+            isRemoving = false
         }
     }
 

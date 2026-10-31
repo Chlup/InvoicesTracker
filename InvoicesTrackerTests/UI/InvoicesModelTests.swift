@@ -3,9 +3,10 @@ import Testing
 @testable import InvoicesTracker
 
 /// The model of Faktury: what it loads for the selected year, scope, status chip and search; when the detail opens and
-/// when it closes, also on the arrow keys of the table; the other-year links; and deleting an invoice with its number
-/// typed. The data is the sample year 2026 with invented clients and two invoices of 2025 for Alfa, in a temporary
-/// database; the app is as of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
+/// when it closes, also on the arrow keys of the table; the other-year links; and deleting an invoice, and removing its
+/// payment, with its number typed. The data is the sample year 2026 with invented clients and two invoices of 2025 for
+/// Alfa, in a temporary database; the app is as of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break
+/// space.
 @Suite(.settlesBackups)
 @MainActor
 struct InvoicesModelTests {
@@ -183,14 +184,16 @@ struct InvoicesModelTests {
 
     // MARK: The net income
 
-    /// Writes an income adjustment dated 30. 2. 2025, a day that does not exist, as a change of the data outside the
-    /// app could write it. The year 2025 finds it by its dates, so its levies cannot be worked out, and no other year
-    /// finds it.
-    private nonisolated func storeAnAdjustmentOfADayThatIsNone(in database: Database) async throws {
+    /// Writes an income adjustment dated 30. 2. of `year` (2025 unless a test says otherwise), a day that does not
+    /// exist, as a change of the data outside the app could write it. The year finds it by its dates, so its levies
+    /// cannot be worked out, and no other year finds it.
+    private nonisolated func storeAnAdjustmentOfADayThatIsNone(
+        of year: Int = 2025, in database: Database
+    ) async throws {
         try await database.write { connection in
             try connection.run(
                 "INSERT INTO income_adjustment(date, amount_halere, description) VALUES (?, ?, ?)",
-                [.text("2025-02-30"), .integer(5_000_000), .text("Mimo faktury")])
+                [.text("\(year)-02-30"), .integer(5_000_000), .text("Mimo faktury")])
         }
     }
 
@@ -1144,6 +1147,137 @@ struct InvoicesModelTests {
         let model = await loadedModel(of: app)
 
         #expect(try await model.deletionSummary(for: 999) == nil)
+    }
+
+    // MARK: Removing a payment
+
+    /// The payment of invoice 11 is removed with its number typed: the invoice is issued and unpaid again, its detail
+    /// stays open and shows it so at once, with the buttons of an unpaid invoice, and the banner says what happened.
+    @Test func removingAPaymentLeavesTheDetailOpenWithTheNotice() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        model.click(11)
+        await model.load()
+        #expect(model.detail?.canEditPayment == true)
+        let versionBefore = app.dataVersion
+        let changesBefore = app.changeCount
+
+        let removed = try await model.removePayment(11, typed: "20260902")
+
+        #expect(removed)
+        #expect(model.openInvoiceID == 11)
+        #expect(
+            app.banner
+                == AppBanner(
+                    text: "Platba faktury 20260902 byla odebrána – faktura je znovu nezaplacená.", screen: .invoices))
+        #expect(app.dataVersion > versionBefore)
+        #expect(app.changeCount > changesBefore)
+        let database = try #require(app.database)
+        let stored = try #require(try await database.invoice(id: 11))
+        #expect(stored.status == .issued)
+        #expect(stored.payment == nil)
+        #expect(try await database.receipts(year: 2026).contains { $0.source == .invoice(11) } == false)
+        #expect(model.openInvoice == stored)
+        #expect(model.detail?.payment == nil)
+        #expect(model.detail?.canPay == true)
+        #expect(model.detail?.canEdit == true)
+        #expect(model.detail?.canEditPayment == false)
+    }
+
+    @Test func aWrongNumberRemovesNoPayment() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        model.click(11)
+        await model.load()
+        let versionBefore = app.dataVersion
+
+        let removed = try await model.removePayment(11, typed: "20260901")
+
+        #expect(removed == false)
+        #expect(app.banner == nil)
+        #expect(app.dataVersion == versionBefore)
+        let database = try #require(app.database)
+        #expect(try await database.invoice(id: 11)?.payment != nil)
+        #expect(model.detail?.canEditPayment == true)
+    }
+
+    /// The payments of 2025 are in crowns, so converting the year again after the payment of 20250901 is removed
+    /// writes nothing: the removal is told to the app as a write of its own, once, which loads the screens again and
+    /// schedules the backups.
+    @Test func theRemovalIsAWriteOfItsOwnWhenTheYearHasNothingToConvertAgain() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        let versionBefore = app.dataVersion
+        let changesBefore = app.changeCount
+
+        #expect(try await model.removePayment(13, typed: "20250901"))
+
+        #expect(app.changeCount == changesBefore + 1)
+        #expect(app.dataVersion > versionBefore)
+        let database = try #require(app.database)
+        #expect(try await database.invoice(id: 13)?.payment == nil)
+        #expect(try await database.invoice(id: 14)?.payment != nil)
+    }
+
+    /// The step that removes the payment of invoice 11 names the payment and what removing it takes away: its income
+    /// and the 1 702 Kč it adds to the levies, the "Dopad na odvody" of its detail.
+    @Test func theRemovalSummaryNamesTheIncomeAndTheLevyDropOfThePayment() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+
+        let summary = try #require(await model.paymentRemovalSummary(for: 11))
+
+        #expect(summary.title == "Odebrat platbu faktury 20260902?")
+        #expect(
+            summary.subtitle == "Cetus Data s.r.o. · zaplaceno 15.\u{00A0}10.\u{00A0}2026 · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(summary.number == "20260902")
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 4\u{00A0}500,00\u{00A0}Kč a odvody o 1\u{00A0}702\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+        model.click(11)
+        await model.loadDetail()
+        #expect(model.detail?.payment?.effect?.total == "+1\u{00A0}702\u{00A0}Kč")
+    }
+
+    /// The draft 20261001 has no payment, and no invoice has the id 999: there is nothing to remove, and nothing is
+    /// said on the screen, as the sheet that asks says it.
+    @Test func thereIsNoRemovalSummaryWithoutAPaymentToRemove() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+
+        #expect(await model.paymentRemovalSummary(for: 12) == nil)
+        #expect(await model.paymentRemovalSummary(for: 999) == nil)
+        #expect(model.actionFailure == nil)
+    }
+
+    @Test func theRemovalSummaryLeavesTheLeviesOutWhenTheyCannotBeWorkedOut() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        try await storeAnAdjustmentOfADayThatIsNone(of: 2026, in: try #require(app.database))
+
+        let summary = try #require(await model.paymentRemovalSummary(for: 11))
+
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 4\u{00A0}500,00\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
     }
 
     // MARK: A load that fails

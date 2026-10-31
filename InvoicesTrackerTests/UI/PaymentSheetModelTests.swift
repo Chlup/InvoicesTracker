@@ -1367,3 +1367,60 @@ struct PaymentSheetModelTests {
         #expect(app.changeCount == changesBefore)
     }
 }
+
+/// The removal step of the payment sheet: "Odebrat platbu…" takes the sheet to it, with what removing the payment does
+/// (`PaymentRemovalSummary`), and Zpět takes the sheet back to the payment. The data is the sample year 2026 with
+/// invented clients, in a temporary database; the app is as of 17. 10. 2026. In every expected string `\u{00A0}` is the
+/// no-break space.
+@Suite(.settlesBackups)
+@MainActor
+struct PaymentSheetRemovalStepTests {
+    /// An app model on a new folder with the sample year stored, as of noon of 17. 10. 2026.
+    private func makeApp(in directory: URL) async throws -> AppModel {
+        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2026, 10, 17)))
+        try await startFresh(app)
+        try await SampleYear2026.store(in: try #require(app.database))
+        await app.didWriteAndBackUp()
+        return app
+    }
+
+    /// The sheet of the payment of invoice 11 shows the removal step with its title and sub-line in place of those of
+    /// the payment; Zpět takes it back to the payment with the day as it was typed, and the number typed in the step
+    /// stays for when the step is shown again. Only the number of the invoice, or its digits, matches.
+    @Test func theRemovalStepShowsItsSummaryAndZpetGoesBackToThePaymentAsItWasTyped() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        let invoice = try #require(try await database.invoice(id: 11))
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        await model.recompute()
+        #expect(model.removal == nil)
+        model.date = civilDate("2026-10-16")
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: nil)
+
+        model.showRemoval(summary)
+
+        #expect(model.removal == summary)
+        #expect(model.title == "Odebrat platbu faktury 20260902?")
+        #expect(
+            model.subtitle == "Cetus Data s.r.o. · zaplaceno 15.\u{00A0}10.\u{00A0}2026 · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(model.typedNumber.isEmpty)
+        #expect(model.typedNumberMatches == false)
+        model.typedNumber = "2026"
+        #expect(model.typedNumberMatches == false)
+
+        model.showPayment()
+
+        #expect(model.removal == nil)
+        #expect(model.title == "Upravit platbu")
+        #expect(model.subtitle == "Faktura 20260902 · Cetus Data s.r.o. · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(model.date == civilDate("2026-10-16"))
+        #expect(model.typedNumber == "2026")
+
+        model.showRemoval(summary)
+        #expect(model.typedNumber == "2026")
+        model.typedNumber = " 20260902 "
+        #expect(model.typedNumberMatches)
+    }
+}

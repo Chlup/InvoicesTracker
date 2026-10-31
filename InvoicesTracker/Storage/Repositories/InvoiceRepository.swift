@@ -272,6 +272,31 @@ extension Database {
         return number
     }
 
+    /// Removes the payment of the invoice with `id` when `typed` confirms its number (`DeleteConfirmation`: the number
+    /// or its digits): the invoice is issued and unpaid again, as it was before the payment, and its search document no
+    /// longer holds the payment. An invoice imported from Fakturoid is marked as changed in the app, as any change made
+    /// in the app marks it, so that the next import of the same export keeps it unpaid. Returns the invoice as it was,
+    /// with the payment that was removed, for its number and the year of the payment; nil when nothing was removed: no
+    /// invoice has the id, it has no payment, or the text typed is not its number.
+    ///
+    /// The number is checked and the payment removed in one call on the database, the search document in the same
+    /// transaction as the invoice (`saveInvoice(_:)`), so the payment that is removed is the one of the invoice whose
+    /// number was typed, however the screen got there, and a call that removes nothing writes nothing.
+    func removePayment(ofInvoice id: Int64, confirmedBy typed: String) throws -> Invoice? {
+        guard let invoice = try invoice(id: id), invoice.payment != nil,
+            DeleteConfirmation.matches(typed: typed, number: invoice.number)
+        else {
+            return nil
+        }
+        var unpaid = invoice
+        unpaid.payment = nil
+        if case .imported(let fakturoidID, let fingerprint, _) = unpaid.source {
+            unpaid.source = .imported(fakturoidID: fakturoidID, fingerprint: fingerprint, changedInApp: true)
+        }
+        try saveInvoice(unpaid)
+        return invoice
+    }
+
     /// How many drafts were issued in `year`, by the day of issue: what the Koncepty chip of Faktury counts, for its
     /// badge in the sidebar. A year outside the calendar has none.
     func draftCount(year: Int) throws -> Int {

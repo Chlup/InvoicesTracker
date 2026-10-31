@@ -3,8 +3,8 @@ import Observation
 
 /// The model of Faktury: loads what the screen shows for the selected year as of the day of "K datu", in the chosen
 /// scope, status chip and search, and turns it into view data (`InvoiceListBuilder`); keeps the detail of one invoice
-/// open or closed; issues a draft from its detail in one click, without the editor; and deletes an invoice once its
-/// number is typed.
+/// open or closed; issues a draft from its detail in one click, without the editor; and deletes an invoice, or removes
+/// its payment, once its number is typed.
 ///
 /// The money is as of the day of "K datu", but the status of an invoice is as of today, whatever year or day is shown:
 /// it drives the pill, the chips and their counts, the chosen chip and the detail with its buttons. A payment of
@@ -291,7 +291,8 @@ final class InvoicesModel {
     }
 
     /// What the payment of `invoice` adds to the levies of its year, or nil when that cannot be worked out: the figure
-    /// the dialog that deletes the invoice names (`deletionSummary(for:)`).
+    /// the dialog that deletes the invoice names (`deletionSummary(for:)`), and the step that removes its payment
+    /// (`paymentRemovalSummary(for:)`).
     private func effect(of payment: Payment, for invoice: Invoice) async -> ReceiptEffect? {
         let receipt = Receipt(
             day: payment.date, czkNetHalere: payment.czkNetHalere, czkVatHalere: payment.czkVatHalere,
@@ -428,6 +429,50 @@ final class InvoicesModel {
         await app.recomputePaymentsAfterChanges(inYears: Set([paymentYear].compactMap { $0 }))
         app.showBanner("Faktura \(number) byla smazána.")
         await app.didWrite()
+        return true
+    }
+
+    // MARK: Removing a payment
+
+    /// What the step of the payment sheet that removes the payment of the invoice with `id` says, read as the invoice
+    /// is stored now, with what its payment adds to the levies of its year: the figure the dialog that deletes the
+    /// invoice names, which is the "Dopad na odvody" of the detail, left out when it cannot be worked out. Nil when
+    /// there is nothing to remove: no invoice has the id, or it has no payment. The sheet that asks for it says so
+    /// itself, so the screen raises no alert of its own over the sheet. A failure to read the invoice is logged and
+    /// gives nil too.
+    func paymentRemovalSummary(for id: Int64) async -> PaymentRemovalSummary? {
+        do {
+            guard let database = app.database else { throw VaultError.locked }
+            guard let invoice = try await database.invoice(id: id), let payment = invoice.payment else { return nil }
+            var levies: ReceiptEffect?
+            if InvoiceDetailBuilder.countsAsIncome(invoice) {
+                levies = await effect(of: payment, for: invoice)
+            }
+            return InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: levies)
+        } catch {
+            AppModel.log("Preparing to remove a payment", failedWith: error)
+            return nil
+        }
+    }
+
+    /// Removes the payment of the invoice with `id` when `typed` is its number (or the digits of it), in one call on
+    /// the database (`Database.removePayment(ofInvoice:confirmedBy:)`): the invoice is issued and unpaid again, and can
+    /// be edited. The year of the payment is converted again by the method it uses then, as the payment may have been
+    /// its only one in a currency it has no uniform rate of (`AppModel.recomputePaymentsAfterChanges(inYears:)`); a
+    /// banner says what happened, the app is told of the write, which schedules the backups, and the detail stays open
+    /// on the invoice and shows it unpaid at once. Returns false and changes nothing when the text typed is not the
+    /// number, or the invoice is not there or has no payment. Throws `VaultError.locked` while the data is locked, and
+    /// what the database throws.
+    @discardableResult
+    func removePayment(_ id: Int64, typed: String) async throws -> Bool {
+        guard let database = app.database else { throw VaultError.locked }
+        guard let removed = try await database.removePayment(ofInvoice: id, confirmedBy: typed) else { return false }
+        await app.recomputePaymentsAfterChanges(inYears: Set([removed.payment?.date.year].compactMap { $0 }))
+        app.showBanner("Platba faktury \(removed.number) byla odebrána – faktura je znovu nezaplacená.")
+        await app.didWrite()
+        if openInvoiceID == id {
+            await loadDetail()
+        }
         return true
     }
 

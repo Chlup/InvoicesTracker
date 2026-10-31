@@ -42,6 +42,10 @@ nonisolated enum PaymentStandIn: Equatable, Sendable {
 /// one that has a payment, which the sheet opens on. It shows the day the money arrived, the income in crowns it is
 /// worth and what it adds to the levies of its year, and saves it.
 ///
+/// A payment the invoice has can be removed in a second step of the same sheet (`removal`), which "Odebrat platbu…"
+/// shows in place of the payment and Zpět leaves again, with what was typed in either kept; the step only asks for the
+/// number of the invoice (`typedNumber`), and the screen removes the payment.
+///
 /// A stored payment is kept exactly as it is, with its rate, while the day, the choice between the method of the year
 /// and the amount from the bank, and that amount are as stored (`work(out:)`): the sheet shows it, and saving it writes
 /// nothing. Only another day, another choice or another amount works the payment out afresh.
@@ -151,9 +155,12 @@ final class PaymentSheetModel {
     }
 
     /// The title of the sheet: "Označit jako uhrazenou", or "Upravit platbu" for an invoice that has a payment
-    /// already, which the sheet opens on.
+    /// already, which the sheet opens on; in the removal step, its own ("Odebrat platbu faktury 20260902?").
     var title: String {
-        isEditing ? "Upravit platbu" : "Označit jako uhrazenou"
+        if let removal {
+            return removal.title
+        }
+        return isEditing ? "Upravit platbu" : "Označit jako uhrazenou"
     }
 
     /// The label of the button that saves: "Označit jako uhrazenou", or "Uložit platbu" for an invoice that has a
@@ -189,9 +196,13 @@ final class PaymentSheetModel {
         CzechFormat.money(Money(minor: invoice.totalMinor, currency: invoice.currency))
     }
 
-    /// "Faktura 20260902 · Cetus Data s.r.o. · 5 445,00 Kč".
+    /// "Faktura 20260902 · Cetus Data s.r.o. · 5 445,00 Kč"; in the removal step, its own ("Cetus Data s.r.o. ·
+    /// zaplaceno 15. 10. 2026 · 5 445,00 Kč").
     var subtitle: String {
-        "Faktura \(invoice.number) · \(invoice.client.name) · \(totalText)"
+        if let removal {
+            return removal.subtitle
+        }
+        return "Faktura \(invoice.number) · \(invoice.client.name) · \(totalText)"
     }
 
     /// What an invoice in crowns is worth as income, and where its VAT goes. Nil for an invoice in a foreign currency.
@@ -279,6 +290,35 @@ final class PaymentSheetModel {
         case .dateOutOfRange(let text): return text
         case nil: return "Platbu se nepodařilo uložit."
         }
+    }
+
+    // MARK: The removal step
+
+    /// What the removal step says, while the sheet shows it in place of the payment: the step that removes the payment
+    /// the invoice has, which "Odebrat platbu…" opens (`showRemoval(_:)`) and Zpět closes (`showPayment()`). Nil while
+    /// the sheet shows the payment.
+    private(set) var removal: PaymentRemovalSummary?
+
+    /// The number typed in the removal step to confirm it. It stays while the sheet goes back to the payment and shows
+    /// the step again, and goes with the sheet.
+    var typedNumber = ""
+
+    /// Whether the number typed in the removal step is the number of the invoice, or the digits of it
+    /// (`DeleteConfirmation`): only then can Odebrat platbu remove the payment.
+    var typedNumberMatches: Bool {
+        DeleteConfirmation.matches(typed: typedNumber, number: removal?.number ?? invoice.number)
+    }
+
+    /// "Odebrat platbu…": the sheet shows the removal step, which says what `summary` says, with the number typed so
+    /// far.
+    func showRemoval(_ summary: PaymentRemovalSummary) {
+        removal = summary
+    }
+
+    /// Zpět, or Esc, in the removal step: the sheet shows the payment again, with the day, the choice and the amount as
+    /// they were typed.
+    func showPayment() {
+        removal = nil
     }
 
     // MARK: Working it out

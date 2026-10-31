@@ -4,10 +4,10 @@ import Testing
 
 /// How a year converts its income in other currencies: what it can use (`fxState(year:)`), the choice
 /// (`setFXMethod(_:year:)`), and the payments converted again whenever the method a year uses may have changed — a
-/// payment recorded, an invoice edited or deleted, an import. The data is invented, the ČNB rates of dollars and euros
-/// are those of the fixtures of 2025 and 2026, and the clock is at noon of 17. 10. 2026: 2026 is the current year,
-/// whose uniform rate is not published yet, and 2025 has the uniform rates that ship with the app (1 USD = 21,84 Kč,
-/// 1 EUR = 24,66 Kč). In every expected string `\u{00A0}` is the no-break space.
+/// payment recorded or removed, an invoice edited or deleted, an import. The data is invented, the ČNB rates of dollars
+/// and euros are those of the fixtures of 2025 and 2026, and the clock is at noon of 17. 10. 2026: 2026 is the current
+/// year, whose uniform rate is not published yet, and 2025 has the uniform rates that ship with the app (1 USD =
+/// 21,84 Kč, 1 EUR = 24,66 Kč). In every expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct AppModelFXTests {
@@ -336,6 +336,38 @@ struct AppModelFXTests {
         #expect(state.effective == .uniform && state.chosen == .uniform)
         let converted = try await payment(of: dollars.id, in: app)
         #expect(converted.conversion == .uniform && converted.czkNetHalere == 21_840_000)
+    }
+
+    /// The year set to the uniform rate has the rate of dollars and not of euros, so the payment in euros turned it to
+    /// the ČNB rates of the days. Once that payment is removed, the year has the rate of every currency it is paid in
+    /// again and is converted at it by itself, both payments in dollars included: the choice was kept.
+    @Test func removingTheLastPaymentInACurrencyTurnsTheYearBackToTheUniformRate() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        try await takeOutTheEuroRate(of: 2025, in: app)
+        let first = try await storePaid(
+            invoice("20251001", .usd, 1_000_000, issued: "2025-09-30"), on: "2025-10-02", in: app)
+        let second = try await storePaid(
+            invoice("20251101", .usd, 500_000, issued: "2025-10-31"), on: "2025-11-14", in: app)
+        #expect(await app.setFXMethod(.uniform, year: 2025) == .saved)
+        let euros = try await storeUnpaid(invoice("20251102", .eur, 200_000, issued: "2025-11-03"), in: app)
+        try await recordPayment(of: euros, on: "2025-11-10", in: app)
+        #expect(try await app.fxState(year: 2025).effective == .cnbDaily)
+        #expect(try await payment(of: first.id, in: app) == first.payment)
+        #expect(try await payment(of: second.id, in: app) == second.payment)
+
+        #expect(try await InvoicesModel(app: app).removePayment(euros.id, typed: euros.number))
+
+        #expect(try await database.invoice(id: euros.id)?.payment == nil)
+        let state = try await app.fxState(year: 2025)
+        #expect(state.effective == .uniform && state.chosen == .uniform)
+        // 10 000,00 USD and 5 000,00 USD at 21,84 Kč.
+        let converted = [try await payment(of: first.id, in: app), try await payment(of: second.id, in: app)]
+        #expect(converted.map(\.conversion) == [.uniform, .uniform])
+        #expect(converted.map(\.czkNetHalere) == [21_840_000, 10_920_000])
+        #expect(converted.allSatisfy { $0.rate == storedRate("USD", "21.84", declaredOn: "2025-12-31") })
     }
 
     @Test func anInvoiceEditedIntoACurrencyWithoutTheRateTurnsItsYearToDailyRates() async throws {

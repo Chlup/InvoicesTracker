@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// What the detail of an invoice in Faktury says, and what the dialog that deletes it lists as the consequences. In
-/// every expected string `\u{00A0}` is the no-break space.
+/// What the detail of an invoice in Faktury says, and what the dialog that deletes it and the step that removes its
+/// payment list as the consequences. In every expected string `\u{00A0}` is the no-break space.
 struct InvoiceDetailBuilderTests {
     // MARK: Helpers
 
@@ -941,5 +941,60 @@ struct InvoiceDetailBuilderTests {
                 == "Platba z 2.\u{00A0}10.\u{00A0}2026 přestane být příjmem: příjem za rok 2026 klesne o 305\u{00A0}726,75\u{00A0}Kč a odvody o 1\u{00A0}702\u{00A0}Kč."
         )
         #expect(summary.subtitle == "Bravo Labs, Inc. · 14\u{00A0}350,00\u{00A0}USD")
+    }
+
+    // MARK: Removing a payment
+
+    /// The invoice 20260601 of the sample year: 13 720,00 USD paid on 7. 7. 2026 at 21,050, which is 288 806,00 Kč of
+    /// income. The effect is an invented one; the step names only its total, in whole Kč.
+    @Test func theRemovalSummaryNamesWhatChanges() throws {
+        let invoice = try #require(SampleYear2026.invoices.first { $0.number == "20260601" })
+
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: effect(of: invoice, on: "2026-07-07"))
+
+        #expect(summary.title == "Odebrat platbu faktury 20260601?")
+        #expect(
+            summary.subtitle == "Bravo Labs, Inc. · zaplaceno 7.\u{00A0}7.\u{00A0}2026 · 13\u{00A0}720,00\u{00A0}USD")
+        #expect(summary.number == "20260601")
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 288\u{00A0}806,00\u{00A0}Kč a odvody o 1\u{00A0}702\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+
+        // Without the effect, the sentence about the income ends after the income.
+        let withoutEffect = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: nil)
+        #expect(
+            withoutEffect.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 288\u{00A0}806,00\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+    }
+
+    @Test func theRemovalNamesTheYearOfThePaymentAndTheCrownsOfAPaymentInCrowns() {
+        // Issued on 30. 9. 2026 and paid on 4. 1. 2027: the income of 2027 drops, without the VAT.
+        let invoice = crownInvoice(payment: .fixture(on: "2027-01-04"))
+
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: nil)
+
+        #expect(
+            summary.subtitle == "Alfa Systems s.r.o. · zaplaceno 4.\u{00A0}1.\u{00A0}2027 · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(summary.lines.contains("Příjem za rok 2027 klesne o 4\u{00A0}500,00\u{00A0}Kč."))
+    }
+
+    @Test func thePaymentOfAnInvoiceToCheckIsNotSaidToLowerTheIncome() {
+        // An invoice to check does not count: removing its payment takes nothing from the income of its year.
+        let invoice = crownInvoice(
+            review: ReviewFlag(reason: "neznámý stav faktury"), payment: .fixture(on: "2026-10-15"))
+
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: effect(of: invoice))
+
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
     }
 }
