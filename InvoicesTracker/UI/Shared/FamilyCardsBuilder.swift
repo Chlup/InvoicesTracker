@@ -2,7 +2,8 @@ import Foundation
 
 /// Where the cards of the family are shown: in Zálohy a odpočty, where the family is stored, or in the Simulátor, where
 /// it lives only in the simulation. The Simulátor leaves out what the tax return asks for, such as the proof of the
-/// other parent.
+/// other parent, and each screen's cards say what its own design says: the sentence of the rates, the card of a year
+/// without a child, and the names the cards are read under differ between the two.
 nonisolated enum FamilyCardsMode: Sendable, Hashable {
     case stored
     case simulation
@@ -16,10 +17,14 @@ nonisolated struct FamilyCardsContent: Sendable, Hashable {
 
 /// The card of the children.
 nonisolated struct ChildrenCardContent: Sendable, Hashable {
+    /// What VoiceOver reads the card under: "Děti" in Zálohy a odpočty, "Děti v simulaci" in the Simulátor.
+    var label: String
+
     /// Beside the title: what the children bring me for the year, "37 524 Kč za rok", while a child of mine counts.
     var total: String?
 
-    /// Under the title: for which months the benefit is, and the rates of the year.
+    /// Under the title: for which months the benefit is, and the rates of the year, which Zálohy a odpočty introduces
+    /// with "Sazba podle pořadí v domácnosti:" and the Simulátor does not.
     var rates: String
 
     /// A row for each child of the year, in the order of the family.
@@ -36,8 +41,15 @@ nonisolated struct ChildrenCardContent: Sendable, Hashable {
     /// a odpočty, which stores the family.
     var addNote: String?
 
-    /// What the card says while the year has no child.
+    /// What the card says while the year has no child: `noChildren` in Zálohy a odpočty, `noChildrenInSimulation` in
+    /// the Simulátor.
+    var emptyText: String
+
+    /// What the card of Zálohy a odpočty says while the year has no child.
     static let noChildren = "Zatím žádné dítě. Přidejte děti, které s vámi žijí ve společné domácnosti."
+
+    /// What the card of the Simulátor says while the year has no child.
+    static let noChildrenInSimulation = "Bez dětí. Přidejte je, nebo převezměte rodinu ze Záloh a odpočtů."
 
     /// "Jen pro simulaci – nic se neukládá.": what the card of the Simulátor says beside Přidat dítě.
     static let simulationNote = "Jen pro simulaci – nic se neukládá."
@@ -86,6 +98,10 @@ nonisolated struct ChildCardRow: Sendable, Hashable {
 
 /// The card of the spouse.
 nonisolated struct SpouseCardContent: Sendable, Hashable {
+    /// What VoiceOver reads the card under: "Manžel nebo manželka" in Zálohy a odpočty, "Manžel nebo manželka v
+    /// simulaci" in the Simulátor.
+    var label: String
+
     /// Beside the title: "24 840 Kč za rok" while the credit counts, "neuplatní se" while the spouse is claimed without
     /// it, and nil while the spouse is not claimed.
     var total: String?
@@ -112,11 +128,12 @@ nonisolated struct SpouseCardContent: Sendable, Hashable {
     /// For a claimed spouse: the months and the amount that result, or why nothing does.
     var result: String?
 
-    /// Under the field of the income: what counts in it.
+    /// Under the field of the income: what counts in it, the same in both screens. It is more exact than the shorter
+    /// sentence of the prototype, which has the person leave out all maintenance, the spouse's too, which counts.
     static let incomeNote =
         "Hrubé příjmy za celý rok: mzda, podnikání, nájem, důchod, nemocenská, peněžitá pomoc v mateřství,"
-        + " podpora v nezaměstnanosti. Nepočítá se rodičovský příspěvek, porodné, přídavek na dítě, stipendium ani"
-        + " výživné."
+        + " podpora v nezaměstnanosti, výživné pro manžela či manželku. Nepočítá se rodičovský příspěvek,"
+        + " porodné, přídavek na dítě, stipendium ani výživné na dítě."
 }
 
 /// The box of the spouse card about the children under three, from 2024.
@@ -140,9 +157,10 @@ nonisolated enum FamilyCardsBuilder {
     /// What the cards say about `family`, the family of a year, with the figures of `result`, the computation of the
     /// year with that family: its children in the same order, and its spouse. Every amount and every count of months is
     /// the engine's; the cards only put them into words. In the Simulátor (`mode`) the cards leave out what the tax
-    /// return asks for. `isWholeYear` says whether `result` counts all the income of the year, which grows no more: a
-    /// year that is over, shown as of its last day, and a simulation, which is always of a whole year. A bonus that
-    /// such income does not bring is not paid, rather than not paid yet.
+    /// return asks for and speak the words of its own design (`FamilyCardsMode`). `isWholeYear` says whether `result`
+    /// counts all the income of the year, which grows no more: a year that is over, shown as of its last day, and a
+    /// simulation, which is always of a whole year. A bonus that such income does not bring is not paid, rather than
+    /// not paid yet.
     static func content(
         family: FamilyYear, result: TaxResult, mode: FamilyCardsMode, isWholeYear: Bool
     ) -> FamilyCardsContent {
@@ -152,7 +170,7 @@ nonisolated enum FamilyCardsBuilder {
             "The result is the computation of the family: it has a credit for each of its children.")
         return FamilyCardsContent(
             children: children(of: family, result: result, mode: mode, isWholeYear: isWholeYear),
-            spouse: spouse(of: family, result: result))
+            spouse: spouse(of: family, result: result, mode: mode))
     }
 
     // MARK: The children
@@ -177,19 +195,24 @@ nonisolated enum FamilyCardsBuilder {
                     + " K přiznání se přikládá potvrzení jeho zaměstnavatele, nebo prohlášení na volném listu."
         }
         return ChildrenCardContent(
+            label: mode == .stored ? "Děti" : "Děti v simulaci",
             total: mine ? CzechFormat.wholeKc(result.family.childBenefit) + " za rok" : nil,
-            rates: ratesLine(result.rules), rows: rows, proofHint: proofHint,
+            rates: ratesLine(result.rules, mode: mode), rows: rows, proofHint: proofHint,
             bonusHint: bonusHint(result, isWholeYear: isWholeYear),
-            addNote: mode == .simulation ? ChildrenCardContent.simulationNote : nil)
+            addNote: mode == .simulation ? ChildrenCardContent.simulationNote : nil,
+            emptyText: mode == .stored ? ChildrenCardContent.noChildren : ChildrenCardContent.noChildrenInSimulation)
     }
 
     /// "Za každý měsíc, …": the rates of the year for a whole year, twelve times the monthly amounts of the rules.
-    private static func ratesLine(_ rules: TaxRules) -> String {
+    /// Zálohy a odpočty introduces them with "Sazba podle pořadí v domácnosti:", the Simulátor goes on with the first
+    /// child.
+    private static func ratesLine(_ rules: TaxRules, mode: FamilyCardsMode) -> String {
         let yearly = rules.childMonthly.map { CzechFormat.wholeKc($0 * 12) }
         guard yearly.count == 3 else { return "" }
-        return "Za každý měsíc, na jehož začátku s vámi dítě žilo a bylo vyživované, a za měsíc narození. Sazba podle"
-            + " pořadí v domácnosti: 1. dítě \(yearly[0]), 2. dítě \(yearly[1]), 3. a další \(yearly[2]) za rok, se"
-            + " ZTP/P dvojnásobek."
+        let introduction = mode == .stored ? " Sazba podle pořadí v domácnosti:" : ""
+        return "Za každý měsíc, na jehož začátku s vámi dítě žilo a bylo vyživované, a za měsíc narození."
+            + introduction + " 1. dítě \(yearly[0]), 2. dítě \(yearly[1]), 3. a další \(yearly[2]) za rok, se ZTP/P"
+            + " dvojnásobek."
     }
 
     /// The row of `member`, with its figures in `credit`.
@@ -250,7 +273,8 @@ nonisolated enum FamilyCardsBuilder {
 
     // MARK: The spouse
 
-    private static func spouse(of family: FamilyYear, result: TaxResult) -> SpouseCardContent {
+    private static func spouse(of family: FamilyYear, result: TaxResult, mode: FamilyCardsMode) -> SpouseCardContent {
+        let label = mode == .stored ? "Manžel nebo manželka" : "Manžel nebo manželka v simulaci"
         let rules = result.rules
         let year = result.year
         let monthly = rules.spouseCreditMonthly
@@ -260,8 +284,8 @@ nonisolated enum FamilyCardsBuilder {
         let incomeTitle = "Vlastní příjmy manžela / manželky za rok \(year)"
         guard let spouse = family.spouse, spouse.claim else {
             return SpouseCardContent(
-                total: nil, totalCounts: false, claimLine: claimLine, incomeTitle: incomeTitle, incomeStatus: nil,
-                incomeIsOverLimit: false, youngChild: nil, result: nil)
+                label: label, total: nil, totalCounts: false, claimLine: claimLine, incomeTitle: incomeTitle,
+                incomeStatus: nil, incomeIsOverLimit: false, youngChild: nil, result: nil)
         }
         let limit = CzechFormat.wholeKc(rules.spouseIncomeLimit)
         let isOverLimit = spouse.ownIncomeKc > rules.spouseIncomeLimit
@@ -288,7 +312,8 @@ nonisolated enum FamilyCardsBuilder {
                 + (isOverLimit ? " – příjmy jsou nad limitem." : " – žádný měsíc nesplňuje podmínky.")
         }
         return SpouseCardContent(
-            total: total, totalCounts: credits.spouseCredit > 0, claimLine: claimLine, incomeTitle: incomeTitle,
+            label: label, total: total, totalCounts: credits.spouseCredit > 0, claimLine: claimLine,
+            incomeTitle: incomeTitle,
             incomeStatus: isOverLimit ? "nad limitem \(limit) – slevu nejde uplatnit" : "do limitu \(limit)",
             incomeIsOverLimit: isOverLimit,
             youngChild: rules.spouseNeedsYoungChild ? youngChildNote(of: family, result: result) : nil,

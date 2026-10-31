@@ -6,7 +6,7 @@ import Testing
 /// The cards of the family, "Děti · daňové zvýhodnění" and "Manžel / manželka · sleva na dani", drawn off-screen in a
 /// light and in a dark window and read from their pixels: they are made of the parts of the design, which take their
 /// colours from the palette. The panels are found by their colour, which the cards use for nothing else; the words by
-/// the colour they are set in.
+/// the colour they are set in. One test shows the cards in a window, to read the labels they are read under.
 @MainActor
 struct FamilyCardsViewTests {
     // MARK: The family of the tests
@@ -25,21 +25,24 @@ struct FamilyCardsViewTests {
             amount: amount, hasAmount: hasAmount)
     }
 
-    /// The card of the children with the rows and the hint it is given.
+    /// The card of the children with the rows and the hint it is given, read under `label` and saying `emptyText`
+    /// while it has no row: those of Zálohy a odpočty unless told otherwise.
     private static func children(
-        rows: [ChildCardRow], proofHint: String? = nil, addNote: String? = nil
+        rows: [ChildCardRow], proofHint: String? = nil, addNote: String? = nil, label: String = "Děti",
+        emptyText: String = ChildrenCardContent.noChildren
     ) -> ChildrenCardContent {
         ChildrenCardContent(
-            total: rows.isEmpty ? nil : "15\u{00A0}204\u{00A0}Kč za rok", rates: "Za každý měsíc, na jehož začátku.",
-            rows: rows, proofHint: proofHint, bonusHint: nil, addNote: addNote)
+            label: label, total: rows.isEmpty ? nil : "15\u{00A0}204\u{00A0}Kč za rok",
+            rates: "Za každý měsíc, na jehož začátku.", rows: rows, proofHint: proofHint, bonusHint: nil,
+            addNote: addNote, emptyText: emptyText)
     }
 
-    /// The card of the spouse, with `youngChild` in its box and `total` beside its title.
+    /// The card of the spouse, with `youngChild` in its box and `total` beside its title, read under `label`.
     private static func spouse(
-        total: String, totalCounts: Bool, youngChild: YoungChildNote? = nil
+        total: String, totalCounts: Bool, youngChild: YoungChildNote? = nil, label: String = "Manžel nebo manželka"
     ) -> SpouseCardContent {
         SpouseCardContent(
-            total: total, totalCounts: totalCounts, claimLine: "24\u{00A0}840\u{00A0}Kč za rok.",
+            label: label, total: total, totalCounts: totalCounts, claimLine: "24\u{00A0}840\u{00A0}Kč za rok.",
             incomeTitle: "Vlastní příjmy manžela / manželky za rok 2026",
             incomeStatus: "do limitu 68\u{00A0}000\u{00A0}Kč", incomeIsOverLimit: false, youngChild: youngChild,
             result: "Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč")
@@ -137,14 +140,44 @@ struct FamilyCardsViewTests {
         #expect(empty.count(near: caption, in: inside(empty), by: 8) > 100, "\(scheme): the sentence")
     }
 
-    /// The note beside Přidat dítě in the Simulátor, that nothing is stored, is in the orange of text.
+    /// The note beside Přidat dítě in the Simulátor, that nothing is stored, is in the grey of captions, as the design
+    /// sets it beside the button, and not in the orange of text. It is at the end of the line of the button, the last
+    /// line of the card, which has the padding of 20 points under it.
     @Test(arguments: [ColorScheme.light, .dark])
-    func theNoteBesideAddingAChildIsInTheOrangeOfText(scheme: ColorScheme) throws {
+    func theNoteBesideAddingAChildIsInTheGreyOfCaptions(scheme: ColorScheme) throws {
         let simulated = Self.children(rows: [], addNote: ChildrenCardContent.simulationNote)
         let picture = try picture(of: simulated, in: scheme)
+        let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
         let orange = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
+        let line = CGRect(x: 200, y: picture.size.height - 52, width: picture.size.width - 220, height: 34)
 
-        #expect(picture.count(near: orange, in: inside(picture), by: 8) > 40, "\(scheme): not orange text")
+        #expect(picture.count(near: caption, in: line, by: 8) > 40, "\(scheme): the note is not a caption")
+        #expect(picture.count(near: orange, in: line, by: 8) == 0, "\(scheme): the note is orange text")
+    }
+
+    /// The cards are read under the label of their content, and the card of the children says the empty text of its
+    /// content while the year has no child: the words that each screen gives them. Here those of the Simulátor.
+    @Test func theCardsAreReadUnderTheLabelOfTheirContentAndSayItsEmptyText() async throws {
+        let children = Self.children(
+            rows: [], label: "Děti v simulaci", emptyText: ChildrenCardContent.noChildrenInSimulation)
+        let spouse = Self.spouse(total: "neuplatní se", totalCounts: false, label: "Manžel nebo manželka v simulaci")
+        let cards = VStack(spacing: 16) {
+            ChildrenCard(content: children, open: { _ in })
+            SpouseCard(
+                content: spouse, editing: FamilyEditingStub(),
+                income: SpouseIncomeInput(text: .constant("0"), message: nil, submit: {}))
+        }
+        .padding(24)
+
+        try await withHostedView(cards, size: CGSize(width: 700, height: 700)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Děti v simulaci", in: window) != nil }
+                #expect(frameOfCard(labelled: "Manžel nebo manželka v simulaci", in: window) != nil)
+                #expect(frameOfCard(labelled: "Děti", in: window) == nil)
+                #expect(showsText(ChildrenCardContent.noChildrenInSimulation, in: window))
+                #expect(!showsText(ChildrenCardContent.noChildren, in: window))
+            }
+        }
     }
 
     // MARK: The spouse

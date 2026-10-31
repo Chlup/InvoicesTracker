@@ -193,6 +193,7 @@ struct FamilyCardsBuilderTests {
         #expect(
             ChildrenCardContent.noChildren
                 == "Zatím žádné dítě. Přidejte děti, které s vámi žijí ve společné domácnosti.")
+        #expect(cards.children.emptyText == ChildrenCardContent.noChildren)
     }
 
     /// The box under the rows says what the benefit leaves after its credit: paid as a bonus, not paid because it is
@@ -263,6 +264,42 @@ struct FamilyCardsBuilderTests {
         #expect(cards.children.rows.map(\.amount) == ["—", "22\u{00A0}320\u{00A0}Kč"])
     }
 
+    /// The cards of the family speak the words of the screen they are on, each as that screen's own design says them
+    /// (`FamilyCardsMode`). The Simulátor has no "Sazba podle pořadí v domácnosti:" in the sentence of the rates, says
+    /// "Bez dětí. Přidejte je, nebo převezměte rodinu ze Záloh a odpočtů." for a year without a child, and its cards
+    /// are read as "… v simulaci"; Zálohy a odpočty has the longer sentence, "Zatím žádné dítě. …" and the plain names.
+    @Test func eachScreenSpeaksItsOwnWordsOnTheCardsOfTheFamily() throws {
+        let stored = try Self.content([Self.anna(), Self.tomas()])
+        let simulated = try Self.content([Self.anna(), Self.tomas()], mode: .simulation)
+        let emptyStored = try Self.content([], spouse: nil)
+        let emptySimulated = try Self.content([], spouse: nil, mode: .simulation)
+
+        #expect(
+            stored.children.rates
+                == "Za každý měsíc, na jehož začátku s vámi dítě žilo a bylo vyživované, a za měsíc narození. Sazba"
+                + " podle pořadí v domácnosti: 1. dítě 15\u{00A0}204\u{00A0}Kč, 2. dítě 22\u{00A0}320\u{00A0}Kč, 3. a"
+                + " další 27\u{00A0}840\u{00A0}Kč za rok, se ZTP/P dvojnásobek.")
+        #expect(
+            simulated.children.rates
+                == "Za každý měsíc, na jehož začátku s vámi dítě žilo a bylo vyživované, a za měsíc narození. 1. dítě"
+                + " 15\u{00A0}204\u{00A0}Kč, 2. dítě 22\u{00A0}320\u{00A0}Kč, 3. a další 27\u{00A0}840\u{00A0}Kč za"
+                + " rok, se ZTP/P dvojnásobek.")
+        #expect(
+            ChildrenCardContent.noChildrenInSimulation
+                == "Bez dětí. Přidejte je, nebo převezměte rodinu ze Záloh a odpočtů.")
+        #expect(emptyStored.children.emptyText == ChildrenCardContent.noChildren)
+        #expect(emptySimulated.children.emptyText == ChildrenCardContent.noChildrenInSimulation)
+        #expect(stored.children.label == "Děti")
+        #expect(simulated.children.label == "Děti v simulaci")
+        #expect(stored.spouse.label == "Manžel nebo manželka")
+        #expect(simulated.spouse.label == "Manžel nebo manželka v simulaci")
+        // A spouse who is not claimed has the same label as one who is.
+        let unclaimed = try Self.content([Self.anna()], spouse: Self.spouse(claim: false), mode: .simulation)
+        #expect(unclaimed.spouse.label == "Manžel nebo manželka v simulaci")
+        // What both screens say alike is not touched: the note of what counts in the income stays the app's.
+        #expect(stored.spouse.claimLine == simulated.spouse.claimLine)
+    }
+
     /// The Simulátor says beside Přidat dítě that nothing of its family is stored, with children or without; Zálohy
     /// a odpočty, which stores the family, says nothing there.
     @Test func theSimulationSaysBesideTheButtonThatNothingIsStored() throws {
@@ -299,8 +336,8 @@ struct FamilyCardsBuilderTests {
         #expect(
             SpouseCardContent.incomeNote
                 == "Hrubé příjmy za celý rok: mzda, podnikání, nájem, důchod, nemocenská, peněžitá pomoc v mateřství,"
-                + " podpora v nezaměstnanosti. Nepočítá se rodičovský příspěvek, porodné, přídavek na dítě, stipendium"
-                + " ani výživné.")
+                + " podpora v nezaměstnanosti, výživné pro manžela či manželku. Nepočítá se rodičovský příspěvek,"
+                + " porodné, přídavek na dítě, stipendium ani výživné na dítě.")
     }
 
     /// The own income may be 68 000 Kč at most.

@@ -21,7 +21,7 @@ struct ChildrenCard: View {
     let open: (FamilyChild?) -> Void
 
     var body: some View {
-        Card(spacing: 0, label: "Děti") {
+        Card(spacing: 0, label: content.label) {
             FamilyCardHeader(title: "Děti · daňové zvýhodnění", total: content.total, totalCounts: true)
             Text(verbatim: content.rates)
                 .font(Typography.callout)
@@ -37,7 +37,7 @@ struct ChildrenCard: View {
             }
             if content.rows.isEmpty {
                 Hairline()
-                Text(verbatim: ChildrenCardContent.noChildren)
+                Text(verbatim: content.emptyText)
                     .font(Typography.body)
                     .foregroundStyle(Palette.text3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -89,12 +89,11 @@ struct ChildrenCard: View {
         .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
     }
 
-    /// The note beside Přidat dítě, in callout and the orange of text, which is the colour of what is only a
-    /// simulation.
+    /// The note beside Přidat dítě, in callout and the grey of captions, as the design of the Simulátor sets it.
     private func noteText(_ note: String) -> some View {
         Text(verbatim: note)
             .font(Typography.callout)
-            .foregroundStyle(Palette.orangeText)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -167,7 +166,7 @@ struct SpouseCard: View {
     }
 
     var body: some View {
-        Card(spacing: 0, label: "Manžel nebo manželka") {
+        Card(spacing: 0, label: content.label) {
             FamilyCardHeader(
                 title: "Manžel / manželka · sleva na dani", total: content.total, totalCounts: content.totalCounts
             )

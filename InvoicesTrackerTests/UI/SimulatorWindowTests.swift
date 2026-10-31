@@ -400,7 +400,7 @@ struct SimulatorWindowTests {
 
                         try await waitUntil { window.attachedSheet == nil }
                         #expect(model.family?.children.isEmpty == true)
-                        try await waitUntil { showsText(ChildrenCardContent.noChildren, in: window) }
+                        try await waitUntil { showsText(ChildrenCardContent.noChildrenInSimulation, in: window) }
                     }
                     #expect(f.app.dataVersion == versionBefore)
                     #expect(try await f.database.family(year: 2026).children.isEmpty)

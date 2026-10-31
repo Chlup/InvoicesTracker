@@ -4860,14 +4860,18 @@ struct AppWindowLayoutTests {
     // MARK: Simulátor
 
     /// The cards of the Simulátor by the labels VoiceOver reads them under: the four of the inputs, the two of the
-    /// family after them, the result of the year the app shows (which holds the net income and the marginal levy, so
-    /// they are no cards of their own), and the four of the breakdown below them, the last of which is the net
-    /// income.
+    /// family after them, which the Simulátor's design reads as "… v simulaci", the result of the year the app shows
+    /// (which holds the net income and the marginal levy, so they are no cards of their own), and the four of the
+    /// breakdown below them, the last of which is the net income.
     private static let simulatorCards = [
-        "Rok a příjem", "Úroky z úvěru na bydlení", "Spoření a pojištění na stáří", "Dary a slevy na dani", "Děti",
-        "Manžel nebo manželka", "Kolik zaplatíte", "Daň z příjmů", "Sociální pojištění", "Zdravotní pojištění",
-        "Čistý příjem",
+        "Rok a příjem", "Úroky z úvěru na bydlení", "Spoření a pojištění na stáří", "Dary a slevy na dani",
+        Self.simulatorChildrenCard, Self.simulatorSpouseCard, "Kolik zaplatíte", "Daň z příjmů", "Sociální pojištění",
+        "Zdravotní pojištění", "Čistý příjem",
     ]
+
+    /// The labels the two cards of the family are read under in the Simulátor.
+    private static let simulatorChildrenCard = "Děti v simulaci"
+    private static let simulatorSpouseCard = "Manžel nebo manželka v simulaci"
 
     /// The Simulátor of the year the app shows, on the data of `EditorFixture`, whose stored settings of 2026 are what
     /// the copy brings: at the least room, at a large size and at the least room again, every card is on the
@@ -4914,11 +4918,11 @@ struct AppWindowLayoutTests {
     /// The longer texts of the cards of the family in the Simulátor with the sample family and no income, by how each
     /// begins, with the card they are in and the font they are set in.
     private static let simulatorFamilyTexts: [(prefix: String, card: String, font: Font)] = [
-        ("Zvýhodnění převyšuje daň o 37\u{00A0}524\u{00A0}Kč, bonus se ale nevyplatí", "Děti", .callout),
-        ("Za každý měsíc, na jehož začátku", "Děti", .callout),
-        ("Dítě do 3 let ve společné domácnosti: Tomáš", "Manžel nebo manželka", .body),
-        ("Hrubé příjmy za celý rok", "Manžel nebo manželka", .callout),
-        ("Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč – daň už je nulová", "Manžel nebo manželka",
+        ("Zvýhodnění převyšuje daň o 37\u{00A0}524\u{00A0}Kč, bonus se ale nevyplatí", simulatorChildrenCard, .callout),
+        ("Za každý měsíc, na jehož začátku", simulatorChildrenCard, .callout),
+        ("Dítě do 3 let ve společné domácnosti: Tomáš", simulatorSpouseCard, .body),
+        ("Hrubé příjmy za celý rok", simulatorSpouseCard, .callout),
+        ("Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč – daň už je nulová", simulatorSpouseCard,
             .body.weight(.semibold)),
     ]
 
@@ -4929,7 +4933,9 @@ struct AppWindowLayoutTests {
     /// words: it is missing, not within its card, lower than it needs to be at its width, as a text cut short would be,
     /// or not on the line of the button, after it. Empty when it is right. Needs the accessibility elements.
     private func problems(ofSimulationNoteIn window: NSWindow) -> [String] {
-        guard let card = frameOfCard(labelled: "Děti", in: window) else { return ["No card Děti"] }
+        guard let card = frameOfCard(labelled: Self.simulatorChildrenCard, in: window) else {
+            return ["No card \(Self.simulatorChildrenCard)"]
+        }
         guard let note = frameOfText(startingWith: Self.simulationNote, in: window) else {
             return ["No note \(Self.simulationNote)"]
         }
@@ -4964,7 +4970,9 @@ struct AppWindowLayoutTests {
             }
             found += problems(ofText: prefix, frame: frame, font: font, within: card, in: window)
         }
-        guard let children = frameOfCard(labelled: "Děti", in: window) else { return found + ["No card Děti"] }
+        guard let children = frameOfCard(labelled: Self.simulatorChildrenCard, in: window) else {
+            return found + ["No card \(Self.simulatorChildrenCard)"]
+        }
         for row in Self.simulatorFamilyRows {
             guard let frame = accessibilityButton(labelled: row, in: window)?.accessibilityFrame?() else {
                 found.append("No row \(row)")
