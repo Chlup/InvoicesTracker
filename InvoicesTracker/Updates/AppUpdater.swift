@@ -37,7 +37,8 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
     }
 
     /// Makes Sparkle's updater and `model`, starts the updater once the observations keep `model` up to date, and logs
-    /// whether it started.
+    /// whether it started. The start line is a `notice`, as unified logging keeps no `info` line, so that `log show`
+    /// can find it after the launch.
     private override init() {
         super.init()
         let updater = controller.updater
@@ -58,9 +59,9 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
         if !updater.canCheckForUpdates {
             Self.logger.error("Sparkle's updater did not start")
         } else if UpdateCheckPolicy.refusesBackgroundChecks {
-            Self.logger.info("Sparkle's updater started, and this Debug build refuses its checks in the background")
+            Self.logger.notice("Sparkle's updater started, and this Debug build refuses its checks in the background")
         } else {
-            Self.logger.info("Sparkle's updater started")
+            Self.logger.notice("Sparkle's updater started")
         }
     }
 
@@ -77,7 +78,7 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     /// Logs how the check `updateCheck` ended, and reads the updater into `model` again, as a check changes when the
     /// updater last checked. A check that found no new version, or that this build refused, ended as it should. Any
-    /// other error is logged with its domain and code alone (`AppModel.log`).
+    /// other error is a failed cycle, which goes through `AppModel.log` (category App) with its domain and code alone.
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
         let kind = String(describing: UpdateCheckKind(updateCheck))
         switch error {
