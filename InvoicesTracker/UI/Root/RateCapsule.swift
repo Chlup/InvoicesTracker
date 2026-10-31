@@ -89,8 +89,7 @@ private struct RateMenu: View {
                 if let failure = menu.choiceFailure {
                     failureLine(failure)
                 }
-                Palette.sep
-                    .frame(height: 1)
+                Hairline()
                     .padding(.top, 4)
                 Text(verbatim: content.footer)
                     .font(Typography.callout)

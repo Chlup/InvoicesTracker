@@ -122,10 +122,7 @@ struct MarkPaidSheet: View {
                 .font(Typography.body)
                 .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.bgInset, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
+                .insetPanel(horizontal: 12, vertical: 10)
         }
         if model.effect != nil {
             effectBox

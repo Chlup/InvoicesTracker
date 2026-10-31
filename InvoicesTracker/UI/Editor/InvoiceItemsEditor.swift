@@ -205,10 +205,7 @@ struct InvoiceItemsEditor: View {
                     totalLine("Základ", totals.base)
                     totalLine(totals.vatLabel, totals.vat)
                     VStack(spacing: 8) {
-                        Rectangle()
-                            .fill(Palette.sepStrong)
-                            .frame(height: 1)
-                            .accessibilityHidden(true)
+                        Hairline(isStrong: true)
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             Text("Celkem")
                                 .font(Typography.bodyBold)

@@ -128,8 +128,7 @@ struct TableSummaryRow<Trailing: View>: View {
                     bottom: DataTableDetailMetrics.summaryBottom, trailing: DataTableMetrics.margin)
             )
             .frame(maxWidth: .infinity, alignment: .leading)
-            Palette.sep
-                .frame(height: 1)
+            Hairline()
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Souhrn")

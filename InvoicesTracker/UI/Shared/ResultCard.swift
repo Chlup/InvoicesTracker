@@ -72,9 +72,7 @@ struct ResultCard<Leading: View, Trailing: View, Below: View>: View {
             }
             .zIndex(1)
             if hasBelow {
-                Rectangle()
-                    .fill(Palette.sep)
-                    .frame(height: 1)
+                Hairline()
                     .padding(.top, rowGap)
                 below
                     .padding(.top, ResultCardLayout.belowGap)

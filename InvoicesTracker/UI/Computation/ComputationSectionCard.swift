@@ -26,8 +26,8 @@ private nonisolated enum BillMetrics {
     /// The space above and below the content of a row.
     static let rowPadding: CGFloat = 8
 
-    /// The thickness of the rule above a row, and of the heavier one above the total.
-    static let ruleHeight: CGFloat = 1
+    /// The thickness of the heavy rule above the total, in the colour of text. The other rules are the hairline of the
+    /// design (`Hairline`).
     static let totalRuleHeight: CGFloat = 1.5
 }
 
@@ -88,9 +88,7 @@ struct ComputationCard: View {
                 .fill(Palette.text)
                 .frame(height: BillMetrics.totalRuleHeight)
         case .plain, .strong:
-            Rectangle()
-                .fill(row.sign == .equals ? Palette.sepStrong : Palette.sep)
-                .frame(height: BillMetrics.ruleHeight)
+            Hairline(isStrong: row.sign == .equals)
         }
     }
 }

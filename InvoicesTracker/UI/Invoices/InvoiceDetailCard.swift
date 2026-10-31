@@ -195,9 +195,7 @@ private struct PaymentSection: View {
             }
         }
         .monospacedDigit()
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Palette.bgInset, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
+        .insetPanel(horizontal: 12, vertical: 10)
         .accessibilityElement(children: .combine)
     }
 }
