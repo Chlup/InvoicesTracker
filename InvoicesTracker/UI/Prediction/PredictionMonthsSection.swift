@@ -264,8 +264,7 @@ private struct ClientMonths: View {
                 Button("Vrátit odhad aplikace") {
                     reset(row.id)
                 }
-                .buttonStyle(TextLinkButtonStyle())
-                .font(Typography.callout)
+                .calloutLink()
             }
             Text(verbatim: row.adds)
                 .font(Typography.bodyBold)

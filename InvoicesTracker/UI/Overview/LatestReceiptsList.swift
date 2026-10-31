@@ -46,8 +46,7 @@ struct LatestReceiptsList: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 Button("Všechny faktury", action: showInvoices)
-                    .buttonStyle(TextLinkButtonStyle())
-                    .font(Typography.callout)
+                    .calloutLink()
             }
             if receipts.isEmpty {
                 Text("Do tohoto dne nepřišla žádná platba.")

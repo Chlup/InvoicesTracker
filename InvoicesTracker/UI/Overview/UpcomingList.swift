@@ -53,8 +53,7 @@ struct UpcomingList: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 Button("Plán záloh", action: showAdvances)
-                    .buttonStyle(TextLinkButtonStyle())
-                    .font(Typography.callout)
+                    .calloutLink()
             }
             if items.isEmpty {
                 Text("V tomto roce už žádná další platba není.")

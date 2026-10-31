@@ -100,11 +100,4 @@ extension View {
     func settingsCardButton() -> some View {
         buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
     }
-
-    /// The look of a link inside a card, such as Zobrazit licenci: the text of a button in callout, in the blue of a
-    /// link, or in the red of text where it leads to something that cannot be undone, such as Odstranit….
-    func settingsCardLink(_ tone: LinkTone = .accent) -> some View {
-        buttonStyle(TextLinkButtonStyle(tone))
-            .font(Typography.callout)
-    }
 }

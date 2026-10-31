@@ -125,7 +125,7 @@ struct AppSettingsTab: View {
                         Button("Zobrazit licenci") {
                             shownLicence = licence
                         }
-                        .settingsCardLink()
+                        .calloutLink()
                         .accessibilityLabel("Zobrazit licenci – \(licence.name)")
                     }
                     .padding(.vertical, 10)

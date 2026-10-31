@@ -193,6 +193,16 @@ struct TextLinkButtonStyle: ButtonStyle {
     }
 }
 
+extension View {
+    /// The look of a link in a card or in a heading, such as Zobrazit licenci: the text of a button in callout, in the
+    /// blue of a link, or in the red of text where it leads to something that cannot be undone, such as Odstranit….
+    /// The buttons below the view take the look from it (`TextLinkButtonStyle`).
+    func calloutLink(_ tone: LinkTone = .accent) -> some View {
+        buttonStyle(TextLinkButtonStyle(tone))
+            .font(Typography.callout)
+    }
+}
+
 /// The view a link is made of, a view of its own for the same reason as `CapsuleButtonBody`.
 private struct TextLinkButtonBody: View {
     let configuration: ButtonStyleConfiguration

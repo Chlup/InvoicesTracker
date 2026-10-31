@@ -71,7 +71,6 @@ struct SearchLineView: View {
     /// Zrušit hledání, a link in callout.
     private var cancel: some View {
         Button("Zrušit hledání", action: clear)
-            .buttonStyle(TextLinkButtonStyle())
-            .font(Typography.callout)
+            .calloutLink()
     }
 }

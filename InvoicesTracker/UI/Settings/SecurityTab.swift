@@ -283,7 +283,7 @@ struct SecurityTab: View {
                         .font(Typography.bodySemibold)
                         .foregroundStyle(valueColor)
                     Button(action, action: perform)
-                        .settingsCardLink()
+                        .calloutLink()
                         .disabled(model.isWorking)
                 }
             }

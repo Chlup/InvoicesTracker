@@ -86,11 +86,11 @@ struct UniformRateCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 // The year is read as it is written, not as a number with its thousands apart.
                 Button("Upravit", action: model.startEditingRates)
-                    .settingsCardLink()
+                    .calloutLink()
                     .accessibilityLabel(Text(verbatim: "Upravit jednotný kurz \(model.year)"))
                 if model.isManual {
                     Button("Odstranit…", action: model.askToRemoveRates)
-                        .settingsCardLink(.destructive)
+                        .calloutLink(.destructive)
                         .accessibilityLabel(Text(verbatim: "Odstranit ručně zadaný jednotný kurz \(model.year)"))
                 }
             }
@@ -247,7 +247,7 @@ struct AdjustmentsCard: View {
             Button("Smazat") {
                 Task { await model.deleteAdjustment(id: adjustment.id) }
             }
-            .settingsCardLink(.destructive)
+            .calloutLink(.destructive)
             .accessibilityLabel("Smazat úpravu")
         }
         .monospacedDigit()

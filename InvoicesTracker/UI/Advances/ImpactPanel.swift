@@ -37,8 +37,7 @@ struct ImpactPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             Button("Zobrazit dopad v Přehledu", action: showOverview)
-                .buttonStyle(TextLinkButtonStyle(.accent))
-                .font(Typography.callout)
+                .calloutLink()
         }
     }
 

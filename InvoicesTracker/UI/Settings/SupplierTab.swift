@@ -147,7 +147,7 @@ struct SupplierTab: View {
                     Button("Odebrat") {
                         model.removeEURAccount()
                     }
-                    .settingsCardLink(.destructive)
+                    .calloutLink(.destructive)
                     .accessibilityLabel("Odebrat účet v eurech")
                 }
             }

@@ -53,10 +53,9 @@ struct LockedView: View {
                     Button("Odemknout kódem pro obnovení…") {
                         model.useRecoveryCode()
                     }
-                    .buttonStyle(TextLinkButtonStyle())
+                    .calloutLink()
                     // The way to another screen is a link to VoiceOver, as the system's link style made it.
                     .accessibilityAddTraits(.isLink)
-                    .font(Typography.callout)
                     .disabled(runner.isWorking)
                 }
             }
