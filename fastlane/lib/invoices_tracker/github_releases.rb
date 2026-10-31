@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "erb"
 require "json"
 require_relative "deploy_preflight"
 
@@ -7,21 +8,26 @@ module InvoicesTracker
   # Asks GitHub, through the `gh` command-line tool, what a deploy has to know
   # about the releases already published: whether the git tag of a release
   # exists, and which release is the Latest one, with the text of its update
-  # feed. `gh` is a callable that is passed in, so a test never reaches the
-  # network. It takes the arguments of one call, an array, and gives back what
-  # the tool printed and whether it succeeded, `[stdout, stderr, success]`. The
-  # workflow passes one that runs the real tool, which signs in with the token
-  # in its environment, so no token passes through here. A call that fails is
-  # reported by its arguments and the HTTP status gh printed for it, if any, and
-  # by nothing else of its output, which may hold a token or the body of the
-  # response. The repository and the tag go into the addresses as they are:
-  # callers pass names that were checked before. GitHub answers 404 for a
-  # repository that does not exist or that the token cannot see, as it does for
-  # a tag or a release that is not there, so a wrong repository reads as
-  # nothing published.
+  # feed. It also asks which workflow files a commit adds or changes, compared
+  # with the default branch. `gh` is a callable that is passed in, so a test
+  # never reaches the network. It takes the arguments of one call, an array, and
+  # gives back what the tool printed and whether it succeeded, `[stdout, stderr,
+  # success]`. The workflow passes one that runs the real tool, which signs in
+  # with the token in its environment, so no token passes through here. A call
+  # that fails is reported by its arguments and the HTTP status gh printed for
+  # it, if any, and by nothing else of its output, which may hold a token or the
+  # body of the response. The repository, the tag and the commit go into the
+  # addresses as they are: callers pass names that were checked before. GitHub
+  # answers 404 for a repository that does not exist or that the token cannot
+  # see, as it does for a tag, a release or a folder that is not there, so a
+  # wrong repository reads as nothing published, and as a commit without
+  # workflow files.
   module GitHubReleases
     # The name of the update feed among the assets of a release.
     APPCAST_NAME = "appcast.xml"
+
+    # The folder of a repository that holds its workflow files.
+    WORKFLOWS_FOLDER = ".github/workflows"
 
     # What gh prints on stderr when GitHub answers 404 Not Found, for example
     # `gh: Not Found (HTTP 404)`.
@@ -60,6 +66,30 @@ module InvoicesTracker
       tag, appcast_id = read_release(args, body)
       appcast_xml = appcast_id && download_asset(repository, appcast_id, gh)
       DeployPreflight::LatestRelease.new(tag: tag, appcast_xml: appcast_xml)
+    end
+
+    # The workflow files that the commit `commit` of `repository`, given as
+    # `owner/name`, adds or changes: the paths, sorted, of the files under
+    # `.github/workflows`, at any depth, that the commit has and the head of the
+    # default branch lacks or has with another blob sha. The default branch is
+    # asked about first, with an address that has no `ref`: GitHub reads the
+    # default branch for it, so its name is never needed. A file that only the
+    # default branch has, which the commit deletes, is no change, and neither is
+    # a submodule, which is no file.
+    #
+    # A folder that GitHub answers 404 for has no files, so a default branch
+    # without `.github/workflows` makes every workflow file of the commit a
+    # change, and a commit without it changes none. GitHub answers 404 for a
+    # commit that it does not know in the same way, so such a commit reads as
+    # one without workflow files.
+    #
+    # Raises RuntimeError, naming the call and quoting nothing of the answer,
+    # when a question fails with any other status, and when an answer is no
+    # listing of a folder.
+    def workflow_changes(repository:, commit:, gh:)
+      default_files = folder_files(repository, WORKFLOWS_FOLDER, nil, gh)
+      built_files = folder_files(repository, WORKFLOWS_FOLDER, commit, gh)
+      built_files.reject { |path, sha| default_files[path] == sha }.keys.sort
     end
 
     # The text of the asset of `repository` whose id is `id`. The header asks
@@ -141,5 +171,62 @@ module InvoicesTracker
       tag.is_a?(String) && !tag.strip.empty? && assets.is_a?(Array) && assets.all?(Hash)
     end
     private_class_method :release?
+
+    # The files under the folder `folder` of `repository`, at any depth, as a
+    # Hash from the path of each file to its blob sha. They are the files as the
+    # commit `ref` has them, or as the head of the default branch has them when
+    # `ref` is nil. An entry that is a `dir` is walked, whatever its sha is, a
+    # `submodule` is left out, and any other entry, a `file` or a `symlink`, is
+    # a file. The path of a folder goes into the address one segment at a time,
+    # percent-encoded. A folder that GitHub answers 404 for has no files.
+    def folder_files(repository, folder, ref, gh)
+      address = folder.split("/").map { |segment| ERB::Util.url_encode(segment) }.join("/")
+      query = ref ? "?ref=#{ref}" : ""
+      args = ["api", "repos/#{repository}/contents/#{address}#{query}"]
+      body = call_gh(gh, args, allow_missing: true)
+      return {} if body.nil?
+
+      read_folder(args, folder, body).each_with_object({}) do |entry, files|
+        next if entry["type"] == "submodule"
+
+        if entry["type"] == "dir"
+          files.merge!(folder_files(repository, entry["path"], ref, gh))
+        else
+          files[entry["path"]] = entry["sha"]
+        end
+      end
+    end
+    private_class_method :folder_files
+
+    # The entries of the folder `folder` in `body`, the JSON that gh printed for
+    # the call `args`. Raises RuntimeError, naming the call and quoting nothing
+    # of the body, when the body is no listing of that folder.
+    def read_folder(args, folder, body)
+      entries = parse_json(body)
+      return entries if folder_listing?(entries, folder)
+
+      raise "#{command_line(args)} printed something that is not a folder listing"
+    end
+    private_class_method :read_folder
+
+    # Whether `value`, read from JSON, is what GitHub lists for the folder
+    # `folder`: an array of entries that all lie under it. They are checked
+    # against the folder that was asked about, not against the one the walk
+    # began with, because the path of an entry is the address of the next
+    # question: a listing that points outside its folder, or at the folder
+    # itself, would take the walk somewhere else, or round in circles.
+    def folder_listing?(value, folder)
+      value.is_a?(Array) && value.all? { |entry| folder_entry?(entry, folder) }
+    end
+    private_class_method :folder_listing?
+
+    # Whether `value`, read from JSON, is an entry of the folder `folder`: an
+    # object whose `path`, `type` and `sha` are text, with a path under the
+    # folder. Other fields of the entry are not read.
+    def folder_entry?(value, folder)
+      value.is_a?(Hash) && value.values_at("path", "type", "sha").all?(String) &&
+        value["path"].start_with?("#{folder}/")
+    end
+    private_class_method :folder_entry?
   end
 end

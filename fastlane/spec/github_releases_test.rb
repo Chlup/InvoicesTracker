@@ -16,6 +16,13 @@ class InvoicesTrackerGitHubReleasesTest < Minitest::Test
     "api", "-H", "Accept: application/octet-stream", "repos/Chlup/InvoicesTracker/releases/assets/7"
   ].freeze
 
+  # The commit that is built, and the calls that list the folder of the workflow
+  # files: on the default branch, which the address without a `ref` reads, and
+  # on that commit.
+  COMMIT = "0123456789abcdef0123456789abcdef01234567"
+  DEFAULT_WORKFLOWS = ["api", "repos/Chlup/InvoicesTracker/contents/.github/workflows"].freeze
+  BUILT_WORKFLOWS = ["api", "repos/Chlup/InvoicesTracker/contents/.github/workflows?ref=#{COMMIT}"].freeze
+
   # What a failing gh may print, neither of which belongs in an error message:
   # a token, as the debug trace of a request could show it, and the body of the
   # response.
@@ -117,12 +124,37 @@ class InvoicesTrackerGitHubReleasesTest < Minitest::Test
     InvoicesTracker::DeployPreflight::LatestRelease.new(tag: tag, appcast_xml: appcast_xml)
   end
 
+  # An entry of a folder listing as the contents API gives it. Only its `path`,
+  # `type` and `sha` are read, and the fields around them are there to be told
+  # apart from those: the `name` is the last segment of the path, not the path.
+  def entry(path, sha, type: "file")
+    { "name" => File.basename(path), "path" => path, "sha" => sha, "size" => 10, "type" => type,
+      "url" => "https://api.github.com/repos/Chlup/InvoicesTracker/contents/#{path}" }
+  end
+
+  # What gh prints for a call that lists a folder with `entries`.
+  def listing(*entries)
+    printed(JSON.generate(entries))
+  end
+
+  # The workflow files that COMMIT adds or changes, asked of `gh`.
+  def workflow_changes(gh)
+    InvoicesTracker::GitHubReleases.workflow_changes(repository: REPOSITORY, commit: COMMIT, gh: gh)
+  end
+
   # The error says which call failed, with every argument of it, and gives away
   # nothing of what gh printed: not the token and not the body of the response.
   def assert_names_call_without_output(call, error)
     call.each { |argument| assert_includes error.message, argument }
     refute_includes error.message, TOKEN
     refute_includes error.message, BODY
+  end
+
+  # The error says which call was answered with something that is no listing of
+  # a folder, and says no more: it quotes none of the answer.
+  def assert_reports_no_folder_listing(call, error)
+    assert_names_call_without_output call, error
+    assert_equal "gh #{call.join(' ')} printed something that is not a folder listing", error.message
   end
 
   # Answers that gh can print with success and that are no release: text that is
@@ -345,5 +377,191 @@ class InvoicesTrackerGitHubReleasesTest < Minitest::Test
     error = assert_raises(RuntimeError) { latest(gh) }
 
     assert_names_call_without_output APPCAST_CALL, error
+  end
+
+  def test_a_commit_with_the_default_branchs_workflow_files_changes_none
+    release = entry(".github/workflows/release.yml", "aaa")
+    gh = fake_gh(DEFAULT_WORKFLOWS => listing(release), BUILT_WORKFLOWS => listing(release))
+
+    assert_equal [], workflow_changes(gh)
+    assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS], gh_calls
+  end
+
+  def test_a_workflow_file_that_the_default_branch_lacks_is_a_change
+    release = entry(".github/workflows/release.yml", "aaa")
+    gh = fake_gh(
+      DEFAULT_WORKFLOWS => listing(release),
+      BUILT_WORKFLOWS => listing(release, entry(".github/workflows/lint.yml", "bbb"))
+    )
+
+    assert_equal [".github/workflows/lint.yml"], workflow_changes(gh)
+  end
+
+  def test_a_workflow_file_with_other_content_is_a_change
+    gh = fake_gh(
+      DEFAULT_WORKFLOWS => listing(entry(".github/workflows/release.yml", "aaa")),
+      BUILT_WORKFLOWS => listing(entry(".github/workflows/release.yml", "ccc"))
+    )
+
+    assert_equal [".github/workflows/release.yml"], workflow_changes(gh)
+  end
+
+  def test_a_workflow_file_that_the_commit_deletes_is_no_change
+    release = entry(".github/workflows/release.yml", "aaa")
+    gh = fake_gh(
+      DEFAULT_WORKFLOWS => listing(release, entry(".github/workflows/old.yml", "bbb")),
+      BUILT_WORKFLOWS => listing(release)
+    )
+
+    assert_equal [], workflow_changes(gh)
+  end
+
+  # Before the first workflow of a repository is merged, its default branch has
+  # no such folder, and every workflow file of the commit is new.
+  def test_a_default_branch_without_a_workflows_folder_makes_every_workflow_file_a_change
+    built = listing(entry(".github/workflows/release.yml", "aaa"), entry(".github/workflows/lint.yml", "bbb"))
+    gh = fake_gh(DEFAULT_WORKFLOWS => NOT_FOUND, BUILT_WORKFLOWS => built)
+
+    assert_equal [".github/workflows/lint.yml", ".github/workflows/release.yml"], workflow_changes(gh)
+    assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS], gh_calls
+  end
+
+  def test_a_commit_without_a_workflows_folder_changes_none
+    default = listing(entry(".github/workflows/release.yml", "aaa"))
+    gh = fake_gh(DEFAULT_WORKFLOWS => default, BUILT_WORKFLOWS => NOT_FOUND)
+
+    assert_equal [], workflow_changes(gh)
+    assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS], gh_calls
+  end
+
+  # Each folder is asked about on both sides, with the `ref` on the side of the
+  # commit only, and the segments of its path are percent-encoded one by one.
+  # The folders have the same sha on both sides while the files in them do not,
+  # so a folder is never skipped for having the sha it has on the other side.
+  def test_subfolders_are_walked_on_both_sides_with_their_names_encoded
+    { "my dir" => "my%20dir", "čeština" => "%C4%8De%C5%A1tina" }.each do |name, encoded|
+      default_call = ["api", "repos/Chlup/InvoicesTracker/contents/.github/workflows/#{encoded}"]
+      built_call = ["api", "repos/Chlup/InvoicesTracker/contents/.github/workflows/#{encoded}?ref=#{COMMIT}"]
+      folder = entry(".github/workflows/#{name}", "t1", type: "dir")
+      gh = fake_gh(
+        DEFAULT_WORKFLOWS => listing(folder), default_call => listing(entry(".github/workflows/#{name}/x.yml", "aaa")),
+        BUILT_WORKFLOWS => listing(folder), built_call => listing(entry(".github/workflows/#{name}/x.yml", "bbb"))
+      )
+
+      assert_equal [".github/workflows/#{name}/x.yml"], workflow_changes(gh), name
+      assert_equal [DEFAULT_WORKFLOWS, default_call, BUILT_WORKFLOWS, built_call], gh_calls, name
+    end
+  end
+
+  def test_subfolders_of_subfolders_are_walked_too
+    address = "repos/Chlup/InvoicesTracker/contents/.github/workflows"
+    default_a = ["api", "#{address}/a"]
+    default_b = ["api", "#{address}/a/b"]
+    built_a = ["api", "#{address}/a?ref=#{COMMIT}"]
+    built_b = ["api", "#{address}/a/b?ref=#{COMMIT}"]
+    folder_a = entry(".github/workflows/a", "t1", type: "dir")
+    folder_b = entry(".github/workflows/a/b", "t2", type: "dir")
+    gh = fake_gh(
+      DEFAULT_WORKFLOWS => listing(folder_a), default_a => listing(folder_b),
+      default_b => listing(entry(".github/workflows/a/b/c.yml", "aaa")),
+      BUILT_WORKFLOWS => listing(folder_a), built_a => listing(folder_b),
+      built_b => listing(entry(".github/workflows/a/b/c.yml", "bbb"))
+    )
+
+    assert_equal [".github/workflows/a/b/c.yml"], workflow_changes(gh)
+    assert_equal [DEFAULT_WORKFLOWS, default_a, default_b, BUILT_WORKFLOWS, built_a, built_b], gh_calls
+  end
+
+  # The paths of a listing are checked against the folder that was asked about,
+  # not against `.github/workflows`: a folder that lists itself would otherwise
+  # be walked for ever.
+  def test_a_subfolder_that_lists_itself_raises_an_error
+    folder = entry(".github/workflows/loop", "t1", type: "dir")
+    loop_call = ["api", "repos/Chlup/InvoicesTracker/contents/.github/workflows/loop?ref=#{COMMIT}"]
+    gh = fake_gh(DEFAULT_WORKFLOWS => NOT_FOUND, BUILT_WORKFLOWS => listing(folder), loop_call => listing(folder))
+
+    error = assert_raises(RuntimeError) { workflow_changes(gh) }
+
+    assert_reports_no_folder_listing loop_call, error
+    assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS, loop_call], gh_calls
+  end
+
+  def test_submodules_are_ignored
+    release = entry(".github/workflows/release.yml", "aaa")
+    gh = fake_gh(
+      DEFAULT_WORKFLOWS => listing(release),
+      BUILT_WORKFLOWS => listing(release, entry(".github/workflows/vendored", "s1", type: "submodule"))
+    )
+
+    assert_equal [], workflow_changes(gh)
+    assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS], gh_calls
+  end
+
+  def test_a_symlink_among_the_workflow_files_is_a_file
+    release = entry(".github/workflows/release.yml", "aaa")
+    gh = fake_gh(
+      DEFAULT_WORKFLOWS => listing(release),
+      BUILT_WORKFLOWS => listing(release, entry(".github/workflows/link.yml", "bbb", type: "symlink"))
+    )
+
+    assert_equal [".github/workflows/link.yml"], workflow_changes(gh)
+    assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS], gh_calls
+  end
+
+  def test_the_changes_are_sorted
+    release = entry(".github/workflows/release.yml", "aaa")
+    added = %w[z a m].map { |name| entry(".github/workflows/#{name}.yml", "bbb") }
+    gh = fake_gh(DEFAULT_WORKFLOWS => listing(release), BUILT_WORKFLOWS => listing(*added, release))
+
+    assert_equal %w[a m z].map { |name| ".github/workflows/#{name}.yml" }, workflow_changes(gh)
+  end
+
+  def test_a_failed_question_raises_an_error_that_names_the_call
+    [403, 502].each do |status|
+      gh = fake_gh(DEFAULT_WORKFLOWS => refused(status))
+
+      error = assert_raises(RuntimeError, "HTTP #{status}") { workflow_changes(gh) }
+
+      assert_names_call_without_output DEFAULT_WORKFLOWS, error
+      assert_includes error.message, "HTTP #{status}"
+      assert_equal [DEFAULT_WORKFLOWS], gh_calls
+    end
+  end
+
+  # Answers that gh can print with success and that are no listing of a folder:
+  # text that is not JSON, JSON that is not an array of objects, and objects
+  # without the `path`, `type` and `sha` that a file or a folder has, or whose
+  # path is not under the folder.
+  def test_an_answer_that_is_no_folder_listing_raises_an_error
+    release = entry(".github/workflows/release.yml", "aaa")
+    answers = [
+      "", "<!DOCTYPE html>", "{}", "null", "[1]",
+      JSON.generate([release.except("sha")]),
+      JSON.generate([release.merge("type" => 7)]),
+      JSON.generate([entry("README.md", "aaa")])
+    ]
+
+    answers.each do |answer|
+      gh = fake_gh(DEFAULT_WORKFLOWS => listing(release), BUILT_WORKFLOWS => printed(answer))
+
+      error = assert_raises(RuntimeError, answer) { workflow_changes(gh) }
+
+      assert_reports_no_folder_listing BUILT_WORKFLOWS, error
+      assert_nil error.cause, "the parser's message quotes the text it could not read"
+      assert_equal [DEFAULT_WORKFLOWS, BUILT_WORKFLOWS], gh_calls
+    end
+  end
+
+  def test_the_repository_and_the_commit_make_the_addresses
+    commit = "f" * 40
+    default_call = ["api", "repos/someone/else/contents/.github/workflows"]
+    built_call = ["api", "repos/someone/else/contents/.github/workflows?ref=#{commit}"]
+    release = entry(".github/workflows/release.yml", "aaa")
+    gh = fake_gh(default_call => listing(release), built_call => listing(release))
+
+    changes = InvoicesTracker::GitHubReleases.workflow_changes(repository: "someone/else", commit: commit, gh: gh)
+
+    assert_equal [], changes
+    assert_equal [default_call, built_call], gh_calls
   end
 end
