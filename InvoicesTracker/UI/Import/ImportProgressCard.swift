@@ -59,12 +59,11 @@ struct ImportProgressCard: View {
     /// "Doplnit údaje dodavatele z exportu": the profile of the supplier is empty and the export has the details.
     private func supplierOffer(exported: Supplier?) -> some View {
         let named = exported.map { Self.named($0) } ?? ""
-        return SettingsBox(kind: .hint) {
-            Text(
-                verbatim: "Export obsahuje údaje dodavatele\(named), váš profil dodavatele je ale prázdný. Z exportu ho"
-                    + " můžete doplnit a pak ho upravit v Nastavení › Moje údaje."
-            )
-            .font(.callout)
+        return Note(
+            .info, icon: .info,
+            text: "Export obsahuje údaje dodavatele\(named), váš profil dodavatele je ale prázdný. Z exportu ho"
+                + " můžete doplnit a pak ho upravit v Nastavení › Moje údaje."
+        ) {
             Button("Doplnit údaje dodavatele z exportu") {
                 Task { await model.fillSupplierFromExport() }
             }

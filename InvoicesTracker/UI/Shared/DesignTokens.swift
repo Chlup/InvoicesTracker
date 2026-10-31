@@ -163,6 +163,10 @@ nonisolated enum Typography {
     /// The callout style, semibold, for a short label in a card.
     static let calloutSemibold = Font.callout.weight(.semibold)
 
+    /// The callout style in a monospaced design, for text that is set in rows of fixed width, such as the text of a
+    /// licence.
+    static let calloutMonospaced = Font.system(.callout, design: .monospaced)
+
     /// The subheadline style (11 points), for small print such as a share of the income.
     static let subheadline = Font.subheadline
 

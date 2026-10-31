@@ -16,9 +16,9 @@ struct AppSettingsTab: View {
     }
 
     var body: some View {
-        AdaptiveColumns(minimumColumnWidth: 440, spacing: 16) {
+        AdaptiveColumns(minimumColumnWidth: 440, spacing: DesignMetrics.cardSpacing) {
             appearanceCard
-            VStack(spacing: 16) {
+            VStack(spacing: DesignMetrics.cardSpacing) {
                 ratesCard
                 licencesCard
             }
@@ -48,6 +48,8 @@ struct AppSettingsTab: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Vzhled")
             Text(verbatim: AppTabModel.appearanceNote(model.appearance))
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -67,9 +69,9 @@ struct AppSettingsTab: View {
                     SettingsRow(label: row.label, detail: row.detail) {
                         HStack(spacing: 10) {
                             Text(verbatim: row.value)
-                                .fontWeight(.semibold)
+                                .font(Typography.bodySemibold)
                                 .monospacedDigit()
-                                .foregroundStyle(color(of: row.tone))
+                                .foregroundStyle(row.tone.color)
                             if row.action == .showFinding {
                                 Button("Zobrazit") {
                                     model.showPendingFinding()
@@ -81,12 +83,12 @@ struct AppSettingsTab: View {
                     }
                 }
                 if let lastError = model.lastError {
-                    Divider()
+                    Hairline()
                     SettingsFailureLine(text: lastError)
-                        .font(.callout)
+                        .font(Typography.callout)
                         .padding(.vertical, 8)
                 }
-                Divider()
+                Hairline()
                 HStack(spacing: 8) {
                     Button("Zkontrolovat teď") {
                         Task { await model.checkNow() }
@@ -103,53 +105,59 @@ struct AppSettingsTab: View {
         }
     }
 
-    private func color(of tone: RateStatusRow.Tone) -> Color {
-        switch tone {
-        case .current: Color(.bannerText)
-        case .plain: .primary
-        case .quiet: .secondary
-        case .warning: .orange
-        }
-    }
-
     // MARK: Licence
 
     private var licencesCard: some View {
         Card(title: "Licence", spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(AppTabModel.licences) { licence in
-                    Divider()
+                    Hairline()
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(verbatim: licence.name)
-                                .fontWeight(.semibold)
+                                .font(Typography.bodySemibold)
+                                .foregroundStyle(Palette.text)
                             Text(verbatim: licence.detail)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
+                                .font(Typography.callout)
+                                .foregroundStyle(Palette.text2)
                         }
                         Spacer(minLength: 8)
                         Button("Zobrazit licenci") {
                             shownLicence = licence
                         }
-                        .buttonStyle(.link)
-                        .font(.callout)
+                        .settingsCardLink()
                         .accessibilityLabel("Zobrazit licenci – \(licence.name)")
                     }
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 10)
                 }
-                Divider()
+                Hairline()
                 Text(verbatim: model.versionLine)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text3)
                     .padding(.top, 10)
             }
         }
     }
 }
 
+/// The colours of the tones of the state of a row of the card Kurzy, from the palette.
+extension RateStatusRow.Tone {
+    /// The colour of the state: the green of text while the rates are current, the colour of text for a fact, the
+    /// grey of secondary text where there is nothing yet, and the orange of text where something is behind.
+    var color: Color {
+        switch self {
+        case .current: Palette.greenText
+        case .plain: Palette.text
+        case .quiet: Palette.text2
+        case .warning: Palette.orangeText
+        }
+    }
+}
+
 /// One choice of the appearance: a small picture of the window in it, and its name under it. The chosen one has a ring
-/// in the accent colour; VoiceOver reads the three as choices with the chosen one selected.
-private struct AppearanceChoice: View {
+/// in the accent colour round the picture, 3 points wide, and its name in semibold; the others have a hairline ring.
+/// VoiceOver reads the three as choices with the chosen one selected.
+struct AppearanceChoice: View {
     let appearance: Appearance
     let isChosen: Bool
     let choose: () -> Void
@@ -159,21 +167,29 @@ private struct AppearanceChoice: View {
             VStack(spacing: 8) {
                 picture
                     .frame(width: 116, height: 74)
-                    .clipShape(RoundedRectangle(cornerRadius: 9))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .strokeBorder(isChosen ? Color.accentColor : Color.secondary.opacity(0.35),
-                                lineWidth: isChosen ? 3 : 0.5)
-                    )
+                    .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.controlRadius))
+                    .overlay { ring }
                     .accessibilityHidden(true)
-                Text(verbatim: AppTabModel.appearanceName(appearance))
-                    .fontWeight(isChosen ? .semibold : .regular)
+                ChoiceText(
+                    title: AppTabModel.appearanceName(appearance),
+                    font: isChosen ? Typography.bodySemibold : Typography.body
+                )
+                .foregroundStyle(Palette.text)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(AppTabModel.appearanceName(appearance))
         .accessibilityAddTraits(isChosen ? .isSelected : [])
+    }
+
+    /// The ring round the picture, drawn outside it as the shadow of the design is, so that it takes none of the
+    /// picture: the accent while the look is chosen, a hairline of the colour of the lines of a field otherwise.
+    private var ring: some View {
+        let width: CGFloat = isChosen ? 3 : 0.5
+        return RoundedRectangle(cornerRadius: DesignMetrics.controlRadius + width / 2)
+            .stroke(isChosen ? Palette.accent : Palette.sepStrong, lineWidth: width)
+            .padding(-width / 2)
     }
 
     /// A window of the appearance: the sidebar on the left and two cards. The colours are those of the appearance it
@@ -200,11 +216,14 @@ private struct AppearanceChoice: View {
         }
     }
 
+    // These literal colours are exempt from the palette: the pictures draw a light and a dark window on purpose,
+    // whatever the appearance of the app is.
     private let light = (background: Color(white: 0.91), sidebar: Color(white: 0.85), card: Color.white)
     private let dark = (background: Color(white: 0.12), sidebar: Color(white: 0.18), card: Color(white: 0.24))
 }
 
-/// The picture of a window of a choice of the appearance.
+/// The picture of a window of a choice of the appearance, in the colours it is given: the colours of a light and a dark
+/// window, which are exempt from the palette.
 private struct ThumbnailWindow: View {
     let background: Color
     let sidebar: Color

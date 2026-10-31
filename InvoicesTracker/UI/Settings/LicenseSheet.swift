@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The text of a licence that is bundled with the app, as Zobrazit licenci shows it: the name of the part and what it
-/// is for, then the whole text, which scrolls and can be selected and copied.
+/// is for, then the whole text on the inset background, which scrolls and can be selected and copied, and Zavřít, which
+/// Esc presses too.
 struct LicenseSheet: View {
     let licence: Licence
 
@@ -22,23 +23,23 @@ struct LicenseSheet: View {
             SheetHeader(title: licence.name, subtitle: licence.detail)
             ScrollView {
                 Text(verbatim: text ?? "Text licence se nepodařilo načíst.")
-                    .font(.system(.callout, design: .monospaced))
+                    .font(Typography.calloutMonospaced)
+                    .foregroundStyle(Palette.text)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
+            .background(Palette.bgInset, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
+            .overlay(RoundedRectangle(cornerRadius: DesignMetrics.panelRadius).strokeBorder(Palette.sep))
             .frame(height: 420)
             HStack {
                 Spacer()
                 Button("Zavřít", action: close)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.large)
+                    .buttonStyle(CapsuleButtonStyle(.primary))
                     .keyboardShortcut(.cancelAction)
             }
+            .padding(.top, 4)
         }
         .padding(.top, 22)
         .padding(.horizontal, 24)

@@ -6,7 +6,7 @@ import SwiftUI
 /// with its link:
 /// - official (shipped with the app, or fetched and confirmed): the rates of dollars and euros, where they are from and
 ///   Upravit;
-/// - entered by hand: the same with "zadáno ručně", Upravit and a red Odstranit…, and a grey note on what the rates
+/// - entered by hand: the same with "zadáno ručně", Upravit and a red Odstranit…, and a grey panel on what the rates
 ///   stand in for, in place of which Odstranit… asks in a red box what removing them leads to;
 /// - none: what the app does about the rate, with Zadat ručně.
 /// Upravit and Zadat ručně open the form to enter the rates by hand in place of all that.
@@ -14,20 +14,22 @@ struct UniformRateCard: View {
     @Bindable var model: YearTabModel
 
     var body: some View {
-        Card(title: "Jednotný kurz \(model.year)", spacing: 10) {
+        Card(title: "Jednotný kurz \(model.year)", spacing: 10, label: "Jednotný kurz") {
             if let page = model.unreadablePage {
-                SettingsBox(kind: .warning) {
-                    Text(
-                        verbatim: "Finanční zpravodaj s jednotným kurzem za rok \(model.year) se nepodařilo přečíst."
-                            + " Kurz v něm najdete a zadáte ho ručně.")
-                    Link("Otevřít Finanční zpravodaj", destination: page)
-                        .font(.callout)
+                Note(
+                    .attention, icon: .warning,
+                    text: "Finanční zpravodaj s jednotným kurzem za rok \(model.year) se nepodařilo přečíst."
+                        + " Kurz v něm najdete a zadáte ho ručně."
+                ) {
+                    SettingsLink(title: "Otevřít Finanční zpravodaj", destination: page)
                 }
             }
             if model.editsRates {
                 form
             } else if model.shownRates.isEmpty {
                 Text(verbatim: model.missingRateText)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Zadat ručně", action: model.startEditingRates)
                     .settingsCardButton()
@@ -42,10 +44,11 @@ struct UniformRateCard: View {
                     )
                     .controlSize(.small)
                 } else if let note = model.manualNote {
-                    SettingsBox(kind: .note) {
-                        Text(verbatim: note)
-                            .font(.callout)
-                    }
+                    Text(verbatim: note)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .insetPanel(horizontal: 12, vertical: 10)
                 }
             }
         }
@@ -55,12 +58,15 @@ struct UniformRateCard: View {
     private var rates: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(model.shownRates, id: \.currency) { rate in
-                Divider()
+                Hairline()
                 HStack {
                     Text(verbatim: YearTabModel.rateUnit(rate))
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
                     Spacer(minLength: 8)
                     Text(verbatim: YearTabModel.rateText(rate))
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                 }
                 .monospacedDigit()
                 .padding(.vertical, 8)
@@ -73,21 +79,18 @@ struct UniformRateCard: View {
     private var sourceLine: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(verbatim: model.rateSource)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 // The year is read as it is written, not as a number with its thousands apart.
                 Button("Upravit", action: model.startEditingRates)
-                    .buttonStyle(.link)
-                    .font(.callout)
+                    .settingsCardLink()
                     .accessibilityLabel(Text(verbatim: "Upravit jednotný kurz \(model.year)"))
                 if model.isManual {
                     Button("Odstranit…", action: model.askToRemoveRates)
-                        .buttonStyle(.link)
-                        .font(.callout)
-                        .foregroundStyle(.red)
+                        .settingsCardLink(.destructive)
                         .accessibilityLabel(Text(verbatim: "Odstranit ručně zadaný jednotný kurz \(model.year)"))
                 }
             }
@@ -101,8 +104,8 @@ struct UniformRateCard: View {
         VStack(alignment: .leading, spacing: 10) {
             if let hint = model.formHint {
                 Text(verbatim: hint)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             AdaptiveColumns(minimumColumnWidth: 120, spacing: 10) {
@@ -116,12 +119,10 @@ struct UniformRateCard: View {
             }
             HStack(spacing: 8) {
                 Button("Zrušit", action: model.cancelEditingRates)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
                 Button("Uložit kurz", action: save)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(CapsuleButtonStyle(.primary, size: .small))
             }
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
         }
     }
 
@@ -147,21 +148,23 @@ struct RulesCard: View {
     let model: YearTabModel
 
     var body: some View {
-        Card(title: "Pravidla výpočtu", accessory: model.rulesVersion, spacing: 6) {
+        Card(title: "Pravidla výpočtu", accessory: model.rulesVersion, spacing: 6, label: "Pravidla") {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(model.ruleRows, id: \.label) { row in
-                    Divider()
+                    Hairline()
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(verbatim: row.label)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 8)
                         Text(verbatim: row.value)
                     }
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
                     .monospacedDigit()
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 9)
                     .accessibilityElement(children: .combine)
                 }
-                Divider()
+                Hairline()
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(model.conventions, id: \.self) { convention in
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -175,8 +178,8 @@ struct RulesCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
                 }
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .padding(.top, 10)
             }
         }
@@ -197,22 +200,23 @@ struct AdjustmentsCard: View {
         Card(
             title: "Úpravy příjmů",
             subtitle:
-                "Příjmy mimo faktury – dobropis, vrácená platba, platba v Kč mimo fakturu. Počítají se do příjmů roku ke"
-                + " svému datu.",
+                "Příjmy mimo faktury – dobropis, vrácená platba, platba v Kč mimo fakturu. Počítají se do příjmů roku"
+                + " ke svému datu.",
             accessory: model.adjustmentsTotal, accessoryIsAmount: true, spacing: 6
         ) {
             VStack(alignment: .leading, spacing: 0) {
                 if model.adjustments.isEmpty {
-                    Divider()
+                    Hairline()
                     Text("Žádné úpravy.")
-                        .foregroundStyle(.secondary)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text3)
                         .padding(.vertical, 10)
                 }
                 ForEach(model.adjustments) { adjustment in
-                    Divider()
+                    Hairline()
                     row(adjustment)
                 }
-                Divider()
+                Hairline()
                 form
                     .onSubmit(add)
                     .padding(.top, 12)
@@ -224,22 +228,26 @@ struct AdjustmentsCard: View {
         }
     }
 
+    /// An adjustment: its date, what it is, its amount in the red of text where the income went down and the green of
+    /// text where it went up, and Smazat.
     private func row(_ adjustment: IncomeAdjustment) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(verbatim: CzechFormat.date(adjustment.date))
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .frame(width: 90, alignment: .leading)
             Text(verbatim: adjustment.description.isEmpty ? "—" : adjustment.description)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             Text(verbatim: YearTabModel.adjustmentAmountText(adjustment.amountHalere))
-                .fontWeight(.semibold)
-                .foregroundStyle(adjustment.amountHalere < 0 ? Color.red : Color(.bannerText))
+                .font(Typography.bodySemibold)
+                .foregroundStyle(adjustment.amountHalere < 0 ? Palette.redText : Palette.greenText)
             Button("Smazat") {
                 Task { await model.deleteAdjustment(id: adjustment.id) }
             }
-            .buttonStyle(.link)
-            .font(.callout)
-            .foregroundStyle(.red)
+            .settingsCardLink(.destructive)
             .accessibilityLabel("Smazat úpravu")
         }
         .monospacedDigit()
@@ -286,7 +294,8 @@ struct AdjustmentsCard: View {
 
     private var amountField: some View {
         SettingsTextField(
-            label: "Částka v Kč (+ / −)", text: $model.adjustmentAmount, prompt: "\u{2212}4\u{00A0}500", trailing: true)
+            label: "Částka v Kč (+ / −)", text: $model.adjustmentAmount, prompt: YearTabModel.adjustmentAmountPrompt,
+            trailing: true)
     }
 
     private var descriptionField: some View {
@@ -294,10 +303,10 @@ struct AdjustmentsCard: View {
             label: "Popis", text: $model.adjustmentDescription, prompt: "např. dobropis k faktuře 20260801")
     }
 
+    /// Přidat: a capsule in the accent 32 points tall, the button of the form as the buttons of a page are.
     private var addButton: some View {
         Button("Přidat", action: add)
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
+            .buttonStyle(CapsuleButtonStyle(.primary))
     }
 
     private func add() {

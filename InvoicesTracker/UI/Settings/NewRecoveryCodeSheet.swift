@@ -42,10 +42,10 @@ struct NewRecoveryCodeSheet: View {
     private var introStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(verbatim: SecurityTabModel.newCodeIntro(replacing: replacedLabel))
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
-            SettingsBox(kind: .warning) {
-                Text(verbatim: SecurityTabModel.newCodeWarning(replacing: replacedLabel))
-            }
+            Note(.attention, icon: .warning, text: SecurityTabModel.newCodeWarning(replacing: replacedLabel))
             if let errorText {
                 SettingsFailureLine(text: errorText)
             }
@@ -58,14 +58,14 @@ struct NewRecoveryCodeSheet: View {
             RecoveryCodeCard(
                 code: pending.code, caption: WelcomeTexts.codeCaption(number: pending.number, created: pending.created),
                 note: "32 znaků", label: pending.label, accessibilityName: "Nový kód pro obnovení", groupFontSize: 17)
-            Toggle("Nový kód mám uložený mimo tento Mac", isOn: $stored)
-                .toggleStyle(.checkbox)
-                .fontWeight(.semibold)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
-                .disabled(isWorking)
+            Toggle(isOn: $stored) {
+                Text("Nový kód mám uložený mimo tento Mac")
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
+            }
+            .toggleStyle(.checkbox)
+            .insetPanel(horizontal: 14, vertical: 12)
+            .disabled(isWorking)
             if let errorText {
                 SettingsFailureLine(text: errorText)
             }
@@ -75,6 +75,8 @@ struct NewRecoveryCodeSheet: View {
         }
     }
 
+    /// Zrušit and the button that goes on, 32 points tall as the buttons of a dialog are, with 4 points over them:
+    /// Zrušit on the grey fill, the other in the accent.
     private func footer(goTitle: String, goDisabled: Bool, go: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Spacer()
@@ -83,17 +85,16 @@ struct NewRecoveryCodeSheet: View {
                     .controlSize(.small)
             }
             Button("Zrušit", action: close)
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
                 .disabled(isWorking)
             Button(goTitle, action: go)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 // One step at a time across the app: not while a backup or a restore runs.
                 .disabled(goDisabled || isWorking || model.isWorking)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .padding(.top, 4)
     }
 
     // MARK: Actions

@@ -4649,27 +4649,83 @@ struct AppWindowLayoutTests {
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.showSettings(.application)
                 try await waitUntil { window.title == "Nastavení" }
-                var farthest: CGFloat = 0
-                for tab in SettingsTab.allCases {
-                    let name = tab.title(year: f.app.asOf.year)
-                    f.app.settingsTab = tab
-                    // The page scrolls; with the cards of the tab it is far taller than the "Načítám…" that stands in
-                    // their place while the tab loads.
-                    try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 300 }
-                    try await layOut(window)
-                    let home = try #require(settingsPageFrames(in: window))
-                    let start = frameInWindow(try #require(scrolledPage(in: window)))
+                try await withAccessibilityElements {
+                    var farthest: CGFloat = 0
+                    for tab in SettingsTab.allCases {
+                        let name = tab.title(year: f.app.asOf.year)
+                        f.app.settingsTab = tab
+                        // The page scrolls; with the cards of the tab it is far taller than the "Načítám…" that
+                        // stands in their place while the tab loads.
+                        try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 300 }
+                        try await layOut(window)
+                        let home = try #require(settingsPageFrames(in: window))
+                        let start = frameInWindow(try #require(scrolledPage(in: window)))
 
-                    scrollPage(in: window, toEnd: true)
-                    try await layOut(window)
-                    let end = frameInWindow(try #require(scrolledPage(in: window)))
-                    farthest = max(farthest, (end.minY - start.minY).magnitude)
-                    #expect(problems(ofSettingsPageIn: window, comparedTo: home) == [], "at the end of \(name)")
+                        scrollPage(in: window, toEnd: true)
+                        try await layOut(window)
+                        let end = frameInWindow(try #require(scrolledPage(in: window)))
+                        farthest = max(farthest, (end.minY - start.minY).magnitude)
+                        #expect(problems(ofSettingsPageIn: window, comparedTo: home) == [], "at the end of \(name)")
 
-                    scrollPage(in: window, toEnd: false)
-                    try await layOut(window)
+                        scrollPage(in: window, toEnd: false)
+                        try await layOut(window)
+                    }
+                    #expect(farthest > 100, "the page that scrolled the farthest scrolled \(farthest) points")
                 }
-                #expect(farthest > 100, "the page that scrolled the farthest scrolled \(farthest) points")
+            }
+        }
+    }
+
+    /// The tabs of Nastavení are the segmented control of the design, not the one macOS draws: VoiceOver reads the
+    /// group "Části nastavení" with a button for each tab, of which the shown one is selected, 28 points tall on a
+    /// track that leaves 2 points around them. A press on another tab, as VoiceOver makes it, shows that tab. The
+    /// control is as wide as its tabs, at the leading edge of the page, and does not fill the page.
+    @Test func theTabsOfNastaveniAreTheSegmentedControlOfTheDesign() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.showSettings(.application)
+                try await waitUntil { window.title == "Nastavení" }
+                try await withAccessibilityElements {
+                    try await waitUntil { accessibilityElement(labelled: "Části nastavení", in: window) != nil }
+                    let group = try #require(accessibilityElement(labelled: "Části nastavení", in: window))
+                    #expect(group.accessibilityRole?() == .group)
+                    // It is the design's own control, found by its name: no system one.
+                    #expect(segmentedControls(in: try #require(window.contentView)).isEmpty)
+                    let titles = SettingsTab.allCases.map { $0.title(year: f.app.asOf.year) }
+                    #expect(titles == ["Aplikace", "Moje údaje", "Zabezpečení a zálohy", "Rok 2026"])
+
+                    var tabFrames: [CGRect] = []
+                    for title in titles {
+                        let tab = try #require(accessibilityButton(labelled: title, in: window), "No tab \(title)")
+                        let frame = try #require(tab.accessibilityFrame?())
+                        #expect(abs(frame.height - 28) < 0.5, "\(title) is \(frame.height) points tall")
+                        tabFrames.append(frame)
+                    }
+                    #expect(accessibilityButton(labelled: "Aplikace", in: window)?.isAccessibilitySelected?() == true)
+                    #expect(
+                        accessibilityButton(labelled: "Moje údaje", in: window)?.isAccessibilitySelected?() != true)
+
+                    // The track holds the tabs in a row with 2 points around them, and is as wide as they are.
+                    let track = try #require(group.accessibilityFrame?())
+                    #expect(abs(track.height - 32) < 0.5, "The track is \(track.height) points tall")
+                    let tabs = tabFrames.reduce(CGRect.null) { $0.union($1) }
+                    #expect(abs(track.width - (tabs.width + 4)) < 0.5, "The track is \(track.width) points wide")
+                    #expect(track.width < 600, "The tabs fill the page: \(track.width) points")
+                    try await waitUntil { frameOfCard(labelled: "Vzhled", in: window) != nil }
+                    let card = try #require(frameOfCard(labelled: "Vzhled", in: window))
+                    #expect(
+                        abs(track.minX - card.minX) < 1, "The tabs start at \(track.minX), the cards at \(card.minX)")
+
+                    // A press on another tab shows it.
+                    let supplier = try #require(accessibilityButton(labelled: "Moje údaje", in: window))
+                    #expect(supplier.accessibilityPerformPress?() == true)
+                    try await waitUntil { f.app.settingsTab == .supplier }
+                    try await waitUntil {
+                        accessibilityButton(labelled: "Moje údaje", in: window)?.isAccessibilitySelected?() == true
+                    }
+                    #expect(accessibilityButton(labelled: "Aplikace", in: window)?.isAccessibilitySelected?() != true)
+                    try await waitUntil { frameOfCard(labelled: "Vaše údaje", in: window) != nil }
+                }
             }
         }
     }
@@ -4699,22 +4755,24 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// Where the page of Nastavení stands: the switcher of the tabs and the scroll view under it, in the coordinates of
-    /// the window.
+    /// Where the page of Nastavení stands: the switcher of the tabs in the coordinates of the screen and the scroll
+    /// view under it in those of the window.
     private struct SettingsPageFrames {
         var switcher: CGRect
         var scrollView: CGRect
     }
 
-    /// The frames of the page of Nastavení in `window`, or nil while it has no switcher or no scroll view.
+    /// The frames of the page of Nastavení in `window`, or nil while it has no switcher or no scroll view. The switcher
+    /// is the group that VoiceOver reads as "Části nastavení" (`SegmentedControl`), in the coordinates of the screen,
+    /// so the views of the window have to make their accessibility elements (`withAccessibilityElements(_:)`).
     private func settingsPageFrames(in window: NSWindow) -> SettingsPageFrames? {
         guard let content = window.contentView,
-            let switcher = segmentedControls(in: content).first,
+            let switcher = accessibilityElement(labelled: "Části nastavení", in: window)?.accessibilityFrame?(),
             let scrollView = scrollViews(in: content).first(where: { !($0.documentView is NSTableView) })
         else {
             return nil
         }
-        return SettingsPageFrames(switcher: frameInWindow(switcher), scrollView: frameInWindow(scrollView))
+        return SettingsPageFrames(switcher: switcher, scrollView: frameInWindow(scrollView))
     }
 
     /// What is wrong with the page of Nastavení in `window`, in words: the switcher of the tabs or the scroll view is

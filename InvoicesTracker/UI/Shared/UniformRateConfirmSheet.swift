@@ -24,12 +24,13 @@ struct UniformRateConfirmSheet: View {
                 "Kurz se uloží až po vašem potvrzení a platby roku \(String(model.finding.year)) se přepočtou, pokud"
                     + " rok počítá příjmy jednotným kurzem. Když rozhodnutí odložíte, kurz zůstane čekat."
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .fixedSize(horizontal: false, vertical: true)
             if let failure = model.failure {
                 Text(verbatim: failure)
-                    .foregroundStyle(.red)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.redText)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -46,46 +47,49 @@ struct UniformRateConfirmSheet: View {
 
     // MARK: Parts
 
-    /// The sentence of what was found, and how many currencies the table has.
+    /// The sentence of what was found, and how many currencies the table has, with the seal of a finding in front of
+    /// them in the accent.
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "checkmark.seal")
-                .font(.system(size: 24))
-                .foregroundStyle(Color.accentColor)
+                .font(Typography.title)
+                .foregroundStyle(Palette.accent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: model.headline)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(Typography.title2)
+                    .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 Text(verbatim: model.tableNote)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
             }
         }
     }
 
-    /// Where the table was read: the issue of the Finanční zpravodaj and its PDF.
+    /// Where the table was read: the issue of the Finanční zpravodaj and its PDF, as links in the blue of a link.
     private var sources: some View {
         HStack(spacing: 14) {
             Text("Zdroj:")
-                .foregroundStyle(.secondary)
-            Link("Vydání Finančního zpravodaje", destination: model.finding.issueURL)
-            Link("PDF s tabulkou", destination: model.finding.pdfURL)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
+            SettingsLink(title: "Vydání Finančního zpravodaje", destination: model.finding.issueURL)
+            SettingsLink(title: "PDF s tabulkou", destination: model.finding.pdfURL)
         }
-        .font(.callout)
     }
 
-    /// The currencies the table lacks or has more than last year's: an orange warning for those that are gone, a blue
-    /// note when there are only new ones.
+    /// The currencies the table lacks or has more than last year's: an attention note with the warning sign for those
+    /// that are gone, an information note when there are only new ones.
     private var differences: some View {
-        SettingsBox(kind: model.warnsOfMissingCurrencies ? .warning : .hint) {
-            ForEach(model.differenceLines, id: \.self) { line in
-                Text(verbatim: line)
-            }
-        }
-        .font(.callout)
+        let warns = model.warnsOfMissingCurrencies
+        return Note(
+            warns ? .attention : .info, icon: warns ? .warning : .info,
+            text: model.differenceLines.joined(separator: "\n"))
     }
 
+    /// The answers, 32 points tall as the buttons of a dialog are, Použít in the accent and the others on the grey
+    /// fill.
     private var footer: some View {
         HStack(spacing: 8) {
             if model.isWorking {
@@ -96,24 +100,23 @@ struct UniformRateConfirmSheet: View {
             if model.isSettled {
                 // Nothing is left to choose, so there is a default to press: it only closes the sheet.
                 Button("Zavřít", action: model.later)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(CapsuleButtonStyle(.primary))
                     .keyboardShortcut(.defaultAction)
             } else {
                 Button("Později", action: model.later)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CapsuleButtonStyle(.secondary))
                     .keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
                 Button("Zadat ručně", action: model.enterManually)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CapsuleButtonStyle(.secondary))
                     .disabled(model.isWorking)
                 Button("Použít") {
                     Task { await model.use() }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .disabled(model.isWorking)
             }
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .padding(.top, 4)
     }
 }

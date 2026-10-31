@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// A row of a card under a hairline: the label on the left, the value on the right, and a line under both. The value
-/// can be a control, such as a menu, which VoiceOver keeps as a control of its own. The hairline is the one of the
-/// design, the label is in secondary text and the detail under it in callout and tertiary text.
+/// A row of a card under a hairline: the label on the left, the value on the right, and a line of detail under both.
+/// The value can be a control, such as a menu, which VoiceOver keeps as a control of its own. The hairline is the one
+/// of the design and the row is 10 points tall above and below its text; the label is in secondary text, the value in
+/// the colour of text unless it sets its own, and the detail under them in callout and tertiary text.
 struct SettingsRow<Value: View>: View {
     let label: String
     var detail: String?
@@ -10,16 +11,17 @@ struct SettingsRow<Value: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Rectangle()
-                .fill(Palette.sep)
-                .frame(height: 1)
-            VStack(alignment: .leading, spacing: 3) {
+            Hairline()
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(verbatim: label)
+                        .font(Typography.body)
                         .foregroundStyle(Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     value
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
                         .multilineTextAlignment(.trailing)
                 }
                 if let detail, !detail.isEmpty {
@@ -29,57 +31,14 @@ struct SettingsRow<Value: View>: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, 10)
         }
         .accessibilityElement(children: .contain)
     }
 }
 
-/// A box of a card: an orange warning with its sign, a blue hint, a green reassurance or a grey note, in the semantic
-/// colour at a low opacity.
-struct SettingsBox<Content: View>: View {
-    enum Kind {
-        case warning
-        case hint
-        case reassurance
-        case note
-    }
-
-    let kind: Kind
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            if kind == .warning {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                content
-            }
-            .foregroundStyle(kind == .warning ? Color(.simulationText) : Color.primary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(tint.opacity(kind == .note ? 0.1 : 0.14), in: RoundedRectangle(cornerRadius: 12))
-        // A box can hold a button or a link, which VoiceOver keeps as controls of their own.
-        .accessibilityElement(children: .contain)
-    }
-
-    private var tint: Color {
-        switch kind {
-        case .warning: .orange
-        case .hint: .blue
-        case .reassurance: .green
-        case .note: .secondary
-        }
-    }
-}
-
-/// A field of a form of Nastavení: its label over it, and the message under it when what was typed was refused.
+/// A field of a form of Nastavení: its label over it, and the message under it when what was typed was refused. The
+/// field is outlined in the red of an error while it has a message.
 struct SettingsTextField: View {
     let label: String
     @Binding var text: String
@@ -91,20 +50,20 @@ struct SettingsTextField: View {
         LabeledField(label) {
             VStack(alignment: .leading, spacing: 4) {
                 FormTextField(label, text: $text, prompt: prompt, trailing: trailing)
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.red, lineWidth: error == nil ? 0 : 1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
+                            .strokeBorder(Palette.red, lineWidth: error == nil ? 0 : 1)
+                    )
                 if let error {
-                    Text(verbatim: error)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
+                    FieldMessage(text: error)
                 }
             }
         }
     }
 }
 
-/// A line in red that says what went wrong. VoiceOver reads it out when it appears, or once the app is unlocked when it
-/// appears under the lock after inactivity.
+/// A line in the red of text that says what went wrong, in the font it is given (body unless told otherwise). VoiceOver
+/// reads it out when it appears, or once the app is unlocked when it appears under the lock after inactivity.
 struct SettingsFailureLine: View {
     let text: String
 
@@ -112,7 +71,7 @@ struct SettingsFailureLine: View {
 
     var body: some View {
         Text(verbatim: text)
-            .foregroundStyle(.red)
+            .foregroundStyle(Palette.redText)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .onAppear { VoiceOverAnnouncement.post(text, by: app) }
@@ -120,11 +79,32 @@ struct SettingsFailureLine: View {
     }
 }
 
+/// A link to a page on the web, as the design draws a link: its words in callout in the blue of a link. VoiceOver reads
+/// it as a link, and a click opens the page in the browser.
+struct SettingsLink: View {
+    let title: String
+    let destination: URL
+
+    var body: some View {
+        Link(destination: destination) {
+            Text(verbatim: title)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.accentText)
+        }
+    }
+}
+
 extension View {
-    /// The small round-cornered button of a card, such as Zkontrolovat teď.
+    /// The look of a button inside a card, such as Zkontrolovat teď: a capsule 28 points tall on the grey fill. The
+    /// buttons below the view take the look from it, so it can be given to a row of them.
     func settingsCardButton() -> some View {
-        buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
+        buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+    }
+
+    /// The look of a link inside a card, such as Zobrazit licenci: the text of a button in callout, in the blue of a
+    /// link, or in the red of text where it leads to something that cannot be undone, such as Odstranit….
+    func settingsCardLink(_ tone: LinkTone = .accent) -> some View {
+        buttonStyle(TextLinkButtonStyle(tone))
+            .font(Typography.callout)
     }
 }

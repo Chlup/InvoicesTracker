@@ -21,25 +21,13 @@ struct SecurityTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
             if let notice = app.securityNotice {
-                SettingsBox(kind: .warning) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(verbatim: notice)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 8)
-                            closeNoticeButton
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(verbatim: notice)
-                                .fixedSize(horizontal: false, vertical: true)
-                            closeNoticeButton
-                        }
-                    }
+                Note(.attention, icon: .warning, text: notice) {
+                    closeNoticeButton
                 }
             }
-            AdaptiveColumns(minimumColumnWidth: 440, spacing: 16) {
+            AdaptiveColumns(minimumColumnWidth: 440, spacing: DesignMetrics.cardSpacing) {
                 unlockingCard
                 codeCard
             }
@@ -93,16 +81,17 @@ struct SecurityTab: View {
             Toggle(isOn: Binding(get: { model.touchIDOn }, set: { model.chooseTouchID($0) })) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Odemykat přes Touch ID")
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                     Text("Aplikace se zeptá na Touch ID nebo heslo k Macu při spuštění a po nečinnosti.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .toggleStyle(.checkbox)
             .disabled(model.isWorking)
-            Divider()
+            Hairline()
             idleLockRow
             Text(
                 """
@@ -110,8 +99,8 @@ struct SecurityTab: View {
                 Touch ID dá datům nový klíč a hned uloží zálohu.
                 """
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
             if let failure = model.failure, failure.place == .unlocking {
                 SettingsFailureLine(text: failure.text)
@@ -126,8 +115,8 @@ struct SecurityTab: View {
             HStack(alignment: .center, spacing: 12) {
                 // The menu carries the same name for VoiceOver.
                 Text("Zamknout při nečinnosti")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(model.canChooseIdleLock ? .primary : .secondary)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(model.canChooseIdleLock ? Palette.text : Palette.text4)
                     .accessibilityHidden(true)
                 Spacer(minLength: 8)
                 Picker("Zamknout při nečinnosti", selection: idleLockChoice) {
@@ -142,8 +131,8 @@ struct SecurityTab: View {
                 .disabled(!model.canChooseIdleLock)
             }
             Text(verbatim: model.idleLockNote)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -164,10 +153,12 @@ struct SecurityTab: View {
         Card(title: "Kód pro obnovení") {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Platný kód")
-                    .foregroundStyle(.secondary)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
                 Spacer(minLength: 8)
                 Text(verbatim: model.codeCaption)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
             }
             .accessibilityElement(children: .combine)
             Text(
@@ -176,14 +167,15 @@ struct SecurityTab: View {
                 ztratíte, vytvořte nový, dokud data ještě otevřete.
                 """
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
             if let olderBackups = model.olderBackupsText {
-                SettingsBox(kind: .note) {
-                    Text(verbatim: olderBackups)
-                        .font(.callout)
-                }
+                Text(verbatim: olderBackups)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .insetPanel(horizontal: 12, vertical: 10)
             }
             Button("Vytvořit nový kód…") {
                 showsNewCode = true
@@ -204,50 +196,49 @@ struct SecurityTab: View {
                 backupRow(
                     "V tomto Macu",
                     detail: "šifrovaná kopie nejvýš jednou za hodinu po změně · uchovává se 30 posledních",
-                    value: model.localBackupValue, valueColor: .primary, action: "Zobrazit ve Finderu",
+                    value: model.localBackupValue, valueColor: Palette.text, action: "Zobrazit ve Finderu",
                     perform: showLocalBackups)
                 if let folder = model.offMacFolderName {
                     backupRow(
                         "Mimo tento Mac", detail: "\(folder) · jednou denně, uchovává se 30 posledních",
-                        value: model.offMacValue, valueColor: model.hasOffMacBackup ? Color(.bannerText) : .orange,
+                        value: model.offMacValue,
+                        valueColor: model.hasOffMacBackup ? Palette.greenText : Palette.orangeText,
                         action: "Změnit složku…", perform: chooseFolder)
                 } else {
                     backupRow(
                         "Mimo tento Mac", detail: "externí disk, NAS nebo iCloud Drive", value: model.offMacValue,
-                        valueColor: .orange, action: "Vybrat složku…", perform: chooseFolder)
+                        valueColor: Palette.orangeText, action: "Vybrat složku…", perform: chooseFolder)
                 }
             }
             if model.offMacFolderName == nil {
-                SettingsBox(kind: .warning) {
-                    Text(
-                        """
+                Note(
+                    .attention, icon: .warning,
+                    text: """
                         Zálohy jsou zatím jen v tomto Macu. Když Mac přestane fungovat, pomůže jen záloha jinde – \
                         vyberte složku na externím disku, NAS nebo v iCloud Drive. Aplikace tam jednou denně uloží \
                         šifrovanou zálohu.
                         """
-                    )
-                }
+                )
                 .padding(.top, 4)
             } else if model.showsOffMacReminder {
-                SettingsBox(kind: .warning) {
-                    Text(
-                        """
+                Note(
+                    .attention, icon: .warning,
+                    text: """
                         Mimo tento Mac se už 30 dní nepodařilo uložit zálohu. Připojte disk se zvolenou složkou, nebo \
                         vyberte jinou.
                         """
-                    )
-                }
+                )
                 .padding(.top, 4)
             }
             Text("Time Machine zálohuje i data aplikace. S kódem pro obnovení z ní obnovíte data i na novém Macu.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
             if let failure = model.failure, failure.place == .backups {
                 SettingsFailureLine(text: failure.text)
             }
-            Divider()
+            Hairline()
                 .padding(.top, 6)
             HStack(spacing: 8) {
                 Button("Zálohovat teď") {
@@ -268,30 +259,31 @@ struct SecurityTab: View {
         }
     }
 
-    /// A row of a place of the backups: its name and what is kept there, the last backup, and what can be done there.
+    /// A row of a place of the backups under a hairline: its name and what is kept there, the last backup, and what can
+    /// be done there.
     private func backupRow(
         _ title: String, detail: String, value: String, valueColor: Color, action: String,
         perform: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Divider()
+            Hairline()
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: title)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                     Text(verbatim: detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(verbatim: value)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
                         .foregroundStyle(valueColor)
                     Button(action, action: perform)
-                        .buttonStyle(.link)
-                        .font(.callout)
+                        .settingsCardLink()
                         .disabled(model.isWorking)
                 }
             }

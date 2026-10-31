@@ -15,12 +15,12 @@ struct SupplierTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
             if let line = model.saveFailure ?? model.errorText {
                 SettingsFailureLine(text: line)
             }
             if model.supplier != nil {
-                AdaptiveColumns(minimumColumnWidth: 440, spacing: 16) {
+                AdaptiveColumns(minimumColumnWidth: 440, spacing: DesignMetrics.cardSpacing) {
                     detailsCard
                     accountsCard
                 }
@@ -62,8 +62,8 @@ struct SupplierTab: View {
                 VStack(alignment: .leading, spacing: 4) {
                     field(.czechFooter, "Patička českých faktur")
                     Text("Na anglické faktury se netiskne.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text3)
                 }
             }
         }
@@ -131,32 +131,29 @@ struct SupplierTab: View {
         .pickerStyle(.menu)
     }
 
-    /// A box of an account: its title, Odebrat for the account in euros, and its fields.
+    /// A box of an account: a panel on the inset background with its title, Odebrat for the account in euros, and its
+    /// fields.
     private func accountBox(
         _ title: String, removable: Bool = false, @ViewBuilder fields: () -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text(verbatim: title)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
                 if removable {
                     Button("Odebrat") {
                         model.removeEURAccount()
                     }
-                    .buttonStyle(.link)
-                    .font(.callout)
-                    .foregroundStyle(.red)
+                    .settingsCardLink(.destructive)
                     .accessibilityLabel("Odebrat účet v eurech")
                 }
             }
             fields()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .insetPanel(horizontal: 14, vertical: 12)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
     }
@@ -164,11 +161,10 @@ struct SupplierTab: View {
     /// "Na fakturách": a line for each currency with a dot that says whether its invoices have what they need.
     private var statusLines: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Divider()
+            Hairline()
             Text("Na fakturách")
-                .font(.callout)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+                .font(Typography.calloutSemibold)
+                .foregroundStyle(Palette.text2)
                 .padding(.top, 6)
             ForEach(model.statusLines, id: \.text) { line in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -177,7 +173,7 @@ struct SupplierTab: View {
                         .frame(width: 7, height: 7)
                         .accessibilityHidden(true)
                     Text(verbatim: line.text)
-                        .font(.callout)
+                        .font(Typography.callout)
                         .foregroundStyle(textColor(of: line.kind))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -186,19 +182,23 @@ struct SupplierTab: View {
         }
     }
 
+    /// The dot of a line: the green of text for an account the invoices can use, the orange of attention for what is
+    /// missing, and the line of a field for a currency with no account.
     private func color(of kind: InvoiceAccountStatus.Kind) -> Color {
         switch kind {
-        case .ready: Color(.bannerText)
-        case .incomplete: .orange
-        case .absent: .secondary
+        case .ready: Palette.greenText
+        case .incomplete: Palette.orange
+        case .absent: Palette.sepStrong
         }
     }
 
+    /// The text of a line: the colour of text, the orange of text for what is missing, and secondary text for a
+    /// currency with no account.
     private func textColor(of kind: InvoiceAccountStatus.Kind) -> Color {
         switch kind {
-        case .ready: .primary
-        case .incomplete: Color(.simulationText)
-        case .absent: .secondary
+        case .ready: Palette.text
+        case .incomplete: Palette.orangeText
+        case .absent: Palette.text2
         }
     }
 
