@@ -2,20 +2,40 @@ import SwiftUI
 
 // MARK: - Rok a příjem
 
+/// The sizes and gaps of the cards of the inputs that their parts do not set themselves, in points.
+private nonisolated enum SimulatorCardsMetrics {
+    /// The space between the parts of the card "Rok a příjem": the year, the income and the assumptions.
+    static let yearCardSpacing: CGFloat = 16
+
+    /// The space between the hairline that sets the income and the assumptions apart and the part under it.
+    static let belowHairline: CGFloat = 14
+}
+
 /// "Rok a příjem": the year of the simulation with the rules it is computed with, the income of the year in a large
 /// field with what it is a month, and the assumptions — the flat-rate expenses, the activity (a secondary one with the
 /// box that asks for the exemption from the health minimum) and its months — with what the expenses come to under
-/// them. A text that was refused has its message under its field.
+/// them. A text that was refused has its message under its field. The income and the assumptions each stand under a
+/// hairline.
 struct SimulatorYearAndIncomeCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        Card(spacing: 14, label: "Rok a příjem") {
+        Card(spacing: SimulatorCardsMetrics.yearCardSpacing, label: "Rok a příjem") {
             year
-            Divider()
-            income
-            Divider()
-            assumptions
+            underHairline {
+                income
+            }
+            underHairline {
+                assumptions
+            }
+        }
+    }
+
+    /// `content` under a hairline of the width of the card, 14 points below it.
+    private func underHairline<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: SimulatorCardsMetrics.belowHairline) {
+            Hairline()
+            content()
         }
     }
 
@@ -48,7 +68,7 @@ struct SimulatorYearAndIncomeCard: View {
             if let message = model.incomeError {
                 FieldMessage(text: message)
             }
-            Text("V Kč. Bez zaměstnání a jiných zdanitelných příjmů.")
+            Text("Bez DPH, v Kč. Bez zaměstnání a jiných zdanitelných příjmů.")
                 .simulatorNote()
         }
     }
@@ -61,10 +81,10 @@ struct SimulatorYearAndIncomeCard: View {
                     model.readTypedTexts()
                 }
             )
-            .font(.system(size: 20, weight: .semibold))
+            .font(Typography.title.weight(.semibold))
             // The unit keeps its width, which the row would otherwise share out with the amount a month.
             Text("Kč")
-                .font(.system(size: 15))
+                .font(Typography.title3.weight(.regular))
                 .fixedSize()
         }
     }
@@ -74,7 +94,7 @@ struct SimulatorYearAndIncomeCard: View {
     private var perMonth: some View {
         if let perMonth = model.page?.incomePerMonth {
             Text(verbatim: perMonth)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.text2)
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -182,7 +202,8 @@ struct SimulatorYearAndIncomeCard: View {
     /// The title of the year and of the income, which their controls carry for VoiceOver.
     private func inputTitle(_ title: String) -> some View {
         Text(verbatim: title)
-            .font(.system(size: 15, weight: .semibold))
+            .font(Typography.title3)
+            .foregroundStyle(Palette.text)
             .accessibilityHidden(true)
     }
 
@@ -215,8 +236,9 @@ struct SimulatorYearAndIncomeCard: View {
 // MARK: - Odpočty a slevy
 
 /// The heading over the cards of the deductions and of the family, with the button that copies the deductions and the
-/// family of the year into them as Zálohy a odpočty shows them, once the year has been read. The fields and the lines
-/// under them in the cards are those of Zálohy a odpočty.
+/// family of the year into them as Zálohy a odpočty shows them, once the year has been read: a capsule of the colour of
+/// a card inside the cards, 28 points tall. The fields and the lines under them in the cards are those of Zálohy a
+/// odpočty.
 struct SimulatorDeductionsHeading: View {
     let model: SimulatorModel
 
@@ -228,6 +250,7 @@ struct SimulatorDeductionsHeading: View {
                 Button("Převzít ze Záloh a odpočtů \(String(model.year))") {
                     Task { await model.copyDeductionsAndFamily() }
                 }
+                .buttonStyle(CapsuleButtonStyle(.onWindow, size: .small))
             }
         }
         .padding(.horizontal, 4)
@@ -293,9 +316,9 @@ struct SimulatorGiftsCard: View {
         Card(spacing: 0, label: "Dary a slevy na dani") {
             SimulatorCardTitle(text: "Dary a slevy na dani")
                 .padding(.bottom, 6)
-            Divider()
+            Hairline()
             GiftsRow(inputs: model.deductionInputs, hints: model.page?.hints)
-            Divider()
+            Hairline()
             TaxpayerCreditRow(year: model.year, isOn: creditChoice)
         }
     }
@@ -345,7 +368,8 @@ struct SimulatorCardTitle: View {
 
     var body: some View {
         Text(verbatim: text)
-            .font(.system(size: 15, weight: .semibold))
+            .font(Typography.title3)
+            .foregroundStyle(Palette.text)
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -356,8 +380,8 @@ private struct FieldTitle: View {
 
     var body: some View {
         Text(verbatim: text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .accessibilityHidden(true)
     }
 }
@@ -378,10 +402,11 @@ extension SimulatorModel {
 }
 
 extension View {
-    /// A line of the Simulátor in small secondary type that breaks where it has to.
+    /// A line of the Simulátor in callout and tertiary text, the colour of the notes and captions under a field, that
+    /// breaks where it has to.
     func simulatorNote() -> some View {
-        font(.callout)
-            .foregroundStyle(.secondary)
+        font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

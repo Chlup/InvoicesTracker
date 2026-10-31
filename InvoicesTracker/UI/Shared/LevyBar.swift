@@ -241,12 +241,13 @@ private nonisolated enum LevyBarMetrics {
     static let fadeDuration: Double = 0.12
 }
 
-/// The bar of the levies ("Pruh odvodů"), at the right of the result card of Přehled, Výpočet, Odhad odvodů and the
-/// Simulátor: the header with the total and its share at the end of its line, one bar split into the levies of the
-/// three authorities in their colours, each part as wide as its levy, and a legend of three equal columns with the
-/// short name and the value of each. The advances and what is left to pay are only in the popover of a part, which
-/// shows while the pointer is over the part or its item of the legend, or while that item has the focus of the
-/// keyboard (with keyboard navigation, as a button has it); the other parts then fade.
+/// The bar of the levies ("Pruh odvodů"), at the right of the result card of Přehled, Výpočet and Odhad odvodů and
+/// under the key figure in the one column of the result card of the Simulátor: the header with the total and its share
+/// at the end of its line (the Simulátor's has none), one bar split into the levies of the three authorities in their
+/// colours, each part as wide as its levy, and a legend of three equal columns with the short name and the value of
+/// each. The advances and what is left to pay are only in the popover of a part, which shows while the pointer is
+/// over the part or its item of the legend, or while that item has the focus of the keyboard (with keyboard
+/// navigation, as a button has it); the other parts then fade.
 ///
 /// The popover hangs under the frame of the view, 8 points below it, and makes the view no taller. It is drawn over
 /// what follows the view in the stack the view is in, but a container of the view must itself be drawn over what

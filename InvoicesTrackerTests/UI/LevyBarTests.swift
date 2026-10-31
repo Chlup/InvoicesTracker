@@ -289,4 +289,99 @@ struct LevyBarTests {
         #expect(data.parts.allSatisfy { $0.shareLine == nil })
         #expect(data.parts[0].accessibilityLabel.hasSuffix("zbývá 0\u{00A0}Kč"))
     }
+
+    // MARK: The bar of a simulation
+
+    /// The rows of the popovers of the bar of the Simulátor, which the shares of the sample year make: the levy of the
+    /// year, a twelfth of it and its share of the income, in whole Kč, the months rounded half up (13 273,25 Kč is
+    /// 13 273 Kč and 5 578,75 Kč is 5 579 Kč), and the shares those of `IncomeShares`, which add up to 14,6 %.
+    @Test func theBarOfASimulationSaysTheYearTheMonthAndTheShareOfTheIncomeOfEachLevy() {
+        let data = LevyBarBuilder.simulation(of: sample, header: "Odvody podle úřadů", notes: [:])
+
+        #expect(data.header == "Odvody podle úřadů")
+        #expect(data.total == nil)
+        #expect(data.totalShare == nil)
+        #expect(data.parts.map(\.authority) == [.tax, .social, .health])
+        #expect(data.parts.map(\.weight) == [94_440, 159_279, 66_945])
+        #expect(
+            data.parts.map(\.legendValue) == [
+                "94\u{00A0}440\u{00A0}Kč", "159\u{00A0}279\u{00A0}Kč", "66\u{00A0}945\u{00A0}Kč",
+            ])
+        #expect(
+            data.parts.map(\.rows) == [
+                [
+                    LevyPopoverRow(label: "Za rok", value: "94\u{00A0}440\u{00A0}Kč", style: .strong),
+                    LevyPopoverRow(label: "Měsíčně", value: "7\u{00A0}870\u{00A0}Kč", style: .muted),
+                    LevyPopoverRow(label: "Z příjmu", value: "4,3\u{00A0}%", style: .muted),
+                ],
+                [
+                    LevyPopoverRow(label: "Za rok", value: "159\u{00A0}279\u{00A0}Kč", style: .strong),
+                    LevyPopoverRow(label: "Měsíčně", value: "13\u{00A0}273\u{00A0}Kč", style: .muted),
+                    LevyPopoverRow(label: "Z příjmu", value: "7,3\u{00A0}%", style: .muted),
+                ],
+                [
+                    LevyPopoverRow(label: "Za rok", value: "66\u{00A0}945\u{00A0}Kč", style: .strong),
+                    LevyPopoverRow(label: "Měsíčně", value: "5\u{00A0}579\u{00A0}Kč", style: .muted),
+                    LevyPopoverRow(label: "Z příjmu", value: "3,0\u{00A0}%", style: .muted),
+                ],
+            ])
+        // The share line is for the bars that have no row of the share, and the notes are the screen's.
+        #expect(data.parts.allSatisfy { $0.shareLine == nil && $0.note == nil })
+        #expect(
+            data.accessibilityLabel
+                == "Odvody podle úřadů: Daň z příjmů 94\u{00A0}440\u{00A0}Kč,"
+                + " Sociální pojištění 159\u{00A0}279\u{00A0}Kč, Zdravotní pojištění 66\u{00A0}945\u{00A0}Kč")
+        #expect(
+            data.parts.map(\.accessibilityLabel) == [
+                "Daň z příjmů: za rok 94\u{00A0}440\u{00A0}Kč, měsíčně 7\u{00A0}870\u{00A0}Kč, z příjmu 4,3\u{00A0}%",
+                "Sociální pojištění: za rok 159\u{00A0}279\u{00A0}Kč, měsíčně 13\u{00A0}273\u{00A0}Kč,"
+                    + " z příjmu 7,3\u{00A0}%",
+                "Zdravotní pojištění: za rok 66\u{00A0}945\u{00A0}Kč, měsíčně 5\u{00A0}579\u{00A0}Kč,"
+                    + " z příjmu 3,0\u{00A0}%",
+            ])
+    }
+
+    @Test func theNotesOfASimulationBarStandUnderTheRowsOfTheirPartsAndAreRead() {
+        let notes: [Authority: String] = [.social: "platíte minimum", .health: "platíte minimum"]
+
+        let data = LevyBarBuilder.simulation(of: sample, header: "Odvody podle úřadů", notes: notes)
+
+        #expect(data.parts.map(\.note) == [nil, "platíte minimum", "platíte minimum"])
+        #expect(data.parts[0].accessibilityLabel.hasSuffix("z příjmu 4,3\u{00A0}%"))
+        #expect(data.parts[1].accessibilityLabel.hasSuffix(", z příjmu 7,3\u{00A0}%, platíte minimum"))
+        #expect(data.parts[2].accessibilityLabel.hasSuffix(", z příjmu 3,0\u{00A0}%, platíte minimum"))
+    }
+
+    @Test func withoutIncomeTheShareOfEachPartOfASimulationBarIsADash() {
+        let result = TaxEngine.compute(computationYearInput(), asOf: civilDate("2026-12-31"))
+        #expect(result.P == 0)
+
+        let data = LevyBarBuilder.simulation(of: result, header: "Odvody podle úřadů", notes: [:])
+
+        let dash = LevyPopoverRow(label: "Z příjmu", value: "—", style: .muted)
+        #expect(data.parts.map { $0.rows[2] } == [dash, dash, dash])
+        #expect(data.parts.map(\.weight) == Authority.allCases.map { result.balance($0).liability })
+        #expect(data.parts[1].accessibilityLabel.contains("z příjmu —"))
+    }
+
+    /// A tax bonus is a levy below zero: its legend says "bonus 37 524 Kč" and draws no part (a weight below zero), and
+    /// its popover says the bonus, a twelfth of it and its share of the income with the minus sign (U+2212).
+    @Test func aTaxBonusInASimulationBarIsNegativeAndReadsWithTheMinusSign() throws {
+        var input = TaxEngineFamilyTests.input(TaxEngineFamilyTests.earlyReceipts)
+        input.advances.tax[0] = 10_000
+        let result = TaxEngine.compute(input, asOf: civilDate("2026-02-28"))
+        #expect(result.balance(.tax).liability == -37_524)
+
+        let data = LevyBarBuilder.simulation(of: result, header: "Odvody podle úřadů", notes: [:])
+
+        let tax = try #require(data.parts.first)
+        #expect(tax.weight == -37_524)
+        #expect(tax.legendValue == "bonus 37\u{00A0}524\u{00A0}Kč")
+        #expect(tax.rows[0] == LevyPopoverRow(label: "Za rok", value: "bonus 37\u{00A0}524\u{00A0}Kč", style: .strong))
+        #expect(tax.rows[1] == LevyPopoverRow(label: "Měsíčně", value: "\u{2212}3\u{00A0}127\u{00A0}Kč", style: .muted))
+        #expect(tax.rows[2].label == "Z příjmu")
+        #expect(tax.rows[2].value.hasPrefix("\u{2212}"))
+        #expect(tax.rows[2].value.hasSuffix("\u{00A0}%"))
+        #expect(LevyBarLayout.partWidths(weights: data.parts.map(\.weight), width: 300)[0] == 0)
+    }
 }

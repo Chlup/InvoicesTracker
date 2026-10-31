@@ -279,6 +279,36 @@ struct CardAndFigureTests {
         #expect(abs(held - 416) < 0.5, "\(held)")
     }
 
+    /// The height of a line of text set in `font`.
+    private func lineHeight(of font: Font) -> CGFloat {
+        NSHostingView(rootView: Text(verbatim: "Ž").font(font).fixedSize()).fittingSize.height
+    }
+
+    /// The Simulátor sets the line under its figure ("38 391 Kč měsíčně") in the callout size, 12 points, where the
+    /// sentence of the other screens is in the body size, 13: the key figure with the callout is lower by the
+    /// difference of the two lines, and its sentence is narrower. The default is the body.
+    @Test func theSentenceCanBeSetInTheCalloutSizeAndIsInTheBodySizeOtherwise() {
+        let data = KeyFigureData(
+            eyebrow: "Odvody za rok 2026", figure: "460\u{00A0}690\u{00A0}Kč", share: "18,4\u{00A0}%",
+            sentence: "38\u{00A0}391\u{00A0}Kč měsíčně")
+        let body = NSHostingView(rootView: KeyFigureView(data)).fittingSize
+        let explicitBody = NSHostingView(rootView: KeyFigureView(data, sentenceFont: Typography.body)).fittingSize
+        let callout = NSHostingView(rootView: KeyFigureView(data, sentenceFont: Typography.callout)).fittingSize
+
+        #expect(explicitBody == body)
+        let difference = lineHeight(of: Typography.body) - lineHeight(of: Typography.callout)
+        #expect(difference > 0)
+        #expect(abs((body.height - callout.height) - difference) < 0.5, "\(body.height) and \(callout.height)")
+        // Only the sentence changes: the figure and its share set the width of this key figure either way.
+        #expect(abs(body.width - callout.width) < 0.5)
+        // In a room of 140 points the sentence is the widest part, and the callout is narrower than the body.
+        func width(_ font: Font) -> CGFloat {
+            let long = KeyFigureData(eyebrow: "E", figure: "1", sentence: "Dvanáct tisíc korun měsíčně a víc")
+            return NSHostingView(rootView: KeyFigureView(long, sentenceFont: font)).fittingSize.width
+        }
+        #expect(width(Typography.callout) < width(Typography.body) - 5)
+    }
+
     @Test func aKeyFigureIsReadAsOnePhrase() async throws {
         let data = KeyFigureData(
             eyebrow: "Odhad odvodů za celý rok 2026", figure: "449\u{00A0}868\u{00A0}Kč",

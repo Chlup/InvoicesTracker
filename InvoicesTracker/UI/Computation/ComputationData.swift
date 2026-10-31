@@ -76,14 +76,13 @@ nonisolated struct ComputationSection: Identifiable, Sendable, Hashable {
 
 // MARK: - The cards under the result
 
-/// What one authority takes, as a part of a bar of the three authorities.
+/// What one authority takes of the next crown, as a part of the bar of the marginal levy.
 nonisolated struct MarginalShare: Identifiable, Sendable, Hashable {
     var authority: Authority
 
-    /// The part of the full width of the bar, 0 to 1. The bar of the marginal levy gives each authority its rate
-    /// itself: a tax of 15 % of the next crown is 0,15 of the width, so the three parts together fill as much of the
-    /// bar as the levy total is of a hundred crowns. A bar of what the authorities are paid gives each its share of
-    /// the total instead, and those add up to 1. It is for drawing only; the money is in the texts.
+    /// The rate of the authority, as the part of the full width of the bar, 0 to 1: a tax of 15 % of the next crown is
+    /// 0,15 of the width, so the three parts together fill as much of the bar as the levy total is of a hundred
+    /// crowns. It is for drawing only; the money is in the texts.
     var fraction: Double
 
     var id: Authority {

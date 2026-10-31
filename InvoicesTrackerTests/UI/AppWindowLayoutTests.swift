@@ -27,8 +27,10 @@ import Testing
 /// with the sample family copied into them, and with a secondary activity chosen and the rate of 30 % taken from the
 /// settings of the year, whose box of the health minimum and its line are whole, and so is the note of the expenses
 /// under the choices, with the sentence about rent (§ 9) after the one about the settings; in a large window the three
-/// choices of its assumptions stand in one row, and the net income ends its result card, whether the levies are more
-/// than the income or not. The breakdown of Výpočet and of the Simulátor stands in two columns in a large window and in
+/// choices of its assumptions stand in one row. Its result is one card of 360 points beside the inputs, in the least
+/// window too, with the key figure, the bar of the levies, the net income and the marginal levy one under the other,
+/// whether the levies are more than the income or not, and the popover of the bar is drawn over the net income and the
+/// marginal levy. The breakdown of Výpočet and of the Simulátor stands in two columns in a large window and in
 /// one at the least room, and the key figure and the levy bar of the result card of Výpočet stand side by side where
 /// the card has the room of two columns and one above the other where it has not, with its two cards of one height in a
 /// row under it. Odhad odvodů fits with the months of its clients folded and unfolded, its result card and its card
@@ -3130,6 +3132,11 @@ struct AppWindowLayoutTests {
             if (card.maxY - 20 - barTop).magnitude > 1 {
                 found.append("The levy bar is not level at the top with the key figure: \(header), \(total), \(card)")
             }
+            // The sentence under the key figure stops at the width the design gives it on this screen, 36 em of the
+            // 13-point type, 468 points, where the column has the room for it: not at the 416 of the other screens.
+            if column > 470, (key.width - 468).magnitude > 1 {
+                found.append("The key figure is not 468 points wide, the width of its sentence: \(key)")
+            }
         } else {
             if (key.minY - barTop - 28).magnitude > 1 {
                 found.append("The levy bar is not 28 points under the key figure: \(header), \(total), \(key)")
@@ -4080,12 +4087,13 @@ struct AppWindowLayoutTests {
     // MARK: Simulátor
 
     /// The cards of the Simulátor by the labels VoiceOver reads them under: the four of the inputs, the two of the
-    /// family after them, the result and the marginal levy of the year the app shows, and the four of the breakdown
-    /// below them, the last of which is the net income.
+    /// family after them, the result of the year the app shows (which holds the net income and the marginal levy, so
+    /// they are no cards of their own), and the four of the breakdown below them, the last of which is the net
+    /// income.
     private static let simulatorCards = [
         "Rok a příjem", "Úroky z úvěru na bydlení", "Spoření a pojištění na stáří", "Dary a slevy na dani", "Děti",
-        "Manžel nebo manželka", "Zaplatíte za rok 2026", "Mezní odvod", "Daň z příjmů", "Sociální pojištění",
-        "Zdravotní pojištění", "Čistý příjem",
+        "Manžel nebo manželka", "Kolik zaplatíte", "Daň z příjmů", "Sociální pojištění", "Zdravotní pojištění",
+        "Čistý příjem",
     ]
 
     /// The Simulátor of the year the app shows, on the data of `EditorFixture`, whose stored settings of 2026 are what
@@ -4348,8 +4356,8 @@ struct AppWindowLayoutTests {
         return found
     }
 
-    /// At the least room the app allows, what the year costs stands to the right of the year and the income, its top
-    /// level with theirs, and not under the inputs.
+    /// At the least room the app allows, the result stands to the right of the year and the income, its top level with
+    /// theirs, in a column of 360 points, 16 points from the inputs, and not under them.
     @Test func theResultsStandBesideTheInputsAtTheSmallestWindow() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -4364,16 +4372,14 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The net income ends the result card of the Simulátor, at the least room, at a large size and at the least room
-    /// again, whether the levies are more than the income (the amount is then negative, as it is while the income is
-    /// 0) or not: VoiceOver reads its words, the average per month and the line under them as one phrase, which stands
-    /// within the card under the line of the health insurance. The card is 300 points wide beside the inputs, where
-    /// the amount stands under its words. With the sidebar as wide as it goes, the results come under the inputs, in a
-    /// card as wide as the page, and the amount stands beside its words: the net income is two lines of text tall, not
-    /// three.
-    @Test(arguments: [("0", true), ("2 500 000", false)])
-    func theNetIncomeEndsTheResultCardOfTheSimulatorWhetherOrNotTheLeviesAreMoreThanTheIncome(
-        income: String, isNegative: Bool
+    /// The result card of the Simulátor holds, from the top, the key figure, the bar of the levies, the net income and
+    /// the marginal levy, in a card padded 20: the parts are 14 points apart, and each of the last two stands under a
+    /// hairline with 12 points under it. It is 360 points wide beside the inputs, at the least room and in a large
+    /// window, and as wide as the page under them where the sidebar is as wide as it goes. Without income the key
+    /// figure asks for it and the net income is negative; the parts stand the same.
+    @Test(arguments: ["2 500 000", ""])
+    func theResultCardOfTheSimulatorStacksTheKeyFigureTheBarTheNetIncomeAndTheMarginalLevy(
+        income: String
     ) async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -4384,7 +4390,44 @@ struct AppWindowLayoutTests {
                 model.setIncomeText(income)
                 model.readTypedTexts()
                 let summary = try #require(model.page?.summary)
-                #expect(summary.netIncome.isNegative == isNegative)
+
+                try await withAccessibilityElements {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofTheResultCardOfTheSimulatorFor: summary, under: false, in: window)
+                        }
+                    }
+                    widenSidebar(of: window)
+                    try await waitUntil { (frameOfCard(labelled: "Kolik zaplatíte", in: window)?.width ?? 0) > 600 }
+                    try await expectSettled(window) {
+                        problems(ofTheResultCardOfTheSimulatorFor: summary, under: true, in: window)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The net income stands in the result card of the Simulátor under the bar of the levies and above the marginal
+    /// levy, at the least room, at a large size and at the least room again, whether the levies are more than the
+    /// income (the amount is then negative, as it is while the income is 0) or not: VoiceOver reads its words, the
+    /// average per month and the line under them as one phrase. With the sidebar as wide as it goes, the results come
+    /// under the inputs, in a card as wide as the page, and the amount stands beside its words: the net income is two
+    /// lines of text tall, not three.
+    @Test(arguments: ["0", "2 500 000"])
+    func theNetIncomeStandsUnderTheBarOfTheLeviesAndAboveTheMarginalLevyWhetherOrNotTheLeviesAreMoreThanTheIncome(
+        income: String
+    ) async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                let model = f.app.simulatorModel
+                model.setIncomeText(income)
+                model.readTypedTexts()
+                let summary = try #require(model.page?.summary)
+                #expect(summary.netIncome.amount.hasPrefix("\u{2212}") == (income == "0"))
 
                 try await withAccessibilityElements {
                     for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
@@ -4392,11 +4435,85 @@ struct AppWindowLayoutTests {
                         try await expectSettled(window) { problems(ofTheNetIncomeOf: summary, in: window) }
                     }
                     widenSidebar(of: window)
-                    try await waitUntil { (frameOfCard(labelled: summary.heading, in: window)?.width ?? 0) > 600 }
+                    try await waitUntil { (frameOfCard(labelled: "Kolik zaplatíte", in: window)?.width ?? 0) > 600 }
                     try await expectSettled(window) { problems(ofTheNetIncomeOf: summary, in: window) }
                     let line = frameOfText(startingWith: reading(of: summary.netIncome), in: window)
-                    // Two lines of text are about 33 points tall, and three, with the amount under its words, 51.
-                    #expect((line?.height ?? .infinity) < 42, "The amount is not beside its words: \(line as Any)")
+                    // The amount is in the title size, 27 points a line: the amount beside its words and the line under
+                    // them are about 45 points tall, and with the amount under its words, 65.
+                    #expect((line?.height ?? .infinity) < 55, "The amount is not beside its words: \(line as Any)")
+                }
+            }
+        }
+    }
+
+    /// The popover of the levy bar hangs out of the bar over what follows it in the result card of the Simulátor, the
+    /// hairline, the net income and the marginal levy, and is drawn above all of them and not clipped by the card. The
+    /// pointer is moved over the part of the tax, and then over its item of the legend, as a mouse moves it. A strip
+    /// down the popover, 6 points inside its leading edge, shows nothing but the colour of the popover while it is
+    /// open, where the hairlines and the dot of the net income cross it while it is closed.
+    @Test func thePopoverOfTheLevyBarIsDrawnOverTheNetIncomeAndTheMarginalLevyOfTheSimulator() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .simulator
+                try await waitUntil { window.title == "Simulátor" }
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                let model = f.app.simulatorModel
+                model.setIncomeText("2 500 000")
+                model.readTypedTexts()
+                let weights = try #require(model.page?.summary.levyBar.parts.map(\.weight))
+
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfCard(labelled: "Mezní odvod", in: window) != nil }
+                    try await expectSettled(window) {
+                        frameOfCard(labelled: "Kolik zaplatíte", in: window) == nil ? ["No result card"] : []
+                    }
+                    let content = try #require(window.contentView)
+                    let bar = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: "Odvody podle úřadů: Daň z příjmů", in: window)?
+                                .accessibilityFrame?()))
+                    let legend = window.convertFromScreen(
+                        try #require(
+                            accessibilityElement(labelStartingWith: "Daň z příjmů: za rok", in: window)?
+                                .accessibilityFrame?()))
+                    let card = window.convertFromScreen(
+                        try #require(frameOfCard(labelled: "Kolik zaplatíte", in: window)))
+                    // The popover of the tax: 8 points under the legend, centred on its part and held in the panel.
+                    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
+                    let centre = LevyBarLayout.partCentres(widths: widths)[0]
+                    let left = bar.minX + LevyBarLayout.popoverX(centredOn: centre, panelWidth: bar.width)
+                    let top = content.bounds.height - legend.minY + LevyBarLayout.popoverGap
+
+                    /// The points of the strip down the popover, from 4 to 100 points under its top, whose colour is
+                    /// not that of the top of the strip: what is drawn over the popover while it is open.
+                    @MainActor func strayPoints() throws -> [CGPoint] {
+                        let picture = try WindowPicture(of: window)
+                        let strip = stride(from: top + 4, to: top + 100, by: 0.5).map { CGPoint(x: left + 6, y: $0) }
+                        let colour = picture.bytes(at: strip[0])
+                        return strip.filter { point in
+                            zip(picture.bytes(at: point), colour).contains { abs($0 - $1) > 6 }
+                        }
+                    }
+
+                    // The popover is shorter than what follows the bar in the card, so it ends inside the card.
+                    #expect(top + 100 < content.bounds.height - card.minY, "The strip reaches out of the card")
+                    // With no popover the hairlines and the net income cross the strip: the test can tell the two
+                    // states apart.
+                    let corner = CGPoint(x: 4, y: 4)
+                    try await expectSettled(window) {
+                        ((try? strayPoints()) ?? []).isEmpty ? ["Nothing of the card crosses the strip"] : []
+                    }
+
+                    let overPart = CGPoint(x: bar.minX + 10, y: bar.midY)
+                    let overLegend = CGPoint(x: legend.minX + 10, y: legend.midY)
+                    for (name, pointer) in [("part", overPart), ("item of the legend", overLegend)] {
+                        try movePointer(to: pointer, in: window)
+                        try await waitUntil { ((try? strayPoints()) ?? [CGPoint.zero]).isEmpty }
+                        #expect(try strayPoints() == [], "Drawn over the popover of the \(name)")
+
+                        try movePointer(to: corner, in: window)
+                        try await waitUntil { !((try? strayPoints()) ?? []).isEmpty }
+                    }
                 }
             }
         }
@@ -4458,17 +4575,24 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with where the result stands in `window`, in words: it is not to the right of the year and the
-    /// income, or its top is more than 40 points from theirs. Empty when it stands beside them.
+    /// income, 16 points from them, in a column of 360 points, or its top is more than 40 points from theirs. Empty
+    /// when it stands beside them.
     private func problems(ofResultsBesideInputsIn window: NSWindow) -> [String] {
         guard let inputs = frameOfCard(labelled: "Rok a příjem", in: window) else {
             return ["No card Rok a příjem"]
         }
-        guard let results = frameOfCard(labelled: "Zaplatíte za rok 2026", in: window) else {
-            return ["No card Zaplatíte za rok 2026"]
+        guard let results = frameOfCard(labelled: "Kolik zaplatíte", in: window) else {
+            return ["No card Kolik zaplatíte"]
         }
         var problems: [String] = []
         if results.minX < inputs.maxX - 0.5 {
             problems.append("The result is not to the right of the inputs: \(results) and \(inputs)")
+        }
+        if (results.minX - inputs.maxX - 16).magnitude > 1 {
+            problems.append("The result is not 16 points from the inputs: \(results) and \(inputs)")
+        }
+        if (results.width - 360).magnitude > 1 {
+            problems.append("The result is \(results.width) points wide, not 360")
         }
         // The origin of the screen is at the bottom left, so a top is the largest y.
         if (results.maxY - inputs.maxY).magnitude > 40 {
@@ -4485,28 +4609,114 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the net income in the result card of the Simulátor in `window` for `summary`, in words:
     /// VoiceOver does not read its words, the average per month and the line under them as one phrase, the phrase is
-    /// not within the card, or it is not under the line of the health insurance, the last of the levies. The origin of
-    /// the screen is at the bottom left, so what is above has the larger y. Empty when it stands so. Needs the
-    /// accessibility elements.
+    /// not within the card, it is not under the last item of the legend of the bar of the levies, or the marginal levy
+    /// is not under it. The origin of the screen is at the bottom left, so what is above has the larger y. Empty when
+    /// it stands so. Needs the accessibility elements.
     private func problems(ofTheNetIncomeOf summary: SimulatorSummary, in window: NSWindow) -> [String] {
         let phrase = reading(of: summary.netIncome)
         guard accessibilityReadings(in: window).contains(phrase) else {
             return ["The net income is not read as one phrase: \(phrase)"]
         }
-        guard let last = summary.lines.last, let card = frameOfCard(labelled: summary.heading, in: window),
+        guard let last = summary.levyBar.parts.last, let card = frameOfCard(labelled: "Kolik zaplatíte", in: window),
             let frame = frameOfText(startingWith: phrase, in: window),
-            let levy = frameOfText(
-                startingWith: [last.label, last.note, last.amount].compactMap { $0 }.joined(separator: ", "),
-                in: window)
+            let legend = accessibilityElement(labelled: last.accessibilityLabel, in: window)?.accessibilityFrame?(),
+            let marginal = frameOfCard(labelled: "Mezní odvod", in: window)
         else {
-            return ["No result card \(summary.heading), or no net income or last levy in it"]
+            return ["No result card, or no net income, last item of the legend or marginal levy in it"]
         }
         var found: [String] = []
         if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
             found.append("The net income is not within the result card: \(frame), the card \(card)")
         }
-        if frame.maxY > levy.minY + 0.5 {
-            found.append("The net income is not under the line of \(last.label): \(frame), \(levy)")
+        if frame.maxY > legend.minY + 0.5 {
+            found.append("The net income is not under the legend of the bar: \(frame), \(legend)")
+        }
+        if marginal.maxY > frame.minY + 0.5 {
+            found.append("The marginal levy is not under the net income: \(marginal), \(frame)")
+        }
+        return found
+    }
+
+    /// What is wrong with the result card of the Simulátor for `summary` in `window`, in words: a part of it is missing
+    /// or not inside the card; the card is not 360 points wide beside the inputs, or, with `under`, as wide as the page
+    /// under them; or its parts do not stand one under the other as the design has them: the key figure at the top
+    /// left, the bar of the levies (its header, its picture and the items of its legend) in the whole width inside the
+    /// padding and 14 points under it, the net income 27 points under the legend (14, a hairline and 12), the marginal
+    /// levy 27 points under the net income, and the foot of the card 20 points under it. The origin of the screen is at
+    /// the bottom left, so what is above has the larger y. Empty when it stands so. Needs the accessibility elements.
+    private func problems(
+        ofTheResultCardOfTheSimulatorFor summary: SimulatorSummary, under: Bool, in window: NSWindow
+    ) -> [String] {
+        guard let card = frameOfCard(labelled: "Kolik zaplatíte", in: window) else {
+            return ["No card Kolik zaplatíte"]
+        }
+        guard let key = frameOfText(startingWith: summary.keyFigure.eyebrow, in: window) else {
+            return ["No key figure"]
+        }
+        guard let header = frameOfText(startingWith: summary.levyBar.header, in: window),
+            let picture = accessibilityElement(labelStartingWith: summary.levyBar.header + ": ", in: window)?
+                .accessibilityFrame?()
+        else {
+            return ["No levy bar with its header"]
+        }
+        let items = summary.levyBar.parts.compactMap { part in
+            accessibilityElement(labelled: part.accessibilityLabel, in: window)?.accessibilityFrame?()
+        }
+        guard items.count == summary.levyBar.parts.count else {
+            return ["The legend of the levy bar has \(items.count) items, not \(summary.levyBar.parts.count)"]
+        }
+        guard let net = frameOfText(startingWith: reading(of: summary.netIncome), in: window) else {
+            return ["No net income"]
+        }
+        guard let marginal = frameOfCard(labelled: "Mezní odvod", in: window) else {
+            return ["No marginal levy"]
+        }
+        var found: [String] = []
+        let inside = card.insetBy(dx: -0.5, dy: -0.5)
+        for (name, frame) in [
+            ("The key figure", key), ("The levy bar", picture), ("The net income", net),
+            ("The marginal levy", marginal),
+        ] where !inside.contains(frame) {
+            found.append("\(name) is not inside the card: \(frame) and \(card)")
+        }
+        if under {
+            if card.width < 600 {
+                found.append("The card is \(card.width) points wide, not as wide as the page under the inputs")
+            }
+        } else if (card.width - 360).magnitude > 1 {
+            found.append("The card is \(card.width) points wide, not 360")
+        }
+        if (card.maxY - 20 - key.maxY).magnitude > 1 || (key.minX - card.minX - 20).magnitude > 1 {
+            found.append("The key figure is not at the top left of the card: \(key) and \(card)")
+        }
+        if (key.minY - header.maxY - 14).magnitude > 1.5 {
+            found.append("The levy bar is not 14 points under the key figure: \(header), \(key)")
+        }
+        if (picture.minX - key.minX).magnitude > 1 || (picture.width - (card.width - 40)).magnitude > 1 {
+            found.append("The levy bar does not have the whole width inside the padding of the card: \(picture)")
+        }
+        let legendBottom = items.map(\.minY).min() ?? picture.minY
+        if (legendBottom - 27 - net.maxY).magnitude > 1.5 {
+            found.append("The net income is not 27 points under the legend of the bar: \(net), \(items)")
+        }
+        if (net.minX - key.minX).magnitude > 1 {
+            found.append("The net income is not at the left edge of the card: \(net), \(card)")
+        }
+        if (net.minY - 27 - marginal.maxY).magnitude > 1.5 {
+            found.append("The marginal levy is not 27 points under the net income: \(marginal), \(net)")
+        }
+        if (marginal.minX - key.minX).magnitude > 1 {
+            found.append("The marginal levy is not at the left edge of the card: \(marginal), \(card)")
+        }
+        if (marginal.minY - 20 - card.minY).magnitude > 1.5 {
+            found.append("The card does not end 20 points under the marginal levy: \(marginal), \(card)")
+        }
+        // The marginal levy reads its heading, its total and its sentence, and no bar.
+        if let group = accessibilityElement(labelled: "Mezní odvod", in: window) {
+            let expected = ["Mezní odvod", "Mezní odvod", summary.marginal.total, summary.marginal.text]
+            if accessibilityReadings(under: group) != expected {
+                found.append("The marginal levy reads \(accessibilityReadings(under: group)), not \(expected)")
+            }
         }
         return found
     }

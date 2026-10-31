@@ -13,6 +13,10 @@ nonisolated enum CapsuleButtonKind: Sendable {
     /// capsule in the colour of a card, raised off the page.
     case onWindow
 
+    /// Like `onWindow`, with its label in the blue of a link: the action in a note, such as Začít znovu in the note at
+    /// the top of the Simulátor.
+    case onWindowAccent
+
     /// The way into something that cannot be undone, on a pale red.
     case destructive
 
@@ -22,7 +26,7 @@ nonisolated enum CapsuleButtonKind: Sendable {
     /// Whether the capsule stands off the page, with the elevation of a control.
     var isRaised: Bool {
         switch self {
-        case .onWindow: true
+        case .onWindow, .onWindowAccent: true
         case .primary, .secondary, .destructive, .destructiveConfirm: false
         }
     }
@@ -35,7 +39,7 @@ extension CapsuleButtonKind {
         switch self {
         case .primary: Palette.accent
         case .secondary: Palette.fill
-        case .onWindow: Palette.bgCard
+        case .onWindow, .onWindowAccent: Palette.bgCard
         case .destructive: Palette.redTint
         case .destructiveConfirm: Palette.red
         }
@@ -46,6 +50,7 @@ extension CapsuleButtonKind {
         switch self {
         case .primary, .destructiveConfirm: Palette.onAccent
         case .secondary, .onWindow: Palette.text
+        case .onWindowAccent: Palette.accentText
         case .destructive: Palette.redText
         }
     }

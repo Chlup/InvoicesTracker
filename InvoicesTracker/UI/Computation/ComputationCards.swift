@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// The note above the cards about what the computation counts up to the day shown: a note of the information tone,
-/// blue. Simulátor's note has a small secondary button at its end. VoiceOver reads a note without a button as one
-/// phrase, and reaches the button of one that has it on its own.
+/// blue. Simulátor's note has a small button at its end, a capsule of the colour of a card with its label in the blue
+/// of a link. VoiceOver reads a note without a button as one phrase, and reaches the button of one that has it on its
+/// own.
 struct ComputationBanner: View {
     let text: String
 
@@ -13,7 +14,7 @@ struct ComputationBanner: View {
         if let button {
             Note(.info, text: text) {
                 Button(button.title, action: button.action)
-                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+                    .buttonStyle(CapsuleButtonStyle(.onWindowAccent, size: .small))
             }
         } else {
             Note(.info, text: text)
@@ -117,8 +118,8 @@ struct MarginalCard: View {
 
 /// The parts of the three authorities one after the other on a track, each in its colour and as wide as its fraction
 /// of the whole bar, 8 points high with rounded ends. What no part fills is the track, so a bar of parts that add up to
-/// less than 1 is partly empty, and nothing is drawn of a part of 0. Mezní odvod draws the rates of the next crown so,
-/// and a bar of what the authorities are paid draws their shares of the total, which add up to 1.
+/// less than 1 is partly empty, and nothing is drawn of a part of 0. Mezní odvod draws the rates of the next crown so:
+/// the three rates together fill as much of the bar as the levy total is of a hundred crowns.
 struct AuthorityShareBar: View {
     let shares: [MarginalShare]
 

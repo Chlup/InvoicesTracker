@@ -7,6 +7,10 @@ private nonisolated enum ComputationScreenMetrics {
 
     /// The least width of the two cards under the result, Mezní odvod and Hranice roku.
     static let cardColumnWidth: CGFloat = 380
+
+    /// The widest the sentence under the key figure of the result is set: 36 em of its 13-point type, which is the
+    /// width the design gives it on this screen, wider than the 416 points of Přehled.
+    static let keyFigureSentenceWidth: CGFloat = 468
 }
 
 /// Výpočet: every intermediate value of the computation of the selected year as of the day shown, so that each number
@@ -70,11 +74,12 @@ struct ComputationScreen: View {
     }
 
     /// The result card: what is left to pay at the left and the bar of the levies at the right. Výpočet sets the parts
-    /// 28 points apart in both directions, like the gap between its columns. The card is drawn above everything under
-    /// it, because the popover of the bar hangs out of the card over the cards that follow.
+    /// 28 points apart in both directions, like the gap between its columns, and the sentence under the key figure 36
+    /// em wide (`keyFigureSentenceWidth`). The card is drawn above everything under it, because the popover of the bar
+    /// hangs out of the card over the cards that follow.
     private func result(_ page: ComputationPage) -> some View {
         ResultCard(label: "Výsledek", rowGap: ResultCardLayout.columnGap) {
-            KeyFigureView(page.keyFigure)
+            KeyFigureView(page.keyFigure, sentenceMaximumWidth: ComputationScreenMetrics.keyFigureSentenceWidth)
         } trailing: {
             LevyBarView(page.levies)
         }

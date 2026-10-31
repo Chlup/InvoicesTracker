@@ -60,6 +60,7 @@ struct DesignControlsTests {
             (.primary, Palette.accent, Palette.onAccent),
             (.secondary, Palette.fill, Palette.text),
             (.onWindow, Palette.bgCard, Palette.text),
+            (.onWindowAccent, Palette.bgCard, Palette.accentText),
             (.destructive, Palette.redTint, Palette.redText),
             (.destructiveConfirm, Palette.red, Palette.onAccent),
         ]
@@ -69,10 +70,72 @@ struct DesignControlsTests {
             #expect(entry.kind.foreground == entry.foreground, "\(entry.kind) has the wrong text colour")
         }
         #expect(CapsuleButtonKind.primary.background != CapsuleButtonKind.secondary.background)
-        // Only the button on the window background stands off the page.
+        // The button on the window background has the surface of a card and the text colour of a link only when it is
+        // the accent kind.
+        #expect(CapsuleButtonKind.onWindow.background == CapsuleButtonKind.onWindowAccent.background)
+        #expect(CapsuleButtonKind.onWindow.foreground != CapsuleButtonKind.onWindowAccent.foreground)
+        // Only the buttons on the window background stand off the page.
         #expect(CapsuleButtonKind.onWindow.isRaised)
+        #expect(CapsuleButtonKind.onWindowAccent.isRaised)
         #expect(
             [CapsuleButtonKind.primary, .secondary, .destructive, .destructiveConfirm].allSatisfy { !$0.isRaised })
+    }
+
+    /// "Začít znovu" in the note at the top of the Simulátor is a capsule of the card colour, raised off the note, with
+    /// its words in the blue of a link (the prototype's accent text), where the button that copies the deductions
+    /// beside it has the colour of text. Drawn, the label of the first has pixels of the accent text colour and none of
+    /// the text colour, and the label of the second the other way round, in a light and in a dark window.
+    @Test func theRestartButtonOfTheSimulatorSetsItsWordsInTheAccentTextOnACardColoredCapsule() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let accent = try OffscreenPicture.bytes(of: Palette.accentText, in: scheme)
+            let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
+            let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+            func picture(_ kind: CapsuleButtonKind) throws -> OffscreenPicture {
+                let button = Button("Začít znovu") {}
+                    .buttonStyle(CapsuleButtonStyle(kind, size: .small))
+                    .padding(20)
+                    .background(Palette.bgWindow)
+                return try OffscreenPicture(of: button, in: scheme)
+            }
+            let accented = try picture(.onWindowAccent)
+            let plain = try picture(.onWindow)
+            let whole = CGRect(origin: .zero, size: accented.size)
+
+            #expect(
+                accented.count(near: accent, in: whole, by: 2) > 20, "\(scheme): the words are not in the accent text")
+            #expect(accented.count(near: text, in: whole, by: 2) == 0, "\(scheme): the words are in the text colour")
+            #expect(plain.count(near: text, in: whole, by: 2) > 20, "\(scheme): the plain words are not in the text")
+            #expect(plain.count(near: accent, in: whole, by: 2) == 0, "\(scheme): the plain words are in the accent")
+            // The capsule is the colour of a card, 28 points tall: the point just inside its left end, halfway down.
+            #expect(
+                zip(accented.bytes(at: CGPoint(x: 24, y: 34)), card).allSatisfy { abs($0 - $1) <= 2 },
+                "\(scheme): the capsule is not the colour of a card")
+            // Both are 28 points tall, the height of a button inside a card.
+            let capsule = try #require(accented.extent(near: card, by: 2))
+            #expect(abs(capsule.height - 28) <= 1, "\(scheme): the capsule is \(capsule.height) points tall")
+        }
+    }
+
+    /// The note at the top of the Simulátor sets its button, "Začít znovu", the way the capsule above does: in the note
+    /// without a button no pixel is of the accent text colour, and in the one with the button its label is.
+    @Test func theNoteAboveTheSimulatorSetsItsButtonInTheAccentText() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let accent = try OffscreenPicture.bytes(of: Palette.accentText, in: scheme)
+            let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+            let text = "Simulace pro libovolný rok a příjem."
+            let plain = try OffscreenPicture(
+                of: ComputationBanner(text: text).frame(width: 640).padding(16), in: scheme)
+            let restart = try OffscreenPicture(
+                of: ComputationBanner(text: text, button: (title: "Začít znovu", action: {}))
+                    .frame(width: 640).padding(16),
+                in: scheme)
+
+            #expect(plain.count(near: accent, in: CGRect(origin: .zero, size: plain.size), by: 2) == 0, "\(scheme)")
+            #expect(restart.count(near: accent, in: CGRect(origin: .zero, size: restart.size), by: 2) > 20, "\(scheme)")
+            // The button stands on the note as a capsule of the colour of a card, 28 points tall.
+            let capsule = try #require(restart.extent(near: card, by: 2), "\(scheme): no capsule of the card colour")
+            #expect(abs(capsule.height - 28) <= 1, "\(scheme): the capsule is \(capsule.height) points tall")
+        }
     }
 
     @Test func aRegularButtonIs32PointsTallAndASmallOne28() {

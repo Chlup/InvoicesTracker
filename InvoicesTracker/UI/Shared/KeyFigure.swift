@@ -76,18 +76,27 @@ private nonisolated enum KeyFigureMetrics {
 
 /// The key figure of a screen: the eyebrow over it in grey capitals, the figure in the display size with its share on
 /// the same baseline, or under it where the room is too narrow for both, and the sentence under them in secondary text,
-/// at most `sentenceMaximumWidth` points wide: 416 unless the screen gives it the width its design has. VoiceOver reads
-/// the lot as one phrase.
+/// at most `sentenceMaximumWidth` points wide: 416 unless the screen gives it the width its design has. The sentence is
+/// set in the body size unless the screen gives it another font, as the Simulátor sets the one line of context under
+/// its figure in callout. VoiceOver reads the lot as one phrase.
 struct KeyFigureView: View {
     let data: KeyFigureData
 
     /// The widest the sentence under the figure is set, in points.
     let sentenceMaximumWidth: CGFloat
 
-    /// A key figure that shows `data`, its sentence at most `sentenceMaximumWidth` points wide.
-    init(_ data: KeyFigureData, sentenceMaximumWidth: CGFloat = KeyFigureMetrics.sentenceMaximumWidth) {
+    /// The font of the sentence under the figure. The part of it that is emphasised is in this font, semibold.
+    let sentenceFont: Font
+
+    /// A key figure that shows `data`, its sentence at most `sentenceMaximumWidth` points wide and set in
+    /// `sentenceFont`.
+    init(
+        _ data: KeyFigureData, sentenceMaximumWidth: CGFloat = KeyFigureMetrics.sentenceMaximumWidth,
+        sentenceFont: Font = Typography.body
+    ) {
         self.data = data
         self.sentenceMaximumWidth = sentenceMaximumWidth
+        self.sentenceFont = sentenceFont
     }
 
     var body: some View {
@@ -98,7 +107,7 @@ struct KeyFigureView: View {
             figureLine
             if data.sentence != nil {
                 Text(sentence)
-                    .font(Typography.body)
+                    .font(sentenceFont)
                     .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: sentenceMaximumWidth, alignment: .leading)
@@ -150,7 +159,7 @@ struct KeyFigureView: View {
         for part in data.sentenceParts {
             var run = AttributedString(part.text)
             if part.isEmphasised {
-                run.font = Typography.bodySemibold
+                run.font = sentenceFont.weight(.semibold)
                 run.foregroundColor = Palette.text
             }
             sentence.append(run)

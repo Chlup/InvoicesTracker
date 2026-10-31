@@ -176,15 +176,15 @@ struct ComputationViewsTests {
         }
     }
 
-    @Test func sharesThatAddUpToOneFillTheBarToItsEnd() throws {
-        // Shares of a total, such as what each authority is paid, add up to 1.
-        let paid = [
+    @Test func partsThatAddUpToTheWholeWidthFillTheBarToItsEnd() throws {
+        // A bar is of rates, which are parts of the whole width of the bar. Rates that add up to 1 leave no track.
+        let whole = [
             MarginalShare(authority: .tax, fraction: 0.25),
             MarginalShare(authority: .social, fraction: 0.5),
             MarginalShare(authority: .health, fraction: 0.25),
         ]
         for scheme in schemes {
-            let picture = try OffscreenPicture(of: bar(paid), in: scheme)
+            let picture = try OffscreenPicture(of: bar(whole), in: scheme)
             let health = try bytes(Palette.health, scheme)
             let social = try bytes(Palette.social, scheme)
 

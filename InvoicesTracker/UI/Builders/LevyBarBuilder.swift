@@ -47,9 +47,9 @@ nonisolated enum LevyBarKind: Sendable, Hashable {
     case wholeYear
 }
 
-/// Builds the levy bar of Výpočet, Přehled and Odhad odvodů from the balances of a result. The Simulátor builds its own
-/// rows, and names them with `accessibilityLabel(of:rows:shareLine:note:)` and `accessibilityLabel(header:parts:)` as
-/// this builder does.
+/// Builds the levy bar of Výpočet, Přehled and Odhad odvodů from the balances of a result (`balances`), and that of
+/// the Simulátor from the levies of the whole year of a simulation (`simulation`). Both name what VoiceOver reads with
+/// `accessibilityLabel(of:rows:shareLine:note:)` and `accessibilityLabel(header:parts:)`.
 nonisolated enum LevyBarBuilder {
     /// The bar of `result`'s balances under `header`, with the total of the levies and its share of the income when
     /// `showsTotal` (where the key figure beside the bar does not show them). Each part has the levy of its authority,
@@ -69,6 +69,40 @@ nonisolated enum LevyBarBuilder {
             parts: parts,
             accessibilityLabel: accessibilityLabel(header: header, parts: parts))
     }
+
+    /// The bar of the Simulátor under `header`: the levies of the whole year of a simulation, with no total, as the key
+    /// figure beside the bar is the total. Each part weighs the levy of its authority, so a tax bonus, a levy below
+    /// zero, draws no part. The legend and the first row of the popover, "Za rok", say the levy
+    /// (`BuilderText.taxOrBonus`), the second row, "Měsíčně", a twelfth of it rounded half up (a bonus reads with the
+    /// minus sign: "−3 127 Kč"), and the third, "Z příjmu", its share of the income, which is `IncomeShares`' so that
+    /// the three add up to the share of the three levies together ("−25,0 %" for a bonus), or "—" where there is no
+    /// income above zero. All the amounts are whole Kč. `notes` are the conditions that apply to an authority, such as
+    /// "platíte minimum": each stands under the rows of its popover and is read after them.
+    static func simulation(of result: TaxResult, header: String, notes: [Authority: String]) -> LevyBarData {
+        let shares = IncomeShares(result)
+        let parts = Authority.allCases.map { authority in
+            let levy = result.balance(authority).liability
+            let year = BuilderText.taxOrBonus(levy)
+            let share = shares?.tenths[authority].map { BuilderText.share(tenths: $0) } ?? noShare
+            let rows = [
+                LevyPopoverRow(label: "Za rok", value: year, style: .strong),
+                LevyPopoverRow(
+                    label: "Měsíčně", value: CzechFormat.wholeKc(DecimalMath.halfUp(Decimal(levy) / 12)),
+                    style: .muted),
+                LevyPopoverRow(label: "Z příjmu", value: share, style: .muted),
+            ]
+            let note = notes[authority]
+            return LevyBarPart(
+                authority: authority, weight: levy, legendValue: year, rows: rows, shareLine: nil, note: note,
+                accessibilityLabel: accessibilityLabel(of: authority, rows: rows, shareLine: nil, note: note))
+        }
+        return LevyBarData(
+            header: header, total: nil, totalShare: nil, parts: parts,
+            accessibilityLabel: accessibilityLabel(header: header, parts: parts))
+    }
+
+    /// What a share of the income says where there is no income to take a share of: a dash.
+    private static let noShare = "—"
 
     /// What VoiceOver reads for the item of the legend of `authority`: its full name, then each of `rows` as its label
     /// with a small first letter and its value, then `shareLine` and `note` where there are any, one after the other:
