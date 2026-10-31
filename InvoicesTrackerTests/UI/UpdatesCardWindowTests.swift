@@ -90,7 +90,7 @@ struct UpdatesCardWindowTests {
 
                     #expect(button.accessibilityPerformPress?() == true)
 
-                    #expect(fake.checkCount == 1)
+                    try await waitUntil { fake.checkCount == 1 }
                 }
             }
         }
@@ -162,7 +162,7 @@ struct UpdatesCardWindowTests {
 
                     try await waitUntil { checkButton(in: window)?.isAccessibilityEnabled?() == true }
                     #expect(try #require(checkButton(in: window)).accessibilityPerformPress?() == true)
-                    #expect(fake.checkCount == 1)
+                    try await waitUntil { fake.checkCount == 1 }
                 }
             }
         }
