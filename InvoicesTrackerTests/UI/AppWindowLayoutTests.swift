@@ -9,9 +9,10 @@ import Testing
 /// is shown with the detail closed and open, with and without a search, on the data of `EditorFixture` and an invoice
 /// of 2025 for Alfa, so that the search for "alfa" links another year too. Two screens also keep what their layout
 /// promises: Výpočet runs from its result card through its two cards and its note to the breakdown and the footnote,
-/// and the tiles of Faktury in one row are of one height. The detail of an invoice is a card beside the table, level
-/// with it, and the window does not grow for it; the table follows the width of the window both ways down to its least
-/// width, below which it scrolls sideways; a click on a row opens it and the arrow keys open the rows around it. The
+/// and the card of the table of Faktury starts with its summary row, above the names of the columns (32 points) and
+/// rows of 40 points. The detail of an invoice is a card beside the table, level with it, and the window does not grow
+/// for it; the table follows the width of the window both ways down to its least width, below which it scrolls sideways
+/// under the summary row, which does not; a click on a row opens it and the arrow keys open the rows around it. The
 /// search of Faktury is a field of its page, at the end of the filter row, not in the toolbar: Hledat (⌘F) focuses it,
 /// Esc and its × clear it, and it stays the same field with its focus when the row wraps. The toolbar offers the
 /// reporting year and no date or simulation controls. Reporting follows month end automatically while income headings
@@ -207,9 +208,9 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The detail of an invoice is a card of the page beside the table: it starts where the table starts, under the
-    /// filters and the tiles, and ends where the table ends, at the bottom margin of the page; it is 320 points wide
-    /// and stands at the right margin of the page, the table ending 16 points before it. The window has no inspector
+    /// The detail of an invoice is a card of the page beside the table: it starts where the card of the table starts,
+    /// under the filters, and ends where it ends, at the bottom margin of the page; it is 320 points wide and stands at
+    /// the right margin of the page, the card of the table ending 16 points before it. The window has no inspector
     /// beside the page: its split views hold the sidebar and the page alone.
     @Test func theDetailCardStandsBesideTheTableAndStartsWithIt() async throws {
         try await EditorFixture.with { f in
@@ -228,7 +229,7 @@ struct AppWindowLayoutTests {
 
     /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
     /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
-    /// the least window, while the detail is closed, the card (828 points) holds the table, whose least width is 820.
+    /// the least window, while the detail is closed, the card (828 points) holds the table, whose least width is 772.
     @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -256,9 +257,10 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// Below its least width the table keeps that width and scrolls sideways in its card. In the least window with the
-    /// detail open it is that wide, the least widths of its columns (724 points) with 8 points between each two and 20
-    /// at either end, 820 points, which is more than its card shows, and the card has a horizontal scroller.
+    /// Below its least width the table keeps that width and scrolls sideways in its card, with the detail beside the
+    /// card. In the least window with the detail open it is that wide, the least widths of its columns (684 points)
+    /// with 8 points between each two and 16 at either end, 772 points, which is more than its card shows, and the card
+    /// has a horizontal scroller.
     @Test func aTableBelowItsMinimumScrollsSideways() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -269,7 +271,8 @@ struct AppWindowLayoutTests {
 
                     let scrollView = try #require(tableScrollView(in: window))
                     let table = try tableWidth(in: window)
-                    #expect((table - 820).magnitude < 0.5)
+                    #expect(InvoiceTableColumns().minimumWidth == 772)
+                    #expect((table - 772).magnitude < 0.5)
                     #expect(table > scrollView.contentView.bounds.width + 0.5)
                     #expect(scrollView.hasHorizontalScroller)
                     #expect(scrollView.horizontalScroller?.isHidden == false)
@@ -301,17 +304,27 @@ struct AppWindowLayoutTests {
 
     /// A click on a row opens its invoice (VoiceOver presses the row as a click does) and gives the table the focus of
     /// the keyboard, which the list of the sidebar had: ↓ then opens the invoice of the row under the open one and ↑
-    /// the one above it, and the table scrolls to show a row that the keys open under the part of it the window shows.
-    /// A click on the open row closes the detail, and so does the × of the detail.
+    /// the one above it, and the table scrolls to show a row that the keys open under the part of it the window shows:
+    /// the last row, which the least window with the detail open does not show whole. The rows of 40 points leave room
+    /// for the eleven invoices of the fixture there, so two invoices of January are added, numbered to be the last
+    /// rows. A click on the open row closes the detail, and so does the × of the detail.
     @Test func aClickOnARowOpensItsInvoiceAndTheArrowKeysOpenTheRowsAroundIt() async throws {
         // The table takes the focus of the keyboard, so the test takes its turn among the tests that type.
         try await whileTypingAlone {
             try await EditorFixture.with { f in
+                for number in ["20260002", "20260001"] {
+                    var invoice = Invoice.fixture(
+                        number: number, duzp: "2026-01-15", dueDate: "2026-01-29", payment: .fixture(on: "2026-01-20"))
+                    invoice.clientID = f.cetusID
+                    invoice.client = ClientSnapshot(client: EditorFixture.cetus)
+                    try await f.database.saveInvoice(invoice)
+                }
+                await f.app.didWrite()
                 try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                     window.makeKeyAndOrderFront(nil)
                     f.app.screen = .invoices
                     try await withAccessibilityElements {
-                        try await waitUntil { invoiceRows(in: window).count == 11 }
+                        try await waitUntil { invoiceRows(in: window).count == 13 }
 
                         // A person clicks in the key window, though a test of another suite may have made its own
                         // window the key one meanwhile.
@@ -326,10 +339,14 @@ struct AppWindowLayoutTests {
                         try pressArrow(.up, in: window)
                         try await waitUntil { openRowNumber(in: window) == "20260902" }
 
-                        // Down to 2026-02-01, under the rows that the least window shows, one row a key.
+                        // Down to the last row, 20260001, one row a key: it is under the rows that the least window
+                        // shows whole.
+                        let last = try #require(invoiceRows(in: window).last?.accessibilityFrame?())
+                        let shown = try #require(shownRows(in: window))
+                        #expect(last.minY < shown.minY - 0.5, "the last row \(last) is shown whole in \(shown)")
                         let below = [
                             "20260901", "20260802", "20260801", "20260701", "20260601", "2026-05-01", "2026-04-01",
-                            "2026-03-01", "2026-02-01",
+                            "2026-03-01", "2026-02-01", "2026-01-01", "20260002", "20260001",
                         ]
                         for number in below {
                             try pressArrow(.down, in: window)
@@ -354,21 +371,25 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the page of Faktury in `window`, in words: the views that stick out of the window, and where
     /// the card of the table is not where it belongs, which is under the toolbar and down to the bottom margin of the
-    /// page (24 points). With the detail closed the table reaches the right margin of the page (16 points); with the
-    /// detail open the card of the detail is there (`problems(ofTheDetail:besideTheTable:in:)`) and a row is open.
-    /// Empty when the page is laid out so. Needs the accessibility elements (`withAccessibilityElements(_:)`).
+    /// page (24 points), with the table that scrolls sideways in it. With the detail closed the card reaches the right
+    /// margin of the page (16 points); with the detail open the card of the detail is there
+    /// (`problems(ofTheDetail:besideTheTable:in:)`) and a row is open. Empty when the page is laid out so. Needs the
+    /// accessibility elements (`withAccessibilityElements(_:)`).
     private func problems(of window: NSWindow, detailOpen: Bool) -> [String] {
         var problems = viewsOutside(window).map { "Outside the window: \($0)" }
-        guard let scrollView = tableScrollView(in: window) else {
+        guard let table = tableCardFrame(in: window), let scrollView = tableScrollView(in: window) else {
             return problems + ["The page has no table"]
         }
         let room = window.contentLayoutRect
-        let table = frameInWindow(scrollView)
         if table.maxY > room.maxY + 0.5 {
-            problems.append("The table reaches under the toolbar: \(table)")
+            problems.append("The card of the table reaches under the toolbar: \(table)")
         }
         if (table.minY - 24).magnitude >= 0.5 {
-            problems.append("The table does not end at the bottom margin of the page: \(table)")
+            problems.append("The card of the table does not end at the bottom margin of the page: \(table)")
+        }
+        let scrolled = frameInWindow(scrollView)
+        if !table.insetBy(dx: -0.5, dy: -0.5).contains(scrolled) {
+            problems.append("The table that scrolls sideways is not in its card: \(scrolled), \(table)")
         }
         let detail = detailCardFrame(in: window)
         if detailOpen {
@@ -384,7 +405,7 @@ struct AppWindowLayoutTests {
                 problems.append("The detail is open: \(detail)")
             }
             if (table.maxX - (room.maxX - 16)).magnitude >= 0.5 {
-                problems.append("The table does not reach the right margin of the page: \(table)")
+                problems.append("The card of the table does not reach the right margin of the page: \(table)")
             }
         }
         return problems
@@ -392,7 +413,8 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the card of the detail, `detail`, beside the card of the table, `table`, in the room of the
     /// page `room`, all in the coordinates of the window: the detail is 320 points wide at the right margin of the page
-    /// (16 points), starts and ends at the height of the table (to a point), and the table ends 16 points before it.
+    /// (16 points), starts and ends at the height of the card of the table (to a point), and that card ends 16 points
+    /// before it.
     private func problems(ofTheDetail detail: CGRect, besideTheTable table: CGRect, in room: CGRect) -> [String] {
         var problems: [String] = []
         if (detail.width - 320).magnitude >= 0.5 {
@@ -473,11 +495,20 @@ struct AppWindowLayoutTests {
     }
 
     /// The part of the rows of the table of Faktury that the table shows in `window`, in the coordinates of the screen:
-    /// the frame of the scroll area of the rows, under the names of the columns.
+    /// the frame of the scroll area of the rows, under the names of the columns, which is the last of the two scroll
+    /// areas in the card (the first scrolls the names and the rows sideways).
     private func shownRows(in window: NSWindow) -> CGRect? {
         guard let list = invoiceList(in: window) else { return nil }
-        let rows = descendants(of: list).first { $0.accessibilityRole?() == .scrollArea }
+        let rows = descendants(of: list).last { $0.accessibilityRole?() == .scrollArea }
         return rows?.accessibilityFrame?()
+    }
+
+    /// The frame of the card of the table of Faktury in `window`, which VoiceOver reads as "Seznam faktur", in the
+    /// coordinates of the window: the summary row and the table under it. Nil while the page has no table, and while
+    /// the views make no accessibility elements.
+    private func tableCardFrame(in window: NSWindow) -> CGRect? {
+        guard let frame = invoiceList(in: window)?.accessibilityFrame?() else { return nil }
+        return window.convertFromScreen(frame)
     }
 
     /// The elements under `element`, in the order of the tree.
@@ -551,58 +582,65 @@ struct AppWindowLayoutTests {
             to: window)
     }
 
-    /// The tiles above the table are as high as the highest of their row, though one of them says more than the others:
-    /// all three stand in one row in a large window, and so they do at the least room with the detail open, as the
-    /// detail stands beside the table, not beside the tiles.
-    @Test func theFakturyTilesOfOneRowHaveEqualHeights() async throws {
+    /// The card of the table starts with its summary row, the count and the totals, across the top of the card; under
+    /// it are the names of the columns, 32 points high, and then the rows, 40 points high each. In the least window
+    /// with the detail open the table scrolls sideways in the card, but the summary row does not: it stays as wide as
+    /// the card and wraps in it.
+    @Test func theSummaryRowStandsAboveTheNamesOfTheColumnsInTheCardOfTheTable() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
                 f.app.screen = .invoices
                 try await withAccessibilityElements {
                     try await waitUntil { invoiceRows(in: window).count == 11 }
-                    try await expectSettled(window) { problems(ofTilesIn: window, rows: [3]) }
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: false) + problems(ofTheSummaryAndTheRowsIn: window)
+                    }
 
-                    // As Přehled opens an invoice: its detail stands beside the table.
+                    // As Přehled opens an invoice: its detail stands beside the card of the table.
                     f.app.openInvoice(Self.alfaInvoiceID)
                     try await waitUntil { detailCardFrame(in: window) != nil }
                     window.setContentSize(AppWindowSize.minimum)
                     try await expectSettled(window) {
-                        problems(of: window, detailOpen: true) + problems(ofTilesIn: window, rows: [3])
+                        problems(of: window, detailOpen: true) + problems(ofTheSummaryAndTheRowsIn: window)
                     }
+                    #expect(try tableWidth(in: window) > tableScrollView(in: window)?.contentView.bounds.width ?? 0)
                 }
             }
         }
     }
 
-    /// What is wrong with the three tiles of Faktury in `window`, in words: a tile that is missing, tiles that are not
-    /// in rows of `expectedRows` tiles from the top, and a row whose tiles are not of one height (to half a point).
-    /// Empty when the tiles are laid out so.
-    private func problems(ofTilesIn window: NSWindow, rows expectedRows: [Int]) -> [String] {
-        var tiles: [CGRect] = []
-        for title in ["Počet faktur", "Celkem bez DPH v Kč", "Celkem bez DPH jednotným kurzem"] {
-            guard let frame = frameOfText(startingWith: title, in: window) else {
-                return ["No tile \(title)"]
-            }
-            tiles.append(frame)
-        }
-        // The tiles of a row share their top, the largest y: the origin of the screen is at the bottom left.
-        var rows: [[CGRect]] = []
-        for tile in tiles {
-            if let top = rows.last?.first?.maxY, (top - tile.maxY).magnitude < 0.5 {
-                rows[rows.count - 1].append(tile)
-            } else {
-                rows.append([tile])
-            }
+    /// What is wrong with the summary row and the rows of the table of Faktury in `window`, in words: the summary row,
+    /// which VoiceOver reads as "Souhrn", is not across the top of the card of the table, as wide as the card and with
+    /// no more than its own margin above it, the first row does not start 32 points under it (the names of the columns
+    /// are between them), or one of the first five rows is not 40 points high and right under the row before it. Empty
+    /// when they are laid out so. Needs the accessibility elements (`withAccessibilityElements(_:)`).
+    private func problems(ofTheSummaryAndTheRowsIn window: NSWindow) -> [String] {
+        guard let card = invoiceList(in: window)?.accessibilityFrame?(),
+            let summary = accessibilityElement(labelled: "Souhrn", in: window)?.accessibilityFrame?()
+        else {
+            return ["The page has no card of the table with a summary row"]
         }
         var problems: [String] = []
-        if rows.map(\.count) != expectedRows {
-            problems.append("The tiles are in rows of \(rows.map(\.count)), not of \(expectedRows): \(tiles)")
+        // The origin of the screen is at the bottom left: the top is the largest y. VoiceOver's frame of the row starts
+        // under its margin at the top, 14 points; nothing else of the card stands above it.
+        let above = card.maxY - summary.maxY
+        if above < -0.5 || above > 14.5 || (summary.minX - card.minX).magnitude > 0.5
+            || (summary.width - card.width).magnitude > 0.5
+        {
+            problems.append("The summary row is not across the top of the card: \(summary) in \(card)")
         }
-        for row in rows {
-            let heights = row.map(\.height)
-            if let tallest = heights.max(), let lowest = heights.min(), tallest - lowest > 0.5 {
-                problems.append("The tiles of a row are not of one height: \(heights)")
-            }
+        let rows = invoiceRows(in: window).prefix(5).compactMap { $0.accessibilityFrame?() }
+        guard let first = rows.first else {
+            return problems + ["The table has no rows"]
+        }
+        if (summary.minY - first.maxY - DataTableMetrics.headerHeight).magnitude > 0.5 {
+            problems.append("The first row does not start 32 points under the summary row: \(first), \(summary)")
+        }
+        for row in rows where (row.height - DataTableMetrics.rowHeight).magnitude > 0.5 {
+            problems.append("A row is not 40 points high: \(row)")
+        }
+        for (row, next) in zip(rows, rows.dropFirst()) where (row.minY - next.maxY).magnitude > 0.5 {
+            problems.append("A row does not start where the row above it ends: \(next) under \(row)")
         }
         return problems
     }
@@ -618,10 +656,10 @@ struct AppWindowLayoutTests {
     private static let searchGroup = InvoiceSearchField.accessibilityID
 
     /// The search of Faktury is a field on the page, not in the toolbar: it stands at the end of the filter row, after
-    /// the scope and the chips, 220 to 300 points wide and ending at the right margin of the page. Where the row has no
-    /// room for all three, it wraps, the field still at the right margin: at the least room the chips go on to a line
-    /// under the scope and the field stands after them, with the detail open too, as the detail stands beside the
-    /// table and leaves the filter row the width of the page.
+    /// the segment of the scope and the chips, 170 to 280 points wide and ending at the right margin of the page. Where
+    /// the row has no room for all three, it wraps, the field still at the right margin: at the least room the segment
+    /// and the chips stand in one line and the field has the line under it, at its greatest width, with the detail open
+    /// too, as the detail stands beside the table and leaves the filter row the width of the page.
     @Test func theFakturySearchSitsAtTheEndOfTheFilterRow() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -635,6 +673,8 @@ struct AppWindowLayoutTests {
                     }
                     // The toolbar is the one of every other screen: Faktury puts nothing in it.
                     #expect(searchFields(inTheToolbarOf: window) == [])
+                    // The segment of the scope is the design's own control, found by its name: no system one.
+                    #expect(segmentedControls(in: try #require(window.contentView)).isEmpty)
                     // The field is read as "Hledat ve fakturách", and it shows the same words while it is empty.
                     #expect(searchChild(role: .textField, labelled: Self.searchLabel, in: window) != nil)
                     #expect(searchTextField(in: window)?.placeholderString == Self.searchLabel)
@@ -645,7 +685,7 @@ struct AppWindowLayoutTests {
                     window.setContentSize(AppWindowSize.minimum)
                     try await expectSettled(window) {
                         problems(of: window, detailOpen: true)
-                            + problems(ofTheFilterRowIn: window, arrangedAs: .chipsUnderTheScope)
+                            + problems(ofTheFilterRowIn: window, arrangedAs: .searchOnItsOwnLine)
                     }
                     #expect(searchFields(inTheToolbarOf: window) == [])
                 }
@@ -761,7 +801,7 @@ struct AppWindowLayoutTests {
                         let field = try #require(searchTextField(in: window))
                         f.app.focusSearch()
                         try await waitUntil { hasFocus(field, in: window) }
-                        // The line of the field under the line of the scope picker: 0 in one line, below it in two.
+                        // The line of the field under the line of the segment: 0 in one line, below it in two.
                         let drop = { () -> CGFloat? in
                             guard let row = filterRowFrames(in: window) else { return nil }
                             return row.scope.midY - row.search.midY
@@ -788,6 +828,7 @@ struct AppWindowLayoutTests {
     /// Where the parts of the filter row of Faktury are, in the coordinates of the screen, whose origin is at the
     /// bottom left.
     private struct FilterRowFrames {
+        /// The segment of the scope, "Které faktury".
         var scope: CGRect
         var firstChip: CGRect
         var lastChip: CGRect
@@ -800,18 +841,18 @@ struct AppWindowLayoutTests {
         var pageEnd: CGFloat
     }
 
-    /// How the filter row of Faktury wraps: in one line, or with the chips on a line under the scope and the search
-    /// after them on their line.
+    /// How the filter row of Faktury wraps: in one line, or with the search on a line of its own under the segment and
+    /// the chips.
     private enum FilterRowArrangement {
         case oneLine
-        case chipsUnderTheScope
+        case searchOnItsOwnLine
     }
 
-    /// The filter row of Faktury in `window` as the fixture shows it: the scope picker, the chips "Vše 11" to
-    /// "Uhrazené 11", and the search. Nil while a part of it is missing, and while the views make no accessibility
-    /// elements (`withAccessibilityElements(_:)`).
+    /// The filter row of Faktury in `window` as the fixture shows it: the segment of the scope, which VoiceOver reads
+    /// as "Které faktury", the chips "Vše 11" to "Uhrazené 11", and the search. Nil while a part of it is missing, and
+    /// while the views make no accessibility elements (`withAccessibilityElements(_:)`).
     private func filterRowFrames(in window: NSWindow) -> FilterRowFrames? {
-        guard let content = window.contentView, let scope = segmentedControls(in: content).first,
+        guard let scope = accessibilityElement(labelled: "Které faktury", in: window)?.accessibilityFrame?(),
             let firstChip = accessibilityButton(labelled: "Vše 11", in: window)?.accessibilityFrame?(),
             let lastChip = accessibilityButton(labelled: "Uhrazené 11", in: window)?.accessibilityFrame?(),
             let search = accessibilityElement(identifiedBy: Self.searchGroup, in: window)?.accessibilityFrame?(),
@@ -819,25 +860,28 @@ struct AppWindowLayoutTests {
         else {
             return nil
         }
-        let onScreen = { (view: NSView) in window.convertToScreen(frameInWindow(view)) }
         return FilterRowFrames(
-            scope: onScreen(scope), firstChip: firstChip, lastChip: lastChip, search: search, field: onScreen(field),
+            scope: scope, firstChip: firstChip, lastChip: lastChip, search: search,
+            field: window.convertToScreen(frameInWindow(field)),
             pageEnd: window.convertToScreen(window.contentLayoutRect).maxX - 16)
     }
 
-    /// What is wrong with the filter row of Faktury in `window`, in words: the search is not 220 to 300 points wide, it
-    /// has not the field in it, it does not end at the right margin of the page, or it is not where `arrangement` puts
-    /// it. That is after the scope and the chips and on their line, or with the chips under the scope, after the chips
-    /// and on their line. Empty when the row is laid out so.
+    /// What is wrong with the filter row of Faktury in `window`, in words: the chips are not after the segment on its
+    /// line, the search is not 170 to 280 points wide, it has not the field in it, it does not end at the right margin
+    /// of the page, or it is not where `arrangement` puts it. That is after the chips and on their line, or on a line
+    /// of its own under them at its greatest width. Empty when the row is laid out so.
     private func problems(
         ofTheFilterRowIn window: NSWindow, arrangedAs arrangement: FilterRowArrangement
     ) -> [String] {
         guard let row = filterRowFrames(in: window) else {
-            return ["The filter row lacks the scope picker, the chip \"Vše 11\" or \"Uhrazené 11\", or the search"]
+            return ["The filter row lacks the segment, the chip \"Vše 11\" or \"Uhrazené 11\", or the search"]
         }
         var problems: [String] = []
-        if row.search.width < 219.5 || row.search.width > 300.5 {
-            problems.append("The search is not 220 to 300 points wide: \(row.search)")
+        if row.firstChip.minX < row.scope.maxX || (row.firstChip.midY - row.scope.midY).magnitude > 1 {
+            problems.append("The chips are not after the segment on its line: \(row.firstChip), \(row.scope)")
+        }
+        if row.search.width < 169.5 || row.search.width > 280.5 {
+            problems.append("The search is not 170 to 280 points wide: \(row.search)")
         }
         if !row.search.insetBy(dx: -0.5, dy: -0.5).contains(row.field) {
             problems.append("The field is not inside the search: \(row.field) in \(row.search)")
@@ -845,24 +889,21 @@ struct AppWindowLayoutTests {
         if (row.search.maxX - row.pageEnd).magnitude > 1 {
             problems.append("The search does not end at the right margin of the page (\(row.pageEnd)): \(row.search)")
         }
-        if row.search.minX < row.lastChip.maxX {
-            problems.append("The search is not after the chips: \(row.search), \(row.lastChip)")
-        }
         switch arrangement {
         case .oneLine:
-            if row.firstChip.minX < row.scope.maxX {
-                problems.append("The chips are not after the scope: \(row.firstChip), \(row.scope)")
+            if row.search.minX < row.lastChip.maxX {
+                problems.append("The search is not after the chips: \(row.search), \(row.lastChip)")
             }
             if (row.search.midY - row.scope.midY).magnitude > 1 {
-                problems.append("The search is not on the line of the scope: \(row.search), \(row.scope)")
+                problems.append("The search is not on the line of the segment: \(row.search), \(row.scope)")
             }
-        case .chipsUnderTheScope:
+        case .searchOnItsOwnLine:
             // The origin of the screen is at the bottom left: under means a smaller y.
-            if row.firstChip.maxY > row.scope.minY + 0.5 {
-                problems.append("The chips are not under the scope: \(row.firstChip), \(row.scope)")
+            if row.search.maxY > min(row.scope.minY, row.lastChip.minY) + 0.5 {
+                problems.append("The search is not under the segment and the chips: \(row.search), \(row.lastChip)")
             }
-            if (row.search.midY - row.lastChip.midY).magnitude > 1 {
-                problems.append("The search is not on the line of the chips: \(row.search), \(row.lastChip)")
+            if (row.search.width - 280).magnitude > 0.5 {
+                problems.append("The search on its own line is not at its greatest width: \(row.search)")
             }
         }
         return problems

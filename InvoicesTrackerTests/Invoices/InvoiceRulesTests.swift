@@ -260,6 +260,17 @@ struct InvoiceRulesTests {
         #expect(thisYear.label(asOf: civilDate("2027-01-01")) == "Uhrazená 2.\u{00A0}10.\u{00A0}2026")
     }
 
+    /// The pill of a row of the list names the status without the day of the payment, which the list shows in a
+    /// column of its own; every other status reads as its label.
+    @Test func theLabelOfTheListHasNoDate() {
+        #expect(InvoiceDisplayStatus.paid(civilDate("2026-10-02")).listLabel == "Uhrazená")
+        #expect(InvoiceDisplayStatus.paid(civilDate("2025-12-20")).listLabel == "Uhrazená")
+        #expect(InvoiceDisplayStatus.draft.listLabel == "Koncept")
+        #expect(InvoiceDisplayStatus.needsReview("Zrušeno").listLabel == "Ke kontrole")
+        #expect(InvoiceDisplayStatus.awaitingPayment.listLabel == "Čeká na platbu")
+        #expect(InvoiceDisplayStatus.overdue.listLabel == "Po splatnosti")
+    }
+
     @Test func theOtherLabelsDoNotDependOnTheDay() {
         let day = civilDate("2027-06-01")
 

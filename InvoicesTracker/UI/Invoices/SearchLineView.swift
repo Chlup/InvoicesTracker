@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// The line under the filters while a search is on: how many invoices of the year match, links to the other years that
-/// have matches ("další shody v letech 2025 (2)"), and Zrušit hledání.
+/// have matches ("další shody v letech 2025 (2)"), and Zrušit hledání. The line is a panel on the window, in the colour
+/// of a card with the corners of a panel; the links to the years are capsules 28 points tall in the pale blue of the
+/// accent, and Zrušit hledání is a link.
 struct SearchLineView: View {
     let line: SearchLine
 
@@ -38,23 +40,25 @@ struct SearchLineView: View {
     private var found: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(line.text)
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
                 .lineLimit(1)
             if !line.otherYears.isEmpty {
                 Text("další shody v letech")
-                    .foregroundStyle(.secondary)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
                     .lineLimit(1)
                 ForEach(line.otherYears, id: \.year) { matches in
                     Button {
                         showYear(matches.year)
                     } label: {
                         Text(verbatim: matches.label)
-                            .font(.callout.weight(.semibold))
+                            .font(Typography.bodySemibold)
                             .monospacedDigit()
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(Palette.accentText)
                             .padding(.horizontal, 10)
-                            .frame(height: 24)
-                            .background(Color.accentColor.opacity(0.14), in: Capsule())
+                            .frame(height: DesignMetrics.smallControlHeight)
+                            .background(Palette.accentTint, in: Capsule())
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -64,9 +68,10 @@ struct SearchLineView: View {
         }
     }
 
+    /// Zrušit hledání, a link in callout.
     private var cancel: some View {
         Button("Zrušit hledání", action: clear)
-            .buttonStyle(.link)
-            .font(.callout)
+            .buttonStyle(TextLinkButtonStyle())
+            .font(Typography.callout)
     }
 }

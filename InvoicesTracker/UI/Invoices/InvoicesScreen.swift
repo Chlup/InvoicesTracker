@@ -2,13 +2,13 @@ import SwiftUI
 
 // MARK: - The screen
 
-/// Faktury: the choice of the invoices (the scope and the status chips, with the search field at the end of the same
-/// row), the line about the search, the three tiles, the table with the detail of the open invoice beside it, and the
-/// sheets that mark an invoice paid and show its PDF. Deleting an invoice is asked in a dialog inside the window, which
-/// the window shows (`AppModel.invoiceDeletion`) and which goes when the screen does. ⌘F focuses the search field
-/// (`AppModel.focusSearch()`), Esc or × clears it, and the text stays until it is cleared, also across screens and
-/// years. The toolbar is the shell's, the same on every screen, as are the title and the line under it. The data is
-/// loaded again whenever what it depends on changes.
+/// Faktury: the choice of the invoices (the segment of the scope and the status chips, with the search field at the end
+/// of the same row), the line about the search, the card of the table with its summary row on top and the detail of the
+/// open invoice beside it, and the sheets that mark an invoice paid and show its PDF. Deleting an invoice is asked in a
+/// dialog inside the window, which the window shows (`AppModel.invoiceDeletion`) and which goes when the screen does.
+/// ⌘F focuses the search field (`AppModel.focusSearch()`), Esc or × clears it, and the text stays until it is cleared,
+/// also across screens and years. The toolbar is the shell's, the same on every screen, as are the title and the line
+/// under it. The data is loaded again whenever what it depends on changes.
 struct InvoicesScreen: View {
     let app: AppModel
     @State private var model: InvoicesModel
@@ -94,13 +94,14 @@ struct InvoicesScreen: View {
                     SearchLineView(
                         line: line, showYear: { model.switchToYear($0) }, clear: { model.clearSearch() })
                 }
-                InvoiceTilesView(tiles: SummaryTiles.make(from: data))
-                // The detail stands beside the table, from its top to its bottom, and the table takes the rest.
+                // The detail stands beside the card of the table, from its top to its bottom, and the card takes the
+                // rest; below its least width the table scrolls sideways in the card.
                 HStack(alignment: .top, spacing: 16) {
                     InvoiceTableView(
-                        rows: data.rows, shownDay: model.shownDay ?? app.receivedThrough, openID: model.openInvoiceID,
-                        emptyText: data.emptyText, click: { model.click($0) }, move: { model.moveSelection(by: $0) })
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        data: data, openID: model.openInvoiceID, click: { model.click($0) },
+                        move: { model.moveSelection(by: $0) }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     detailCard
                 }
                 .frame(maxHeight: .infinity)
@@ -108,13 +109,13 @@ struct InvoicesScreen: View {
             .pagePadding()
             // The page fills the room the window gives it and asks for no minimum size of its own, as the other
             // screens do; the minimum size of the window keeps that room enough. The page's own minimum is more than
-            // the window has: the tiles, measured at no width, are thousands of points high. AppKit lays out a window
-            // whose page asks for more room than it has again and again, the toolbar and the sidebar covering a
-            // different part of the page each time, until it stops the app.
+            // the window has: the filter row and the summary row, which wrap, are measured at no width far higher than
+            // the window. AppKit lays out a window whose page asks for more room than it has again and again, the
+            // toolbar and the sidebar covering a different part of the page each time, until it stops the app.
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
         } else if let errorText = model.errorText {
             Text(errorText)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Color.clear
@@ -122,7 +123,7 @@ struct InvoicesScreen: View {
     }
 
     private var scopePicker: some View {
-        ScopePicker(year: app.asOf.year, scope: $model.scope)
+        ScopePicker(scope: $model.scope)
     }
 
     private func chips(of data: InvoiceListData) -> some View {

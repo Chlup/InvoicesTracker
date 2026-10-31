@@ -1,29 +1,26 @@
 import SwiftUI
 
-/// The table of Faktury, in a card of its own: Číslo, Odběratel (with the line that says why the search found the
-/// invoice, when no column shows it), Vystaveno, Zaplaceno, Bez DPH, V Kč, Čistý příjem (what the invoice leaves after
-/// the tax and the insurance its payment adds, with the line that says how much they took) and Stav. The row of the
-/// open invoice is tinted blue, with a blue edge on its leading side.
+/// The table of Faktury in a card of its own: on top the summary row, how many invoices the table shows and their
+/// totals without VAT in crowns (`TableSummaryRow`); under it the names of the columns, 32 points high, and the rows,
+/// 40 points high with one line of text each: Číslo, Odběratel (with the excerpt that says why the search found the
+/// invoice, when no column shows it, after the name), Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, Čistý příjem (what
+/// the invoice leaves after the tax and the insurance its payment adds) and Stav. The row of the open invoice is tinted
+/// pale blue, with a blue edge on its leading side. An empty list says why in a row under the names of the columns.
 ///
 /// The table is as wide as its card: its columns grow and shrink with the card (`InvoiceTableColumns`) down to the
-/// least width of the table, below which the table keeps that width and scrolls sideways. The names of the columns stay
-/// at the top while the rows scroll.
+/// least width of the table, below which the table keeps that width and scrolls sideways under the summary row, which
+/// stays as wide as the card and wraps in it. The names of the columns stay at the top while the rows scroll.
 ///
 /// A click on a row opens its invoice, and a click on the open row closes it (`click`). The click gives the table the
 /// keyboard focus, and then ↑ and ↓ open the invoice of the row above or under the open one (`move`); the table scrolls
-/// to the open row. VoiceOver reads each row as a button that names the columns (`InvoiceRow.spokenText(asOf:)`), says
-/// which row is open, and presses a row as a click does.
+/// to the open row. VoiceOver reads the card as "Seznam faktur", the summary row as a group "Souhrn" and each row as a
+/// button that names the columns (`InvoiceRow.spokenText`), says which row is open, and presses a row as a click does.
 struct InvoiceTableView: View {
-    let rows: [InvoiceRow]
-
-    /// The day the table is shown as of, which the pills are worded for.
-    let shownDay: CivilDate
+    /// The rows, the summary and what the list says when it has no rows.
+    let data: InvoiceListData
 
     /// The id of the open invoice, whose row is tinted.
     let openID: Int64?
-
-    /// What the list says in place of rows, or nil when it has rows.
-    let emptyText: String?
 
     /// A row was clicked, or pressed with VoiceOver.
     let click: (Int64) -> Void
@@ -41,48 +38,9 @@ struct InvoiceTableView: View {
     @State private var rowsPosition = ScrollPosition(idType: Int64.self)
 
     var body: some View {
-        let width = max(visibleWidth, InvoiceTableColumns.minimumWidth)
-        let columns = InvoiceTableColumns.columnWidths(inTableOf: width)
-        ScrollView(.horizontal) {
-            VStack(alignment: .leading, spacing: 0) {
-                header(columns: columns)
-                Divider()
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(rows) { row in
-                            VStack(spacing: 0) {
-                                if row.id != rows.first?.id {
-                                    Divider()
-                                }
-                                rowView(row, columns: columns)
-                            }
-                            .id(row.id)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollPosition($rowsPosition)
-                .onChange(of: openID) { _, id in
-                    if let id {
-                        rowsPosition.scrollTo(id: id)
-                    }
-                }
-            }
-            .frame(width: width, alignment: .leading)
-        }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            visibleWidth = width
-        }
-        .overlay(alignment: .top) {
-            if let emptyText {
-                Text(emptyText)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 48)
-                    .padding(.horizontal, 20)
-                    .multilineTextAlignment(.center)
-            }
+        VStack(spacing: 0) {
+            summary
+            table
         }
         .clipShape(RoundedRectangle(cornerRadius: DesignMetrics.cardRadius))
         .card()
@@ -101,95 +59,120 @@ struct InvoiceTableView: View {
         .accessibilityLabel("Seznam faktur")
     }
 
-    // MARK: The names of the columns
+    // MARK: The summary
 
-    private func header(columns: [CGFloat]) -> some View {
-        HStack(spacing: InvoiceTableColumns.spacing) {
-            title("Číslo", width: columns[0])
-            title("Odběratel", width: columns[1])
-            title("Vystaveno", width: columns[2])
-            title("Zaplaceno", width: columns[3])
-            title("Bez DPH", width: columns[4], alignment: .trailing)
-            title("V Kč", width: columns[5], alignment: .trailing)
-            title("Čistý příjem", width: columns[6], alignment: .trailing)
-            InvoiceColumnTitle(title: "Stav")
-                .padding(.leading, InvoiceTableColumns.statusInset)
-                .frame(width: columns[7], alignment: .leading)
+    /// The count and the category of the rows, with the hint about invoices to check where there is one, and the
+    /// totals: in crowns, and at the uniform rate of the year where the rows have an invoice in a foreign currency.
+    private var summary: some View {
+        TableSummaryRow(count: data.countText, category: data.categoryText + (data.reviewHint ?? "")) {
+            SummaryFigure(label: "Celkem v Kč bez DPH", value: data.totalText)
+            switch data.uniform {
+            case .hidden:
+                EmptyView()
+            case .value(let text, let help):
+                SummaryFigure(label: data.uniformLabel, value: text, help: help)
+            case .missing(let text, let help):
+                SummaryFigure(label: data.uniformLabel, value: text, help: help, valueIsMuted: true)
+            }
         }
-        .padding(.horizontal, InvoiceTableColumns.margin)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        // Each row says the names of its columns itself.
+    }
+
+    // MARK: The table
+
+    /// The names of the columns and the rows under them, as wide as the card or as the least width of the table,
+    /// whichever is more, in a view that scrolls sideways.
+    private var table: some View {
+        let columns = InvoiceTableColumns(
+            issueDatesShowYear: data.issueDatesShowYear, paymentDatesShowYear: data.paymentDatesShowYear)
+        let width = max(visibleWidth, columns.minimumWidth)
+        let widths = columns.columnWidths(inTableOf: width)
+        return ScrollView(.horizontal) {
+            VStack(alignment: .leading, spacing: 0) {
+                header(widths: widths)
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if let emptyText = data.emptyText {
+                            emptyRow(emptyText)
+                        }
+                        ForEach(data.rows) { row in
+                            rowView(row, widths: widths)
+                                .id(row.id)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollPosition($rowsPosition)
+                .onChange(of: openID) { _, id in
+                    if let id {
+                        rowsPosition.scrollTo(id: id)
+                    }
+                }
+            }
+            .frame(width: width, alignment: .leading)
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            visibleWidth = width
+        }
+    }
+
+    /// The names of the columns, in the style of the header of a table, the amounts aligned to the right as their
+    /// columns are. Each row says the names of its columns itself, so VoiceOver does not read them.
+    private func header(widths: [CGFloat]) -> some View {
+        HStack(spacing: DataTableMetrics.gap) {
+            title("Číslo", width: widths[0])
+            title("Odběratel", width: widths[1])
+            title("Vystaveno", width: widths[2])
+            title("Zaplaceno", width: widths[3])
+            title("V Kč bez DPH", width: widths[4], alignment: .trailing)
+            title("Bez DPH", width: widths[5], alignment: .trailing)
+            title("Čistý příjem", width: widths[6], alignment: .trailing)
+            title("Stav", width: widths[7])
+        }
+        .padding(.horizontal, DataTableMetrics.margin)
         .accessibilityHidden(true)
     }
 
+    /// The name `title` of a column `width` points wide, at the side of the column that its cells are aligned to.
     private func title(_ title: LocalizedStringKey, width: CGFloat, alignment: Alignment = .leading) -> some View {
         InvoiceColumnTitle(title: title)
             .frame(width: width, alignment: alignment)
     }
 
+    /// What the list says in place of rows, in secondary text in a row of its own under the names of the columns, as
+    /// the prototype says it: "Pro tento filtr tu nic není.", or what the search did not find.
+    private func emptyRow(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(Typography.body)
+            .foregroundStyle(Palette.text2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) {
+                Hairline()
+            }
+    }
+
     // MARK: A row
 
-    private func rowView(_ row: InvoiceRow, columns: [CGFloat]) -> some View {
+    /// The row of `row` as a button: its cells, the tint of the open row behind them and the hairline across its top.
+    private func rowView(_ row: InvoiceRow, widths: [CGFloat]) -> some View {
         let isOpen = row.id == openID
-        let status = row.status.label(asOf: shownDay)
         return Button {
             activate(row.id)
         } label: {
-            HStack(spacing: InvoiceTableColumns.spacing) {
-                cell(width: columns[0]) {
-                    InvoiceNumberText(number: row.number)
+            InvoiceRowCells(row: row, widths: widths)
+                .tableRowBackground(isSelected: isOpen)
+                .overlay(alignment: .top) {
+                    Hairline()
                 }
-                cell(width: columns[1]) {
-                    ClientCell(client: row.client, excerpt: row.excerpt)
-                }
-                cell(width: columns[2]) {
-                    Text(verbatim: row.issued)
-                        .lineLimit(1)
-                }
-                cell(width: columns[3]) {
-                    Text(verbatim: row.paid ?? "—")
-                        .lineLimit(1)
-                }
-                cell(width: columns[4], alignment: .trailing) {
-                    InvoiceAmountText(amount: row.net)
-                }
-                cell(width: columns[5], alignment: .trailing) {
-                    CrownsCell(row: row)
-                }
-                cell(width: columns[6], alignment: .trailing) {
-                    NetIncomeCell(row: row)
-                }
-                cell(width: columns[7]) {
-                    StatusPill(status: row.status, label: status)
-                        .padding(.leading, InvoiceTableColumns.statusInset)
-                }
-            }
-            .padding(.horizontal, InvoiceTableColumns.margin)
-            .padding(.vertical, 8)
-            .frame(minHeight: 52)
-            .background {
-                if isOpen {
-                    Color(.selectedRow)
-                        .overlay(alignment: .leading) {
-                            Color(.selectedRowEdge)
-                                .frame(width: 3)
-                        }
-                }
-            }
-            .contentShape(Rectangle())
+                .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
-        .accessibilityLabel(Text(verbatim: row.spokenText(asOf: shownDay)))
+        .accessibilityLabel(Text(verbatim: row.spokenText))
         .accessibilityAddTraits(isOpen ? .isSelected : [])
-    }
-
-    private func cell<Content: View>(
-        width: CGFloat, alignment: Alignment = .leading, @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .monospacedDigit()
-            .frame(width: width, alignment: alignment)
     }
 
     /// A click on a row: the table takes the keyboard focus, for ↑ and ↓, and the row opens or closes.
@@ -200,27 +183,27 @@ struct InvoiceTableView: View {
 }
 
 nonisolated extension InvoiceRow {
-    /// What VoiceOver reads for the row in the table shown as of `shownDay`: the number, the client and the line of the
-    /// search, then each other column with its name. A column that is empty for the invoice is left out: V Kč of an
-    /// invoice in crowns, and Čistý příjem of an invoice with no net income. The net income is read with the line
-    /// under it, "Čistý příjem 253 401 Kč, odvody snížila".
-    func spokenText(asOf shownDay: CivilDate) -> String {
+    /// What VoiceOver reads for the row: the number, the client and the excerpt of the search, then each other column
+    /// with its name. A column that is empty for the invoice is left out, Zaplaceno of an invoice without a payment and
+    /// Čistý příjem of one with no net income, and so is V Kč bez DPH of an invoice in crowns, which repeats Bez DPH.
+    /// The status is read without a date, as the date of the payment is read before it.
+    var spokenText: String {
         var parts = [number, client]
         if let excerpt {
             parts.append("\(excerpt.label): \(excerpt.text)")
         }
         parts.append("Vystaveno \(issued)")
-        if let paid {
-            parts.append("Zaplaceno \(paid)")
+        if paidTone != .none {
+            parts.append("Zaplaceno \(paidDate)")
+        }
+        if czk != net {
+            parts.append("V Kč bez DPH \(czk)")
         }
         parts.append("Bez DPH \(net)")
-        if !czk.isEmpty {
-            parts.append(czkNote.isEmpty ? "V Kč \(czk)" : "V Kč \(czk), \(czkNote)")
-        }
         if netIncomeKind != .none {
-            parts.append("Čistý příjem \(netIncome), \(netIncomeNote)")
+            parts.append("Čistý příjem \(netIncome)")
         }
-        parts.append("Stav: \(status.label(asOf: shownDay))")
+        parts.append("Stav: \(listStatus)")
         return parts.joined(separator: ", ")
     }
 }
@@ -235,176 +218,203 @@ private struct RowButtonStyle: ButtonStyle {
 
 // MARK: - Cells
 
-/// The number of an invoice as its cell shows it: semibold, with digits of one width, on one line. The least width of
+/// The cells of a row of the table, one line each, in the widths of the columns (`InvoiceTableColumns`) with the gap of
+/// a table between them and its margin at the ends, in a row 40 points high. Each cell is in the colour of what it
+/// shows: the amounts with digits of one width, aligned to the right; Bez DPH in secondary grey; an estimate in
+/// secondary grey; a dash in the faintest grey; the date of a payment dated after today in the grey of notes; the net
+/// income of a payment in the green of text; and the status as a pill in its tone, without a date.
+struct InvoiceRowCells: View {
+    let row: InvoiceRow
+
+    /// The widths of the eight columns, in their order.
+    let widths: [CGFloat]
+
+    var body: some View {
+        HStack(spacing: DataTableMetrics.gap) {
+            cell(width: widths[0]) {
+                InvoiceNumberText(number: row.number)
+            }
+            cell(width: widths[1]) {
+                InvoiceClientText(client: row.client, excerpt: row.excerpt)
+            }
+            cell(width: widths[2]) {
+                InvoiceDateText(text: row.issued)
+            }
+            cell(width: widths[3]) {
+                InvoiceDateText(text: row.paidDate, color: paidColor)
+            }
+            cell(width: widths[4], alignment: .trailing) {
+                InvoiceAmountText(amount: row.czk)
+                    .foregroundStyle(crownsColor)
+                    .help(row.czkHelp ?? "")
+            }
+            cell(width: widths[5], alignment: .trailing) {
+                InvoiceAmountText(amount: row.net)
+                    .foregroundStyle(Palette.text2)
+            }
+            cell(width: widths[6], alignment: .trailing) {
+                InvoiceNetIncomeText(text: row.netIncome, kind: row.netIncomeKind)
+            }
+            cell(width: widths[7]) {
+                Pill(row.listStatus, tone: row.pillTone)
+            }
+        }
+        .font(Typography.body)
+        .foregroundStyle(Palette.text)
+        .padding(.horizontal, DataTableMetrics.margin)
+        .frame(height: DataTableMetrics.rowHeight)
+    }
+
+    /// The colour of the day of the payment: the colour of text for a payment that came, the grey of notes for one
+    /// dated after today, and the faintest grey for the dash of an invoice without a payment.
+    private var paidColor: Color {
+        switch row.paidTone {
+        case .none: Palette.text4
+        case .received: Palette.text
+        case .later: Palette.text3
+        }
+    }
+
+    /// The colour of the value in crowns: the colour of text for what was received or an amount in crowns, secondary
+    /// grey for an estimate, and the faintest grey for the dash of an estimate that cannot be made.
+    private var crownsColor: Color {
+        switch row.czkKind {
+        case .actual: Palette.text
+        case .estimate: Palette.text2
+        case .unknown: Palette.text4
+        }
+    }
+
+    /// A cell `width` points wide that holds `content` at its leading side, or at the side `alignment` says.
+    private func cell<Content: View>(
+        width: CGFloat, alignment: Alignment = .leading, @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(width: width, alignment: alignment)
+    }
+}
+
+/// The number of an invoice as its cell shows it: body semibold, with digits of one width, on one line. The width of
 /// the column holds the widest number in use (`InvoiceTableColumns`).
 struct InvoiceNumberText: View {
     let number: String
 
     var body: some View {
         Text(verbatim: number)
-            .fontWeight(.semibold)
+            .font(Typography.bodySemibold)
             .monospacedDigit()
             .lineLimit(1)
             .truncationMode(.tail)
     }
 }
 
-/// The name of a column as the header of the table shows it: semibold, in the secondary colour, on one line, at the
-/// size of the prototype's column names (`.callout` is 12 points on the Mac). The least widths of Vystaveno and
-/// Zaplaceno hold their names whole (`InvoiceTableColumns`).
+/// The name of a column as the header of the table shows it: callout semibold in secondary text, on one line
+/// (`View.tableHeaderStyle()`). The width of each column holds its name whole (`InvoiceTableColumns`).
 struct InvoiceColumnTitle: View {
     let title: LocalizedStringKey
 
     var body: some View {
         Text(title)
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .tableHeaderStyle()
     }
 }
 
-/// The line under the value in crowns that says how it was worked out, or under the net income that says what the
-/// levies took of it, as its cell shows it: small (`.caption`, 10 points on the Mac), in the secondary colour, with
-/// digits of one width, on one line. The least width of V Kč holds the line of an estimate, "ČNB k vystavení 21,622",
-/// whole, and that of Čistý příjem holds its longest lines, "odvody snížila" and "odvody 100,0 %"
-/// (`InvoiceTableColumns`).
-struct InvoiceCaptionText: View {
+/// A date as its cell shows it, "31. 10." or "30. 12. 2025": body with digits of one width, on one line, in the colour
+/// it is given, the colour of text unless the column says otherwise. The width of a date column holds a date with its
+/// year once it is widened for one (`InvoiceTableColumns`).
+struct InvoiceDateText: View {
     let text: String
+    var color = Palette.text
 
     var body: some View {
         Text(verbatim: text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(Typography.body)
             .monospacedDigit()
+            .foregroundStyle(color)
             .lineLimit(1)
     }
 }
 
-/// The net income of an invoice as its cell shows it: semibold, with digits of one width, on one line. That of a paid
-/// invoice is in the green of the banners, and an estimate and a dash are in the secondary colour. The least width of
-/// Čistý příjem holds 999 999 Kč with the sign of an estimate, whole (`InvoiceTableColumns`).
+/// The net income of an invoice as its cell shows it: body semibold, with digits of one width, on one line. That of a
+/// paid invoice is in the green of text, an estimate is in secondary grey, and the dash of an invoice without a net
+/// income in the faintest grey. The least width of Čistý příjem holds 999 999 Kč with the sign of an estimate, whole
+/// (`InvoiceTableColumns`).
 struct InvoiceNetIncomeText: View {
     let text: String
     let kind: NetIncomeKind
 
     var body: some View {
         Text(verbatim: text)
-            .fontWeight(.semibold)
+            .font(Typography.bodySemibold)
             .monospacedDigit()
             .lineLimit(1)
-            .foregroundStyle(kind == .paid ? Color(.bannerText) : Color.secondary)
+            .foregroundStyle(color)
+    }
+
+    /// The colour of the net income of `kind`.
+    private var color: Color {
+        switch kind {
+        case .paid: Palette.greenText
+        case .estimate: Palette.text2
+        case .none: Palette.text4
+        }
     }
 }
 
-/// An amount as its cell shows it, with its currency: digits of one width, on one line. The least width of the columns
-/// of amounts holds 999 999,99 in any currency in use (`InvoiceTableColumns`).
+/// An amount as its cell shows it, with its currency: body with digits of one width, on one line. The least width of
+/// the columns of amounts holds 999 999,99 in any currency in use (`InvoiceTableColumns`).
 struct InvoiceAmountText: View {
     let amount: String
 
     var body: some View {
         Text(verbatim: amount)
+            .font(Typography.body)
             .monospacedDigit()
             .lineLimit(1)
     }
 }
 
-/// The name of the client and, under it, why the search found the invoice: the label of the field and the text around
-/// the match, which is highlighted.
-private struct ClientCell: View {
+/// The name of the client and, after it on the same line, why the search found the invoice: the label of the field
+/// and the text around the match, smaller and in the grey of notes, with the match highlighted
+/// (`SearchExcerptResult.attributedLine`). A line longer than the column is cut short at its end.
+struct InvoiceClientText: View {
     let client: String
     let excerpt: SearchExcerptResult?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(verbatim: client)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if let excerpt {
-                Text(excerpt.attributedLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-        }
+        Text(line)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
-}
 
-extension SearchExcerptResult {
-    /// "Poznámka: …Routing number…": the label of the field and the text around the match, with the matched text in
-    /// bold on a yellow background.
-    var attributedLine: AttributedString {
-        var line = AttributedString("\(label): ")
-        var excerpt = AttributedString(text)
-        if let range = Range(highlight, in: excerpt) {
-            excerpt[range].backgroundColor = Color.yellow.opacity(0.4)
-            excerpt[range].foregroundColor = Color.primary
-            excerpt[range].inlinePresentationIntent = .stronglyEmphasized
+    /// The name in body and the colour of text, and the excerpt after it.
+    private var line: AttributedString {
+        var line = AttributedString(client)
+        line.font = Typography.body
+        line.foregroundColor = Palette.text
+        if let excerpt {
+            line.append(excerpt.attributedLine)
         }
-        line.append(excerpt)
         return line
     }
 }
 
-/// The value in crowns of an invoice in a foreign currency, with the line under it that says how it was worked out.
-/// Empty for an invoice in crowns. The value looks paid once the money has been received by the day the table is shown
-/// as of, not when the status says paid: the status is as of today, so a paid invoice can still show an estimate.
-private struct CrownsCell: View {
-    let row: InvoiceRow
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            InvoiceAmountText(amount: row.czk)
-                .foregroundStyle(row.hasReceivedPayment ? Color.primary : Color.secondary)
-            if !row.czkNote.isEmpty {
-                InvoiceCaptionText(text: row.czkNote)
-            }
+extension SearchExcerptResult {
+    /// " · Poznámka: …Routing number…": the label of the field and the text around the match, as they follow the name
+    /// of the client, in callout and the grey of notes, with the matched text bold, in the colour of text and on the
+    /// yellow of a highlight.
+    var attributedLine: AttributedString {
+        var line = AttributedString(" · \(label): ")
+        line.foregroundColor = Palette.text3
+        var excerpt = AttributedString(text)
+        excerpt.foregroundColor = Palette.text3
+        if let range = Range(highlight, in: excerpt) {
+            excerpt[range].backgroundColor = Palette.highlight
+            excerpt[range].foregroundColor = Palette.text
+            excerpt[range].inlinePresentationIntent = .stronglyEmphasized
         }
-    }
-}
-
-/// The net income of an invoice, with the line under it that says what the levies took of it, or that the net income
-/// is an estimate. A dash has no line. The value is green when the invoice is paid, whatever day the table is shown
-/// as of: a payment that comes after that day is a payment still, and its net income is worked out for the year it
-/// came in.
-private struct NetIncomeCell: View {
-    let row: InvoiceRow
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            InvoiceNetIncomeText(text: row.netIncome, kind: row.netIncomeKind)
-            if !row.netIncomeNote.isEmpty {
-                InvoiceCaptionText(text: row.netIncomeNote)
-            }
-        }
-    }
-}
-
-/// The status of an invoice as a tinted pill: grey for a draft, blue for one that waits for payment, red for one past
-/// its due date, green for one that is paid, orange for one to check. VoiceOver reads "Stav" and the text.
-struct StatusPill: View {
-    let status: InvoiceDisplayStatus
-    let label: String
-
-    var body: some View {
-        Text(verbatim: label)
-            .font(.callout.weight(.semibold))
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 1)
-            .foregroundStyle(colors.foreground)
-            .background(colors.background, in: Capsule())
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Stav: \(label)")
-    }
-
-    private var colors: (foreground: Color, background: Color) {
-        switch status {
-        case .draft: (Color.secondary, Color.secondary.opacity(0.16))
-        case .needsReview: (Color(.simulationText), Color.orange.opacity(0.16))
-        case .awaitingPayment: (Color.accentColor, Color.accentColor.opacity(0.14))
-        case .overdue: (Color.red, Color.red.opacity(0.14))
-        case .paid: (Color(.bannerText), Color.green.opacity(0.15))
-        }
+        line.append(excerpt)
+        line.font = Typography.callout
+        return line
     }
 }

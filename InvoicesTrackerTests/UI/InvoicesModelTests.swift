@@ -70,8 +70,8 @@ struct InvoicesModelTests {
         #expect(data.chipCounts[.paid] == 11)
         #expect(data.chipCounts[.drafts] == 1)
         #expect(data.visibleChips == [.all, .drafts, .awaiting, .overdue, .paid])
-        #expect(data.countTile.value == "12")
-        #expect(data.countTile.subtitle == "vystavené v roce 2026 · všechny stavy")
+        #expect(data.countText == "12\u{00A0}faktur")
+        #expect(data.categoryText == " · všechny stavy")
         #expect(data.searchLine == nil)
         #expect(model.errorText == nil)
         // The detail starts closed.
@@ -91,7 +91,8 @@ struct InvoicesModelTests {
         #expect(row.client == "Bravo Labs, Inc.")
         #expect(row.net == "14\u{00A0}350,00\u{00A0}USD")
         #expect(row.czk == "305\u{00A0}726,75\u{00A0}Kč")
-        #expect(row.czkNote == "ČNB 21,305 · 2.\u{00A0}10.")
+        #expect(row.paidDate == "2.\u{00A0}10.")
+        #expect(row.listStatus == "Uhrazená")
         #expect(row.status.label(asOf: civilDate("2026-10-17")) == "Uhrazená 2.\u{00A0}10.")
     }
 
@@ -112,7 +113,8 @@ struct InvoicesModelTests {
         #expect(model.filter == .all)
         await model.load()
         #expect(model.data?.rows.count == 11)
-        #expect(model.data?.countTile.subtitle == "zaplacené v roce 2026 · všechny stavy")
+        #expect(model.data?.countText == "11\u{00A0}faktur")
+        #expect(model.data?.categoryText == " · všechny stavy")
     }
 
     @Test func aPaymentAfterTheDayShownIsPaidByTodayButIsNotInWhatWasPaidByThatDay() async throws {
@@ -201,11 +203,9 @@ struct InvoicesModelTests {
 
             let first = try #require(model.data?.rows.first { $0.id == 1 })
             #expect(first.netIncome == "253\u{00A0}401\u{00A0}Kč")
-            #expect(first.netIncomeNote == "odvody snížila")
             #expect(first.netIncomeKind == .paid)
             let draft = try #require(model.data?.rows.first { $0.id == 12 })
             #expect(draft.netIncome == "≈\u{00A0}159\u{00A0}636\u{00A0}Kč")
-            #expect(draft.netIncomeNote == "odhad")
             #expect(draft.netIncomeKind == .estimate)
 
             try await storeAnAdjustmentOfADayThatIsNone(in: try #require(app.database))
@@ -215,7 +215,6 @@ struct InvoicesModelTests {
             #expect(model.errorText == nil)
             let unreadable = try #require(model.data?.rows.first { $0.id == 25 })
             #expect(unreadable.netIncome == "—")
-            #expect(unreadable.netIncomeNote == "")
             #expect(unreadable.netIncomeKind == .none)
         }
     }
@@ -240,7 +239,8 @@ struct InvoicesModelTests {
         let line = try #require(data.searchLine)
         #expect(line.text == "Hledání „alfa“: 5 z 12 faktur v roce 2026")
         #expect(line.otherYears == [OtherYearMatches(year: 2025, count: 2)])
-        #expect(data.countTile.subtitle == "vystavené v roce 2026 · všechny stavy · podle hledání")
+        #expect(data.countText == "5\u{00A0}faktur")
+        #expect(data.categoryText == " · všechny stavy · podle hledání")
     }
 
     @Test func aSearchWithoutMatchesSaysSoAndPointsToTheOtherYears() async throws {
@@ -330,8 +330,9 @@ struct InvoicesModelTests {
         let excerpt = try #require(row.excerpt)
         // The line says which field the text is from; the match is the part that is marked.
         #expect(excerpt.label == "Poznámka")
+        // The line follows the name of the client in its cell.
         let line = excerpt.attributedLine
-        #expect(String(line.characters).hasPrefix("Poznámka: Platba na účet. Routing number"))
+        #expect(String(line.characters).hasPrefix(" · Poznámka: Platba na účet. Routing number"))
         let marked = line.runs.filter { $0.inlinePresentationIntent == .stronglyEmphasized }
             .map { String(line[$0.range].characters) }
         // Both words of the note match "routing", in the case the note writes them; the first place is the excerpt's.

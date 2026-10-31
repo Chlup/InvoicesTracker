@@ -1,62 +1,37 @@
 import SwiftUI
 
-/// The segmented control that chooses which invoices the list holds: "Vystavené v roce 2026" or "Zaplacené v roce
-/// 2026".
+/// The segmented control that chooses which invoices the list holds, "Vystavené" or "Zaplacené", those issued in the
+/// year or those paid in it. The year is the toolbar's to say. VoiceOver reads it as a group "Které faktury" with a
+/// button for each segment (`SegmentedControl`).
 struct ScopePicker: View {
-    let year: Int
     @Binding var scope: InvoiceScope
 
     var body: some View {
-        Picker("Které faktury", selection: $scope) {
-            Text("Vystavené v roce \(String(year))")
-                .tag(InvoiceScope.issued)
-            Text("Zaplacené v roce \(String(year))")
-                .tag(InvoiceScope.paid)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .accessibilityLabel("Které faktury")
+        SegmentedControl(
+            "Které faktury", selection: $scope,
+            segments: [
+                (value: InvoiceScope.issued, title: "Vystavené"), (value: InvoiceScope.paid, title: "Zaplacené"),
+            ]
+        )
     }
 }
 
-/// The status chips with the number of invoices each has: "Vše 12", "Koncepty 1", … The chosen one is filled. The chip
-/// for the invoices to check is among them only while it has an invoice or is the chosen one (`InvoiceListData`).
+/// The status chips with the number of invoices each has: "Vše 12", "Koncepty 1", … The chosen one is filled with the
+/// accent (`FilterChip`). The chips stand in a line, 6 points apart, and wrap where the room is narrower than they are.
+/// The chip for the invoices to check is among them only while it has an invoice or is the chosen one
+/// (`InvoiceListData`).
 struct StatusChipsView: View {
     let chips: [InvoiceStatusFilter]
     let counts: [InvoiceStatusFilter: Int]
     @Binding var selection: InvoiceStatusFilter
 
     var body: some View {
-        HStack(spacing: 6) {
+        FlowLayout(spacing: 6) {
             ForEach(chips, id: \.self) { chip in
-                StatusChip(title: "\(chip.title) \(counts[chip, default: 0])", isOn: chip == selection) {
+                FilterChip("\(chip.title) \(counts[chip, default: 0])", isSelected: chip == selection) {
                     selection = chip
                 }
             }
         }
-    }
-}
-
-private struct StatusChip: View {
-    let title: String
-    let isOn: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(verbatim: title)
-                .font(.callout.weight(.semibold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .frame(height: 28)
-                .foregroundStyle(isOn ? Color(nsColor: .windowBackgroundColor) : Color.primary)
-                .background(isOn ? Color.primary : Color(nsColor: .controlBackgroundColor), in: Capsule())
-                .overlay(Capsule().strokeBorder(.separator, lineWidth: isOn ? 0 : 1))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }

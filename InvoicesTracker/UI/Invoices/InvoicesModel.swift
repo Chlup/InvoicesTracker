@@ -45,9 +45,10 @@ final class InvoicesModel {
     /// What the screen shows: nil until the first load has finished, and after a load that failed.
     private(set) var data: InvoiceListData?
 
-    /// The day `data` is shown as of, which the status of a row is worded for (`InvoiceDisplayStatus.label(asOf:)`): a
-    /// payment is written with its year when that is another than the year of this day. The status itself is as of
-    /// today.
+    /// The day `data` is shown as of, which the detail of an invoice opened from the list is worked out for until its
+    /// own load has finished: its money, and its pill, which writes a payment with its year when that is another than
+    /// the year of this day (`InvoiceDisplayStatus.label(asOf:)`). The status itself is as of today. The rows write
+    /// the dates with their year themselves (`InvoiceRow`).
     private(set) var shownDay: CivilDate?
 
     /// What the screen says in place of the table when the last load failed, otherwise nil.

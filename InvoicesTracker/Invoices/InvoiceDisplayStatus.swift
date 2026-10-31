@@ -69,6 +69,16 @@ nonisolated enum InvoiceDisplayStatus: Hashable, Sendable {
         }
     }
 
+    /// The text of the status in the pill of a row of the list, which has no date: "Uhrazená" for a paid invoice, whose
+    /// day of payment the list shows in a column of its own, and `label` for every other status. The detail keeps the
+    /// day in its pill (`label(asOf:)`).
+    var listLabel: String {
+        switch self {
+        case .paid: "Uhrazená"
+        case .draft, .needsReview, .awaitingPayment, .overdue: label
+        }
+    }
+
     /// The text of the status for a screen shown as of `asOf` ("K datu"): the same as `label`, but a payment from
     /// another year than the one of `asOf` shows its year as well (`Uhrazená 20. 12. 2025`). The day that counts here
     /// is the one the screen is shown as of, not the one the status was worked out for: the list of 2025 says
