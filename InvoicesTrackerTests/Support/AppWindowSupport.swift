@@ -19,12 +19,21 @@ enum AppWindowSize {
 /// The window is never a tab of another window. Where the person prefers tabs, the windows of the tests that run at the
 /// same time would become tabs of one window, which share one frame: this window would take the size of another test's
 /// window and follow it when that one is resized or closed.
+///
+/// The window is on the screen at 100, 100, where the pointer of the person who runs the tests can pass over it, or
+/// not be. With `ignoringTheRealPointer` the window is closed to that pointer (`TestWindow`): it takes no event of
+/// the real mouse, says for itself where its pointer is and makes the areas its views follow the pointer in anew once
+/// it is laid out, so that the popover and the hover that a test brings about with events of its own do not depend on
+/// where the real pointer is. A test that moves the pointer by hand (`movePointer(to:in:)`) asks for it, and the
+/// helper refuses a window without it. A test that clicks or scrolls through the event handling of the app keeps the
+/// ordinary window.
 @MainActor
 func withAppWindow(
-    of app: AppModel, size: CGSize, _ body: (NSWindow) async throws -> Void
+    of app: AppModel, size: CGSize, ignoringTheRealPointer: Bool = false, _ body: (NSWindow) async throws -> Void
 ) async throws {
     app.screen = .overview
-    let window = NSWindow(contentViewController: NSHostingController(rootView: RootView(model: app)))
+    let window = TestWindow(
+        content: NSHostingController(rootView: RootView(model: app)), isClosedToTheRealPointer: ignoringTheRealPointer)
     window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
     window.tabbingMode = .disallowed
     window.toolbarStyle = .unified
@@ -32,6 +41,9 @@ func withAppWindow(
     window.setFrameOrigin(NSPoint(x: 100, y: 100))
     window.orderFront(nil)
     defer { window.close() }
+    if ignoringTheRealPointer {
+        try await window.makeTheAreasOfThePointerAnew()
+    }
     app.screen = .computation
     try await waitUntil { window.title == "Výpočet" }
     try await body(window)
@@ -277,9 +289,20 @@ func accessibilityElement(labelStartingWith prefix: String, in window: NSWindow)
 /// view, the one that has the tracking area, as the pointer coming in and moving. The window does not pass a synthetic
 /// event on to it (`NSWindow.sendEvent(_:)` changes nothing), so the events are handed to the view itself. A point
 /// outside what follows the pointer, such as the corner of the window, takes the pointer away again. The real cursor
-/// does not move.
+/// does not move, and no event is posted to the system.
+///
+/// The window must be closed to the real pointer (`withAppWindow(of:size:ignoringTheRealPointer:_:)`), and its pointer
+/// is put at `point` as the events arrive. SwiftUI follows the pointer only while the window says the pointer is
+/// inside it, and in any other window that is the real pointer of the person who runs the tests: the test would pass
+/// or fail by where that pointer is, and the pointer passing over the window would move what the test has opened.
+/// The helper refuses such a window.
 @MainActor
 func movePointer(to point: CGPoint, in window: NSWindow) throws {
+    let testWindow = try #require(window as? TestWindow, "The window is not a window of the test helpers")
+    try #require(
+        testWindow.isClosedToTheRealPointer,
+        "The window is open to the real pointer: open it with ignoringTheRealPointer: true")
+    testWindow.putPointer(at: point)
     let view = try #require(hostingViewTrackingThePointer(in: window.contentView), "No view follows the pointer")
     let entered = try #require(
         NSEvent.enterExitEvent(

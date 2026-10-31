@@ -1303,7 +1303,7 @@ struct AppWindowLayoutTests {
             let result = try await f.app.computeSelectedYear()
             let levyBar = LevyBarBuilder.balances(
                 of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.", showsTotal: true)
-            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum, ignoringTheRealPointer: true) { window in
                 f.app.screen = .overview
                 try await waitUntil { window.title == "Přehled" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
@@ -1359,7 +1359,7 @@ struct AppWindowLayoutTests {
             let weights = Authority.allCases.map { result.balance($0).liability }
             let levyBar = LevyBarBuilder.balances(
                 of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.", showsTotal: true)
-            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum, ignoringTheRealPointer: true) { window in
                 f.app.screen = .overview
                 try await waitUntil { window.title == "Přehled" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
@@ -3538,7 +3538,7 @@ struct AppWindowLayoutTests {
         try await EditorFixture.with { f in
             let result = try await f.app.computeSelectedYear()
             let weights = Authority.allCases.map { result.balance($0).liability }
-            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large, ignoringTheRealPointer: true) { window in
                 f.app.screen = .computation
                 try await waitUntil { window.title == "Výpočet" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
@@ -4441,7 +4441,7 @@ struct AppWindowLayoutTests {
         try await PredictionSample.withStoredSample { app in
             let page = try PredictionSample.page(year: 2026)
             let weights = page.levyBar.parts.map(\.weight)
-            try await withAppWindow(of: app, size: AppWindowSize.large) { window in
+            try await withAppWindow(of: app, size: AppWindowSize.large, ignoringTheRealPointer: true) { window in
                 app.screen = .prediction
                 try await waitUntil { window.title == "Odhad odvodů" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
@@ -5308,7 +5308,7 @@ struct AppWindowLayoutTests {
     /// open, where the hairlines and the dot of the net income cross it while it is closed.
     @Test func thePopoverOfTheLevyBarIsDrawnOverTheNetIncomeAndTheMarginalLevyOfTheSimulator() async throws {
         try await EditorFixture.with { f in
-            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large, ignoringTheRealPointer: true) { window in
                 f.app.screen = .simulator
                 try await waitUntil { window.title == "Simulátor" }
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
