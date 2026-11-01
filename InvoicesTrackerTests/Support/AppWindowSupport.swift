@@ -397,6 +397,22 @@ private func hostingViewTrackingThePointer(in view: NSView?) -> NSView? {
     return nil
 }
 
+/// The colour of the picture of `window`, as its bytes, at the middle of the part of the social insurance in a levy bar
+/// that stands at `bar` (its frame in the window, the origin at the bottom left) and shares its width as `weights` say,
+/// one for each authority in the order of `Authority.allCases`. The part fades while the popover of another part is
+/// open, so its colour changes when the pointer comes over the part of the tax or over its item in the legend, and
+/// comes back when the pointer is taken away: a test that moves the pointer waits for the one and the other before it
+/// checks anything else, and so cannot pass when the pointer moved nothing.
+@MainActor
+func colourOfTheSocialPartOfTheLevyBar(weights: [Int64], bar: CGRect, in window: NSWindow) throws -> [Int] {
+    let content = try #require(window.contentView)
+    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
+    let centres = LevyBarLayout.partCentres(widths: widths)
+    let social = try #require(Authority.allCases.firstIndex(of: .social))
+    let point = CGPoint(x: bar.minX + centres[social], y: content.bounds.height - bar.midY)
+    return try WindowPicture(of: window).bytes(at: point)
+}
+
 /// The element of `window` that carries the accessibility identifier `identifier`: a group that a test measures or
 /// looks into (`accessibilityChildren()`) and that VoiceOver reads nothing for, as it has no label. Nil when `window`
 /// has no such element, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).

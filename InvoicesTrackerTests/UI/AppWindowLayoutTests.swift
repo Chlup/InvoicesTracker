@@ -1297,12 +1297,16 @@ struct AppWindowLayoutTests {
     /// the levies, and the card "Příjmy" stands under it, 16 points lower and as wide, whether the pointer is away from
     /// the bar, over its part of the tax or over the item of the tax in its legend: the popover that shows then takes
     /// no room, and the card does not move. Nothing of the page is beyond the window at the least room, at a large size
-    /// and at the least room again.
+    /// and at the least room again. The test proves each state before it checks the cards in it: while the pointer is
+    /// over the bar the other parts fade (the colour of the part of the social insurance changes), and when it is
+    /// taken away the bar is whole again. A pointer that moved nothing fails the test, which would otherwise pass with
+    /// the popover closed.
     @Test func theResultCardOfPrehledHoldsTheLevyBarAndPrijmyStaysUnderItWithOrWithoutTheHover() async throws {
         try await EditorFixture.with { f in
             let result = try await f.app.computeSelectedYear()
             let levyBar = LevyBarBuilder.balances(
                 of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.", showsTotal: true)
+            let weights = levyBar.parts.map(\.weight)
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum, ignoringTheRealPointer: true) { window in
                 f.app.screen = .overview
                 try await waitUntil { window.title == "Přehled" }
@@ -1318,11 +1322,23 @@ struct AppWindowLayoutTests {
                             try #require(frameOfCard(labelled: "Kolik zbývá zaplatit", in: window)),
                             try #require(frameOfCard(labelled: "Příjmy", in: window)),
                         ]
+                        let bar = window.convertFromScreen(
+                            try #require(
+                                accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window)?
+                                    .accessibilityFrame?()))
+
+                        /// The colour of the part of the social insurance, which fades while a popover is open.
+                        @MainActor func socialPart() throws -> [Int] {
+                            try colourOfTheSocialPartOfTheLevyBar(weights: weights, bar: bar, in: window)
+                        }
+                        let resting = try socialPart()
 
                         // The pointer over the part of the tax in the bar, and then over its item of the legend,
-                        // as a mouse moves it; the corner of the window takes it away again.
+                        // as a mouse moves it; the corner of the window takes it away again. The popover is open
+                        // before the cards are looked at, and closed again before the next state.
                         for (name, point) in try pointsOpeningThePopoverOfTheTax(in: window) {
                             try movePointer(to: point, in: window)
+                            try await waitUntil { ((try? socialPart()) ?? resting) != resting }
                             try await expectSettled(window) {
                                 problems(ofTheResultCardOfPrehledIn: window, levyBar: levyBar)
                                     + problems(ofPageIn: window)
@@ -1337,7 +1353,8 @@ struct AppWindowLayoutTests {
                                     || (before.height - after.height).magnitude > 0.5
                             }
                             #expect(!moved, "The cards moved with the pointer over the \(name): \(frames), \(now)")
-                            try movePointer(to: CGPoint(x: 4, y: 4), in: window)
+                            try movePointer(to: TestWindow.restingPointer, in: window)
+                            try await waitUntil { ((try? socialPart()) ?? []) == resting }
                         }
                     }
                 }

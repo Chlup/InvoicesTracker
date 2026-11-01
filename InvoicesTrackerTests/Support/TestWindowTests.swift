@@ -98,19 +98,15 @@ struct TestWindowTests {
                         accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window) != nil
                     }
                     try await layOut(window)
-                    let content = try #require(window.contentView)
                     let bar = window.convertFromScreen(
                         try #require(
                             accessibilityElement(labelStartingWith: "Odvody z příjmů do", in: window)?
                                 .accessibilityFrame?()))
-                    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
-                    let socialCentre = bar.minX + LevyBarLayout.partCentres(widths: widths)[1]
 
                     /// The colour of the part of the social insurance, which fades while the pointer is over the part
                     /// of the tax.
                     @MainActor func socialPart() throws -> [Int] {
-                        let point = CGPoint(x: socialCentre, y: content.bounds.height - bar.midY)
-                        return try WindowPicture(of: window).bytes(at: point)
+                        try colourOfTheSocialPartOfTheLevyBar(weights: weights, bar: bar, in: window)
                     }
                     let resting = try socialPart()
 
