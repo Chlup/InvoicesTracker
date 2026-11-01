@@ -40,9 +40,10 @@ struct SettingsWindowTests {
 
     /// The buttons inside the cards of the tabs are the capsules of the design, 28 points tall: Zkontrolovat teď,
     /// Vytvořit nový kód…, the three buttons of the backups, and Zadat ručně, which opens the form of the uniform
-    /// rate with Zrušit and Uložit kurz, 28 points tall too. Přidat, the button of the form of an adjustment, is a
-    /// button of the page, 32 points tall.
-    @Test func theButtonsInsideTheCardsOfNastaveniAre28PointCapsulesAndPridatIs32() async throws {
+    /// rate with Zrušit and Uložit kurz, 28 points tall too. So is Přidat, the button of the form of an adjustment in
+    /// the card Úpravy příjmů: the prototype draws it 32 tall to match its fields of 32, and the fields of the app are
+    /// the native ones.
+    @Test func theButtonsInsideTheCardsOfNastaveniAre28PointCapsules() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
                 try await withAccessibilityElements {
@@ -74,7 +75,7 @@ struct SettingsWindowTests {
                     }
                     try await waitUntil { accessibilityButton(labelled: "Přidat", in: window) != nil }
                     let add = try height(ofButton: "Přidat", in: window)
-                    #expect(abs(add - 32) < 0.5, "Přidat is \(add) points tall")
+                    #expect(abs(add - 28) < 0.5, "Přidat is \(add) points tall")
                 }
             }
         }

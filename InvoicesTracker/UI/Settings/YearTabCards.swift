@@ -303,10 +303,11 @@ struct AdjustmentsCard: View {
             label: "Popis", text: $model.adjustmentDescription, prompt: "např. dobropis k faktuře 20260801")
     }
 
-    /// Přidat: a capsule in the accent 32 points tall, the button of the form as the buttons of a page are.
+    /// Přidat: a capsule in the accent 28 points tall, as every button inside a card is. The prototype draws it 32 tall
+    /// to match its fields of 32; the fields of the app are the native ones, so that reason does not carry over.
     private var addButton: some View {
         Button("Přidat", action: add)
-            .buttonStyle(CapsuleButtonStyle(.primary))
+            .buttonStyle(CapsuleButtonStyle(.primary, size: .small))
     }
 
     private func add() {

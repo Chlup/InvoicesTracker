@@ -108,7 +108,8 @@ struct OverviewCardsTests {
 
     /// The card has no pill "odhad" and no sign "≈" anywhere in what VoiceOver reads; its four figures stand in one row
     /// 40 points apart, level at the top, none of them more than 240 points wide, and the long line under the levies
-    /// wraps in its tile; the button Odhad odvodů is 32 points tall at the end of the head, 20 points from the edge.
+    /// wraps in its tile; the button Odhad odvodů, a button inside a card, is 28 points tall at the end of the head, 20
+    /// points from the edge.
     @Test func theEstimateCardHasNoPillAndItsFourFiguresStand40PointsApartAtMost240Wide() async throws {
         let card = try estimateCard()
         var opened = 0
@@ -140,7 +141,7 @@ struct OverviewCardsTests {
 
                 let button = try #require(accessibilityButton(labelled: "Odhad odvodů", in: window))
                 let buttonFrame = try #require(button.accessibilityFrame?())
-                #expect(abs(buttonFrame.height - 32) < 0.5, "The button is \(buttonFrame.height) points tall")
+                #expect(abs(buttonFrame.height - 28) < 0.5, "The button is \(buttonFrame.height) points tall")
                 #expect(abs(groupFrame.maxX - 20 - buttonFrame.maxX) < 1, "The button is at \(buttonFrame)")
                 #expect(button.accessibilityPerformPress?() == true)
                 #expect(opened == 1)

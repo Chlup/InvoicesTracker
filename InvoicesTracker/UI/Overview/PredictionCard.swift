@@ -102,7 +102,8 @@ struct PredictionCard: View {
         }
     }
 
-    /// The way on to Odhad odvodů: the words and an arrow on a capsule of the grey fill, 32 points tall.
+    /// The way on to Odhad odvodů: the words and an arrow on a capsule of the grey fill, 28 points tall, as every button
+    /// inside a card is.
     private var button: some View {
         Button(action: showPrediction) {
             HStack(spacing: PredictionCardMetrics.arrowGap) {
@@ -111,6 +112,6 @@ struct PredictionCard: View {
                     .accessibilityHidden(true)
             }
         }
-        .buttonStyle(CapsuleButtonStyle(.secondary))
+        .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
     }
 }
