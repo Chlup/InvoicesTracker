@@ -478,6 +478,13 @@ struct WelcomeScreensTests {
                 let key = try #require(picture.extent(near: text2, in: circle, by: 40), "\(scheme): no key")
                 #expect((14...18).contains(key.width), "\(scheme): the key is \(key.width) points wide")
                 #expect(key.height < key.width * 0.7, "\(scheme): the key stands up, \(key.width) × \(key.height)")
+                // The bow, a ring as tall as the key, is in the left third; the bit, lower, in the right third.
+                let third = key.width / 3
+                let left = CGRect(x: key.minX, y: key.minY, width: third, height: key.height)
+                let right = CGRect(x: key.maxX - third, y: key.minY, width: third, height: key.height)
+                let bow = picture.extent(near: text2, in: left, by: 40)?.height ?? 0
+                let bit = picture.extent(near: text2, in: right, by: 40)?.height ?? 0
+                #expect(bow > bit + 2, "\(scheme): the left of the key is \(bow) tall and the right \(bit)")
             }
         }
     }
