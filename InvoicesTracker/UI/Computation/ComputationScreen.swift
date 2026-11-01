@@ -2,9 +2,6 @@ import SwiftUI
 
 /// The sizes of the page of Výpočet that its parts do not set themselves, in points.
 private nonisolated enum ComputationScreenMetrics {
-    /// The space at the sides of the heading "Rozpis výpočtu".
-    static let headingInset: CGFloat = 4
-
     /// The least width of the two cards under the result, Mezní odvod and Hranice roku.
     static let cardColumnWidth: CGFloat = 380
 
@@ -93,11 +90,7 @@ struct ComputationScreen: View {
     /// insurance, and under them the net income. VoiceOver reads the lot as a group under the heading.
     private func breakdown(_ sections: [ComputationSection]) -> some View {
         VStack(alignment: .leading, spacing: DesignMetrics.innerSpacing) {
-            Text("Rozpis výpočtu")
-                .font(Typography.title3)
-                .foregroundStyle(Palette.text)
-                .padding(.horizontal, ComputationScreenMetrics.headingInset)
-                .accessibilityAddTraits(.isHeader)
+            SectionHeading(text: "Rozpis výpočtu")
             TwoColumnStack {
                 ForEach(sections.filter { !$0.standsRight }) { section in
                     ComputationCard(section: section)

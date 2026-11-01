@@ -40,10 +40,7 @@ struct LatestReceiptsList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LatestReceiptsMetrics.spacing) {
             HStack(alignment: .firstTextBaseline, spacing: LatestReceiptsMetrics.headingSpacing) {
-                Text("Poslední přijaté platby")
-                    .font(Typography.title3)
-                    .foregroundStyle(Palette.text)
-                    .accessibilityAddTraits(.isHeader)
+                CardTitle(text: "Poslední přijaté platby")
                 Spacer(minLength: 0)
                 Button("Všechny faktury", action: showInvoices)
                     .calloutLink()

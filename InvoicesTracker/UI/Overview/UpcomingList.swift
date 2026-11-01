@@ -47,10 +47,7 @@ struct UpcomingList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: UpcomingMetrics.spacing) {
             HStack(alignment: .firstTextBaseline, spacing: UpcomingMetrics.headingSpacing) {
-                Text("Nejbližší platby úřadům")
-                    .font(Typography.title3)
-                    .foregroundStyle(Palette.text)
-                    .accessibilityAddTraits(.isHeader)
+                CardTitle(text: "Nejbližší platby úřadům")
                 Spacer(minLength: 0)
                 Button("Plán záloh", action: showAdvances)
                     .calloutLink()

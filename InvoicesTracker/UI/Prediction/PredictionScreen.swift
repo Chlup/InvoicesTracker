@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// The sizes of the page of Odhad odvodů that its parts do not set themselves, in points.
-private nonisolated enum PredictionScreenMetrics {
-    /// The space at the sides of the heading "Rozpis výpočtu".
-    static let headingInset: CGFloat = 4
-}
-
 /// Odhad odvodů: the estimate of the selected year's whole income, client by client, and of its tax and insurance. At
 /// the top stands the warning that the year is an estimate with the rules of another year, and under that the line that
 /// part of the income is converted at a provisional rate, each only when it applies. Then comes the result card, with
@@ -86,11 +80,7 @@ struct PredictionScreen: View {
     /// insurance with the net income under them on the right.
     private func breakdown(_ page: PredictionPage) -> some View {
         VStack(alignment: .leading, spacing: DesignMetrics.innerSpacing) {
-            Text("Rozpis výpočtu")
-                .font(Typography.title3)
-                .foregroundStyle(Palette.text)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, PredictionScreenMetrics.headingInset)
+            SectionHeading(text: "Rozpis výpočtu")
             TwoColumnStack {
                 ForEach(page.left) { section in
                     card(of: section)

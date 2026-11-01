@@ -398,15 +398,7 @@ struct PredictionChartTooltip: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .font(Typography.body)
-        .foregroundStyle(Palette.text)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .fixedSize(horizontal: true, vertical: false)
-        .background {
-            RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
-                .surface(Palette.bgCard, elevation: .pop)
-        }
+        .popPanel()
         // The month itself speaks the same words for VoiceOver.
         .accessibilityHidden(true)
     }

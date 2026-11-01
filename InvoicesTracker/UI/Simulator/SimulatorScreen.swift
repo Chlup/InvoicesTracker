@@ -8,9 +8,6 @@ private nonisolated enum SimulatorScreenMetrics {
     /// The least width of the column of the inputs beside the result. The detail of the smallest window is 828 points
     /// wide inside the padding of the page, and 440, the space of 16 and the 360 of the result are 816 of them.
     static let inputsMinimumWidth: CGFloat = 440
-
-    /// The space at the sides of the heading "Rozpis výpočtu".
-    static let headingInset: CGFloat = 4
 }
 
 /// Simulátor: what the income tax, the social insurance and the health insurance come to for a year and an income the
@@ -105,11 +102,7 @@ struct SimulatorScreen: View {
     /// right with the net income under them, told apart by `ComputationSection.standsRight`.
     private func breakdown(_ sections: [ComputationSection]) -> some View {
         VStack(alignment: .leading, spacing: DesignMetrics.innerSpacing) {
-            Text("Rozpis výpočtu")
-                .font(Typography.title3)
-                .foregroundStyle(Palette.text)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, SimulatorScreenMetrics.headingInset)
+            SectionHeading(text: "Rozpis výpočtu")
             TwoColumnStack {
                 ForEach(sections.filter { !$0.standsRight }) { section in
                     card(of: section)

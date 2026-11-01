@@ -91,6 +91,21 @@ struct CardTitle: View {
     }
 }
 
+/// The heading of a section of a page that stands outside any card, such as "Rozpis výpočtu" over the cards of a
+/// breakdown: the title of a card (`CardTitle`: title 3 in the colour of text, a heading for VoiceOver) set 4 points in
+/// from the sides, as the prototype sets it.
+struct SectionHeading: View {
+    let text: String
+
+    /// The space at the sides of the heading, in points.
+    static let inset: CGFloat = 4
+
+    var body: some View {
+        CardTitle(text: text)
+            .padding(.horizontal, Self.inset)
+    }
+}
+
 extension View {
     /// The look of a card: the colour of a card on a rounded rectangle with the corners of a card (16 points), raised
     /// off the page by the elevation of a card, a hairline ring and a faint shadow. It takes the colours from the
@@ -105,6 +120,23 @@ extension View {
             RoundedRectangle(cornerRadius: DesignMetrics.cardRadius)
                 .surface(Palette.bgCard, elevation: .card)
         }
+    }
+
+    /// The look of a panel that pops up over a chart, such as the box that follows the pointer along the columns of a
+    /// chart: its content in body text of the colour of text, padded 14 points at the sides and 12 above and below, as
+    /// wide as the content needs, on the colour of a card with the corners of a panel (10 points), raised off the chart
+    /// by the elevation of a pop. Like the look of a card it is the background of the view, so it lies under all of its
+    /// content. What VoiceOver reads of the panel is the caller's to say.
+    func popPanel() -> some View {
+        font(Typography.body)
+            .foregroundStyle(Palette.text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .fixedSize(horizontal: true, vertical: false)
+            .background {
+                RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
+                    .surface(Palette.bgCard, elevation: .pop)
+            }
     }
 
     /// Reads the view to VoiceOver as a group named `name` that holds one group of its own, as the aside of the design
