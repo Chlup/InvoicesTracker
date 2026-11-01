@@ -87,6 +87,38 @@ struct WaitingHelperTests {
         #expect(held)
     }
 
+    /// The looks are as far apart as `every:` says: a condition that holds at the third look, 100 milliseconds apart,
+    /// is found no sooner than 200 milliseconds after the first, where looks at the default of 5 milliseconds would
+    /// find it in a tenth of that.
+    @Test func theLooksAreAsFarApartAsTheyAreToldToBe() async throws {
+        let clock = ContinuousClock()
+        var looks = 0
+        let started = clock.now
+
+        let held = try await holdsWithin(.seconds(5), every: .milliseconds(100)) {
+            looks += 1
+            return looks == 3
+        }
+
+        #expect(held)
+        #expect(clock.now - started >= .milliseconds(200), "The third look came after \(clock.now - started)")
+    }
+
+    /// A look is charged at most 50 milliseconds, or its interval where that is longer. Looks 200 milliseconds apart
+    /// use up a second at the sixth, and a condition that would hold at the seventh is given up on; a charge of 50
+    /// milliseconds for each would have let it be found.
+    @Test func aLookIsChargedItsIntervalWhereThatIsLongerThanFiftyMilliseconds() async throws {
+        var looks = 0
+
+        let held = try await holdsWithin(.seconds(1), every: .milliseconds(200)) {
+            looks += 1
+            return looks == 7
+        }
+
+        #expect(!held)
+        #expect(looks == 6, "The condition was looked at \(looks) times")
+    }
+
     @Test func theSchedulerTellsOfTheFirstWakeWhenItIsAskedForAndAtOnceAfterIt() async {
         let scheduler = ManualScheduler()
         // The wait has begun when its task is made.
