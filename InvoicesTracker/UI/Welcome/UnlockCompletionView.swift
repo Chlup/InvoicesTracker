@@ -11,8 +11,11 @@ struct UnlockCompletionView: View {
     var body: some View {
         WelcomeCard(label: "Hotovo", width: 520) {
             VStack(spacing: 10) {
+                // The check of the system is square: at the small scale it is 17,5 points across, where the prototype
+                // draws a flatter one 19 wide and 14 tall, and at the medium scale it would be 21,5.
                 Image(systemName: "checkmark")
                     .font(Typography.symbolLarge)
+                    .imageScale(.small)
                     .foregroundStyle(Palette.greenText)
                     .frame(width: 56, height: 56)
                     .background(Palette.greenTint, in: Circle())

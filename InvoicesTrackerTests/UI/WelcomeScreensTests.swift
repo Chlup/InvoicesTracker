@@ -382,6 +382,38 @@ struct WelcomeScreensTests {
         }
     }
 
+    /// The check in the green circle is about as large as the prototype draws it: 19 points wide and 14 tall (a path of
+    /// 14 by 9.5 units in a box of 24 units drawn 28 points across, with a stroke of 2.4 units). The check of the
+    /// system is square, so it can be near the width or near the height and not both: at the small symbol scale it is
+    /// 17,5 by 17 points, where at the medium scale it was 21,5 by 21,5, over half as large again as the drawing.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theCheckInTheGreenCircleIsAboutAsLargeAsThePrototypeDrawsIt(scheme: ColorScheme) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let model = makeAppModel(in: directory)
+        let completion = UnlockCompletion(kind: .unlocked, codeLabel: nil)
+
+        try await withHostedView(
+            UnlockCompletionView(model: model, completion: completion), size: CGSize(width: 900, height: 700)
+        ) { window in
+            window.appearance = appearance(of: scheme)
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Pokračovat", in: window) != nil }
+                try await layOut(window)
+                let card = try cardFrame("Hotovo", in: window)
+                let picture = try OffscreenPicture(of: window)
+                let greenText = try OffscreenPicture.bytes(of: Palette.greenText, in: scheme)
+
+                // The circle is 56 points across under the top padding of 30, in the middle of the card.
+                let circle = CGRect(x: card.midX - 28, y: card.minY + 30, width: 56, height: 56)
+                let check = try #require(
+                    picture.extent(near: greenText, in: circle, by: 40), "\(scheme): no check in the circle")
+                #expect((15...20).contains(check.width), "\(scheme): the check is \(check.width) points wide")
+                #expect((12...18).contains(check.height), "\(scheme): the check is \(check.height) points tall")
+            }
+        }
+    }
+
     /// The drop zone of the choice of the backup is the accent tint with a ring of the soft accent, rounded by 10
     /// points as a panel is: a corner of 14 would still be outside at 3.5 points in, where the ring is.
     @Test(arguments: [ColorScheme.light, .dark])
