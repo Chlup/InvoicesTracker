@@ -80,6 +80,50 @@ struct TestWindowTests {
         }
     }
 
+    /// The window puts its content back as it took it out (`TestWindow.makeTheAreasOfThePointerAnew()`): the same
+    /// controller, which is what the window of the app has for its content, in the same view, and the window has the
+    /// size it had. The window of the test has been through it once before the test gets it, and goes through it once
+    /// more here.
+    @Test func theContentOfAWindowComesBackWithItsControllerInTheSameViewAndSize() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum, ignoringTheRealPointer: true) { window in
+                let testWindow = try #require(window as? TestWindow)
+                let controller = try #require(window.contentViewController, "The window has lost its controller")
+                let content = try #require(window.contentView)
+                let size = window.frame.size
+
+                try await testWindow.makeTheAreasOfThePointerAnew()
+
+                #expect(window.contentViewController === controller)
+                #expect(window.contentView === content)
+                #expect(window.frame.size == size, "The window is \(window.frame.size), it was \(size)")
+                #expect(window.title == "Výpočet")
+            }
+        }
+    }
+
+    /// The content of the window leaves it and comes back once when the window makes its areas anew: its views
+    /// disappear and appear again, and the task of a view starts anew. This is why a test does it before it opens
+    /// anything in the window, and the doc of `TestWindow.makeTheAreasOfThePointerAnew()` says so.
+    @Test func theContentLeavesTheWindowAndComesBackOnceWhenTheAreasAreMadeAnew() async throws {
+        let appearances = Appearances()
+        try await withHostedView(
+            AppearanceRecorder(appearances: appearances), size: HoverArea.windowSize, ignoringTheRealPointer: true
+        ) { window in
+            let testWindow = try #require(window as? TestWindow)
+            try await waitUntil { appearances.count("task") >= 1 }
+            appearances.events.removeAll()
+
+            try await testWindow.makeTheAreasOfThePointerAnew()
+            try await waitUntil { appearances.count("task") >= 1 }
+            try await layOut(window)
+
+            #expect(appearances.count("disappear") == 1, "\(appearances.events)")
+            #expect(appearances.count("appear") == 1, "\(appearances.events)")
+            #expect(appearances.count("task") == 1, "\(appearances.events)")
+        }
+    }
+
     /// SwiftUI follows the pointer in a window only while the window says the pointer is inside it, so a view reacts
     /// to the pointer that a test moves by hand only while the real pointer of the person who runs the tests is over
     /// the window too, and not when it is somewhere else on the screen. A window that is closed to the real pointer
@@ -152,6 +196,29 @@ struct TestWindowTests {
             try await layOut(first)
             #expect(first.frame.size == size)
         }
+    }
+}
+
+/// The comings and goings of a view under test, in the order they happened.
+@MainActor
+private final class Appearances {
+    var events: [String] = []
+
+    /// How many times `event` happened.
+    func count(_ event: String) -> Int {
+        events.filter { $0 == event }.count
+    }
+}
+
+/// A view that tells `appearances` when it appears, when it disappears and when its task starts.
+private struct AppearanceRecorder: View {
+    let appearances: Appearances
+
+    var body: some View {
+        Color.clear
+            .onAppear { appearances.events.append("appear") }
+            .onDisappear { appearances.events.append("disappear") }
+            .task { appearances.events.append("task") }
     }
 }
 

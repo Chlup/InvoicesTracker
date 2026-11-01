@@ -47,12 +47,28 @@ final class TestWindow: NSWindow {
     /// app do now and then, would never take the pointer to be inside it. With the content back, the areas are made
     /// anew for the views as large as they are, and while the window is closed to the real pointer, with the pointer
     /// of the window.
+    ///
+    /// The window is what it was after it: it has the same content view controller, the hosting controller that the
+    /// window of the app has for its content, in the same view, and the same frame. Assigning the content view of a
+    /// window drops its controller, so the controller is set again. The content does leave the window and come back to
+    /// it once, though: its views disappear and appear again, and the task of a view is cancelled and started anew. So
+    /// a test calls this before it opens anything in the window, as `withAppWindow(of:size:ignoringTheRealPointer:_:)`
+    /// does, and not after.
     func makeTheAreasOfThePointerAnew() async throws {
         guard let content = contentView else { return }
+        let controller = contentViewController
+        let originalFrame = frame
         try await layOut(self)
         contentView = NSView()
         try await layOut(self)
-        contentView = content
+        if let controller {
+            contentViewController = controller
+        } else {
+            contentView = content
+        }
+        if frame != originalFrame {
+            setFrame(originalFrame, display: true)
+        }
         try await layOut(self)
     }
 
