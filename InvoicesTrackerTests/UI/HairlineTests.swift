@@ -9,6 +9,8 @@ import Testing
 struct HairlineTests {
     private let schemes = [ColorScheme.light, .dark]
 
+    /// A hairline is one point high, runs across the whole width of its room and is in the colour of the
+    /// separators, in a light and in a dark window.
     @Test func aHairlineIsOnePointHighAndAcrossTheWholeWidthInTheColourOfTheSeparators() throws {
         for scheme in schemes {
             let picture = try OffscreenPicture(of: Hairline().frame(width: 120), in: scheme)
@@ -21,6 +23,7 @@ struct HairlineTests {
         }
     }
 
+    /// A strong hairline is as thin and as wide as the ordinary one, in the stronger colour of the separators.
     @Test func aStrongHairlineIsOnePointHighInTheStrongerColourOfTheSeparators() throws {
         for scheme in schemes {
             let picture = try OffscreenPicture(of: Hairline(isStrong: true).frame(width: 120), in: scheme)
@@ -33,6 +36,8 @@ struct HairlineTests {
         }
     }
 
+    /// The two colours of the hairline differ in both appearances, so that the strong one can be told from the
+    /// ordinary one.
     @Test func theTwoColoursOfTheHairlineDiffer() throws {
         for scheme in schemes {
             let ordinary = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)

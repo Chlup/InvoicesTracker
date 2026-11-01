@@ -20,6 +20,8 @@ struct ContainerNamesTests {
 
     // MARK: Přehled and the reports
 
+    /// Přehled names the card of what is left to pay, the levies by authority, the income, the grouping of the chart
+    /// and the estimate of the whole year as the prototype names them.
     @Test func theCardsOfPrehledAreNamedAsThePrototypeNamesThem() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -34,6 +36,8 @@ struct ContainerNamesTests {
         }
     }
 
+    /// Výpočet names its result, the levies by authority, the cards of the marginal levy and of the limits of the
+    /// year, the breakdown and the assumptions of the computation as the prototype names them.
     @Test func theCardsAndTheBreakdownOfVypocetAreNamedAsThePrototypeNamesThem() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -50,6 +54,8 @@ struct ContainerNamesTests {
         }
     }
 
+    /// Odhad odvodů names its result, the levies by authority, the income, the months in which the invoices are
+    /// expected and the breakdown of the estimate as the prototype names them.
     @Test func theCardsAndTheBreakdownOfOdhadOdvoduAreNamedAsThePrototypeNamesThem() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.large) { window in
@@ -64,6 +70,8 @@ struct ContainerNamesTests {
         }
     }
 
+    /// The Simulátor names the cards of its inputs, the column with its result and the breakdown under the
+    /// simulation as the prototype names them.
     @Test func theCardsTheResultAndTheBreakdownOfTheSimulatorAreNamedAsThePrototypeNamesThem() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -87,6 +95,8 @@ struct ContainerNamesTests {
 
     // MARK: The lists and the editor
 
+    /// Faktury names its filters, the list, the summary row and, with a detail open, the detail with its payment and
+    /// its effect on the levies as the prototype names them.
     @Test func theListAndTheDetailOfFakturyAreNamedAsThePrototypeNamesThem() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -102,6 +112,8 @@ struct ContainerNamesTests {
         }
     }
 
+    /// The editor of an invoice names its sections, the group of the chips of the client and the preview as the
+    /// prototype names them.
     @Test func theSectionsOfTheEditorAreNamedAsThePrototypeNamesThem() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -120,6 +132,8 @@ struct ContainerNamesTests {
         }
     }
 
+    /// Zálohy a odpočty names the card of the advances, the cards of the deductions and of the family and the impact
+    /// on the tax as the prototype names them.
     @Test func theCardsOfZalohyAOdpoctyAreNamedAsThePrototypeNamesThem() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -136,6 +150,8 @@ struct ContainerNamesTests {
         }
     }
 
+    /// Odběratelé names its list, the summary row and, with a client open, the detail and the templates in it as the
+    /// prototype names them.
     @Test func theListAndTheDetailOfOdberateleAreNamedAsThePrototypeNamesThem() async throws {
         try await ClientsFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -155,6 +171,7 @@ struct ContainerNamesTests {
 
     // MARK: Nastavení and Import
 
+    /// Each tab of Nastavení names its cards as the prototype names them.
     @Test(arguments: [
         (SettingsTab.application, ["Části nastavení", "Vzhled", "Kurzy", "Licence"]),
         (SettingsTab.supplier, ["Vaše údaje", "Bankovní účty"]),
@@ -179,6 +196,7 @@ struct ContainerNamesTests {
         }
     }
 
+    /// The choice of the files in Import is named as the prototype names it.
     @Test func theChoiceOfFilesOfImportIsNamedAsThePrototypeNamesIt() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
