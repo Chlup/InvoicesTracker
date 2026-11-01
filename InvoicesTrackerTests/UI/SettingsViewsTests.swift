@@ -60,15 +60,17 @@ struct SettingsViewsTests {
         let outside = try picture(isOn: false, isActive: false, in: scheme)
         let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
         let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
-        let faint = try OffscreenPicture.bytes(of: Palette.text4, in: scheme)
         let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
 
         #expect(available.extent(near: accent, by: 2) == nil, "\(scheme): a month with the minimum is the accent")
-        #expect(available.count(near: text, in: whole(available), by: 8) > 30, "\(scheme): the name is not text")
+        try available.expectText(
+            in: whole(available), setIn: Palette.text, atLeast: 65, scheme: scheme, "\(scheme): the name is not text")
         #expect(outside.extent(near: accent, by: 2) == nil, "\(scheme): a month outside the activity is the accent")
         let capsule = try #require(outside.extent(near: inset, by: 2), "\(scheme): no inset toggle")
         #expect(abs(capsule.height - 28) <= 1.5, "\(scheme): the inset toggle is \(capsule.height) points tall")
-        #expect(outside.count(near: faint, in: capsule, by: 8) > 30, "\(scheme): the name is not the faintest text")
+        try outside.expectText(
+            in: capsule, setIn: Palette.text4, atLeast: 75, scheme: scheme,
+            "\(scheme): the name is not the faintest text")
         #expect(outside.count(near: text, in: capsule, by: 8) == 0, "\(scheme): the name is in the colour of text")
     }
 

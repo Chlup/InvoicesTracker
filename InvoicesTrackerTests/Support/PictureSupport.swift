@@ -85,26 +85,39 @@ extension OffscreenPicture {
     /// three times as many as there are within 3 levels of any other colour of text (`Palette.text` to
     /// `Palette.text4`). `what` says what the text is, for a failed expectation.
     ///
-    /// The colours of text are only 25 to 32 levels apart, and the edge of a glyph passes through every shade from its
-    /// colour to the ground, so a band of 12 levels around one of them takes in the edge of text set in the colour
-    /// beside it, and "pixels near the colour" is true of both. A band of 3 levels takes in the stems of the glyphs,
-    /// which are the colour itself: in a window, text of 12 and 13 points set in a colour has hundreds of them there,
-    /// and the other colours of text catch at most a twelfth of that.
+    /// A region that holds text in another colour of text by design, such as a sentence in the grey of captions with an
+    /// amount in the colour of text, names that colour in `alongside`, and it is left out of the comparison; the rest
+    /// are still compared. The edge of a large text passes through the greys between its colour and the ground, so a
+    /// small text among it can need those named too.
+    ///
+    /// The greys of text (`text2`, `text3` and `text4`) are only 25 to 32 levels apart (the colour of text is further
+    /// from `text2`: 56 levels in a light window and 71 in a dark one), and the edge of a glyph passes through every
+    /// shade from its colour to the ground, so a band of 12 levels around one of the greys takes in the edge of text
+    /// set in the grey beside it, and "pixels near the colour" is true of both. A band of 3 levels takes in the stems
+    /// of the glyphs, which are the colour itself: in a window, text of 12 and 13 points set in a colour has hundreds
+    /// of them there, and the other colours of text catch at most a twelfth of that.
+    ///
+    /// Choose `least` from the real window: count the pixels within 3 levels of `token` that the right text gives, in
+    /// a light and in a dark appearance, and take about a third of the smaller count. The same text in the grey beside
+    /// it leaves a small fraction of that in the band (a twentieth or less where this was measured), so the floor is
+    /// far below what the right colour gives and far above what a wrong one does.
     func expectText(
-        in region: CGRect, setIn token: Color, atLeast least: Int, scheme: ColorScheme, _ what: String,
-        sourceLocation: SourceLocation = #_sourceLocation
+        in region: CGRect, setIn token: Color, atLeast least: Int, alongside others: [Color] = [],
+        scheme: ColorScheme, _ what: String, sourceLocation: SourceLocation = #_sourceLocation
     ) throws {
         let expected = try OffscreenPicture.bytes(of: token, in: scheme)
-        var counts: [(name: String, isExpected: Bool, pixels: Int)] = []
+        let named = try others.map { try OffscreenPicture.bytes(of: $0, in: scheme) }
+        var counts: [(name: String, isExpected: Bool, isNamed: Bool, pixels: Int)] = []
         for (name, colour) in Self.coloursOfText {
             let bytes = try OffscreenPicture.bytes(of: colour, in: scheme)
-            counts.append((name, bytes == expected, count(near: bytes, in: region, by: 3)))
+            counts.append((name, bytes == expected, named.contains(bytes), count(near: bytes, in: region, by: 3)))
         }
         let own = counts.filter(\.isExpected).map(\.pixels).first ?? count(near: expected, in: region, by: 3)
         let found = counts.map { "\($0.name) \($0.pixels)" }.joined(separator: ", ")
+        let compared = counts.filter { !$0.isExpected && !$0.isNamed }
 
         #expect(
-            own >= least && counts.filter { !$0.isExpected }.allSatisfy { own > 3 * $0.pixels },
+            own >= least && compared.allSatisfy { own > 3 * $0.pixels },
             "\(what): pixels within 3 levels of \(found); it needs \(least) of its colour and three times the others",
             sourceLocation: sourceLocation)
     }

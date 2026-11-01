@@ -184,10 +184,6 @@ struct InvoiceTableViewTests {
             in: .light)
         // Five rows of 40 points, which the regions below are measured in.
         try #require(picture.size == CGSize(width: 1_300, height: 200), "the rows are \(picture.size)")
-        let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
-        let secondary = try OffscreenPicture.bytes(of: Palette.text2, in: .light)
-        let notes = try OffscreenPicture.bytes(of: Palette.text3, in: .light)
-        let faint = try OffscreenPicture.bytes(of: Palette.text4, in: .light)
         let green = try OffscreenPicture.bytes(of: Palette.greenText, in: .light)
 
         /// The region of the cell of `column` in the row `row`, from the top left of the picture.
@@ -195,7 +191,8 @@ struct InvoiceTableViewTests {
             let x = DataTableMetrics.margin + widths[..<column].reduce(0, +) + CGFloat(column) * DataTableMetrics.gap
             return CGRect(x: x, y: CGFloat(row) * 40 + 4, width: widths[column], height: 32)
         }
-        /// What is wrong with the colour of the text in `region`: a pixel darker than `colour`, or none of it.
+        /// What is wrong with the colour of the text in `region`, which is not one of the colours of text: a pixel
+        /// darker than `colour`, or none of it.
         func problems(of region: CGRect, in colour: [Int], _ name: String) -> [String] {
             var found: [String] = []
             if picture.count(near: colour, in: region, by: 12) == 0 {
@@ -207,27 +204,34 @@ struct InvoiceTableViewTests {
             }
             return found
         }
+        /// What is wrong with the text in `region`, which `token` is the colour of: it is not set in it, with `least`
+        /// pixels of it as the real window gives (`expectText`), or a pixel is darker than it.
+        func expectCell(_ region: CGRect, in token: Color, atLeast least: Int, _ name: String) throws {
+            try picture.expectText(in: region, setIn: token, atLeast: least, scheme: .light, name)
+            let colour = try OffscreenPicture.bytes(of: token, in: .light)
+            let darker = picture.count(darkerThan: colour, in: region, by: 16)
+            #expect(darker == 0, "\(name) has \(darker) pixels darker than \(colour)")
+        }
 
-        var found: [String] = []
         // The paid invoice in dollars: everything in the colour of text but Bez DPH, and no net income.
-        found += problems(of: cell(0, ofRow: 0), in: text, "the number")
-        found += problems(of: cell(1, ofRow: 0), in: text, "the client")
-        found += problems(of: cell(2, ofRow: 0), in: text, "the day of issue")
-        found += problems(of: cell(3, ofRow: 0), in: text, "the day of the payment")
-        found += problems(of: cell(4, ofRow: 0), in: text, "what the payment brought")
-        found += problems(of: cell(5, ofRow: 0), in: secondary, "the amount in dollars")
-        found += problems(of: cell(6, ofRow: 0), in: faint, "the dash for no net income")
+        try expectCell(cell(0, ofRow: 0), in: Palette.text, atLeast: 250, "the number")
+        try expectCell(cell(1, ofRow: 0), in: Palette.text, atLeast: 190, "the client")
+        try expectCell(cell(2, ofRow: 0), in: Palette.text, atLeast: 65, "the day of issue")
+        try expectCell(cell(3, ofRow: 0), in: Palette.text, atLeast: 55, "the day of the payment")
+        try expectCell(cell(4, ofRow: 0), in: Palette.text, atLeast: 190, "what the payment brought")
+        try expectCell(cell(5, ofRow: 0), in: Palette.text2, atLeast: 220, "the amount in dollars")
+        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
         // The draft: no payment, the estimates in secondary grey.
-        found += problems(of: cell(3, ofRow: 1), in: faint, "the dash for no payment")
-        found += problems(of: cell(4, ofRow: 1), in: secondary, "the estimate in crowns")
-        found += problems(of: cell(6, ofRow: 1), in: secondary, "the estimated net income")
+        try expectCell(cell(3, ofRow: 1), in: Palette.text4, atLeast: 6, "the dash for no payment")
+        try expectCell(cell(4, ofRow: 1), in: Palette.text2, atLeast: 235, "the estimate in crowns")
+        try expectCell(cell(6, ofRow: 1), in: Palette.text2, atLeast: 270, "the estimated net income")
         // A payment dated after today, and a rate that is not known.
-        found += problems(of: cell(3, ofRow: 2), in: notes, "the day of a later payment")
-        found += problems(of: cell(4, ofRow: 2), in: faint, "the dash for a rate not known")
-        // A paid invoice in crowns with its net income.
-        found += problems(of: cell(4, ofRow: 3), in: text, "the amount in crowns")
-        found += problems(of: cell(6, ofRow: 3), in: green, "the net income of a payment")
-        #expect(found.isEmpty, "\(found)")
+        try expectCell(cell(3, ofRow: 2), in: Palette.text3, atLeast: 90, "the day of a later payment")
+        try expectCell(cell(4, ofRow: 2), in: Palette.text4, atLeast: 6, "the dash for a rate not known")
+        // A paid invoice in crowns with its net income, in the green of text, which is not one of the colours of text.
+        try expectCell(cell(4, ofRow: 3), in: Palette.text, atLeast: 220, "the amount in crowns")
+        let net = problems(of: cell(6, ofRow: 3), in: green, "the net income of a payment")
+        #expect(net.isEmpty, "\(net)")
 
         // The pills: green for paid, grey for a draft, red for overdue.
         let pills: [(row: Int, tint: Color)] = [(0, Palette.greenTint), (1, Palette.fill), (2, Palette.redTint)]

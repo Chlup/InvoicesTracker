@@ -90,7 +90,6 @@ struct FamilyCardsViewTests {
         let picture = try picture(of: hint, in: scheme)
         let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
         let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
-        let secondary = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
         let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
 
         let band = try #require(
@@ -106,7 +105,9 @@ struct FamilyCardsViewTests {
             #expect(zip(found, colour).allSatisfy { abs($0 - $1) <= 2 }, "\(scheme): \(name) of the panel is \(found)")
         }
         let words = CGRect(x: 20, y: band.minY, width: 600, height: band.height)
-        #expect(picture.count(near: secondary, in: words, by: 8) > 40, "\(scheme): the hint is not secondary text")
+        try picture.expectText(
+            in: words, setIn: Palette.text2, atLeast: 1_000, scheme: scheme,
+            "\(scheme): the hint is not secondary text")
         #expect(picture.count(near: text, in: words, by: 8) == 0, "\(scheme): the hint is in the colour of text")
     }
 
@@ -129,15 +130,22 @@ struct FamilyCardsViewTests {
     /// who brings nothing, and the sentence that there is no child.
     @Test(arguments: [ColorScheme.light, .dark])
     func theDashAndTheSentenceOfNoChildAreInTheGreyOfCaptions(scheme: ColorScheme) throws {
-        let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
         let away = Self.row(
             "Petr", status: "v roce 2026 s vámi nežije", amount: "—", hasAmount: false, countsInNoMonth: true)
 
         let withDash = try picture(of: Self.children(rows: [away]), in: scheme)
         let empty = try picture(of: Self.children(rows: []), in: scheme)
 
-        #expect(withDash.count(near: caption, in: inside(withDash), by: 8) > 10, "\(scheme): the dash")
-        #expect(empty.count(near: caption, in: inside(empty), by: 8) > 100, "\(scheme): the sentence")
+        // The dash is the amount of the row, at the end of its line before the chevron. The row stands over the
+        // hairline and the button, so its middle is 93 points over the bottom of the card, and nothing else of the card
+        // is at the end of that line.
+        let dash = CGRect(x: 560, y: withDash.size.height - 113, width: 48, height: 40)
+        try withDash.expectText(in: dash, setIn: Palette.text3, atLeast: 20, scheme: scheme, "\(scheme): the dash")
+        // The sentence stands between the two hairlines of the empty card, over its button: its strokes are 78 to 90
+        // points over the bottom, and no other text of the card is between 72 and 100.
+        let sentence = CGRect(x: 20, y: empty.size.height - 100, width: 450, height: 28)
+        try empty.expectText(
+            in: sentence, setIn: Palette.text3, atLeast: 1_200, scheme: scheme, "\(scheme): the sentence")
     }
 
     /// The note beside Přidat dítě in the Simulátor, that nothing is stored, is in the grey of captions, as the design
@@ -211,7 +219,6 @@ struct FamilyCardsViewTests {
     /// has its amount in the colour of text.
     @Test(arguments: [ColorScheme.light, .dark])
     func theTotalOfASpouseWhoDoesNotCountIsInTheGreyOfCaptions(scheme: ColorScheme) throws {
-        let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
         let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
         let header = CGRect(x: 380, y: 10, width: 260, height: 40)
 
@@ -219,8 +226,10 @@ struct FamilyCardsViewTests {
         let counts = try picture(
             of: Self.spouse(total: "24\u{00A0}840\u{00A0}Kč za rok", totalCounts: true), claimed: false, in: scheme)
 
-        #expect(none.count(near: caption, in: header, by: 8) > 20, "\(scheme): neuplatní se is not a caption")
+        try none.expectText(
+            in: header, setIn: Palette.text3, atLeast: 270, scheme: scheme, "\(scheme): neuplatní se is not a caption")
         #expect(none.count(near: text, in: header, by: 8) == 0, "\(scheme): neuplatní se is in the colour of text")
-        #expect(counts.count(near: text, in: header, by: 8) > 20, "\(scheme): the amount is not in text")
+        try counts.expectText(
+            in: header, setIn: Palette.text, atLeast: 340, scheme: scheme, "\(scheme): the amount is not in text")
     }
 }

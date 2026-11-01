@@ -44,11 +44,10 @@ struct ChildDialogViewTests {
     func whatTheChildComesToIsAnInsetPanelWithTheWordsOfItsMeaning(scheme: ColorScheme) throws {
         let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
         let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
-        let secondary = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
         let orange = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
         let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
 
-        for (livesApart, words) in [(false, secondary), (true, orange)] {
+        for livesApart in [false, true] {
             let picture = try picture(ofAnna: false, livesApart: livesApart, in: scheme)
             let band = try #require(
                 picture.band(near: inset, from: 30, to: 590, by: 2), "\(scheme): no panel on the inset background")
@@ -62,7 +61,13 @@ struct ChildDialogViewTests {
                     zip(found, colour).allSatisfy { abs($0 - $1) <= 2 }, "\(scheme): \(name) of the panel is \(found)")
             }
             let panel = CGRect(x: 24, y: band.minY, width: 572, height: band.height)
-            #expect(picture.count(near: words, in: panel, by: 8) > 100, "\(scheme): the words are not in their colour")
+            if livesApart {
+                #expect(picture.count(near: orange, in: panel, by: 8) > 100, "\(scheme): the words are not orange")
+            } else {
+                try picture.expectText(
+                    in: panel, setIn: Palette.text2, atLeast: 930, scheme: scheme,
+                    "\(scheme): the words are not secondary text")
+            }
             #expect(picture.count(near: text, in: panel, by: 8) == 0, "\(scheme): the words are in the colour of text")
         }
     }

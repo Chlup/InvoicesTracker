@@ -101,18 +101,14 @@ struct SidebarSelectionTests {
             let text3 = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
             let background = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
             let room = CGRect(origin: .zero, size: picture.size)
-            let beyond: Int
-            let reaching: Int
-            if scheme == .light {
-                beyond = picture.count(darkerThan: text3, in: room, by: 6)
-                reaching = picture.count(darkerThan: text3.map { $0 + 7 }, in: room, by: 0)
-            } else {
-                beyond = picture.count(lighterThan: text3, in: room, by: 6)
-                reaching = picture.count(lighterThan: text3.map { $0 - 7 }, in: room, by: 0)
-            }
+            let beyond =
+                scheme == .light
+                ? picture.count(darkerThan: text3, in: room, by: 6) : picture.count(lighterThan: text3, in: room, by: 6)
             #expect(text3 != background, "\(scheme): the colours are not told apart")
             #expect(beyond == 0, "\(scheme): \(beyond) pixels are beyond the colour of the text")
-            #expect(reaching > 0, "\(scheme): the strokes do not reach the colour of the text")
+            try picture.expectText(
+                in: room, setIn: Palette.text3, atLeast: 130, scheme: scheme,
+                "\(scheme): the strokes do not reach the colour of the text")
         }
     }
 

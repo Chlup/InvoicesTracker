@@ -131,18 +131,25 @@ struct DataTableTests {
 
     @Test func aMutedValueIsSetInTertiaryTextAndAFigureInTheColourOfText() throws {
         // Only the value is drawn, as the label is empty. In a dark window the colour of text is lighter than the
-        // tertiary one, so no pixel of a muted value is lighter than the tertiary text, and many of a figure are.
+        // tertiary one, so no pixel of a muted value is lighter than the tertiary text, and its strokes are that
+        // colour, where those of a figure are the colour of text.
         let tertiary = try OffscreenPicture.bytes(of: Palette.text3, in: .dark)
-        func lighterPixels(muted: Bool) throws -> Int {
+        func picture(muted: Bool) throws -> OffscreenPicture {
             let figure = SummaryFigure(label: "", value: "Celkem", valueIsMuted: muted)
                 .padding(10)
                 .background(Palette.bgCard)
-            let picture = try OffscreenPicture(of: figure, in: .dark)
-            return picture.count(lighterThan: tertiary, in: CGRect(origin: .zero, size: picture.size), by: 12)
+            return try OffscreenPicture(of: figure, in: .dark)
         }
+        let muted = try picture(muted: true)
+        let figure = try picture(muted: false)
 
-        #expect(try lighterPixels(muted: true) == 0)
-        #expect(try lighterPixels(muted: false) > 50)
+        #expect(muted.count(lighterThan: tertiary, in: CGRect(origin: .zero, size: muted.size), by: 12) == 0)
+        try muted.expectText(
+            in: CGRect(origin: .zero, size: muted.size), setIn: Palette.text3, atLeast: 135, scheme: .dark,
+            "A muted value is not in tertiary text")
+        try figure.expectText(
+            in: CGRect(origin: .zero, size: figure.size), setIn: Palette.text, atLeast: 260, scheme: .dark,
+            "A figure is not in the colour of text")
     }
 
     @Test func aMutedValueIsSetInBodyTextAndSoStandsLowerThanAFigureInTitle3() {
@@ -527,7 +534,6 @@ struct DataTableTests {
     @Test func aMutedFigureOfADetailIsInTertiaryText() throws {
         for scheme in [ColorScheme.light, .dark] {
             let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
-            let tertiary = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
             for muted in [false, true] {
                 let figure = DetailFigure(label: nil, figure: "0\u{00A0}Kč", context: nil, figureIsMuted: muted)
                     .padding(8)
@@ -537,9 +543,11 @@ struct DataTableTests {
 
                 if muted {
                     #expect(picture.count(near: text, in: whole, by: 8) == 0, "\(scheme): the figure is not muted")
-                    #expect(picture.count(near: tertiary, in: whole, by: 2) > 20, "\(scheme): no tertiary text")
+                    try picture.expectText(
+                        in: whole, setIn: Palette.text3, atLeast: 560, scheme: scheme, "\(scheme): no tertiary text")
                 } else {
-                    #expect(picture.count(near: text, in: whole, by: 2) > 20, "\(scheme): the figure is muted")
+                    try picture.expectText(
+                        in: whole, setIn: Palette.text, atLeast: 550, scheme: scheme, "\(scheme): the figure is muted")
                 }
             }
         }

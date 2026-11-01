@@ -164,9 +164,9 @@ struct AdvancesWindowTests {
                     let note = "Předvyplnit zapíše částky do všech měsíců"
                     let noteFrame = try pictureFrame(
                         ofScreenFrame: try #require(frameOfText(startingWith: note, in: window)), in: window)
-                    let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
                     let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
-                    #expect(picture.count(near: caption, in: noteFrame, by: 8) > 40, "\(scheme): not a caption")
+                    try picture.expectText(
+                        in: noteFrame, setIn: Palette.text3, atLeast: 1_600, scheme: scheme, "\(scheme): not a caption")
                     #expect(picture.count(near: text, in: noteFrame, by: 8) == 0, "\(scheme): the note is in text")
                 }
             }

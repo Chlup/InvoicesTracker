@@ -52,7 +52,6 @@ struct UniformRateCardWindowTests {
                 let blue = try OffscreenPicture.bytes(of: Palette.accentText, in: scheme)
                 let red = try OffscreenPicture.bytes(of: Palette.redText, in: scheme)
                 let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
-                let secondary = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
 
                 #expect(picture.count(near: blue, in: editFrame, by: 8) > 30, "\(scheme): Upravit is not a link")
                 #expect(picture.count(near: red, in: removeFrame, by: 8) > 30, "\(scheme): Odstranit… is not red")
@@ -61,8 +60,9 @@ struct UniformRateCardWindowTests {
                     zip(picture.bytes(at: CGPoint(x: noteFrame.minX - 6, y: noteFrame.midY)), inset)
                         .allSatisfy { abs($0 - $1) <= 2 },
                     "\(scheme): the note is not on the inset background")
-                #expect(
-                    picture.count(near: secondary, in: noteFrame, by: 8) > 100, "\(scheme): the note is not secondary")
+                try picture.expectText(
+                    in: noteFrame, setIn: Palette.text2, atLeast: 1_100, scheme: scheme,
+                    "\(scheme): the note is not secondary")
             }
         }
     }

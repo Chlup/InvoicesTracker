@@ -97,13 +97,15 @@ struct DeductionViewsTests {
         let picture = try OffscreenPicture(of: summary, in: scheme)
         let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
         let orange = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
-        let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
 
         let panel = try #require(picture.extent(near: inset, by: 2), "\(scheme): no panel on the inset background")
 
         #expect(abs(panel.width - 600) <= 1.5, "\(scheme): the panel is \(panel.width) points wide")
         #expect(picture.count(near: orange, in: panel, by: 8) > 40, "\(scheme): what is over is not orange text")
-        #expect(picture.count(near: caption, in: panel, by: 8) > 40, "\(scheme): the limit is not a caption")
+        // The panel holds "Uplatníte" and the amount in the colour of text as well.
+        try picture.expectText(
+            in: panel, setIn: Palette.text3, atLeast: 800, alongside: [Palette.text], scheme: scheme,
+            "\(scheme): the limit is not a caption")
     }
 
     // MARK: Notes and messages
@@ -126,24 +128,32 @@ struct DeductionViewsTests {
             title: "Zaplacené úroky za rok", text: .constant(""), width: 120, message: nil, submit: {})
         let picture = try OffscreenPicture(
             of: field.frame(width: 300, alignment: .leading).background(Palette.bgCard), in: scheme)
-        let secondary = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
 
-        #expect(picture.count(near: secondary, in: whole(picture), by: 8) > 40, "\(scheme): the title is not secondary")
+        try picture.expectText(
+            in: whole(picture), setIn: Palette.text2, atLeast: 260, scheme: scheme,
+            "\(scheme): the title is not secondary")
     }
 
     /// The notes under the savings and under the gifts are in the grey of captions, and what the savings allow is in
     /// the colour of text, semibold, where the sentence round it is not.
     @Test(arguments: [ColorScheme.light, .dark])
     func theNotesUnderTheSavingsAndTheGiftsAreInTheGreyOfCaptions(scheme: ColorScheme) throws {
-        let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
-        let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
         let savingsNote = RetirementNote(year: 2026, allowed: "6\u{00A0}480\u{00A0}Kč")
         let savings = try OffscreenPicture(of: savingsNote.frame(width: 600).background(Palette.bgCard), in: scheme)
         let giftsRow = GiftsRow(inputs: Self.inputs, hints: Self.hints)
         let gifts = try OffscreenPicture(of: giftsRow.frame(width: 600).background(Palette.bgCard), in: scheme)
 
-        #expect(savings.count(near: caption, in: whole(savings), by: 8) > 100, "\(scheme): the savings note")
-        #expect(savings.count(near: text, in: whole(savings), by: 8) > 10, "\(scheme): the amount is not in text")
-        #expect(gifts.count(near: caption, in: whole(gifts), by: 8) > 100, "\(scheme): the note of the gifts")
+        try savings.expectText(
+            in: whole(savings), setIn: Palette.text3, atLeast: 1_450, alongside: [Palette.text], scheme: scheme,
+            "\(scheme): the savings note")
+        // The sentence round the amount is set in the grey of captions, and its edge passes through the band of the
+        // faintest text, which the small amount cannot outnumber three to one.
+        try savings.expectText(
+            in: whole(savings), setIn: Palette.text, atLeast: 170, alongside: [Palette.text3, Palette.text4],
+            scheme: scheme, "\(scheme): the amount is not in text")
+        // The gifts have the label of their field in the colour of text beside the note.
+        try gifts.expectText(
+            in: whole(gifts), setIn: Palette.text3, atLeast: 990, alongside: [Palette.text], scheme: scheme,
+            "\(scheme): the note of the gifts")
     }
 }
