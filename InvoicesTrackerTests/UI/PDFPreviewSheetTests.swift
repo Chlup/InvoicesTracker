@@ -194,14 +194,17 @@ struct PDFPreviewSheetTests {
     // MARK: Saving
 
     /// "Stáhnout PDF" asks where to save the page in the panel of the system: for a PDF, with the number of the invoice
-    /// as the name of the file, and the person can make a folder there.
+    /// as the name of the file, and the person can make a folder there. The test looks at what the panel is set to
+    /// (`savePanelSettings(for:)`) and not at a panel: the panel of the system is a live one, which in a full run of
+    /// the suite with the Mac's screen locked gave back none of what it was set to (no type, no name, no folders) after
+    /// a stall of about a minute.
     @Test func theSavePanelIsForAPDFNamedAfterTheInvoice() {
         let document = InvoicePageFixtures.document(InvoicePageFixtures.crownInvoice())
 
-        let panel = PDFPreviewSheet.savePanel(for: document)
+        let settings = PDFPreviewSheet.savePanelSettings(for: document)
 
-        #expect(panel.allowedContentTypes == [.pdf])
-        #expect(panel.nameFieldStringValue == document.fileName)
-        #expect(panel.canCreateDirectories)
+        #expect(settings.contentTypes == [.pdf])
+        #expect(settings.fileName == document.fileName)
+        #expect(settings.canCreateDirectories)
     }
 }

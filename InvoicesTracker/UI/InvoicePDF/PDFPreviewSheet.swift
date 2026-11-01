@@ -109,13 +109,38 @@ struct PDFPreviewSheet: View {
 
     // MARK: Saving
 
-    /// The panel that asks where to save the PDF of `document`: for a PDF, named after the number of the invoice, with
-    /// the means to make a folder.
+    /// What the panel that asks where to save a PDF is set to: the types of file it offers, the name it offers the file
+    /// under, and whether the person can make a folder in it. It is a value of its own, apart from the panel, so that
+    /// what the panel is set to can be looked at without making a panel of the system.
+    nonisolated struct SavePanelSettings: Equatable, Sendable {
+        /// The types of file the panel offers: a PDF only.
+        let contentTypes: [UTType]
+
+        /// The name the panel offers the file under: the number of the invoice, with the extension of a PDF.
+        let fileName: String
+
+        /// Whether the panel has the means to make a folder.
+        let canCreateDirectories: Bool
+
+        /// Sets `panel` to these settings.
+        @MainActor
+        func apply(to panel: NSSavePanel) {
+            panel.allowedContentTypes = contentTypes
+            panel.nameFieldStringValue = fileName
+            panel.canCreateDirectories = canCreateDirectories
+        }
+    }
+
+    /// What the panel that asks where to save the PDF of `document` is set to: a PDF, named after the number of the
+    /// invoice, with the means to make a folder.
+    static func savePanelSettings(for document: InvoiceDocument) -> SavePanelSettings {
+        SavePanelSettings(contentTypes: [.pdf], fileName: document.fileName, canCreateDirectories: true)
+    }
+
+    /// The panel that asks where to save the PDF of `document`, set as `savePanelSettings(for:)` says.
     static func savePanel(for document: InvoiceDocument) -> NSSavePanel {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = document.fileName
-        panel.canCreateDirectories = true
+        savePanelSettings(for: document).apply(to: panel)
         return panel
     }
 
