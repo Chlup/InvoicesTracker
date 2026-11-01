@@ -147,11 +147,11 @@ struct FamilyCardsViewTests {
     func theNoteBesideAddingAChildIsInTheGreyOfCaptions(scheme: ColorScheme) throws {
         let simulated = Self.children(rows: [], addNote: ChildrenCardContent.simulationNote)
         let picture = try picture(of: simulated, in: scheme)
-        let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
         let orange = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
         let line = CGRect(x: 200, y: picture.size.height - 52, width: picture.size.width - 220, height: 34)
 
-        #expect(picture.count(near: caption, in: line, by: 8) > 40, "\(scheme): the note is not a caption")
+        try picture.expectText(
+            in: line, setIn: Palette.text3, atLeast: 400, scheme: scheme, "\(scheme): the note is not a caption")
         #expect(picture.count(near: orange, in: line, by: 8) == 0, "\(scheme): the note is orange text")
     }
 

@@ -271,7 +271,6 @@ struct InvoiceEditorWindowTests {
                 let bar = try groupFrame(holdingText: "Upravujete fakturu", in: window)
                 let picture = try OffscreenPicture(of: window)
                 let tint = try bytes(Palette.orangeTint, scheme)
-                let caption = try bytes(Palette.text3, scheme)
 
                 try expectPanelOnTheWindow(bar, in: picture, scheme: scheme)
                 let warning = try textFrame(startingWith: "Faktura už je vystavená.", in: window)
@@ -279,7 +278,9 @@ struct InvoiceEditorWindowTests {
                 expectColour(tint, at: corner, in: picture, "\(scheme): the warning")
                 // The state of the invoice, "vystavená … · uhrazená …", is a caption.
                 let state = try textFrame(startingWith: "vystavená", in: window)
-                #expect(picture.count(near: caption, in: state, by: 12) > 20, "\(scheme): the state is not a caption")
+                try picture.expectText(
+                    in: state, setIn: Palette.text3, atLeast: 500, scheme: scheme,
+                    "\(scheme): the state is not a caption")
             }
         }
     }
@@ -293,17 +294,18 @@ struct InvoiceEditorWindowTests {
         try await EditorFixture.with { f in
             try await withEditor(f, template: f.crownTemplate, scheme: scheme) { window, _ in
                 let picture = try OffscreenPicture(of: window)
-                let label = try bytes(Palette.text2, scheme)
-                let caption = try bytes(Palette.text3, scheme)
 
                 for phrase in ["Odběratel", "Číslo faktury", "Splatnost", "Platba", "Režim DPH", "QR platba"] {
                     let frame = try textFrame(startingWith: phrase, in: window)
-                    #expect(picture.count(near: label, in: frame, by: 12) > 5, "\(scheme): \(phrase) is not secondary")
+                    try picture.expectText(
+                        in: frame, setIn: Palette.text2, atLeast: 100, scheme: scheme,
+                        "\(scheme): \(phrase) is not secondary")
                 }
                 for phrase in ["výchozí:", "řada RRRRMMPP", "QR Platba s číslem účtu"] {
                     let frame = try textFrame(startingWith: phrase, in: window)
-                    #expect(
-                        picture.count(near: caption, in: frame, by: 12) > 5, "\(scheme): \(phrase) is not a caption")
+                    try picture.expectText(
+                        in: frame, setIn: Palette.text3, atLeast: 500, scheme: scheme,
+                        "\(scheme): \(phrase) is not a caption")
                 }
             }
         }
@@ -376,9 +378,10 @@ struct InvoiceEditorWindowTests {
                 try await layOut(window)
                 picture = try OffscreenPicture(of: window)
                 frame = try textFrame(startingWith: hint, in: window)
-                let caption = try bytes(Palette.text3, scheme)
                 #expect(picture.count(near: red, in: frame, by: 12) == 0, "\(scheme): the hint is red")
-                #expect(picture.count(near: caption, in: frame, by: 12) > 20, "\(scheme): the hint is not a caption")
+                try picture.expectText(
+                    in: frame, setIn: Palette.text3, atLeast: 1_500, scheme: scheme,
+                    "\(scheme): the hint is not a caption")
             }
         }
     }
@@ -389,23 +392,28 @@ struct InvoiceEditorWindowTests {
         try await EditorFixture.with { f in
             try await withEditor(f, template: f.crownTemplate, scheme: scheme) { window, editor in
                 try await scrollTheFormToItsEnd(in: window)
-                let caption = try bytes(Palette.text3, scheme)
                 let card = try cardFrame("Poznámka", in: window)
                 // Where the text of the note stands: under the title of the card, over the line that says what it
                 // is for.
                 let field = CGRect(x: card.minX + 20, y: card.minY + 60, width: card.width - 40, height: 40)
 
                 var picture = try OffscreenPicture(of: window)
+                let caption = try bytes(Palette.text3, scheme)
                 #expect(editor.note.isEmpty)
-                let withExample = picture.count(near: caption, in: field, by: 12)
-                #expect(withExample > 20, "\(scheme): no example in the note")
+                try picture.expectText(
+                    in: field, setIn: Palette.text3, atLeast: 250, scheme: scheme,
+                    "\(scheme): the example of the note is not a caption")
+                let withExample = picture.count(near: caption, in: field, by: 3)
 
                 // The words of a note are in the colour of text, whose soft edges come to the grey of captions in a few
                 // pixels only.
                 editor.note = "Platba do 14 dnů."
                 try await layOut(window)
                 picture = try OffscreenPicture(of: window)
-                let withText = picture.count(near: caption, in: field, by: 12)
+                try picture.expectText(
+                    in: field, setIn: Palette.text, atLeast: 150, scheme: scheme,
+                    "\(scheme): the words of the note are not text")
+                let withText = picture.count(near: caption, in: field, by: 3)
                 #expect(withText * 3 < withExample, "\(scheme): \(withText) pixels with text, \(withExample) without")
             }
         }
