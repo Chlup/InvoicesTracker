@@ -169,6 +169,9 @@ struct KeyFigureView: View {
                     figure
                     shareText(share)
                 }
+                // The share stands on the baseline of the figure, inside its line: the line stays 44 points tall,
+                // where the share's own line would otherwise reach a tenth of a point below it.
+                .frame(height: Typography.displaySize, alignment: .top)
                 VStack(alignment: .leading, spacing: KeyFigureMetrics.shareLineGap) {
                     figure
                     shareText(share)
@@ -179,9 +182,10 @@ struct KeyFigureView: View {
         }
     }
 
-    /// The figure in the display size: on one line, scaled down before it is cut, in a line as tall as its size, as
-    /// the board sets it (`line-height: 1`). The letters are pulled up by the half-leading and the line ends 44 points
-    /// under its top, so the rest of the font's line, under the letters, takes no room.
+    /// The figure in the display size: on one line, scaled down before it is cut where the room is too narrow, in a
+    /// line as tall as its size, as the board sets it (`line-height: 1`). The text keeps the height of its own line,
+    /// so the line of 44 points never scales it down; its letters are pulled up by the half-leading and the line ends
+    /// 44 points under its top, so the rest of the font's line, under the letters, takes no room.
     private var figure: some View {
         Text(verbatim: data.figure)
             .font(Typography.display)
@@ -189,6 +193,7 @@ struct KeyFigureView: View {
             .tracking(KeyFigureMetrics.figureTracking)
             .lineLimit(1)
             .minimumScaleFactor(KeyFigureMetrics.minimumFigureScale)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.top, -KeyFigureMetrics.figureHalfLeading)
             .frame(height: Typography.displaySize, alignment: .top)
     }

@@ -242,6 +242,23 @@ struct CardAndFigureTests {
         #expect(abs(whole - expected) < 0.5, "The key figure is \(whole) points tall, not \(expected)")
     }
 
+    /// The line of 44 points does not make the figure smaller: its letters are as large as the display font draws them
+    /// on their own, as tall and as wide, with the eyebrow and the sentence in their grey around them.
+    @Test func theFigureInItsLineIsAsLargeAsTheDisplayFontDrawsIt() throws {
+        let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
+        let inKeyFigure = try OffscreenPicture(
+            of: KeyFigureView(lineData).frame(width: 400).padding(20).background(Palette.bgCard), in: .light)
+        let alone = try OffscreenPicture(
+            of: Text(verbatim: lineData.figure).font(Typography.display).monospacedDigit().tracking(-0.88)
+                .padding(20).background(Palette.bgCard),
+            in: .light)
+        let figure = try #require(inKeyFigure.extent(near: text, by: 20), "No figure in the key figure")
+        let own = try #require(alone.extent(near: text, by: 20), "No figure alone")
+
+        #expect(abs(figure.height - own.height) <= 0.5, "The figure is \(figure.height) tall, alone \(own.height)")
+        #expect(abs(figure.width - own.width) <= 0.5, "The figure is \(figure.width) wide, alone \(own.width)")
+    }
+
     /// A screen gives the key figure the spaces its design has around the figure, counted from the line of 44 points:
     /// Přehled sets the sentence 12 points under the figure (the gap of 8 and the sentence's margin of 4), Výpočet and
     /// the levies of Odhad odvodů 10 (a margin of 2), what is left to settle on Odhad odvodů has 6 above and below,
