@@ -166,9 +166,10 @@ struct TestWindowTests {
 
     /// A view that is hosted alone follows the pointer that a test moves by hand: SwiftUI makes the area it follows the
     /// pointer in as the view comes to the window, before the view has its size, and takes the pointer to be outside
-    /// it for good. The window of a test that is closed to the real pointer puts its content back once it is laid out
-    /// (`TestWindow.makeTheAreasOfThePointerAnew()`), and the pointer of the test is inside the view then. The window
-    /// is put where the real pointer is not, and the view follows the pointer of the test all the same.
+    /// it until it hears the pointer come in. The window of a test that is closed to the real pointer puts its content
+    /// back once it is laid out (`TestWindow.makeTheAreasOfThePointerAnew()`), and the pointer of the test is inside
+    /// the view then. The window is put where the real pointer is not, and the view follows the pointer of the test
+    /// all the same.
     @Test func aViewHostedAloneFollowsThePointerOfTheTest() async throws {
         let state = HoverState()
         try await withHostedView(HoverArea(state: state), size: HoverArea.windowSize, ignoringTheRealPointer: true) {
@@ -181,6 +182,56 @@ struct TestWindowTests {
 
             try movePointer(to: HoverArea.corner, in: window)
             try await waitUntil { !state.isHovered }
+        }
+    }
+
+    /// A view follows the pointer that a test moves by hand whatever SwiftUI has taken the pointer to be before.
+    /// SwiftUI follows the pointer in a view only once it has heard the pointer come into the area of the view, which
+    /// it hears from AppKit's events of that area, and it takes the pointer to be outside after it has heard it leave.
+    /// Here SwiftUI makes the area while the window says its pointer is outside the view, and so takes the pointer to
+    /// be outside, as it does after a pointer has left; the move of the test brings the pointer into the area again as
+    /// a mouse does, and the view follows it there and away again.
+    @Test func aViewFollowsThePointerOfTheTestThatSwiftUITookToBeOutsideIt() async throws {
+        let state = HoverState()
+        try await withHostedView(HoverArea(state: state), size: HoverArea.windowSize, ignoringTheRealPointer: true) {
+            window in
+            let testWindow = try #require(window as? TestWindow)
+            testWindow.putPointer(at: HoverArea.outside)
+            try await testWindow.makeTheAreasOfThePointerAnew()
+
+            try movePointer(to: HoverArea.centre, in: window)
+            try await waitUntil { state.isHovered }
+
+            try movePointer(to: HoverArea.corner, in: window)
+            try await waitUntil { !state.isHovered }
+        }
+    }
+
+    /// A window that is closed to the real pointer passes no event of the pointer that reaches it on to its views: the
+    /// pointer coming into the area of a view, moving in it and leaving it, as the real pointer of the person who runs
+    /// the tests comes and goes. The real pointer leaving takes nothing away from what the pointer of the test has
+    /// opened, and the real pointer coming in opens nothing. The events are handed to the window as AppKit hands it the
+    /// events of the area of the view.
+    @Test func theRealPointerComingAndGoingChangesNothingInAWindowClosedToIt() async throws {
+        let state = HoverState()
+        try await withHostedView(HoverArea(state: state), size: HoverArea.windowSize, ignoringTheRealPointer: true) {
+            window in
+            let view = try #require(hostingViewTrackingThePointer(in: window.contentView))
+            let area = try #require(view.trackingAreas.first { ($0.owner as AnyObject?) === view })
+            try movePointer(to: HoverArea.centre, in: window)
+            try await waitUntil { state.isHovered }
+
+            window.sendEvent(try crossing(.mouseExited, of: area, at: HoverArea.outside, in: window))
+            try await layOut(window)
+            #expect(state.isHovered, "The real pointer leaving the window has taken the pointer of the test away")
+
+            try movePointer(to: HoverArea.corner, in: window)
+            try await waitUntil { !state.isHovered }
+
+            window.sendEvent(try crossing(.mouseEntered, of: area, at: HoverArea.centre, in: window))
+            window.sendEvent(try pointerMotion(to: HoverArea.centre, in: window))
+            try await layOut(window)
+            #expect(!state.isHovered, "The real pointer coming into the window has been followed")
         }
     }
 
@@ -240,6 +291,9 @@ private struct HoverArea: View {
 
     /// A point in the corner of the window, outside the rectangle.
     static let corner = CGPoint(x: 4, y: 4)
+
+    /// A point outside the window, below and to the left of it, where a pointer is that has left the window.
+    static let outside = CGPoint(x: -20, y: -20)
 
     var body: some View {
         Rectangle()

@@ -22,11 +22,11 @@ enum AppWindowSize {
 ///
 /// The window is on the screen at 100, 100, where the pointer of the person who runs the tests can pass over it, or
 /// not be. With `ignoringTheRealPointer` the window is closed to that pointer (`TestWindow`): it takes no event of
-/// the real mouse, says for itself where its pointer is and makes the areas its views follow the pointer in anew once
-/// it is laid out, so that the popover and the hover that a test brings about with events of its own do not depend on
-/// where the real pointer is. A test that moves the pointer by hand (`movePointer(to:in:)`) asks for it, and the
-/// helper refuses a window without it. A test that clicks or scrolls through the event handling of the app keeps the
-/// ordinary window.
+/// the real mouse and passes no event of the pointer on to its views, says for itself where its pointer is and makes
+/// the areas its views follow the pointer in anew once it is laid out, so that the popover and the hover that a test
+/// brings about with events of its own do not depend on where the real pointer is. A test that moves the pointer by
+/// hand (`movePointer(to:in:)`) asks for it, and the helper refuses a window without it. A test that clicks or scrolls
+/// through the event handling of the app keeps the ordinary window.
 @MainActor
 func withAppWindow(
     of app: AppModel, size: CGSize, ignoringTheRealPointer: Bool = false, _ body: (NSWindow) async throws -> Void
@@ -368,10 +368,19 @@ func accessibilityElement(labelStartingWith prefix: String, in window: NSWindow)
 
 /// Moves the pointer over `point` in `window`, given in the coordinates of the window (the origin at its bottom left),
 /// as a mouse does for the views of SwiftUI that follow it (`onHover`): SwiftUI hears of the pointer on its hosting
-/// view, the one that has the tracking area, as the pointer coming in and moving. The window does not pass a synthetic
-/// event on to it (`NSWindow.sendEvent(_:)` changes nothing), so the events are handed to the view itself. A point
-/// outside what follows the pointer, such as the corner of the window, takes the pointer away again. The real cursor
-/// does not move, and no event is posted to the system.
+/// view, the one that has the tracking area, as the pointer leaving that area, coming into it and moving in it. The
+/// events are made as AppKit makes the events of the area (`crossing(_:of:at:in:)`) and handed to the view itself:
+/// the window of the test passes no event of the pointer on to its views (`TestWindow.sendEvent(_:)`). A point outside
+/// what follows the pointer, such as the corner of the window, takes the pointer away again, and a point outside the
+/// area leaves the pointer out of it. The real cursor does not move, and no event is posted to the system.
+///
+/// SwiftUI follows the pointer in a view only between hearing it come into the area of the view and hearing it leave.
+/// It takes the pointer to be outside when it made the area while the window said the pointer was outside the view,
+/// and after it has heard a pointer leave, and it then ignores the pointer moving; nothing that the view shows or how
+/// large the window is changes that, so the view would stay deaf to a pointer that only moved for as long as its
+/// window is open. While SwiftUI takes the pointer to be inside, the pointer coming in again does not move what
+/// follows it. So every move takes the pointer out of the area and brings it in again at `point`, as a pointer that
+/// leaves the window and comes back at that point: SwiftUI follows it there, whatever it took the pointer to be before.
 ///
 /// The window must be closed to the real pointer (`withAppWindow(of:size:ignoringTheRealPointer:_:)`), and its pointer
 /// is put at `point` as the events arrive. SwiftUI follows the pointer only while the window says the pointer is
@@ -386,21 +395,48 @@ func movePointer(to point: CGPoint, in window: NSWindow) throws {
         "The window is open to the real pointer: open it with ignoringTheRealPointer: true")
     testWindow.putPointer(at: point)
     let view = try #require(hostingViewTrackingThePointer(in: window.contentView), "No view follows the pointer")
-    let entered = try #require(
+    let pointInView = view.convert(point, from: nil)
+    for area in view.trackingAreas
+    where (area.owner as AnyObject?) === view && area.options.contains(.mouseEnteredAndExited) {
+        view.mouseExited(with: try crossing(.mouseExited, of: area, at: point, in: window))
+        let rect = area.options.contains(.inVisibleRect) ? view.visibleRect : area.rect
+        if rect.contains(pointInView) {
+            view.mouseEntered(with: try crossing(.mouseEntered, of: area, at: point, in: window))
+        }
+    }
+    view.mouseMoved(with: try pointerMotion(to: point, in: window))
+}
+
+/// The event of a pointer crossing the edge of `area` at `point` of `window`, given in the coordinates of the window:
+/// coming into the area (`.mouseEntered`) or leaving it (`.mouseExited`). It is made as AppKit makes the events of a
+/// tracking area, which name their area by their tracking number (`NSEvent.trackingArea`), so the owner of the area
+/// takes it for an event of that area. It requires that AppKit reads the area back from the event.
+@MainActor
+func crossing(
+    _ type: NSEvent.EventType, of area: NSTrackingArea, at point: CGPoint, in window: NSWindow
+) throws -> NSEvent {
+    let event = try #require(
         NSEvent.enterExitEvent(
-            with: .mouseEntered, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
-    let moved = try #require(
+            with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+            trackingNumber: Int(bitPattern: Unmanaged.passUnretained(area).toOpaque()), userData: nil))
+    try #require(event.trackingArea === area, "AppKit does not name the area of an event by its tracking number")
+    return event
+}
+
+/// The event of the pointer moving to `point` of `window`, given in the coordinates of the window.
+@MainActor
+func pointerMotion(to point: CGPoint, in window: NSWindow) throws -> NSEvent {
+    try #require(
         NSEvent.mouseEvent(
             with: .mouseMoved, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
-    view.mouseEntered(with: entered)
-    view.mouseMoved(with: moved)
 }
 
-/// The hosting view of SwiftUI under `view` that has a tracking area, which is where SwiftUI follows the pointer.
+/// The hosting view of SwiftUI under `view` that has a tracking area, which is where SwiftUI follows the pointer: the
+/// view that `movePointer(to:in:)` hands its events to.
 @MainActor
-private func hostingViewTrackingThePointer(in view: NSView?) -> NSView? {
+func hostingViewTrackingThePointer(in view: NSView?) -> NSView? {
     guard let view else { return nil }
     if !view.trackingAreas.isEmpty, String(describing: type(of: view)).contains("NSHostingView") {
         return view
