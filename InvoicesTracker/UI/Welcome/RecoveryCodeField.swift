@@ -93,7 +93,8 @@ struct RecoveryCodeAsk<Extra: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // The key lies on its side with its bow at the left, as the design draws it; the symbol has it at the right.
+            // The key lies on its side with its bow at the left, as the design draws it: the symbol has its bow at the
+            // right, so it is mirrored.
             Image(systemName: "key.horizontal")
                 .font(Typography.symbolCompact)
                 .scaleEffect(x: -1, y: 1)
