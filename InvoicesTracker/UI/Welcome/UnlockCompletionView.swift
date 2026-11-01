@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// The card after unlocking with the recovery code ("Odemčeno") or restoring a backup ("Data jsou obnovená"): what was
-/// done, the code that stays valid, and a hint that a new code can be made. Pokračovat shows the app.
+/// done, the code that stays valid, and a hint that a new code can be made. Pokračovat shows the app: the capsule of
+/// the accent, 8 points wider at each end than the capsule of a dialog, as the prototype draws it (22 points of
+/// padding).
 struct UnlockCompletionView: View {
     let model: AppModel
     let completion: UnlockCompletion
@@ -35,8 +37,11 @@ struct UnlockCompletionView: View {
                 .insetPanel(horizontal: 14, vertical: 12)
             HStack {
                 Spacer(minLength: 0)
-                Button("Pokračovat") {
+                Button {
                     model.dismissCompletion()
+                } label: {
+                    Text("Pokračovat")
+                        .padding(.horizontal, 8)
                 }
                 .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)

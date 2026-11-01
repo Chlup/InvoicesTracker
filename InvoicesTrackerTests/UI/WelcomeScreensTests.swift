@@ -327,7 +327,7 @@ struct WelcomeScreensTests {
     }
 
     /// The card after unlocking: a check in a green circle, a hint on the inset background and Pokračovat as the accent
-    /// capsule 32 points tall.
+    /// capsule 32 points tall, 22 points wider than its label at each end, as the prototype draws it.
     @Test(arguments: [ColorScheme.light, .dark])
     func theCardAfterUnlockingHasAGreenCircleAnInsetHintAndAnAccentCapsule(scheme: ColorScheme) async throws {
         let directory = try makeTemporaryDirectory()
@@ -361,6 +361,11 @@ struct WelcomeScreensTests {
                 let proceed = try buttonFrame("Pokračovat", in: window)
                 #expect(abs(proceed.height - 32) < 0.5, "Pokračovat is \(proceed.height) points tall")
                 #expect(pixelIs(accent, at: CGPoint(x: proceed.minX + 6, y: proceed.midY), in: picture))
+                let label = NSHostingView(rootView: Text(verbatim: "Pokračovat").font(Typography.bodySemibold))
+                    .fittingSize.width
+                #expect(
+                    abs(proceed.width - label - 2 * 22) < 1,
+                    "Pokračovat is \(proceed.width) points wide around a label of \(label)")
             }
         }
     }
