@@ -171,9 +171,10 @@ struct ContainerNamesTests {
 
     // MARK: Nastavení and Import
 
-    /// Each tab of Nastavení names its cards as the prototype names them.
+    /// Each tab of Nastavení names its cards as the prototype names them. The card Aktualizace of Aplikace is not in
+    /// the prototype, which predates the updates, so it is named by its title.
     @Test(arguments: [
-        (SettingsTab.application, ["Části nastavení", "Vzhled", "Kurzy", "Licence"]),
+        (SettingsTab.application, ["Části nastavení", "Vzhled", "Aktualizace", "Kurzy", "Licence"]),
         (SettingsTab.supplier, ["Vaše údaje", "Bankovní účty"]),
         (SettingsTab.security, ["Odemykání", "Kód pro obnovení", "Zálohy"]),
         (

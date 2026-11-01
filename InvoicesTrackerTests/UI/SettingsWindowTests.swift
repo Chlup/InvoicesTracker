@@ -38,17 +38,17 @@ struct SettingsWindowTests {
 
     // MARK: The buttons inside the cards
 
-    /// The buttons inside the cards of the tabs are the capsules of the design, 28 points tall: Zkontrolovat teď,
-    /// Vytvořit nový kód…, the three buttons of the backups, and Zadat ručně, which opens the form of the uniform
-    /// rate with Zrušit and Uložit kurz, 28 points tall too. So is Přidat, the button of the form of an adjustment in
-    /// the card Úpravy příjmů: the prototype draws it 32 tall to match its fields of 32, and the fields of the app are
-    /// the native ones.
+    /// The buttons inside the cards of the tabs are the capsules of the design, 28 points tall: Zkontrolovat teď of the
+    /// rates and the one of the card Aktualizace (VoiceOver names that one after its card), Vytvořit nový kód…, the
+    /// three buttons of the backups, and Zadat ručně, which opens the form of the uniform rate with Zrušit and Uložit
+    /// kurz, 28 points tall too. So is Přidat, the button of the form of an adjustment in the card Úpravy příjmů: the
+    /// prototype draws it 32 tall to match its fields of 32, and the fields of the app are the native ones.
     @Test func theButtonsInsideTheCardsOfNastaveniAre28PointCapsules() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
                 try await withAccessibilityElements {
                     let tabs: [(tab: SettingsTab, buttons: [String])] = [
-                        (.application, ["Zkontrolovat teď"]),
+                        (.application, ["Zkontrolovat teď", UpdatesTexts.checkNowAccessibilityLabel]),
                         (
                             .security,
                             ["Vytvořit nový kód…", "Zálohovat teď", "Exportovat zálohu…", "Obnovit ze zálohy…"]
@@ -90,7 +90,7 @@ struct SettingsWindowTests {
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
                 try await withAccessibilityElements {
                     let tabs: [(tab: SettingsTab, cards: [String])] = [
-                        (.application, ["Vzhled", "Kurzy", "Licence"]),
+                        (.application, ["Vzhled", "Aktualizace", "Kurzy", "Licence"]),
                         (.supplier, ["Vaše údaje", "Bankovní účty"]),
                         (.security, ["Odemykání", "Kód pro obnovení", "Zálohy"]),
                         (.year, ["Profil", "Činnost", "Jednotný kurz", "Pravidla", "Úpravy příjmů"]),

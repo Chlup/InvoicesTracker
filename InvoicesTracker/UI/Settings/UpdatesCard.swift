@@ -2,7 +2,12 @@ import SwiftUI
 
 /// The card Aktualizace of Nastavení › Aplikace: the version of the app, when the updater last checked for a new
 /// version, the switch of the daily check, and Zkontrolovat teď, which asks the updater for a check at once. The
-/// updater shows what it finds in its own windows. The card is made like the card Kurzy, whose button shows the same
+/// updater shows what it finds in its own windows.
+///
+/// The prototype of the design predates the updates and has no such card, so the card is made like the card Kurzy
+/// beside it: the shared card with its title and subtitle, rows under hairlines with their values in semibold body, a
+/// hairline over the button, which is a capsule 28 points tall, and colours and fonts from the palette and the
+/// typography. The switch is the native one, as the form controls of the app are. The button of Kurzy shows the same
 /// title, so VoiceOver names this card's button after the card (`UpdatesTexts.checkNowAccessibilityLabel`).
 ///
 /// Without `updates` (the app has no updater while it hosts the unit tests) the card still names the version, the last
@@ -20,12 +25,12 @@ struct UpdatesCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsRow(label: "Verze") {
                     Text(verbatim: UpdatesTexts.installedVersion)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
                         .monospacedDigit()
                 }
                 SettingsRow(label: "Poslední kontrola") {
                     Text(verbatim: UpdatesTexts.lastCheck(updates?.lastCheck, now: now, timeZone: timeZone))
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
                         .monospacedDigit()
                 }
                 SettingsRow(label: UpdatesTexts.automaticLabel) {
@@ -36,7 +41,7 @@ struct UpdatesCard: View {
                         .accessibilityLabel(UpdatesTexts.automaticLabel)
                         .disabled(updates == nil)
                 }
-                Divider()
+                Hairline()
                 Button(UpdatesTexts.checkNowTitle) {
                     updates?.checkNow()
                 }
