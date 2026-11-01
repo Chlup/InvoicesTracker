@@ -33,12 +33,14 @@ struct StatusChipsViewTests {
         }
     }
 
+    /// A thousand is "1 000", 1 234 is "Vše 1 234" and a million and more has its groups of three too.
     @Test func aCountOfAThousandOrMoreIsGroupedInThousandsWithANoBreakSpace() async throws {
         try await expectChips(
             [.all, .drafts, .paid], counts: [.all: 1_234, .drafts: 1_000, .paid: 1_234_567],
             labels: ["Vše 1\u{00A0}234", "Koncepty 1\u{00A0}000", "Uhrazené 1\u{00A0}234\u{00A0}567"])
     }
 
+    /// Below a thousand the chip reads as it always did: the title, a space and the digits, 0 included.
     @Test func aCountBelowAThousandIsTheDigitsAlone() async throws {
         try await expectChips(
             [.all, .drafts, .awaiting, .overdue, .review],

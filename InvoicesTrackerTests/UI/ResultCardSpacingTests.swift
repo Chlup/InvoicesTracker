@@ -32,6 +32,7 @@ struct ResultCardSpacingTests {
             abs(height(spacing) - height(.board)) >= 1.5, "\(spacing) is the board's", sourceLocation: sourceLocation)
     }
 
+    /// Přehled: the sentence stands 12 points under the line of the figure (`KeyFigureSpacing.overview`).
     @Test func theKeyFigureOfPrehledIsSpacedAsTheDesignSpacesIt() async throws {
         try await EditorFixture.with { f in
             let model = OverviewModel(app: f.app)
@@ -51,6 +52,8 @@ struct ResultCardSpacingTests {
         }
     }
 
+    /// Výpočet: the sentence stands 10 points under the line of the figure (`KeyFigureSpacing.computation`), and is
+    /// at most 468 points wide, which is 36 em of its 13-point type.
     @Test func theKeyFigureOfVypocetIsSpacedAsTheDesignSpacesIt() async throws {
         try await EditorFixture.with { f in
             let model = ComputationModel(app: f.app)

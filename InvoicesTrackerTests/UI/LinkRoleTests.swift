@@ -131,8 +131,8 @@ struct LinkRoleTests {
         }
     }
 
-    /// The links of a rate entered by hand and of an adjustment of the income, in Rok: Upravit, Odstranit… in the red
-    /// of text, and Smazat in the red of text.
+    /// The links of a rate entered by hand and of an adjustment of the income, in Rok: Upravit in the blue of a link,
+    /// and Odstranit… and Smazat in the red of text.
     @Test func theLinksOfTheRatesAndTheAdjustmentsOfTheYearAreReadAsLinks() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
