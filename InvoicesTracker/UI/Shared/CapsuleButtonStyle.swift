@@ -177,10 +177,13 @@ extension LinkTone {
 ///     Button("Odebrat dítě", action: remove)
 ///         .buttonStyle(TextLinkButtonStyle(.destructive))
 ///
-/// The style only draws; what VoiceOver reads is the button's own. A control that leads somewhere else, to another
-/// screen, a tab or a file, is read as a link, as the system's link style made it, so it adds the trait of a link
-/// (`.accessibilityAddTraits(.isLink)`), which `calloutLink(_:isLink:)` does by itself. A control that does something
-/// where it stands, such as the red entry points Odebrat dítě and Odebrat platbu…, stays a button.
+/// The style only draws; what VoiceOver reads is the button's own. The rule for a new control: one that leads
+/// somewhere else, to another screen, a tab or a file, is read as a link, as the system's link style made it, so it
+/// adds the trait of a link (`.accessibilityAddTraits(.isLink)`), which `calloutLink(_:isLink:)` does by itself, and
+/// one that does something where it stands, such as the red entry points Odebrat dítě and Odebrat platbu…, stays a
+/// button. A control that the app read as a link before the redesign keeps the role even where it acts in place:
+/// Zrušit hledání (`SearchLineView`), Odebrat (`SupplierTab`), and Upravit, Odstranit… and Smazat (`YearTabCards`) are
+/// links on purpose.
 ///
 /// SwiftUI has a `LinkButtonStyle` of its own (`.buttonStyle(.link)`), so this style has another name: a type of the
 /// same name in the app would shadow SwiftUI's in the app, and in a test, which imports both modules, a bare
@@ -203,9 +206,11 @@ extension View {
     /// blue of a link, or in the red of text where it leads to something that cannot be undone, such as Odstranit….
     /// The buttons below the view take the look from it (`TextLinkButtonStyle`).
     ///
-    /// VoiceOver reads them as links (`.accessibilityAddTraits(.isLink)`), as the system's link style made it. Pass
-    /// `isLink: false` for a text button that does something where it stands and leads nowhere, such as Vrátit odhad
-    /// aplikace, which was always read as a button.
+    /// VoiceOver reads them as links (`.accessibilityAddTraits(.isLink)`), as the system's link style made it. That is
+    /// the rule for a control that leads somewhere else; pass `isLink: false` for a new text button that does
+    /// something where it stands and leads nowhere, such as Vrátit odhad aplikace, which was always read as a button.
+    /// A text button that the app read as a link before the redesign keeps the role even where it acts in place:
+    /// Zrušit hledání, Odebrat, Upravit, Odstranit… and Smazat are links on purpose.
     func calloutLink(_ tone: LinkTone = .accent, isLink: Bool = true) -> some View {
         buttonStyle(TextLinkButtonStyle(tone))
             .font(Typography.callout)

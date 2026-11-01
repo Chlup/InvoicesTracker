@@ -192,6 +192,8 @@ user before building.
     measured from the edge of the sidebar and from under the toolbar.
 - **Components.** Use the shared view for each job (in `UI/Shared/`):
   - card (`Card`, with its title `CardTitle`);
+  - section heading: the title of a section of a page that stands outside any card, such as "Rozpis výpočtu" over the
+    bill cards (`SectionHeading`);
   - key figure;
   - levy bar: one bar split into three solid parts in the authorities' colours, each as wide as its levy; short names
     and amounts under it. The advances and what is left to pay appear only in the popover on hover or focus;
@@ -202,6 +204,8 @@ user before building.
     hairlines (`DetailPanel`, `DetailSection`);
   - inset panel: the bg-inset ground with the panel radius, for what a card sets apart without raising it
     (`insetPanel(horizontal:vertical:)`);
+  - pop panel: the bg-card ground with the panel radius, raised off the chart, for the box that follows the pointer
+    along a chart (`popPanel()`);
   - hairline: the 1-point separator between the parts of a card (`Hairline`; `isStrong` for the one above the
     result of a bill);
   - hatching: the 3-point stripes that mark an estimate in a bar or a chart (`Hatching`, `HatchedFill`);
