@@ -75,11 +75,13 @@ struct ComputationScreen: View {
 
     /// The result card: what is left to pay at the left and the bar of the levies at the right. Výpočet sets the parts
     /// 28 points apart in both directions, like the gap between its columns, and the sentence under the key figure 36
-    /// em wide (`keyFigureSentenceWidth`). The card is drawn above everything under it, because the popover of the bar
-    /// hangs out of the card over the cards that follow.
+    /// em wide (`keyFigureSentenceWidth`) and 10 points under the line of the figure. The card is drawn above everything
+    /// under it, because the popover of the bar hangs out of the card over the cards that follow.
     private func result(_ page: ComputationPage) -> some View {
         ResultCard(label: "Výsledek", rowGap: ResultCardLayout.columnGap) {
-            KeyFigureView(page.keyFigure, sentenceMaximumWidth: ComputationScreenMetrics.keyFigureSentenceWidth)
+            KeyFigureView(
+                page.keyFigure, sentenceMaximumWidth: ComputationScreenMetrics.keyFigureSentenceWidth,
+                spacing: .computation)
         } trailing: {
             LevyBarView(page.levies)
         }

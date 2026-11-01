@@ -13,7 +13,8 @@ private nonisolated enum OverviewResultCardMetrics {
 /// computation and to the plan of advances, the bar of the levies by authority beside it (or under it, where the card
 /// is too narrow for two columns), and under a hairline the tiles of what the advances still pay, what is settled with
 /// the return and what the next crown costs (or, in a year that is over, what the advances paid and what comes back).
-/// The card is the shared result card (`ResultCard`); the texts are the builder's (`OverviewBuilder`).
+/// The sentence stands 12 points under the line of the figure, as Přehled's design sets it (`KeyFigureSpacing`). The
+/// card is the shared result card (`ResultCard`); the texts are the builder's (`OverviewBuilder`).
 ///
 /// The popover of the bar hangs out of the card over what follows it, so the page draws the card above the cards under
 /// it and does not clip it. VoiceOver reads the card as a group under "Kolik zbývá zaplatit".
@@ -30,7 +31,7 @@ struct OverviewResultCard: View {
 
     var body: some View {
         ResultCard(label: "Kolik zbývá zaplatit") {
-            KeyFigureView(keyFigure)
+            KeyFigureView(keyFigure, spacing: .overview)
             buttons
         } trailing: {
             LevyBarView(levies)

@@ -129,9 +129,12 @@ enum Palette {
 /// The fonts of the design. Apart from the display size they are the text styles of macOS, so they follow the system's
 /// sizes, and a view takes its font from here and never sets a point size of its own.
 nonisolated enum Typography {
+    /// The size of the key figure of a screen, in points, which the design also makes the height of its line.
+    static let displaySize: CGFloat = 44
+
     /// The key figure of a screen: 44 points, bold and rounded. It is the one size in this enum that is set in
     /// points.
-    static let display = Font.system(size: 44, weight: .bold, design: .rounded)
+    static let display = Font.system(size: displaySize, weight: .bold, design: .rounded)
 
     /// The large title style (26 points), bold and rounded, for a big figure such as a percentage.
     static let largeTitle = Font.system(.largeTitle, design: .rounded, weight: .bold)

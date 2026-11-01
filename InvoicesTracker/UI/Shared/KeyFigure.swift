@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A part of the sentence under a key figure, and whether it stands out.
@@ -51,10 +52,45 @@ nonisolated struct KeyFigureData: Sendable, Hashable {
     }
 }
 
+/// The spaces a screen gives its key figure around the figure, in points, counted from the line of the figure, which
+/// is as tall as its 44 points: from the eyebrow down to that line, and from it down to the sentence. The board has 8
+/// and 8, and each screen of the prototype sets its own, by the gap of the column the key figure stands in and the
+/// margin above its sentence.
+nonisolated struct KeyFigureSpacing: Sendable, Hashable {
+    /// The space between the eyebrow and the line of the figure.
+    var aboveFigure: CGFloat
+
+    /// The space between the line of the figure and the sentence.
+    var belowFigure: CGFloat
+
+    /// The board's key figure, and the Simulátor's: a column 8 points apart.
+    static let board = KeyFigureSpacing(aboveFigure: 8, belowFigure: 8)
+
+    /// Přehled: a column 8 points apart, and the sentence 4 points lower (its margin of 4).
+    static let overview = KeyFigureSpacing(aboveFigure: 8, belowFigure: 12)
+
+    /// Výpočet: a column 8 points apart, and the sentence 2 points lower (its margin of 2).
+    static let computation = KeyFigureSpacing(aboveFigure: 8, belowFigure: 10)
+
+    /// The levies of the year on Odhad odvodů: a column 8 points apart, and the sentence 2 points lower.
+    static let prediction = KeyFigureSpacing(aboveFigure: 8, belowFigure: 10)
+
+    /// What is left to settle on Odhad odvodů: a column 6 points apart.
+    static let predictionDue = KeyFigureSpacing(aboveFigure: 6, belowFigure: 6)
+}
+
 /// The sizes and gaps of a key figure.
 private nonisolated enum KeyFigureMetrics {
-    /// The space between the eyebrow, the figure and the sentence.
-    static let spacing: CGFloat = 8
+    /// How far the letters of the figure are pulled up into its line, which the design makes as tall as the figure's
+    /// size (`line-height: 1`): half of what the line of the display font is taller than its size, which is what such
+    /// a line height leaves out above the letters, and the same again below them (the half-leading). The font keeps
+    /// about 52 points of line for its 44 points, for its highest and lowest letters, so this is about 4 points.
+    static let figureHalfLeading: CGFloat = {
+        let size = Typography.displaySize
+        let bold = NSFont.systemFont(ofSize: size, weight: .bold)
+        let font = bold.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? bold
+        return max(0, (font.ascender - font.descender + font.leading - size) / 2)
+    }()
 
     /// The space between the figure and its share where they stand on one line.
     static let shareGap: CGFloat = 14
@@ -78,7 +114,9 @@ private nonisolated enum KeyFigureMetrics {
 /// the same baseline, or under it where the room is too narrow for both, and the sentence under them in secondary text,
 /// at most `sentenceMaximumWidth` points wide: 416 unless the screen gives it the width its design has. The sentence is
 /// set in the body size unless the screen gives it another font, as the Simulátor sets the one line of context under
-/// its figure in callout. VoiceOver reads the lot as one phrase.
+/// its figure in callout. The figure stands in a line as tall as its size, and the spaces between that line and the
+/// eyebrow and the sentence are those the screen gives it (`KeyFigureSpacing`), 8 points each unless it gives others.
+/// VoiceOver reads the lot as one phrase.
 struct KeyFigureView: View {
     let data: KeyFigureData
 
@@ -88,29 +126,35 @@ struct KeyFigureView: View {
     /// The font of the sentence under the figure. The part of it that is emphasised is in this font, semibold.
     let sentenceFont: Font
 
+    /// The spaces around the figure that the screen gives it.
+    let spacing: KeyFigureSpacing
+
     /// A key figure that shows `data`, its sentence at most `sentenceMaximumWidth` points wide and set in
-    /// `sentenceFont`.
+    /// `sentenceFont`, with the spaces around the figure of `spacing`.
     init(
         _ data: KeyFigureData, sentenceMaximumWidth: CGFloat = KeyFigureMetrics.sentenceMaximumWidth,
-        sentenceFont: Font = Typography.body
+        sentenceFont: Font = Typography.body, spacing: KeyFigureSpacing = .board
     ) {
         self.data = data
         self.sentenceMaximumWidth = sentenceMaximumWidth
         self.sentenceFont = sentenceFont
+        self.spacing = spacing
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: KeyFigureMetrics.spacing) {
+        VStack(alignment: .leading, spacing: 0) {
             Text(verbatim: data.eyebrow)
                 .eyebrow()
                 .fixedSize(horizontal: false, vertical: true)
             figureLine
+                .padding(.top, spacing.aboveFigure)
             if data.sentence != nil {
                 Text(sentence)
                     .font(sentenceFont)
                     .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: sentenceMaximumWidth, alignment: .leading)
+                    .padding(.top, spacing.belowFigure)
             }
         }
         .accessibilityElement(children: .combine)
@@ -135,7 +179,9 @@ struct KeyFigureView: View {
         }
     }
 
-    /// The figure in the display size: on one line, scaled down before it is cut.
+    /// The figure in the display size: on one line, scaled down before it is cut, in a line as tall as its size, as
+    /// the board sets it (`line-height: 1`). The letters are pulled up by the half-leading and the line ends 44 points
+    /// under its top, so the rest of the font's line, under the letters, takes no room.
     private var figure: some View {
         Text(verbatim: data.figure)
             .font(Typography.display)
@@ -143,6 +189,8 @@ struct KeyFigureView: View {
             .tracking(KeyFigureMetrics.figureTracking)
             .lineLimit(1)
             .minimumScaleFactor(KeyFigureMetrics.minimumFigureScale)
+            .padding(.top, -KeyFigureMetrics.figureHalfLeading)
+            .frame(height: Typography.displaySize, alignment: .top)
     }
 
     /// The share of the income, in title 2 semibold and secondary text.

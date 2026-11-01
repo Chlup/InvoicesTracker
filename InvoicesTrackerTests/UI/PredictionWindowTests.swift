@@ -536,6 +536,35 @@ struct PredictionWindowTests {
         }
     }
 
+    /// The two key figures of the card are spaced as the design of Odhad odvodů spaces them: the levies with their
+    /// sentence 10 points under the line of the figure (`KeyFigureSpacing.prediction`), and what is left to settle 6
+    /// points apart throughout (`.predictionDue`). Each is as tall in the card as the key figure of that spacing laid
+    /// out alone at its width, and not as tall as the board's 8 and 8 would make it.
+    @Test func theKeyFiguresOfTheResultCardAreSpacedAsTheDesignSpacesThem() async throws {
+        let page = try PredictionSample.page(year: 2026)
+        try await withCard(PredictionResultCard(page: page)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
+                try await layOut(window)
+                let figures: [(data: KeyFigureData, width: CGFloat, spacing: KeyFigureSpacing)] = [
+                    (page.keyFigure, 442, .prediction), (page.due, 468, .predictionDue),
+                ]
+                for figure in figures {
+                    let frame = try textFrame(startingWith: figure.data.eyebrow, in: window)
+                    @MainActor func height(_ spacing: KeyFigureSpacing) -> CGFloat {
+                        fittingHeight(
+                            of: KeyFigureView(figure.data, sentenceMaximumWidth: figure.width, spacing: spacing),
+                            width: frame.width)
+                    }
+                    #expect(
+                        abs(frame.height - height(figure.spacing)) < 0.5,
+                        "\(figure.data.eyebrow) is \(frame.height) tall, not \(height(figure.spacing))")
+                    #expect(abs(height(figure.spacing) - height(.board)) >= 2, "\(figure.spacing) is the board's")
+                }
+            }
+        }
+    }
+
     /// In a year that is over the eyebrows, the sentences and the header of the bar say so ("skutečnost"), and what is
     /// left to settle is the doplatek.
     @Test func theResultCardOfAYearThatIsOverSaysSkutecnost() async throws {

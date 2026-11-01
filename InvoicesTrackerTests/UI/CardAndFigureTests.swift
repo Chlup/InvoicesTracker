@@ -216,6 +216,49 @@ struct CardAndFigureTests {
                 ])
     }
 
+    /// The key figure the tests of its line measure: an eyebrow, a figure and a sentence of one line.
+    private let lineData = KeyFigureData(
+        eyebrow: "Zbývá zaplatit k 17.\u{00A0}10.\u{00A0}2026", figure: "48\u{00A0}480\u{00A0}Kč",
+        sentence: "Odvody z příjmů po odečtení záloh.")
+
+    /// The height of the parts of `lineData` in a room of 400 points: the eyebrow and the sentence as the key figure
+    /// sets them.
+    private func heightsOfTheEyebrowAndTheSentence() -> (eyebrow: CGFloat, sentence: CGFloat) {
+        let eyebrow = fittingHeight(of: Text(verbatim: lineData.eyebrow).eyebrow(), width: 400)
+        let sentence = fittingHeight(
+            of: Text(verbatim: lineData.sentence ?? "").font(Typography.body).foregroundStyle(Palette.text2),
+            width: 400)
+        return (eyebrow, sentence)
+    }
+
+    /// The figure of a key figure stands in a line exactly as tall as its size, 44 points, as the board sets it
+    /// (`line-height: 1`), not in the taller line the font keeps for its highest and lowest letters: the key figure is
+    /// as tall as its eyebrow, the 8 points of the board, the 44 points of the figure, 8 points again and its sentence.
+    @Test func theFigureOfAKeyFigureStandsInALineAsTallAsItsSize() {
+        let parts = heightsOfTheEyebrowAndTheSentence()
+        let whole = fittingHeight(of: KeyFigureView(lineData), width: 400)
+        let expected = parts.eyebrow + 8 + 44 + 8 + parts.sentence
+
+        #expect(abs(whole - expected) < 0.5, "The key figure is \(whole) points tall, not \(expected)")
+    }
+
+    /// A screen gives the key figure the spaces its design has around the figure, counted from the line of 44 points:
+    /// Přehled sets the sentence 12 points under the figure (the gap of 8 and the sentence's margin of 4), Výpočet and
+    /// the levies of Odhad odvodů 10 (a margin of 2), what is left to settle on Odhad odvodů has 6 above and below,
+    /// and the Simulátor has the 8 of the board.
+    @Test(arguments: [
+        (KeyFigureSpacing.board, CGFloat(8), CGFloat(8)), (.overview, 8, 12), (.computation, 8, 10),
+        (.prediction, 8, 10), (.predictionDue, 6, 6),
+    ])
+    func theSpacesAroundTheFigureAreThoseOfTheScreen(spacing: KeyFigureSpacing, above: CGFloat, below: CGFloat) {
+        #expect(spacing.aboveFigure == above && spacing.belowFigure == below, "\(spacing)")
+        let parts = heightsOfTheEyebrowAndTheSentence()
+        let whole = fittingHeight(of: KeyFigureView(lineData, spacing: spacing), width: 400)
+        let expected = parts.eyebrow + above + 44 + below + parts.sentence
+
+        #expect(abs(whole - expected) < 0.5, "\(spacing): the key figure is \(whole) points tall, not \(expected)")
+    }
+
     /// The height of the key figure `data` in a room of `width` points.
     private func height(of data: KeyFigureData, width: CGFloat) -> CGFloat {
         let view = KeyFigureView(data).frame(width: width, alignment: .leading)
