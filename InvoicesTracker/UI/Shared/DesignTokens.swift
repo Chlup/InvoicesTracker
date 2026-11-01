@@ -193,15 +193,16 @@ nonisolated enum Typography {
     // MARK: Symbols
 
     /// A symbol that stands alone in a circle or a tile of 56 to 64 points, such as the lock: the large title style
-    /// (26 points), regular. Where the design draws it larger, the view adds `.imageScale(.large)`.
+    /// (26 points), regular, which draws the lock and the document of the tile of the app as tall as the design draws
+    /// them. A screen that the design has no picture of may add `.imageScale(.large)` for a larger one.
     static let symbolLarge = Font.largeTitle
 
     /// A symbol on a drop zone: the large title style, light.
     static let symbolLight = Font.largeTitle.weight(.light)
 
-    /// A symbol in a circle of 44 points, such as the key over the field of a recovery code: the title style
-    /// (22 points), regular.
-    static let symbolMedium = Font.title
+    /// A small symbol in a circle of 44 points, about as wide as a word, such as the key that lies on its side over the
+    /// field of a recovery code: the body style (13 points), semibold, which draws it as wide as the design does.
+    static let symbolCompact = Font.body.weight(.semibold)
 
     /// A symbol in the circle of a choice on a card: the title 2 style (17 points), semibold.
     static let symbolSmall = Font.title2.weight(.semibold)

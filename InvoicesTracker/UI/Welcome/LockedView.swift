@@ -107,12 +107,12 @@ struct LockedView: View {
     }
 }
 
-/// The lock in a circle at the top of a locked screen: a symbol in the grey text on the grey fill, 64 points across.
+/// The lock in a circle at the top of a locked screen: a symbol in the grey text on the grey fill, 64 points across,
+/// about 25 points tall as the design draws it.
 struct LockSymbol: View {
     var body: some View {
         Image(systemName: "lock")
             .font(Typography.symbolLarge)
-            .imageScale(.large)
             .foregroundStyle(Palette.text2)
             .frame(width: 64, height: 64)
             .background(Palette.fill, in: Circle())

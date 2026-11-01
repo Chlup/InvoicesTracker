@@ -79,12 +79,11 @@ struct WelcomeView: View {
 
 /// The tile of the app at the top of the first card: 64 points, with the corners of a card, a gradient from the accent
 /// to the accent text running down and a little to the right (the prototype's 160°), the glyph of a document in the
-/// colour of text on an accent, and the blue glow under it.
+/// colour of text on an accent, about 27 points tall as the design draws it, and the blue glow under it.
 private struct AppTile: View {
     var body: some View {
         Image(systemName: "doc.text")
             .font(Typography.symbolLarge)
-            .imageScale(.large)
             .foregroundStyle(Palette.onAccent)
             .frame(width: 64, height: 64)
             .background {

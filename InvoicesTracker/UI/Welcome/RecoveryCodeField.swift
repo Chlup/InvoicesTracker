@@ -93,8 +93,8 @@ struct RecoveryCodeAsk<Extra: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: "key")
-                .font(Typography.symbolMedium)
+            Image(systemName: "key.horizontal")
+                .font(Typography.symbolCompact)
                 .foregroundStyle(Palette.text2)
                 .frame(width: 44, height: 44)
                 .background(Palette.fill, in: Circle())

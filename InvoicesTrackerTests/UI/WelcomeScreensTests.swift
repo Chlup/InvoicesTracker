@@ -211,6 +211,12 @@ struct WelcomeScreensTests {
                 #expect(
                     distance(upper, accent) < distance(upper, accentText),
                     "\(scheme): the upper left of the tile \(upper) is not nearer the accent than the accent text")
+                // The document on the tile is as tall as the prototype draws it, about 27 points of the 64.
+                let tileInside = CGRect(x: card.midX - 22, y: card.minY + 30 + 10, width: 44, height: 44)
+                let glyph = try #require(
+                    picture.extent(near: [255, 255, 255], in: tileInside, by: 60), "\(scheme): no glyph on the tile")
+                #expect(
+                    (25...29).contains(glyph.height), "\(scheme): the glyph of the tile is \(glyph.height) points tall")
 
                 let start = try elementFrame(startingWith: "Začít s prázdnými daty", in: window)
                 #expect(pixelIs(inset, at: CGPoint(x: start.minX + 8, y: start.midY), in: picture))
@@ -260,6 +266,12 @@ struct WelcomeScreensTests {
                 #expect(
                     pixelIs(fill, at: CGPoint(x: card.midX - 26, y: card.minY + 30 + 32), in: picture),
                     "\(scheme): the circle of the lock is not on the grey fill")
+                // The lock is as tall as the prototype draws it in its circle, about 24 points of the 64.
+                let text2 = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
+                let circleInside = CGRect(x: card.midX - 24, y: card.minY + 30 + 4, width: 48, height: 56)
+                let lock = try #require(
+                    picture.extent(near: text2, in: circleInside, by: 40), "\(scheme): no lock in the circle")
+                #expect((22...27).contains(lock.height), "\(scheme): the lock is \(lock.height) points tall")
                 let unlock = try buttonFrame("Odemknout", in: window)
                 #expect(abs(unlock.height - 32) < 0.5, "Odemknout is \(unlock.height) points tall")
                 #expect(pixelIs(accent, at: CGPoint(x: unlock.minX + 6, y: unlock.midY), in: picture))
@@ -440,6 +452,32 @@ struct WelcomeScreensTests {
                             "\(scheme): \(label) is not a capsule of the card colour")
                     }
                 }
+            }
+        }
+    }
+
+    /// The key over the field of the code lies on its side in its circle of 44 points, as the prototype draws it: the
+    /// bow at the left and the bit at the right, about 16 points wide and half as tall.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theKeyOverTheFieldOfTheCodeLiesOnItsSide(scheme: ColorScheme) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let model = makeAppModel(in: directory)
+
+        try await withHostedView(NewMacView(model: model), size: CGSize(width: 900, height: 800)) { window in
+            window.appearance = appearance(of: scheme)
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Odemknout kódem", in: window) != nil }
+                try await layOut(window)
+                let card = try cardFrame("Odemknout kódem", in: window)
+                let picture = try OffscreenPicture(of: window)
+                let text2 = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
+
+                // The circle is the first thing of the card, inside its padding of 30 at the top and 34 at the sides.
+                let circle = CGRect(x: card.minX + 34, y: card.minY + 30, width: 44, height: 44)
+                let key = try #require(picture.extent(near: text2, in: circle, by: 40), "\(scheme): no key")
+                #expect((14...18).contains(key.width), "\(scheme): the key is \(key.width) points wide")
+                #expect(key.height < key.width * 0.7, "\(scheme): the key stands up, \(key.width) × \(key.height)")
             }
         }
     }
