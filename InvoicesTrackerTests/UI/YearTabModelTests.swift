@@ -237,9 +237,10 @@ struct YearTabModelTests {
     }
 
     /// The months without the health minimum are chosen like every other choice of the design: the selected month is
-    /// the accent with the text on an accent on it, not the dark fill of the prototype. The others are a capsule of the
-    /// colour of a card, raised, with the text where the activity was carried on, and the inset background with the
-    /// faintest text where it was not. A marked month is selected whether or not the activity was carried on in it.
+    /// the accent with the text on an accent on it, not the dark fill of the prototype. The others are raised, as the
+    /// prototype rings both of its tones that are not chosen: a capsule of the colour of a card with the text where the
+    /// activity was carried on, and the inset background with the faintest text where it was not. A marked month is
+    /// selected whether or not the activity was carried on in it.
     @Test func theMonthTogglesSelectWithTheAccent() {
         #expect(MonthToggleTone(isOn: true, isActive: true) == .selected)
         #expect(MonthToggleTone(isOn: true, isActive: false) == .selected)
@@ -254,7 +255,7 @@ struct YearTabModelTests {
         #expect(MonthToggleTone.outsideActivity.foreground == Palette.text4)
         #expect(MonthToggleTone.available.isRaised)
         #expect(!MonthToggleTone.selected.isRaised)
-        #expect(!MonthToggleTone.outsideActivity.isRaised)
+        #expect(MonthToggleTone.outsideActivity.isRaised)
         // Only the selected month is the accent.
         #expect(MonthToggleTone.available.background != Palette.accent)
         #expect(MonthToggleTone.outsideActivity.background != Palette.accent)

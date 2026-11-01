@@ -225,9 +225,10 @@ extension MonthToggleTone {
         }
     }
 
-    /// Whether the toggle stands off the page, with the elevation of a control, as a button on the window does.
+    /// Whether the toggle stands off the page, with the elevation of a control, as a button on the window does: every
+    /// month that is not selected, inside the activity and outside it, as the prototype rings both of those tones.
     var isRaised: Bool {
-        self == .available
+        self != .selected
     }
 
     /// The colour of the name of the month: on an accent while it is selected, the colour of text, and the faintest
@@ -241,9 +242,9 @@ extension MonthToggleTone {
     }
 }
 
-/// A month of the toggles: a capsule 28 points tall, in the accent when the health minimum does not apply in it,
-/// dimmed when the activity was not carried on in it (`MonthToggleTone`). VoiceOver reads its full name and whether it
-/// is marked.
+/// A month of the toggles: a capsule 28 points tall, in the accent when the health minimum does not apply in it, and
+/// otherwise raised with the ring of a control, dimmed when the activity was not carried on in it (`MonthToggleTone`).
+/// VoiceOver reads its full name and whether it is marked.
 struct MonthToggle: View {
     let month: Int
     let isOn: Bool

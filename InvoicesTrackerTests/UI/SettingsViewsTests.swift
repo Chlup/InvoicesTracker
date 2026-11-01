@@ -74,6 +74,27 @@ struct SettingsViewsTests {
         #expect(outside.count(near: text, in: capsule, by: 8) == 0, "\(scheme): the name is in the colour of text")
     }
 
+    /// Both months that are not chosen have the half-point ring of a control along their edge, as the prototype draws
+    /// both tones (`0 0 0 0.5px`): the month that has the minimum on the colour of a card, and the month outside the
+    /// activity on the inset background. The last row of pixels of the capsule, which the ring is drawn on, differs
+    /// from the colour inside the capsule and from the card around it; without the ring it would blend the two.
+    @Test(arguments: [ColorScheme.light, .dark], [true, false])
+    func aMonthThatIsNotChosenHasTheRingOfAControl(scheme: ColorScheme, isActive: Bool) throws {
+        let picture = try picture(isOn: false, isActive: isActive, in: scheme)
+        let inside = try OffscreenPicture.bytes(
+            of: MonthToggleTone(isOn: false, isActive: isActive).background, in: scheme)
+        let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+
+        // The capsule is 60 points wide and 28 tall, 20 points from the top left of the picture.
+        let onRing = picture.bytes(at: CGPoint(x: 50, y: 20 + 28 - 0.25))
+        let fromInside = zip(onRing, inside).map { abs($0 - $1) }.max() ?? 0
+        let fromCard = zip(onRing, card).map { abs($0 - $1) }.max() ?? 0
+
+        #expect(
+            fromInside >= 8 && fromCard >= 8,
+            "\(scheme), active \(isActive): inside \(inside), the card \(card) and the edge \(onRing)")
+    }
+
     // MARK: Failures
 
     /// A line that says what went wrong is in the red of text, not the system's red.
