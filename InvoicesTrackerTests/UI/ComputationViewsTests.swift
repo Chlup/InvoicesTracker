@@ -14,11 +14,6 @@ struct ComputationViewsTests {
 
     private let schemes = [ColorScheme.light, .dark]
 
-    /// The bytes of `colour` in a window of `scheme`, drawn as the pictures draw everything.
-    private func bytes(_ colour: Color, _ scheme: ColorScheme) throws -> [Int] {
-        try OffscreenPicture.bytes(of: colour, in: scheme)
-    }
-
     /// The pixels of the column of `picture` at `x` points, from `top` to `bottom` points, one for each half point.
     private func column(
         of picture: OffscreenPicture, at x: CGFloat, from top: CGFloat, to bottom: CGFloat
@@ -65,16 +60,9 @@ struct ComputationViewsTests {
         return found
     }
 
-    /// How many pixels of the whole of `picture` are `colour`.
-    private func count(of colour: [Int], in picture: OffscreenPicture) -> Int {
-        var found = 0
-        for y in stride(from: CGFloat(0), to: picture.size.height, by: 0.5) {
-            for x in stride(from: CGFloat(0), to: picture.size.width, by: 0.5)
-            where pixelIs(colour, at: CGPoint(x: x, y: y), in: picture) {
-                found += 1
-            }
-        }
-        return found
+    /// The room of the whole of `picture`, in points from its top left.
+    private func room(of picture: OffscreenPicture) -> CGRect {
+        CGRect(origin: .zero, size: picture.size)
     }
 
     /// The size `view` takes where it is offered `width`, as it is hosted alone.
@@ -111,10 +99,10 @@ struct ComputationViewsTests {
     @Test func theBarFillsEachPartToItsFractionOfTheWidthAndLeavesTheRestToTheTrack() throws {
         for scheme in schemes {
             let picture = try OffscreenPicture(of: bar(sampleShares), in: scheme)
-            let tax = try bytes(Palette.tax, scheme)
-            let social = try bytes(Palette.social, scheme)
-            let health = try bytes(Palette.health, scheme)
-            let track = try bytes(Palette.fill, scheme)
+            let tax = try OffscreenPicture.bytes(of: Palette.tax, in: scheme)
+            let social = try OffscreenPicture.bytes(of: Palette.social, in: scheme)
+            let health = try OffscreenPicture.bytes(of: Palette.health, in: scheme)
+            let track = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
             let middle: CGFloat = 24
 
             // The parts end at 15 %, 31,06 % and 37,81 % of the 400 points, which are 80, 144,2 and 171,2 points from
@@ -138,12 +126,13 @@ struct ComputationViewsTests {
 
         for scheme in schemes {
             let picture = try OffscreenPicture(of: bar(sampleShares), in: scheme)
-            let tax = try bytes(Palette.tax, scheme)
-            let card = try bytes(Palette.bgCard, scheme)
+            let tax = try OffscreenPicture.bytes(of: Palette.tax, in: scheme)
+            let social = try OffscreenPicture.bytes(of: Palette.social, in: scheme)
+            let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
 
             // Eight points are 16 pixels of the column through the middle of a part, whatever is above and below.
             let pixels = column(of: picture, at: 112, from: 0, to: picture.size.height)
-            #expect(runs(of: try bytes(Palette.social, scheme), in: pixels) == [16], "\(scheme)")
+            #expect(runs(of: social, in: pixels) == [16], "\(scheme)")
             // The end of the bar is rounded: a point in from the end, in the middle, is the first part, and the corner
             // is cut away, so it is the card.
             #expect(pixelIs(tax, at: CGPoint(x: 21, y: 24), in: picture), "\(scheme): the middle of the end")
@@ -155,7 +144,7 @@ struct ComputationViewsTests {
         let empty = Authority.allCases.map { MarginalShare(authority: $0, fraction: 0) }
         for scheme in schemes {
             let picture = try OffscreenPicture(of: bar(empty), in: scheme)
-            let track = try bytes(Palette.fill, scheme)
+            let track = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
 
             for x in [CGFloat(22), 120, 220, 418] {
                 #expect(pixelIs(track, at: CGPoint(x: x, y: 24), in: picture), "\(scheme) at \(x)")
@@ -172,8 +161,8 @@ struct ComputationViewsTests {
         ]
         for scheme in schemes {
             let picture = try OffscreenPicture(of: bar(whole), in: scheme)
-            let health = try bytes(Palette.health, scheme)
-            let social = try bytes(Palette.social, scheme)
+            let health = try OffscreenPicture.bytes(of: Palette.health, in: scheme)
+            let social = try OffscreenPicture.bytes(of: Palette.social, in: scheme)
 
             #expect(pixelIs(social, at: CGPoint(x: 150, y: 24), in: picture), "\(scheme): the half of the bar")
             #expect(pixelIs(health, at: CGPoint(x: 410, y: 24), in: picture), "\(scheme): the end of the bar")
@@ -196,8 +185,8 @@ struct ComputationViewsTests {
         }
 
         for scheme in schemes {
-            let card = try bytes(Palette.bgCard, scheme)
-            let window = try bytes(Palette.bgWindow, scheme)
+            let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+            let window = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
             let point = CGPoint(x: 24 + 180, y: 24 + 8)
             #expect(!isColour(card, window), "\(scheme): a card is not the colour of the window")
 
@@ -254,10 +243,10 @@ struct ComputationViewsTests {
         #expect(thresholds.bars.map(\.authority) == [nil, .tax, .social])
         for scheme in schemes {
             let picture = try thresholdsPicture(thresholds, in: scheme)
-            let neutral = try bytes(Palette.text2, scheme)
-            let tax = try bytes(Palette.tax, scheme)
-            let social = try bytes(Palette.social, scheme)
-            let track = try bytes(Palette.fill, scheme)
+            let neutral = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
+            let tax = try OffscreenPicture.bytes(of: Palette.tax, in: scheme)
+            let social = try OffscreenPicture.bytes(of: Palette.social, in: scheme)
+            let track = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
 
             // Three bars of 12 pixels, 6 points, one under the other, found at the beginning of the first one.
             let start = column(of: picture, at: 47, from: 24, to: picture.size.height - 24)
@@ -294,10 +283,12 @@ struct ComputationViewsTests {
         #expect(far.bars.map(\.isHighlighted) == [false, false, false])
 
         for scheme in schemes {
-            let green = try bytes(Palette.greenText, scheme)
+            let green = try OffscreenPicture.bytes(of: Palette.greenText, in: scheme)
 
-            let withGreen = count(of: green, in: try thresholdsPicture(reached, in: scheme))
-            let withoutGreen = count(of: green, in: try thresholdsPicture(far, in: scheme))
+            let reachedPicture = try thresholdsPicture(reached, in: scheme)
+            let farPicture = try thresholdsPicture(far, in: scheme)
+            let withGreen = reachedPicture.count(near: green, in: room(of: reachedPicture), by: 2)
+            let withoutGreen = farPicture.count(near: green, in: room(of: farPicture), by: 2)
             #expect(withGreen > 20, "\(scheme): the reached cap is set in green, \(withGreen) pixels")
             #expect(withoutGreen == 0, "\(scheme): no other value is, \(withoutGreen) pixels")
         }
@@ -341,7 +332,7 @@ struct ComputationViewsTests {
         for scheme in schemes {
             for (name, section, colour) in kinds {
                 let picture = try billPicture(section, in: scheme)
-                let expected = try bytes(colour, scheme)
+                let expected = try OffscreenPicture.bytes(of: colour, in: scheme)
 
                 // The dot is 10 points across, from the padding of 20: its column through the middle is 10 points, 20
                 // pixels, high, and in the middle of it the dot starts at 44 points.
@@ -358,22 +349,25 @@ struct ComputationViewsTests {
     @Test func theRulesAreHairlinesAStrongerOneAboveAResultAndAHeavyOneInTheColourOfTextAboveTheTotal() throws {
         for scheme in schemes {
             let picture = try billPicture(billSection(), in: scheme)
+            let hairline = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)
+            let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
+            let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
 
             // The column 2 points in from the content, which holds no text: the rules are the only lines in it. Above
             // the first two rows is the hairline of 1 point, 2 pixels, above the result the stronger one, and above the
             // total the line in the colour of text, 1,5 points, 3 pixels.
             let pixels = column(of: picture, at: 46, from: 26, to: picture.size.height - 26)
-            #expect(runs(of: try bytes(Palette.sep, scheme), in: pixels) == [2, 2], "\(scheme): hairlines")
-            #expect(runs(of: try bytes(Palette.sepStrong, scheme), in: pixels) == [2], "\(scheme): a result")
-            #expect(runs(of: try bytes(Palette.text, scheme), in: pixels) == [3], "\(scheme): the total")
+            #expect(runs(of: hairline, in: pixels) == [2, 2], "\(scheme): hairlines")
+            #expect(runs(of: strong, in: pixels) == [2], "\(scheme): a result")
+            #expect(runs(of: text, in: pixels) == [3], "\(scheme): the total")
         }
     }
 
     @Test func theRulesRunFromThePaddingOfTheLeftEdgeToThePaddingOfTheRightEdge() throws {
         for scheme in schemes {
             let picture = try billPicture(billSection(), in: scheme)
-            let strong = try bytes(Palette.sepStrong, scheme)
-            let card = try bytes(Palette.bgCard, scheme)
+            let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
+            let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
             let pixels = column(of: picture, at: 46, from: 26, to: picture.size.height - 26)
             let top = 26 + CGFloat(pixels.firstIndex { isColour($0, strong) } ?? 0) / 2
 

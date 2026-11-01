@@ -37,8 +37,8 @@ struct InvoiceEditorWindowTests {
     /// the corner is cut, and the card shows 3,5 points in, where the corners of a card, 16 points deep, would still
     /// show the window.
     private func expectPanelOnTheWindow(_ bar: CGRect, in picture: OffscreenPicture, scheme: ColorScheme) throws {
-        let card = try bytes(Palette.bgCard, scheme)
-        let window = try bytes(Palette.bgWindow, scheme)
+        let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+        let window = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
 
         let cut = CGPoint(x: bar.minX + 1.5, y: bar.minY + 1.5)
         expectColour(window, at: cut, in: picture, "\(scheme): the corner of the bar, 1,5 points in,")
@@ -69,11 +69,6 @@ struct InvoiceEditorWindowTests {
             return [scrollView]
         }
         return view.subviews.flatMap { allScrollViews(in: $0) }
-    }
-
-    /// The bytes of `color` in a window of `scheme`.
-    private func bytes(_ color: Color, _ scheme: ColorScheme) throws -> [Int] {
-        try OffscreenPicture.bytes(of: color, in: scheme)
     }
 
     /// Shows the window of the app on `fixture` in the `scheme` appearance, opens the editor on a new invoice from
@@ -126,8 +121,8 @@ struct InvoiceEditorWindowTests {
         try await EditorFixture.with { f in
             try await withEditor(f, template: f.dollarTemplate, scheme: scheme) { window, _ in
                 let picture = try OffscreenPicture(of: window)
-                let accent = try bytes(Palette.accent, scheme)
-                let card = try bytes(Palette.bgCard, scheme)
+                let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
+                let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
 
                 for name in ["Alfa Systems s.r.o.", "Bravo Labs, Inc.", "Cetus Data s.r.o."] {
                     let chip = try buttonFrame(name, in: window)
@@ -154,9 +149,9 @@ struct InvoiceEditorWindowTests {
         try await EditorFixture.with { f in
             try await withEditor(f, template: f.crownTemplate, scheme: scheme) { window, editor in
                 try await waitUntil { editor.canIssue }
-                let fill = try bytes(Palette.fill, scheme)
-                let card = try bytes(Palette.bgCard, scheme)
-                let accent = try bytes(Palette.accent, scheme)
+                let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+                let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
 
                 // Under the toolbar and in the cards.
                 var picture = try OffscreenPicture(of: window)
@@ -214,7 +209,7 @@ struct InvoiceEditorWindowTests {
             try await withEditorOfInvoice(10, on: f, scheme: scheme) { window, _ in
                 let bar = try groupFrame(holdingText: "Upravujete fakturu", in: window)
                 let picture = try OffscreenPicture(of: window)
-                let tint = try bytes(Palette.orangeTint, scheme)
+                let tint = try OffscreenPicture.bytes(of: Palette.orangeTint, in: scheme)
 
                 try expectPanelOnTheWindow(bar, in: picture, scheme: scheme)
                 let warning = try textFrame(startingWith: "Faktura už je vystavená.", in: window)
@@ -295,7 +290,8 @@ struct InvoiceEditorWindowTests {
 
     /// Expects the editor `editor` in `window` to have the rows "Datum vystavení" and "DUZP", one under the other, each
     /// with a date field of its own at the level of its label that shows the day `editor` has for it, and expects
-    /// nothing that VoiceOver reads in `window` to say that the two dates are one ("vystaví se ke stejnému dni").
+    /// nothing that VoiceOver reads in `window` to say that the two dates are one ("vystaví se ke stejnému dni"), in
+    /// any case or with any space.
     private func expectTwoDateRows(
         of editor: InvoiceEditorModel, in window: NSWindow, timeZone: TimeZone
     ) async throws {
@@ -312,7 +308,7 @@ struct InvoiceEditorWindowTests {
             let fieldFrame = window.convertToScreen(frameInWindow(field))
             levels.append(row.midY)
             #expect(abs(fieldFrame.midY - row.midY) < 3, "The date field \(fieldFrame) is not level with \(row)")
-            #expect(fieldFrame.minX > row.minX, "The date field \(fieldFrame) is not beside \(row)")
+            #expect(fieldFrame.minX >= row.maxX, "The date field \(fieldFrame) is not beside \(row)")
         }
         #expect(levels[0] > levels[1], "The rows are not one under the other: \(levels)")
 
@@ -324,9 +320,11 @@ struct InvoiceEditorWindowTests {
         #expect(day(of: fields[0]) == editor.issueDate, "Datum vystavení shows \(day(of: fields[0]))")
         #expect(day(of: fields[1]) == editor.duzp, "DUZP shows \(day(of: fields[1]))")
 
+        // Lower-cased and only "stejnému", so that a capital or a no-break space cannot hide the line of the prototype.
         let readings = accessibilityReadings(in: window)
         #expect(readings.contains("DUZP"), "The editor reads \(readings)")
-        #expect(!readings.contains { $0.contains("stejnému dni") }, "The editor says that the two dates are one")
+        #expect(
+            !readings.contains { $0.lowercased().contains("stejnému") }, "The editor says that the two dates are one")
     }
 
     // MARK: The items, the note and what stops the invoice
@@ -337,7 +335,7 @@ struct InvoiceEditorWindowTests {
         try await EditorFixture.with { f in
             try await withEditor(f, template: f.crownTemplate, scheme: scheme) { window, editor in
                 let picture = try OffscreenPicture(of: window)
-                let strong = try bytes(Palette.sepStrong, scheme)
+                let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
                 let amount = try #require(editor.totals?.total)
                 let total = try textFrame(startingWith: amount, in: window)
 
@@ -357,7 +355,7 @@ struct InvoiceEditorWindowTests {
                 try await waitUntil { !editor.validation.isEmpty }
                 try await scrollTheFormToItsEnd(in: window)
                 let picture = try OffscreenPicture(of: window)
-                let orange = try bytes(Palette.orangeText, scheme)
+                let orange = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
                 let line = try #require(editor.validation.first)
 
                 let frame = try textFrame(startingWith: line, in: window)
@@ -375,7 +373,7 @@ struct InvoiceEditorWindowTests {
                 let hint = "Vytiskne se dole na faktuře."
                 editor.note = InvoicePageFixtures.note(lines: 21)
                 try await scrollTheFormToItsEnd(in: window)
-                let red = try bytes(Palette.redText, scheme)
+                let red = try OffscreenPicture.bytes(of: Palette.redText, in: scheme)
                 var picture = try OffscreenPicture(of: window)
                 var frame = try textFrame(startingWith: hint, in: window)
                 #expect(picture.count(near: red, in: frame, by: 12) > 20, "\(scheme): the hint is not red")
@@ -404,7 +402,7 @@ struct InvoiceEditorWindowTests {
                 let field = CGRect(x: card.minX + 20, y: card.minY + 60, width: card.width - 40, height: 40)
 
                 var picture = try OffscreenPicture(of: window)
-                let caption = try bytes(Palette.text3, scheme)
+                let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
                 #expect(editor.note.isEmpty)
                 try picture.expectText(
                     in: field, setIn: Palette.text3, atLeast: 250, scheme: scheme,
@@ -438,8 +436,8 @@ struct InvoiceEditorWindowTests {
                 try await scrollTheFormToItsEnd(in: window)
                 let box = try cardFrame("Dopad na odvody", in: window)
                 let picture = try OffscreenPicture(of: window)
-                let tint = try bytes(Palette.orangeTint, scheme)
-                let text = try bytes(Palette.text, scheme)
+                let tint = try OffscreenPicture.bytes(of: Palette.orangeTint, in: scheme)
+                let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
                 let heading = try #require(editor.impactText)
 
                 expectColour(tint, at: CGPoint(x: box.minX + 4, y: box.minY + 4), in: picture, "\(scheme): the note")
@@ -461,7 +459,7 @@ struct InvoiceEditorWindowTests {
                 let aside = try cardFrame("Náhled PDF", in: window)
                 let form = try cardFrame("Odběratel a doklad", in: window)
                 let picture = try OffscreenPicture(of: window)
-                let fill = try bytes(Palette.fill, scheme)
+                let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
                 let content = try #require(window.contentView).bounds
 
                 #expect(abs(aside.width - PreviewPane.width) < 0.5, "The aside is \(aside)")
@@ -525,10 +523,10 @@ struct InvoiceEditorWindowTests {
                     let row = try #require(accessibilityElement(labelStartingWith: "Služby pro Alfa", in: window))
                     let rowFrame = try pictureFrame(ofScreenFrame: try #require(row.accessibilityFrame?()), in: window)
                     let picture = try OffscreenPicture(of: window)
-                    let inset = try bytes(Palette.bgInset, scheme)
-                    let line = try bytes(Palette.sep, scheme)
-                    let fill = try bytes(Palette.fill, scheme)
-                    let accentText = try bytes(Palette.accentText, scheme)
+                    let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
+                    let line = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)
+                    let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                    let accentText = try OffscreenPicture.bytes(of: Palette.accentText, in: scheme)
 
                     let inside = CGPoint(x: rowFrame.minX + 6, y: rowFrame.midY)
                     expectColour(inset, at: inside, in: picture, "\(scheme): the choice")
@@ -574,8 +572,8 @@ struct InvoiceEditorWindowTests {
                 let keep = try buttonFrame("Pokračovat v úpravách", in: window)
                 let discard = try buttonFrame("Zahodit", in: window)
                 let picture = try OffscreenPicture(of: window)
-                let fill = try bytes(Palette.fill, scheme)
-                let red = try bytes(Palette.red, scheme)
+                let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                let red = try OffscreenPicture.bytes(of: Palette.red, in: scheme)
 
                 for (name, frame) in [("Pokračovat v úpravách", keep), ("Zahodit", discard)] {
                     #expect(abs(frame.height - DesignMetrics.regularControlHeight) < 0.5, "\(name): \(frame)")

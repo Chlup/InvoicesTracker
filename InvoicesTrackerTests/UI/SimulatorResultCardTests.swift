@@ -24,11 +24,6 @@ struct SimulatorResultCardTests {
         return SimulatorBuilder.page(result, choices: choices, rateFromSettings: false)
     }
 
-    /// The bytes of `colour` in a window of `scheme`.
-    private func bytes(_ colour: Color, _ scheme: ColorScheme) throws -> [Int] {
-        try OffscreenPicture.bytes(of: colour, in: scheme)
-    }
-
     // MARK: The net income
 
     /// The net income is set in the colour of text, in a card of the colour of a card: its figure was green, and orange
@@ -47,12 +42,17 @@ struct SimulatorResultCardTests {
                 .background(Palette.bgCard)
             let picture = try OffscreenPicture(of: view, in: scheme)
             let whole = CGRect(origin: .zero, size: picture.size)
+            let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
+            let orangeText = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
+            let greenText = try OffscreenPicture.bytes(of: Palette.greenText, in: scheme)
+            let orange = try OffscreenPicture.bytes(of: Palette.orange, in: scheme)
+            let green = try OffscreenPicture.bytes(of: Palette.green, in: scheme)
 
-            #expect(picture.count(near: try bytes(Palette.text, scheme), in: whole, by: 2) > 100, "\(scheme)")
-            #expect(picture.count(near: try bytes(Palette.orangeText, scheme), in: whole, by: 2) == 0, "\(scheme)")
-            #expect(picture.count(near: try bytes(Palette.greenText, scheme), in: whole, by: 2) == 0, "\(scheme)")
-            #expect(picture.count(near: try bytes(Palette.orange, scheme), in: whole, by: 2) == 0, "\(scheme)")
-            let dot = try #require(picture.extent(near: try bytes(Palette.green, scheme), by: 2), "\(scheme)")
+            #expect(picture.count(near: text, in: whole, by: 2) > 100, "\(scheme)")
+            #expect(picture.count(near: orangeText, in: whole, by: 2) == 0, "\(scheme)")
+            #expect(picture.count(near: greenText, in: whole, by: 2) == 0, "\(scheme)")
+            #expect(picture.count(near: orange, in: whole, by: 2) == 0, "\(scheme)")
+            let dot = try #require(picture.extent(near: green, by: 2), "\(scheme)")
             #expect((7...8.5).contains(dot.width) && (7...8.5).contains(dot.height), "\(scheme): the dot is \(dot)")
             // The dot is at the left edge of the card's content, before the words.
             #expect(abs(dot.minX - 20) <= 1, "\(scheme): the dot is \(dot)")
@@ -102,7 +102,8 @@ struct SimulatorResultCardTests {
                 .background(Palette.bgWindow)
             let picture = try OffscreenPicture(of: card, in: scheme)
             // Inside the padding of the card, 20 points in from its edges at 24.
-            let rows = picture.rows(near: try bytes(Palette.sep, scheme), from: 44, to: 340, by: 2)
+            let separator = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)
+            let rows = picture.rows(near: separator, from: 44, to: 340, by: 2)
             let found = lines(in: rows)
 
             #expect(found.count == 2, "\(scheme): \(found)")
@@ -111,11 +112,12 @@ struct SimulatorResultCardTests {
                 // A point is two pixel rows, or three where it lies between pixels.
                 #expect((1...1.5).contains(CGFloat(line.count) / 2), "\(scheme): a line of \(line.count) pixel rows")
             }
-            let dot = try #require(picture.extent(near: try bytes(Palette.green, scheme), by: 2), "\(scheme)")
+            let green = try OffscreenPicture.bytes(of: Palette.green, in: scheme)
+            let dot = try #require(picture.extent(near: green, by: 2), "\(scheme)")
             #expect(found[0][0] < dot.minY && dot.maxY < found[1][0], "\(scheme): the dot is not between the lines")
             // The marginal levy stands under the last line, with its bar of 8 points in the colour of the tax.
-            let bar = try #require(
-                picture.extent(near: try bytes(Palette.tax, scheme), by: 2), "\(scheme): the bar of the marginal levy")
+            let tax = try OffscreenPicture.bytes(of: Palette.tax, in: scheme)
+            let bar = try #require(picture.extent(near: tax, by: 2), "\(scheme): the bar of the marginal levy")
             #expect(bar.maxY > found[1][0], "\(scheme): the bar of the marginal levy is not under the last line")
         }
     }
