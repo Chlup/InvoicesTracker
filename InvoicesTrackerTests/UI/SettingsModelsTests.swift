@@ -425,15 +425,24 @@ struct AppTabModelTests {
     }
 
     @Test func theLicencesAreTheBundledTexts() throws {
-        #expect(AppTabModel.licences.map(\.name) == ["IBM Plex Sans", "SQLCipher Community Edition"])
+        #expect(AppTabModel.licences.map(\.name) == ["IBM Plex Sans", "SQLCipher Community Edition", "Sparkle"])
         #expect(
             AppTabModel.licences.map(\.detail)
-                == ["písmo faktur · SIL Open Font License 1.1", "šifrování databáze · licence BSD"])
+                == [
+                    "písmo faktur · SIL Open Font License 1.1", "šifrování databáze · licence BSD",
+                    "aktualizace aplikace · licence MIT",
+                ])
         for licence in AppTabModel.licences {
             let text = try #require(licence.text())
             #expect(!text.isEmpty)
         }
         #expect(try #require(AppTabModel.licences[1].text()).contains("ZETETIC LLC"))
-        #expect(AppTabModel.versionLine("1.0") == "InvoicesTracker 1.0 · data jen v tomto Macu")
+        #expect(try #require(AppTabModel.licences[2].text()).contains("Andy Matuschak"))
+    }
+
+    /// The line under the licences names the app and says where its data stay: it carries no version, which the card
+    /// Aktualizace shows.
+    @Test func theLicenceFooterSaysWhereTheDataStay() {
+        #expect(AppTabModel.licenceFooter == "InvoicesTracker · data jen v tomto Macu")
     }
 }

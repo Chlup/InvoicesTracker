@@ -299,6 +299,11 @@ final class AppModel {
     /// (`lockAfterFailedChange(_:)`).
     @ObservationIgnored lazy var simulatorModel = SimulatorModel(app: self)
 
+    /// What the menu item Zkontrolovat aktualizace… and the card Aktualizace in Nastavení show of Sparkle's updater and
+    /// ask of it. Nil until the launch sets it, before the window shows and whether or not the data is unlocked. The
+    /// launch sets none while the app hosts the unit tests, which start no updater.
+    var updates: UpdatesModel?
+
     /// What the invoice editor is asked to show, or nil when it is closed. The chooser opens over an editor that is
     /// open and leaves it where it is (`requestBeforeChooser`): choosing replaces it, and Zrušit shows it again. The
     /// editor itself goes when there is no request for one any more.

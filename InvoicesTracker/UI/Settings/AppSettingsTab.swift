@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Nastavení › Aplikace: the appearance of the app, the state of the rates with Zkontrolovat teď, and the licences of
-/// the third-party parts with the version of the app. The rows of the rates load again whenever the data changes,
-/// which new rates do too.
+/// Nastavení › Aplikace: the appearance of the app with the card Aktualizace under it (the version of the app, the last
+/// check for a new version, the switch of the daily check and a Zkontrolovat teď of its own), then the state of the
+/// rates with the other Zkontrolovat teď, and the licences of the third-party parts. The rows of the rates load again
+/// whenever the data changes, which new rates do too.
 struct AppSettingsTab: View {
     let app: AppModel
     @State private var model: AppTabModel
@@ -17,7 +18,10 @@ struct AppSettingsTab: View {
 
     var body: some View {
         AdaptiveColumns(minimumColumnWidth: 440, spacing: DesignMetrics.cardSpacing) {
-            appearanceCard
+            VStack(spacing: DesignMetrics.cardSpacing) {
+                appearanceCard
+                updatesCard
+            }
             VStack(spacing: DesignMetrics.cardSpacing) {
                 ratesCard
                 licencesCard
@@ -52,6 +56,14 @@ struct AppSettingsTab: View {
                 .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // MARK: Aktualizace
+
+    /// The card Aktualizace, with the updater of the app (none while the app hosts the unit tests) and the clock and
+    /// the time zone of the app, which say what "dnes" is.
+    private var updatesCard: some View {
+        UpdatesCard(updates: app.updates, now: app.dependencies.clock.now(), timeZone: app.dependencies.timeZone())
     }
 
     // MARK: Kurzy
@@ -131,7 +143,7 @@ struct AppSettingsTab: View {
                     .padding(.vertical, 10)
                 }
                 Hairline()
-                Text(verbatim: model.versionLine)
+                Text(verbatim: AppTabModel.licenceFooter)
                     .font(Typography.callout)
                     .foregroundStyle(Palette.text3)
                     .padding(.top, 10)

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1C3A4D9655C923DF7448381C /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 15A8736F6A54A8965907A4A9 /* Sparkle */; };
 		843EF929865CB44B04D1668F /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = C74BD1DCB37EA1AE9061D938 /* SQLCipher */; };
 /* End PBXBuildFile section */
 
@@ -43,6 +44,7 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				843EF929865CB44B04D1668F /* SQLCipher in Frameworks */,
+				1C3A4D9655C923DF7448381C /* Sparkle in Frameworks */,
 			);
 		};
 		3493A5D930839B6E0025E7EA /* Frameworks */ = {
@@ -90,6 +92,7 @@
 			name = InvoicesTracker;
 			packageProductDependencies = (
 				C74BD1DCB37EA1AE9061D938 /* SQLCipher */,
+				15A8736F6A54A8965907A4A9 /* Sparkle */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* InvoicesTracker.app */;
@@ -146,6 +149,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				76B31F20B47F4D5E2C7E04A1 /* XCRemoteSwiftPackageReference "SQLCipher" */,
+				0C14BB23E2E6EB0DF9F8A39C /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -333,7 +337,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = InvoicesTracker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 3VN358756R;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -341,6 +345,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "InvoicesTracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = InvoicesTracker;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -356,7 +361,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.6;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.1;
 				PRODUCT_BUNDLE_IDENTIFIER = info.chlup.InvoicesTracker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -377,7 +382,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = InvoicesTracker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 3VN358756R;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -385,6 +390,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "InvoicesTracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = InvoicesTracker;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -400,7 +406,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.6;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.1;
 				PRODUCT_BUNDLE_IDENTIFIER = info.chlup.InvoicesTracker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -485,6 +491,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		0C14BB23E2E6EB0DF9F8A39C /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.1;
+			};
+		};
 		76B31F20B47F4D5E2C7E04A1 /* XCRemoteSwiftPackageReference "SQLCipher" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sqlcipher/SQLCipher.swift";
@@ -496,6 +510,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		15A8736F6A54A8965907A4A9 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0C14BB23E2E6EB0DF9F8A39C /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
 		C74BD1DCB37EA1AE9061D938 /* SQLCipher */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 76B31F20B47F4D5E2C7E04A1 /* XCRemoteSwiftPackageReference "SQLCipher" */;
