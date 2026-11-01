@@ -4,15 +4,15 @@ import AppKit
 /// tests, which a test needs where it moves the pointer by hand (`movePointer(to:in:)`); made like `NSWindow` makes it
 /// (`init(contentViewController:)`), a window that is not closed is the window it was before.
 ///
-/// SwiftUI follows the pointer in a window only while it takes the pointer to be inside the window, and it takes
-/// that from the window: it asks where the pointer is when it makes the area it follows the pointer in, and it hears
-/// the pointer come into that area and leave it from AppKit, which hands the window those events of the area. So a
-/// hover that a test brings about with events of its own works only while the real pointer happens to be over the
-/// window, and not when the person has it somewhere else on the screen or is moving it over the window while the test
-/// runs. A window that is closed to the real pointer (`closeToTheRealPointer()`) takes no event of the real mouse
-/// (`NSWindow.ignoresMouseEvents`), passes no event of the pointer that reaches it all the same on to its views
-/// (`sendEvent(_:)`) and says for itself where its pointer is, and the real one cannot change what the test has
-/// opened.
+/// SwiftUI decides whether it takes the pointer to be inside a view when it makes the area it follows the pointer in,
+/// from where the window says the pointer is then, and afterwards only by the events that name the area, which AppKit
+/// hands the window for its views. In an ordinary window both are the real pointer's, that of the person who runs the
+/// tests: where it is when the area is made, and its own coming and going over the window while a test runs, which
+/// would take away what the test has opened, or open what it has not. A window that is closed to the real pointer
+/// (`closeToTheRealPointer()`) takes no event of the real mouse (`NSWindow.ignoresMouseEvents`), passes no event of the
+/// pointer that reaches it all the same on to its views (`sendEvent(_:)`) and says for itself where its pointer is, so
+/// the real pointer cannot change what the test has opened. The test hands the events of its own pointer to the view
+/// itself (`movePointer(to:in:)`).
 @MainActor
 final class TestWindow: NSWindow {
     /// Where a window closed to the real pointer has its pointer until a test moves it: in the corner of the window,
@@ -35,8 +35,8 @@ final class TestWindow: NSWindow {
     }
 
     /// Closes the window to the real pointer: it takes no event of the real mouse, passes no event of the pointer on
-    /// to its views and says its pointer is in the corner (`restingPointer`). Call `makeTheAreasOfThePointerAnew()`
-    /// once the window is shown, so that the views ask the window where the pointer is.
+    /// to its views and says its pointer is in the corner (`restingPointer`). Once the window is shown,
+    /// `makeTheAreasOfThePointerAnew()` has its views make their areas anew with that pointer, as a precaution.
     func closeToTheRealPointer() {
         ignoresMouseEvents = true
         pointer = Self.restingPointer
@@ -61,14 +61,14 @@ final class TestWindow: NSWindow {
         pointer = point
     }
 
-    /// Takes the content of the window out and puts it back, once the window is on the screen and laid out. SwiftUI
-    /// makes the area it follows the pointer in as a view comes to the window, or later, when the view first shows
-    /// something that follows the pointer, and takes the pointer to be inside it only if the window says so then and
-    /// the pointer is inside the view as large as the view is then. A view that comes to the window before it has its
-    /// size, as every view hosted alone does and the columns of the window of the app do now and then, would take the
-    /// pointer to be outside it until it hears the pointer come in, which a move of the test brings about
-    /// (`movePointer(to:in:)`). With the content back, the areas are made anew for the views as large as they are, and
-    /// while the window is closed to the real pointer, with the pointer of the window.
+    /// Takes the content of the window out and puts it back, once the window is on the screen and laid out, so that
+    /// SwiftUI makes the areas it follows the pointer in anew: for the views as large as they are and, while the
+    /// window is closed to the real pointer, with the pointer of the window. SwiftUI makes the area of a view as the
+    /// view comes to the window, or later, when the view first shows something that follows the pointer, and decides
+    /// then, from where the window says the pointer is, whether it takes the pointer to be inside; a view that comes to
+    /// the window before it has its size, as every view hosted alone does and the columns of the window of the app do
+    /// now and then, takes the pointer to be outside it. This is a precaution: a move of the test brings the pointer
+    /// into the area by itself, whatever SwiftUI took it to be (`movePointer(to:in:)`).
     ///
     /// The window is what it was after it: it has the same content view controller, the hosting controller that the
     /// window of the app has for its content, in the same view, and the same frame. Assigning the content view of a

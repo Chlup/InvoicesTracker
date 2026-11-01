@@ -124,12 +124,12 @@ struct TestWindowTests {
         }
     }
 
-    /// SwiftUI follows the pointer in a window only while the window says the pointer is inside it, so a view reacts
-    /// to the pointer that a test moves by hand only while the real pointer of the person who runs the tests is over
-    /// the window too, and not when it is somewhere else on the screen. A window that is closed to the real pointer
-    /// answers for itself: the levy bar of Výpočet fades its other parts while the pointer is over its part of the
-    /// tax, and shows them again when the pointer leaves it, wherever the real pointer is. The window is put where the
-    /// real pointer is not, so that a window that asked the real one would find the pointer outside.
+    /// SwiftUI decides whether it takes the pointer to be inside a view when it makes the view's area, from where the
+    /// window says the pointer is then, and afterwards only by the events that name the area; in an ordinary window
+    /// both are the real pointer's, that of the person who runs the tests. A window that is closed to the real pointer
+    /// answers for itself: the levy bar of Výpočet fades its other parts while the pointer of the test is over its
+    /// part of the tax, and shows them again when the pointer leaves it, wherever the real pointer is. The window is
+    /// put where the real pointer is not, so that a window that asked the real one would find the pointer outside.
     @Test func theLevyBarFollowsThePointerOfTheTestWhereverTheRealPointerIs() async throws {
         try await EditorFixture.with { f in
             let result = try await f.app.computeSelectedYear()
@@ -164,12 +164,11 @@ struct TestWindowTests {
         }
     }
 
-    /// A view that is hosted alone follows the pointer that a test moves by hand: SwiftUI makes the area it follows the
-    /// pointer in as the view comes to the window, before the view has its size, and takes the pointer to be outside
-    /// it until it hears the pointer come in. The window of a test that is closed to the real pointer puts its content
-    /// back once it is laid out (`TestWindow.makeTheAreasOfThePointerAnew()`), and the pointer of the test is inside
-    /// the view then. The window is put where the real pointer is not, and the view follows the pointer of the test
-    /// all the same.
+    /// A view that is hosted alone follows the pointer that a test moves by hand, there and away again, in a window put
+    /// where the real pointer is not. SwiftUI first makes the area of such a view as the view comes to the window,
+    /// before it has its size, and takes the pointer to be outside it then. The window makes the areas anew once it is
+    /// laid out (`TestWindow.makeTheAreasOfThePointerAnew()`), as a precaution, and the move of the test brings the
+    /// pointer into the area by itself, so the view follows the pointer of the test either way.
     @Test func aViewHostedAloneFollowsThePointerOfTheTest() async throws {
         let state = HoverState()
         try await withHostedView(HoverArea(state: state), size: HoverArea.windowSize, ignoringTheRealPointer: true) {
@@ -186,11 +185,11 @@ struct TestWindowTests {
     }
 
     /// A view follows the pointer that a test moves by hand whatever SwiftUI has taken the pointer to be before.
-    /// SwiftUI follows the pointer in a view only once it has heard the pointer come into the area of the view, which
-    /// it hears from AppKit's events of that area, and it takes the pointer to be outside after it has heard it leave.
-    /// Here SwiftUI makes the area while the window says its pointer is outside the view, and so takes the pointer to
-    /// be outside, as it does after a pointer has left; the move of the test brings the pointer into the area again as
-    /// a mouse does, and the view follows it there and away again.
+    /// SwiftUI decides whether it takes the pointer to be inside a view when it makes the view's area, from where the
+    /// window says the pointer is then, and afterwards only by the events that name the area. Here SwiftUI makes the
+    /// area while the window says its pointer is outside the view, and so takes the pointer to be outside, as it does
+    /// after it has heard a pointer leave; the move of the test brings the pointer into the area again as a mouse does,
+    /// and the view follows it there and away again.
     @Test func aViewFollowsThePointerOfTheTestThatSwiftUITookToBeOutsideIt() async throws {
         let state = HoverState()
         try await withHostedView(HoverArea(state: state), size: HoverArea.windowSize, ignoringTheRealPointer: true) {
@@ -211,13 +210,13 @@ struct TestWindowTests {
     /// pointer coming into the area of a view, moving in it and leaving it, as the real pointer of the person who runs
     /// the tests comes and goes. The real pointer leaving takes nothing away from what the pointer of the test has
     /// opened, and the real pointer coming in opens nothing. The events are handed to the window as AppKit hands it the
-    /// events of the area of the view.
+    /// events of the area in which the view follows the pointer (`areasFollowingThePointer(of:)`).
     @Test func theRealPointerComingAndGoingChangesNothingInAWindowClosedToIt() async throws {
         let state = HoverState()
         try await withHostedView(HoverArea(state: state), size: HoverArea.windowSize, ignoringTheRealPointer: true) {
             window in
             let view = try #require(hostingViewTrackingThePointer(in: window.contentView))
-            let area = try #require(view.trackingAreas.first { ($0.owner as AnyObject?) === view })
+            let area = try #require(areasFollowingThePointer(of: view).first)
             try movePointer(to: HoverArea.centre, in: window)
             try await waitUntil { state.isHovered }
 

@@ -22,11 +22,12 @@ enum AppWindowSize {
 ///
 /// The window is on the screen at 100, 100, where the pointer of the person who runs the tests can pass over it, or
 /// not be. With `ignoringTheRealPointer` the window is closed to that pointer (`TestWindow`): it takes no event of
-/// the real mouse and passes no event of the pointer on to its views, says for itself where its pointer is and makes
-/// the areas its views follow the pointer in anew once it is laid out, so that the popover and the hover that a test
-/// brings about with events of its own do not depend on where the real pointer is. A test that moves the pointer by
-/// hand (`movePointer(to:in:)`) asks for it, and the helper refuses a window without it. A test that clicks or scrolls
-/// through the event handling of the app keeps the ordinary window.
+/// the real mouse, passes no event of the pointer on to its views and says for itself where its pointer is, so that
+/// the popover and the hover that a test brings about with events of its own do not depend on where the real pointer
+/// is; as a precaution, it also has its views make the areas they follow the pointer in anew once it is laid out
+/// (`TestWindow.makeTheAreasOfThePointerAnew()`). A test that moves the pointer by hand (`movePointer(to:in:)`) asks
+/// for it, and the helper refuses a window without it. A test that clicks or scrolls through the event handling of the
+/// app keeps the ordinary window.
 @MainActor
 func withAppWindow(
     of app: AppModel, size: CGSize, ignoringTheRealPointer: Bool = false, _ body: (NSWindow) async throws -> Void
@@ -368,25 +369,33 @@ func accessibilityElement(labelStartingWith prefix: String, in window: NSWindow)
 
 /// Moves the pointer over `point` in `window`, given in the coordinates of the window (the origin at its bottom left),
 /// as a mouse does for the views of SwiftUI that follow it (`onHover`): SwiftUI hears of the pointer on its hosting
-/// view, the one that has the tracking area, as the pointer leaving that area, coming into it and moving in it. The
-/// events are made as AppKit makes the events of the area (`crossing(_:of:at:in:)`) and handed to the view itself:
-/// the window of the test passes no event of the pointer on to its views (`TestWindow.sendEvent(_:)`). A point outside
-/// what follows the pointer, such as the corner of the window, takes the pointer away again, and a point outside the
-/// area leaves the pointer out of it. The real cursor does not move, and no event is posted to the system.
+/// view, the one with an area that follows the pointer (`hostingViewTrackingThePointer(in:)`), as the pointer leaving
+/// that area, coming into it and moving in it. The events are made as AppKit makes the events of the area
+/// (`crossing(_:of:at:in:)`) and handed to the view itself: the window of the test passes no event of the pointer on to
+/// its views (`TestWindow.sendEvent(_:)`). A point outside what follows the pointer, such as the corner of the window,
+/// takes the pointer away again, and a point outside the area leaves the pointer out of it. The real cursor does not
+/// move, and no event is posted to the system.
 ///
-/// SwiftUI follows the pointer in a view only between hearing it come into the area of the view and hearing it leave.
-/// It takes the pointer to be outside when it made the area while the window said the pointer was outside the view,
-/// and after it has heard a pointer leave, and it then ignores the pointer moving; nothing that the view shows or how
-/// large the window is changes that, so the view would stay deaf to a pointer that only moved for as long as its
-/// window is open. While SwiftUI takes the pointer to be inside, the pointer coming in again does not move what
-/// follows it. So every move takes the pointer out of the area and brings it in again at `point`, as a pointer that
-/// leaves the window and comes back at that point: SwiftUI follows it there, whatever it took the pointer to be before.
+/// SwiftUI decides whether it takes the pointer to be inside the view when it makes the area, from where the window
+/// says the pointer is then, and afterwards only by the events that name the area: once it has made its area, nothing
+/// that the view shows or how large the window is changes that. While it takes the pointer to be outside, it ignores
+/// the pointer moving, so a view whose area was made while the window said the pointer was outside it, or that has
+/// heard a pointer leave, would stay deaf to a pointer that only moved for as long as its window is open; while it
+/// takes the pointer to be inside, the pointer coming in again does not move what follows it. So every move takes the
+/// pointer out of the area and brings it in again at `point`, as a pointer that leaves the window and comes back at
+/// that point: SwiftUI follows it there, whatever it took the pointer to be before.
+///
+/// What a test sees is that leave and return. A target under the pointer hears its hover end and begin again within
+/// one move, even where the pointer stays over it, and a target that the pointer is taken away from hears its hover
+/// end with the leave, before the pointer has moved: a check that a hover ends when the pointer is taken away, such as
+/// a popover that closes, is met by the leave. So a test must not count the changes of a hover, nor rely on a hover
+/// lasting across a move.
 ///
 /// The window must be closed to the real pointer (`withAppWindow(of:size:ignoringTheRealPointer:_:)`), and its pointer
-/// is put at `point` as the events arrive. SwiftUI follows the pointer only while the window says the pointer is
-/// inside it, and in any other window that is the real pointer of the person who runs the tests: the test would pass
-/// or fail by where that pointer is, and the pointer passing over the window would move what the test has opened.
-/// The helper refuses such a window.
+/// is put at `point` as the events arrive. In any other window the real pointer of the person who runs the tests has a
+/// say: SwiftUI takes where it is when it makes the area, and the real pointer's own events of the area reach the view,
+/// so the pointer passing over the window would change what the test has opened, and the test would pass or fail by
+/// where that pointer is. The helper refuses such a window, and it fails at once where no view follows the pointer.
 @MainActor
 func movePointer(to point: CGPoint, in window: NSWindow) throws {
     let testWindow = try #require(window as? TestWindow, "The window is not a window of the test helpers")
@@ -394,10 +403,11 @@ func movePointer(to point: CGPoint, in window: NSWindow) throws {
         testWindow.isClosedToTheRealPointer,
         "The window is open to the real pointer: open it with ignoringTheRealPointer: true")
     testWindow.putPointer(at: point)
-    let view = try #require(hostingViewTrackingThePointer(in: window.contentView), "No view follows the pointer")
+    let view = try #require(
+        hostingViewTrackingThePointer(in: window.contentView),
+        "No view follows the pointer: no hosting view has an area that follows the pointer coming in and leaving")
     let pointInView = view.convert(point, from: nil)
-    for area in view.trackingAreas
-    where (area.owner as AnyObject?) === view && area.options.contains(.mouseEnteredAndExited) {
+    for area in areasFollowingThePointer(of: view) {
         view.mouseExited(with: try crossing(.mouseExited, of: area, at: point, in: window))
         let rect = area.options.contains(.inVisibleRect) ? view.visibleRect : area.rect
         if rect.contains(pointInView) {
@@ -433,12 +443,23 @@ func pointerMotion(to point: CGPoint, in window: NSWindow) throws -> NSEvent {
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
 }
 
-/// The hosting view of SwiftUI under `view` that has a tracking area, which is where SwiftUI follows the pointer: the
-/// view that `movePointer(to:in:)` hands its events to.
+/// The tracking areas of `view` in which it follows the pointer as the hosting view of SwiftUI does: the areas that the
+/// view owns and that report the pointer coming into them and leaving them. `movePointer(to:in:)` takes the pointer out
+/// of each of them and brings it in again, and finds the view it moves the pointer in by them.
+@MainActor
+func areasFollowingThePointer(of view: NSView) -> [NSTrackingArea] {
+    view.trackingAreas.filter { area in
+        (area.owner as AnyObject?) === view && area.options.contains(.mouseEnteredAndExited)
+    }
+}
+
+/// The hosting view of SwiftUI under `view` that follows the pointer: the first, in the order of the view tree, that
+/// has an area following the pointer (`areasFollowingThePointer(of:)`). It is the view that `movePointer(to:in:)` hands
+/// its events to. Nil while SwiftUI has made no such area, as before a window shows anything that follows the pointer.
 @MainActor
 func hostingViewTrackingThePointer(in view: NSView?) -> NSView? {
     guard let view else { return nil }
-    if !view.trackingAreas.isEmpty, String(describing: type(of: view)).contains("NSHostingView") {
+    if String(describing: type(of: view)).contains("NSHostingView"), !areasFollowingThePointer(of: view).isEmpty {
         return view
     }
     for subview in view.subviews {
