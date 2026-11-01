@@ -2035,6 +2035,94 @@ struct AppWindowLayoutTests {
         return found
     }
 
+    /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today, with an unpaid invoice of 50 000,00 Kč
+    /// without VAT, issued on 5. 10. and due on 25. 10., stored: the average per month counts it, so the strip tells it
+    /// with the sign of an estimate and the line under it goes on after the months, "průměr za leden–říjen, včetně
+    /// nezaplacených faktur splatných do 31. 10.". At the least room, at a large size and at the least room again, the
+    /// net income of the year so far, the average and the legend of the chart stand wholly within the card "Příjmy",
+    /// the two figures do not lie on one another and the page fits the window.
+    @Test func theNetIncomeStripThatCountsTheInvoicesDueStaysWithinTheCardAtBothSizes() async throws {
+        try await PredictionSample.withStoredSample { app in
+            let database = try #require(app.database)
+            var invoice = Invoice.fixture(
+                number: "20261002", issued: "2026-10-05", duzp: "2026-10-05", dueDate: "2026-10-25",
+                items: [.fixture("1", at: 5_000_000)])
+            invoice.clientID = PredictionSample.tango.id
+            invoice.client = ClientSnapshot(client: PredictionSample.tango)
+            try await database.saveInvoice(invoice)
+            await app.didWriteAndBackUp()
+            // The average the engine works out for the year with the 50 000,00 Kč of the invoice received today.
+            var year = try await app.yearInput(for: 2026).input
+            year.receipts.append(
+                Receipt(day: app.today, czkNetHalere: 5_000_000, czkVatHalere: 1_050_000, source: .synthetic))
+            let average = try AppModel.compute(year, asOf: app.today)
+            let figure = PredictionBuilder.estimateSign + CzechFormat.wholeKc(NetIncome(average).monthlyKc)
+
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showOverviewWithTheEstimate(of: app, in: window)
+
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) {
+                            problems(ofPageIn: window)
+                                + problems(ofTheStripThatCountsTheInvoicesDueIn: window, figure: figure)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with the strip of the net income in the card "Příjmy" of Přehled in `window` where its average per
+    /// month counts the unpaid invoices due this month, in words: VoiceOver does not read the average as one phrase
+    /// with `figure` (the sign of an estimate and the amount) and the whole line "průměr za leden–říjen, včetně
+    /// nezaplacených faktur splatných do 31. 10." under it; the net income of the year so far, the average or the
+    /// legend of the chart is not there or is beyond the card; the two figures lie on one another; or they are not
+    /// above the legend. The figures stand side by side or, where the card has not the room, the second under the
+    /// first. The origin of the screen is at the bottom left, so what is above has the larger y. Needs the
+    /// accessibility elements.
+    private func problems(ofTheStripThatCountsTheInvoicesDueIn window: NSWindow, figure: String) -> [String] {
+        guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
+            return ["No card Příjmy"]
+        }
+        var found: [String] = []
+        let words = "Čistý příjem průměrně za měsíc"
+        let line = "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10."
+        // The card of the estimate below the chart has a figure with the same words, so the phrase is found by its
+        // words and its figure, which VoiceOver reads one after the other with a comma between them.
+        let reading = accessibilityReadings(in: window).first { $0.hasPrefix(words + ", " + figure) } ?? ""
+        if !reading.hasSuffix(line) {
+            found.append("The average is not read with its figure and the whole line as one phrase: '\(reading)'")
+        }
+        let parts = [
+            (name: "the net income of the year", reading: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10."),
+            (name: "the average per month", reading: words + ", " + figure),
+            (name: "the legend of the chart", reading: "Vystaveno (podle data vystavení)"),
+        ]
+        var frames: [CGRect] = []
+        for (name, reading) in parts {
+            guard let frame = frameOfText(startingWith: reading, in: window) else {
+                found.append("Cannot find \(name) in the window")
+                continue
+            }
+            frames.append(frame)
+            if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                found.append("\(name) is not within the card: \(frame), the card \(card)")
+            }
+        }
+        guard frames.count == parts.count else { return found }
+        let (year, average, legend) = (frames[0], frames[1], frames[2])
+        let overlap = year.intersection(average)
+        if overlap.width > 0.5 && overlap.height > 0.5 {
+            found.append("The net income and its average lie on one another: \(year), \(average)")
+        }
+        if min(year.minY, average.minY) < legend.maxY - 0.5 {
+            found.append("The net income and its average are not above the legend: \(year), \(average), \(legend)")
+        }
+        return found
+    }
+
     /// What the legend of the chart by years says of the line of the net income, the third key of the legend.
     private static let netIncomeKeyByYears = "Čistý příjem za rok (po odvodech, vždy bez DPH)"
 

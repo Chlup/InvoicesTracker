@@ -4,10 +4,11 @@ import Testing
 
 /// The model of Přehled: what it loads from the database of an app model — the levies of the selected year as of the
 /// day shown, the newest payments with what each adds to them, the invoices of the chart, the net income of each year
-/// of the chart by years and of each month of the chart by months, the VAT, the uniform rates and the advance plan —
-/// and what it keeps of the choices on the screen. The data is the sample year of the engine's regression test with
-/// invented clients, stored in a temporary database, except where a test says it is the prediction sample; the app is
-/// as of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
+/// of the chart by years and of each month of the chart by months, the average of the current year with the unpaid
+/// invoices due this month counted, the VAT, the uniform rates and the advance plan — and what it keeps of the choices
+/// on the screen. The data is the sample year of the engine's regression test with invented clients, stored in a
+/// temporary database, except where a test says it is the prediction sample; the app is as of 17. 10. 2026. In every
+/// expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct OverviewModelTests {
@@ -55,6 +56,58 @@ struct OverviewModelTests {
     /// The column of `year` in the chart of `model`, which is the chart by years.
     private func column(ofYear year: Int, in model: OverviewModel) throws -> ChartColumn {
         try #require(model.data?.columns.first { $0.label == String(year) })
+    }
+
+    /// Stores `invoices` in the data of `app` and tells the app of the write.
+    private func store(_ invoices: [Invoice], in app: AppModel) async throws {
+        let database = try #require(app.database)
+        for invoice in invoices {
+            try await database.saveInvoice(invoice)
+        }
+        await app.didWriteAndBackUp()
+    }
+
+    /// An invoice in crowns for the average of the current year: issued on `issued` and due on `due` (`YYYY-MM-DD`),
+    /// with one item worth `net` haléř without VAT (21 % VAT comes on top), and issued, unpaid and without a review
+    /// flag unless a test says otherwise.
+    private func dueInvoice(
+        _ number: String, issued: String, due: String, net: Int64 = 5_000_000, status: InvoiceStatus = .issued,
+        review: ReviewFlag? = nil, payment: Payment? = nil
+    ) -> Invoice {
+        Invoice.fixture(
+            number: number, issued: issued, duzp: issued, dueDate: due, items: [.fixture("1", at: net)],
+            status: status, review: review, payment: payment)
+    }
+
+    /// The invoice of 50 000,00 Kč without VAT that most tests of the average store: issued on 5. 10. and due on
+    /// 25. 10., unpaid, in the month the app is in.
+    private var theDueInvoice: Invoice {
+        dueInvoice("20261002", issued: "2026-10-05", due: "2026-10-25")
+    }
+
+    /// A receipt made up for an invoice that is due, as the estimate makes up its receipts: `net` haléř without VAT and
+    /// `vat` haléř of VAT, received on `day`.
+    private func madeUpReceipt(_ net: Int64, vat: Int64 = 0, on day: CivilDate) -> Receipt {
+        Receipt(day: day, czkNetHalere: net, czkVatHalere: vat, source: .synthetic)
+    }
+
+    /// The average net income per month of the current year as the strip tells it when it counts invoices that are due,
+    /// with the sign of an estimate: the year as the data of `app` holds it with `receipts` added, worked out by the
+    /// engine as of today.
+    private func averageCounting(_ receipts: [Receipt], in app: AppModel) async throws -> String {
+        var year = try await app.yearInput(for: app.today.year).input
+        year.receipts += receipts
+        let result = try AppModel.compute(year, asOf: app.today)
+        return PredictionBuilder.estimateSign + CzechFormat.wholeKc(NetIncome(result).monthlyKc)
+    }
+
+    /// Writes the payment of the invoice `id` with a day that does not exist, 30. 2. 2027, a day after today, as a
+    /// change of the data outside the app could write it. A year other than 2027 never finds it by its dates, so only a
+    /// read of the invoices that wait for their payment, and of the whole data of the estimate, comes upon it.
+    private nonisolated func storeAPaymentOfADayThatIsNone(ofInvoice id: Int64, in database: Database) async throws {
+        try await database.write { connection in
+            try connection.run("UPDATE payment SET date = ? WHERE invoice_id = ?", [.text("2027-02-30"), .integer(id)])
+        }
     }
 
     /// Month and year chart loads use the injected real day even though the reporting cutoff is month end.
@@ -629,6 +682,364 @@ struct OverviewModelTests {
         #expect(try column(ofYear: 2026, in: model).netAverage?.note == nil)
         #expect(model.rulesWarning == nil)
         #expect(model.errorText == nil)
+    }
+
+    // MARK: The unpaid invoices due this month
+
+    /// The average of the current year counts an unpaid invoice due by the end of the month as paid, levies included:
+    /// it is the year with the 50 000,00 Kč of the invoice received on 17. 10., today, as the engine works it out,
+    /// over the ten months from January through October. It has the sign of an estimate and the words that say which
+    /// invoices it counts, and so has the tooltip of every month of the chart. The figure beside it is still what has
+    /// been received. The invoice adds 7 500 Kč of tax (15 %), 8 030 Kč of social insurance (29,2 % of the 55 % of it
+    /// that is the base) and 3 375 Kč of health insurance (13,5 % of the 50 % of it) to the levies, because the
+    /// flat-rate expenses of the sample year are at their cap already, so it leaves 31 095 Kč more: 1 902 202 Kč for
+    /// the year so far, which is 190 220 Kč over ten months.
+    @Test func anUnpaidInvoiceDueThisMonthCountsInTheAverage() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let received = try #require(await loadedModel(of: app).data).netIncome
+        try await store([theDueInvoice], in: app)
+
+        let model = await loadedModel(of: app)
+
+        let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
+        let data = try #require(model.data)
+        let strip = data.netIncome
+        #expect(counted == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
+        #expect(strip.monthValue == counted)
+        #expect(strip.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(strip.monthLabel == received.monthLabel)
+        #expect(strip.yearValue == received.yearValue)
+        let tooltips = data.columns.compactMap(\.netAverage)
+        #expect(tooltips.count == 12)
+        #expect(tooltips.allSatisfy { $0.value == counted })
+        #expect(tooltips.allSatisfy { $0.note == "Včetně nezaplacených faktur splatných do 31.\u{00A0}10." })
+        #expect(model.errorText == nil)
+    }
+
+    /// Two invoices due this month of the same amount are both counted, though the receipts made up for them are equal.
+    @Test func twoDueInvoicesOfTheSameAmountAreBothCounted() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await store(
+            [
+                dueInvoice("20261003", issued: "2026-10-05", due: "2026-10-25"),
+                dueInvoice("20261004", issued: "2026-10-06", due: "2026-10-26"),
+            ], in: app)
+
+        let model = await loadedModel(of: app)
+
+        let receipt = madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)
+        let both = try await averageCounting([receipt, receipt], in: app)
+        let one = try await averageCounting([receipt], in: app)
+        #expect(both != one)
+        #expect(try #require(model.data).netIncome.monthValue == both)
+    }
+
+    /// Nothing is due this month in the sample: its one invoice that is not paid is a draft in dollars due on 30. 11.
+    /// An issued invoice that is due the day after the month ends does not count either, however soon it is.
+    @Test func theSamplesInvoiceDueNextMonthDoesNotCount() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        let strip = try #require(model.data).netIncome
+        #expect(strip.monthSub == "průměr za leden–říjen")
+        #expect(strip.monthValue == "187\u{00A0}111\u{00A0}Kč")
+        #expect(!strip.monthValue.contains("≈"))
+
+        try await store([dueInvoice("20261003", issued: "2026-10-20", due: "2026-11-01")], in: app)
+        await model.load()
+
+        #expect(try #require(model.data).netIncome == strip)
+    }
+
+    /// Both ends of the rule are counted: an invoice due on 31. 10., the last day of the month, and one issued on
+    /// 1. 1. 2025, the first day of last year. The amounts differ, so an invoice that is missed shows in the average.
+    @Test func theLastDayOfTheMonthAndTheFirstDayOfLastYearAreCounted() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = OverviewModel(app: app)
+        var receipts: [Receipt] = []
+
+        for (name, invoice) in [
+            ("due on 31. 10.", dueInvoice("20261003", issued: "2026-10-05", due: "2026-10-31", net: 5_000_000)),
+            ("issued on 1. 1. 2025", dueInvoice("20250101", issued: "2025-01-01", due: "2025-01-15", net: 3_000_000)),
+        ] {
+            try await store([invoice], in: app)
+            receipts.append(madeUpReceipt(invoice.netMinor, vat: invoice.vatMinor, on: app.today))
+            await model.load()
+
+            let counted = try await averageCounting(receipts, in: app)
+            #expect(try #require(model.data).netIncome.monthValue == counted, "An invoice \(name) is stored")
+        }
+    }
+
+    /// Neither a draft, nor an invoice held for review, nor an invoice issued two years ago counts, though each is due
+    /// by the end of the month: the strip reads as with nothing stored. An invoice for review is not income anywhere
+    /// else in the app, and the bound of two years is the one of the estimate of the whole year.
+    @Test func aDraftAnInvoiceForReviewAndAnInvoiceIssuedTwoYearsAgoDoNotCount() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        let plain = try #require(model.data).netIncome
+
+        for (name, invoice) in [
+            ("a draft", dueInvoice("20261003", issued: "2026-10-05", due: "2026-10-25", status: .draft)),
+            (
+                "an invoice for review",
+                dueInvoice(
+                    "20261004", issued: "2026-10-05", due: "2026-10-25",
+                    review: ReviewFlag(reason: "zrušeno ve Fakturoidu"))
+            ),
+            ("an invoice issued two years ago", dueInvoice("20241201", issued: "2024-12-31", due: "2025-01-14")),
+        ] {
+            try await store([invoice], in: app)
+            await model.load()
+
+            #expect(try #require(model.data).netIncome == plain, "\(name) is stored")
+        }
+    }
+
+    /// An invoice is counted once. One that was paid on or before today is received money, which the levies count
+    /// already, so it is not also read as due; one whose payment is dated after today has not come yet, so it is read
+    /// as due, once, and its payment is not in the levies.
+    @Test func anInvoicePaidTodayIsNeverAlsoCountedAsDueAndOneWithALaterPaymentIsCountedOnce() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = OverviewModel(app: app)
+        func invoice(_ number: String, paidOn day: String) -> Invoice {
+            dueInvoice(
+                number, issued: "2026-10-05", due: "2026-10-25",
+                payment: Payment.fixture(on: day, net: 5_000_000, vat: 1_050_000))
+        }
+
+        try await store([invoice("20261003", paidOn: "2026-10-17")], in: app)
+        await model.load()
+
+        let paid = try #require(model.data).netIncome
+        let received = try AppModel.compute(try await app.yearInput(for: 2026).input, asOf: app.today)
+        #expect(paid.monthValue == CzechFormat.wholeKc(NetIncome(received).monthlyKc))
+        #expect(paid.monthSub == "průměr za leden–říjen")
+
+        try await store([invoice("20261004", paidOn: "2026-10-20")], in: app)
+        await model.load()
+
+        let later = try #require(model.data).netIncome
+        let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
+        #expect(later.monthValue == counted)
+        #expect(later.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+    }
+
+    /// A past year is averaged over its twelve months as it was, whatever is due now: it has neither the sign nor the
+    /// words, and the figure is that of the engine for its last day.
+    @Test func aPastYearKeepsItsAverageWithADueInvoiceStored() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await store([theDueInvoice], in: app)
+        app.selectYear(2025)
+
+        let model = await loadedModel(of: app)
+
+        let strip = try #require(model.data).netIncome
+        let year = try AppModel.compute(try await app.yearInput(for: 2025).input, asOf: civilDate("2025-12-31"))
+        #expect(strip.monthValue == CzechFormat.wholeKc(NetIncome(year).monthlyKc))
+        #expect(strip.monthSub == "průměr za celý rok")
+    }
+
+    /// The chart by years has one average for the current year, wherever it is: with another year shown, its column
+    /// still tells the average that counts the invoices due, with the sign and the words in its note, while the column
+    /// of the year shown is as it was.
+    @Test func inTheYearsChartTheCurrentYearHasTheDueAverageAlsoWhenAnotherYearIsShown() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await store([theDueInvoice], in: app)
+        app.selectYear(2025)
+        let model = OverviewModel(app: app)
+
+        await model.setChartMode(.years)
+
+        let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
+        let current = try #require(try column(ofYear: 2026, in: model).netAverage)
+        #expect(current.value == counted)
+        #expect(current.value.hasPrefix(PredictionBuilder.estimateSign))
+        #expect(current.note?.hasPrefix("Včetně nezaplacených faktur splatných do 31.\u{00A0}10.") == true)
+        let past = try #require(try column(ofYear: 2025, in: model).netAverage)
+        #expect(!past.value.contains("≈"))
+        #expect(past.note == nil)
+        #expect(try #require(model.data).netIncome.monthSub == "průměr za celý rok")
+    }
+
+    /// With the invoice due stored, the page reads as before but for the average of the current year and its note: the
+    /// levies, the result card, the first figure of the strip and the net income of every column of the chart, by
+    /// months and by years, are the same, and so is the average of a past year.
+    @Test func aDueInvoiceChangesNothingButTheAverage() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = OverviewModel(app: app)
+        var before: [OverviewData] = []
+        let modes: [ChartMode] = [.months, .years]
+        for mode in modes {
+            await model.setChartMode(mode)
+            before.append(try #require(model.data))
+        }
+
+        try await store([theDueInvoice], in: app)
+
+        for (mode, was) in zip(modes, before) {
+            await model.setChartMode(mode)
+            let now = try #require(model.data)
+            #expect(now.levies == was.levies, "\(mode)")
+            #expect(now.keyFigure == was.keyFigure, "\(mode)")
+            #expect(now.tiles == was.tiles, "\(mode)")
+            #expect(now.netIncome.yearLabel == was.netIncome.yearLabel, "\(mode)")
+            #expect(now.netIncome.yearValue == was.netIncome.yearValue, "\(mode)")
+            #expect(now.netIncome.yearSub == was.netIncome.yearSub, "\(mode)")
+            #expect(now.netIncome.monthLabel == was.netIncome.monthLabel, "\(mode)")
+            #expect(now.columns.map(\.netIncomeHalere) == was.columns.map(\.netIncomeHalere), "\(mode)")
+            #expect(now.columns.map(\.netIncomeText) == was.columns.map(\.netIncomeText), "\(mode)")
+            #expect(now.columns.map(\.netIncomeNote) == was.columns.map(\.netIncomeNote), "\(mode)")
+            // The average is what changed.
+            #expect(now.netIncome.monthValue != was.netIncome.monthValue, "\(mode)")
+        }
+        let years = try #require(model.data).columns
+        let pastYear = try #require(years.first { $0.label == "2025" })
+        let pastYearBefore = try #require(before[1].columns.first { $0.label == "2025" })
+        #expect(pastYear.netAverage == pastYearBefore.netAverage)
+    }
+
+    /// The figure is the average of the year as of today. A day shown earlier in the year is another calculation, and
+    /// the strip names the months through that day, so it does not count the invoices due. A day to come is received
+    /// by today, so the strip is as of today and counts them.
+    @Test func theInvoicesDueCountOnlyWhereTheYearIsWorkedOutAsOfToday() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await store([theDueInvoice], in: app)
+        let model = OverviewModel(app: app)
+
+        app.pickAsOf(civilDate("2026-03-31"))
+        await model.load()
+
+        let early = try #require(model.data).netIncome
+        #expect(early.monthSub == "průměr za leden–březen")
+        #expect(!early.monthValue.contains("≈"))
+
+        await model.setChartMode(.years)
+
+        let earlyColumn = try #require(try column(ofYear: 2026, in: model).netAverage)
+        #expect(!earlyColumn.value.contains("≈"))
+        #expect(earlyColumn.note == nil)
+
+        app.pickAsOf(civilDate("2026-11-30"))
+        await model.load()
+
+        let late = try #require(model.data).netIncome
+        #expect(late.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(late.monthValue.hasPrefix("≈\u{00A0}"))
+        #expect(try column(ofYear: 2026, in: model).netAverage?.value == late.monthValue)
+    }
+
+    /// An invoice in dollars counts at the ČNB rate of its day of issue, as the chart values it: 10 000,00 dollars of
+    /// 5. 10. 2026 at the rate of that day.
+    @Test func aForeignInvoiceCountsAtTheRateOfItsDayOfIssue() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let dollars = Invoice.fixture(
+            number: "20261003", currency: .usd, issued: "2026-10-05", duzp: "2026-10-05", dueDate: "2026-10-25",
+            items: [.fixture("1", at: 1_000_000)], vatMode: .outsideCountry)
+        try await store([dollars], in: app)
+        let declared = try #require(
+            try cnbYearlyRows([2026]).first { $0.currency == .usd && $0.declaredOn == civilDate("2026-10-05") })
+        let rate = ExchangeRate(currency: .usd, amount: declared.amount, rate: declared.rate)
+
+        let model = await loadedModel(of: app)
+
+        let receipt = madeUpReceipt(rate.czkHalere(fromMinor: 1_000_000), on: app.today)
+        let counted = try await averageCounting([receipt], in: app)
+        let strip = try #require(model.data).netIncome
+        #expect(strip.monthValue == counted)
+        #expect(strip.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+    }
+
+    /// An invoice that is worth nothing brings no receipt, so the strip has neither the sign nor the words: one in a
+    /// currency the data has no rate of (the pound), and one of 0 Kč.
+    @Test func anInvoiceWorthNothingBringsNeitherTheSignNorTheNote() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        let plain = try #require(model.data).netIncome
+        let pounds = Invoice.fixture(
+            number: "20261003", currency: try #require(CurrencyCode("GBP")), issued: "2026-10-05", duzp: "2026-10-05",
+            dueDate: "2026-10-25", items: [.fixture("1", at: 1_000_000)], vatMode: .outsideCountry)
+
+        for (name, invoice) in [
+            ("in pounds without a rate", pounds),
+            ("of 0 Kč", dueInvoice("20261004", issued: "2026-10-05", due: "2026-10-25", net: 0)),
+        ] {
+            try await store([invoice], in: app)
+            await model.load()
+
+            #expect(try #require(model.data).netIncome == plain, "An invoice \(name) is stored")
+        }
+    }
+
+    /// Last December's invoice that is due in January counts in January. The year in progress, 2027, has no rules in
+    /// the app yet and is worked out with those of 2026 as an estimate, but the strip does not mark its figures for
+    /// that, so the average has the one sign of the invoices it counts.
+    @Test func lastDecembersInvoiceDueInJanuaryCountsInJanuary() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2027, 1, 15)))
+        try await startFresh(app)
+        try await store([dueInvoice("20261201", issued: "2026-12-20", due: "2027-01-05")], in: app)
+        #expect(app.today == civilDate("2027-01-15"))
+
+        let model = await loadedModel(of: app)
+
+        let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
+        let strip = try #require(model.data).netIncome
+        #expect(model.rulesWarning != nil)
+        #expect(strip.monthValue == counted)
+        #expect(strip.monthSub == "průměr za leden, včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
+    }
+
+    /// The figure is an extra of the page: when the invoices due cannot be read, the page loads without it, as it does
+    /// without the estimate, and the average is the one of the money received.
+    @Test func aDueFigureThatCannotBeWorkedOutIsLeftOutAndTheRestOfThePageStays() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        try await store([theDueInvoice], in: app)
+        let model = await loadedModel(of: app)
+        #expect(try #require(model.data).netIncome.monthValue.hasPrefix("≈\u{00A0}"))
+        let levies = try #require(model.data).levies
+
+        // An invoice of last year, due by the end of the month, with a payment dated after today that no year but 2027
+        // reads, and a day that does not exist.
+        let held = try await database.saveInvoice(
+            dueInvoice("20251201", issued: "2025-12-20", due: "2026-01-05", payment: .fixture(on: "2027-03-01")))
+        try await storeAPaymentOfADayThatIsNone(ofInvoice: held, in: database)
+        await model.load()
+
+        let data = try #require(model.data)
+        #expect(model.errorText == nil)
+        #expect(data.netIncome.monthValue == "187\u{00A0}111\u{00A0}Kč")
+        #expect(data.netIncome.monthSub == "průměr za leden–říjen")
+        #expect(data.levies == levies)
+        #expect(data.latestReceipts.count == 5)
+        #expect(data.columns.count == 12)
     }
 
     // MARK: The estimate of the whole year

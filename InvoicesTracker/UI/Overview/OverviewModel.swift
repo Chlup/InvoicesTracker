@@ -18,11 +18,17 @@ import Observation
 /// whole income and levies for its card, which is made from today's data whatever the day shown is
 /// (`AppModel.predictionOutcome(year:)`). For the chart of the card a load also works out what each payment the
 /// estimate expects adds to the levies on its own day (`PredictionOutcome.expectedPayments()`), which asks the engine
-/// for them and so is done here and not by the builder. The screen loads again whenever what the data depends on
-/// changes (`AppModel.reloadKey`), and when the day changes, which the estimate follows. The model keeps the data of
-/// the last load until the next one has finished, so that the screen does not flash empty; a load that fails shows a
-/// line instead. An estimate that fails does not: its card is left out and the rest of the page loads. Nor does a year
-/// of the chart whose levies cannot be worked out: it has no net income in the chart.
+/// for them and so is done here and not by the builder. The levies of the current year as of today are also worked out
+/// a second time with the unpaid invoices due by the end of the month counted as paid (`DueInvoices`), for the average
+/// of its net income (`DueNetIncome`): from the year shown when that is the current year and the day shown is not
+/// before today, and otherwise from the year as the chart by years has it. Nothing is read for it where the levies of
+/// the current year are not worked out as of today, and no second calculation is made where no invoice counts. The
+/// screen loads again whenever what the data depends on changes (`AppModel.reloadKey`), and when the day changes, which
+/// the estimate follows. The model keeps the data of the last load until the next one has finished, so that the screen
+/// does not flash empty; a load that fails shows a line instead. An estimate that fails does not: its card is left out
+/// and the rest of the page loads. Nor does a year of the chart whose levies cannot be worked out: it has no net income
+/// in the chart. Nor do the invoices due: when they cannot be read or counted, the average is the one of the money
+/// received.
 @MainActor
 @Observable
 final class OverviewModel {
@@ -99,6 +105,10 @@ final class OverviewModel {
         var provisionalNotice: String?
     }
 
+    /// Reads what the screen shows for the year shown as of the day shown and builds it, with the warnings that go with
+    /// it. Throws `VaultError.locked` while the data is locked, and the error of any read or calculation that fails but
+    /// for those of the extras of the page, which are left out instead: the estimate, the net income of a year of the
+    /// chart and the average that counts the unpaid invoices due this month.
     private func assemble() async throws -> Loaded {
         guard let database = app.database else { throw VaultError.locked }
         // The year, the day, today and the choices as they are when the load starts: all of it is about them, however
@@ -111,7 +121,8 @@ final class OverviewModel {
 
         // The levies and the effects of the receipts are worked out from one read of the year, so that they agree
         // (`computeSelectedYear()` would read it again for itself). The current year is read once more, for the
-        // estimate of its card (`loadEstimate(ofYear:)`).
+        // estimate of its card (`loadEstimate(ofYear:)`), and, when it is not the year shown, for the average that
+        // counts the invoices due (`loadDueNetIncome(shown:shownInput:result:netIncomeResults:today:in:)`).
         // The levies and the receipts are of the day the money is received by (`AppModel.receivedThrough`), while the
         // chart reports the invoices issued up to the reporting cutoff, the end of the current month.
         let yearInput = try await app.yearInput(for: shown.year).input
@@ -143,6 +154,9 @@ final class OverviewModel {
         }
         let isProvisional = try await database.hasProvisionalReceipt(year: shown.year, through: day)
         let estimate = try await loadEstimate(ofYear: shown.year)
+        let dueNetIncome = try await loadDueNetIncome(
+            shown: shown, shownInput: yearInput, result: result, netIncomeResults: netIncomeResults, today: today,
+            in: database)
 
         let input = OverviewInput(
             year: shown.year, asOf: shown.asOf, today: today, result: result, advances: yearInput.advances,
@@ -150,7 +164,7 @@ final class OverviewModel {
             chartRows: chartRows, chartYears: years, vatByMonth: vatByMonth, vatToCheckMonths: vatToCheckMonths,
             foreignCurrencies: foreignCurrencies, uniformRates: uniformRates, yearsAtUniformRate: yearsAtUniformRate,
             prediction: estimate, netIncomeResults: netIncomeResults, invoicePaymentEffects: invoicePaymentEffects,
-            expectedPayments: estimate?.expectedPayments() ?? []
+            expectedPayments: estimate?.expectedPayments() ?? [], dueNetIncome: dueNetIncome
         )
         let warning =
             result.rulesAreEstimate ? RulesWarning.message(year: result.year, rulesYear: result.rules.year) : nil
@@ -173,6 +187,43 @@ final class OverviewModel {
             throw CancellationError()
         } catch {
             AppModel.log("Loading the estimate of Přehled", failedWith: error)
+            return nil
+        }
+    }
+
+    /// The levies of the current year as of today with the unpaid invoices due by the end of its month counted as paid
+    /// on today (`DueNetIncome`), or nil when the page has no such figure: the year has no levies as of today on this
+    /// page, no invoice counts, or the invoices cannot be read or counted. The current year's levies as of today are
+    /// the ones the page shows when the year shown is the current one (`result`, `shownInput`), and otherwise the ones
+    /// of its column in the chart by years (`netIncomeResults`); where they are of another day (the day shown is before
+    /// today) there is no figure, as the average it would replace is of that day. The invoices are read by
+    /// `Database.dueUnpaidRows(issuedFrom:dueThrough:today:)` and turned into receipts of today
+    /// (`DueInvoices.receipts(of:on:)`), which are added to the receipts of the year as the data holds them. The
+    /// figure is an extra of the page: a failure is logged (the domain and the code of the error alone) and never keeps
+    /// the rest of the page from showing. Cancellation propagates to the screen load so that an interrupted lookup
+    /// cannot remove an already displayed figure.
+    private func loadDueNetIncome(
+        shown: AsOfState, shownInput: YearInput, result: TaxResult, netIncomeResults: [Int: TaxResult],
+        today: CivilDate, in database: Database
+    ) async throws -> DueNetIncome? {
+        let current = shown.year == today.year ? result : netIncomeResults[today.year]
+        guard let current, current.asOf == today else { return nil }
+        do {
+            let dueThrough = DueInvoices.dueThrough(today: today)
+            let rows = try await database.dueUnpaidRows(
+                issuedFrom: DueInvoices.issuedFrom(today: today), dueThrough: dueThrough, today: today)
+            let receipts = DueInvoices.receipts(of: rows, on: today)
+            guard !receipts.isEmpty else { return nil }
+            var input = shownInput
+            if shown.year != today.year {
+                input = try await app.yearInput(for: today.year).input
+            }
+            input.receipts += receipts
+            return DueNetIncome(result: try AppModel.compute(input, asOf: today), dueThrough: dueThrough)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            AppModel.log("Loading the due invoices of Přehled", failedWith: error)
             return nil
         }
     }
