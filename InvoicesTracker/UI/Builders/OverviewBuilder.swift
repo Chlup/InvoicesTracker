@@ -55,8 +55,8 @@ nonisolated struct OverviewInput: Sendable {
     /// (`YearFXState.effective`); the others convert it at the ČNB rates of the days.
     var yearsAtUniformRate: Set<Int>
 
-    /// The estimate of the whole of `year`, made from today's data whatever day "K datu" shows, or nil when there is
-    /// none: the screen makes it only for the current year.
+    /// The estimate of the whole of `year`, made from today's data whatever the reporting cutoff is, or nil when there
+    /// is none: the screen makes it only for the current year.
     var prediction: PredictionOutcome? = nil
 
     /// The levies of each year of the years chart as of the day its net income is counted to

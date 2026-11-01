@@ -13,7 +13,7 @@ import SwiftUI
 /// the left, the social and the health insurance with the net income under them on the right, side by side where the
 /// window has room for two columns and one under the other where it has not. The title and the line under it are the
 /// shell's. The screen only lays out the page the model builds. The data is loaded again whenever what it depends on
-/// changes, and when the day changes: the estimate is made as of today, whatever "K datu" shows.
+/// changes, and when the day changes: the estimate is made as of today, whatever the reporting cutoff is.
 struct PredictionScreen: View {
     let app: AppModel
     @State private var model: PredictionModel
@@ -24,7 +24,8 @@ struct PredictionScreen: View {
     }
 
     /// What the page depends on: what every screen loads for, and today, because the estimate counts the invoices up to
-    /// today: when midnight passes while "K datu" is on another day, nothing else changes and the page is out of date.
+    /// today: when midnight passes while the reporting cutoff stays where it is, nothing else changes and the page is
+    /// out of date.
     private nonisolated struct LoadTrigger: Hashable {
         var key: ReloadKey
         var today: CivilDate

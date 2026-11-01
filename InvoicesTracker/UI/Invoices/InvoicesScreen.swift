@@ -25,8 +25,8 @@ struct InvoicesScreen: View {
     }
 
     /// What the list depends on: what every screen loads for, today (the status of an invoice is as of today, so the
-    /// list loads again when the day changes even if "K datu" stays on another day), the choices of this screen, and an
-    /// invoice that another screen asked to open.
+    /// list loads again when the day changes even if the reporting cutoff stays where it is), the choices of this
+    /// screen, and an invoice that another screen asked to open.
     private struct LoadTrigger: Hashable {
         var key: ReloadKey
         var today: CivilDate

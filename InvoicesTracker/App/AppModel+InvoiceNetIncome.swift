@@ -9,9 +9,9 @@ private nonisolated struct ExpectedRateKey: Hashable {
 
 /// The net income of invoices, loaded from what the data holds.
 extension AppModel {
-    /// The net of each of `invoices` that has one, by invoice id, as of `asOf` ("K datu"): what the invoice leaves
-    /// after the levies its payment adds, or would add (`InvoiceNetIncome`). The work is done away from the main actor
-    /// (`invoiceNetIncomes(of:asOf:in:)`), which this waits for once.
+    /// The net of each of `invoices` that has one, by invoice id, as of `asOf`, the reporting cutoff: what the invoice
+    /// leaves after the levies its payment adds, or would add (`InvoiceNetIncome`). The work is done away from the main
+    /// actor (`invoiceNetIncomes(of:asOf:in:)`), which this waits for once.
     ///
     /// An invoice that is not paid and not in crowns is worth the latest ČNB rate of its currency declared on or before
     /// the day its money is expected (`InvoiceNetIncome.expectedDay(of:asOf:)`), or, when there is none, the rate fixed

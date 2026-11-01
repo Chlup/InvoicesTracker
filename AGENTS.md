@@ -179,7 +179,7 @@ user before building.
     result of a bill);
   - hatching: the 3-point stripes that mark an estimate in a bar or a chart (`Hatching`, `HatchedFill`);
   - pill;
-  - note (info, estimate, success, warning);
+  - note (`Note`, with the tones `.info`, `.attention`, `.success` and `.error`);
   - bill row;
   - segmented control: a fill track with the selected segment on bg-card (`SegmentedControl`), for the few choices
     of a screen, such as the scope of Faktury, the grouping of the charts and the tabs of Nastavení;

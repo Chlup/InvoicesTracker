@@ -287,7 +287,8 @@ nonisolated enum RefreshPlanner {
 
     /// When the refresh has to run next, if no trigger comes first: the next fetch of the ČNB (14:35 and its retries on
     /// a business day whose rates are not cached, otherwise 14:35 of the next business day; after a failure, the time
-    /// the back-off ends), or the next midnight in `localTimeZone` while "K datu" follows today, whichever is earlier.
+    /// the back-off ends), or the next midnight in `localTimeZone` while the reporting cutoff follows today
+    /// (`AsOfState.followsToday`), whichever is earlier.
     /// The result is never less than a minute from `now`. The timer may come up to `wakeTolerance` later.
     static func nextWake(now: Date, state: RefreshState, followsToday: Bool, localTimeZone: TimeZone) -> Date {
         var wake = cnbWake(now: now, state: state)

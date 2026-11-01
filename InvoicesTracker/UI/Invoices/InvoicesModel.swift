@@ -1,12 +1,12 @@
 import Foundation
 import Observation
 
-/// The model of Faktury: loads what the screen shows for the selected year as of the day of "K datu", in the chosen
-/// scope, status chip and search, and turns it into view data (`InvoiceListBuilder`); keeps the detail of one invoice
-/// open or closed; issues a draft from its detail in one click, without the editor; and deletes an invoice, or removes
-/// its payment, once its number is typed.
+/// The model of Faktury: loads what the screen shows for the selected year as of the reporting cutoff (`asOf`), in the
+/// chosen scope, status chip and search, and turns it into view data (`InvoiceListBuilder`); keeps the detail of one
+/// invoice open or closed; issues a draft from its detail in one click, without the editor; and deletes an invoice, or
+/// removes its payment, once its number is typed.
 ///
-/// The money is as of the day of "K datu", but the status of an invoice is as of today, whatever year or day is shown:
+/// The money is as of the reporting cutoff, but the status of an invoice is as of today, whatever year or day is shown:
 /// it drives the pill, the chips and their counts, the chosen chip and the detail with its buttons. A payment of
 /// January makes an invoice of the year before paid in the list of that year too.
 ///

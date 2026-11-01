@@ -106,7 +106,7 @@ struct LockedView: View {
 }
 
 /// The lock in a circle at the top of a locked screen: a symbol in the grey text on the grey fill, 64 points across,
-/// about 25 points tall as the design draws it.
+/// about 24 points tall as the design draws it.
 struct LockSymbol: View {
     var body: some View {
         Image(systemName: "lock")

@@ -7,8 +7,8 @@ import Foundation
 nonisolated struct InvoiceListInput: Sendable {
     var year: Int
 
-    /// The day the screen is shown as of ("K datu"). It decides which payments have been received, and so the money:
-    /// the list of what was paid in the year, the column in crowns and the totals of the summary row.
+    /// The day the screen is shown as of, the reporting cutoff. It decides which payments have been received, and so
+    /// the money: the list of what was paid in the year, the column in crowns and the totals of the summary row.
     var asOf: CivilDate
 
     /// The day the status of an invoice is worked out for: today, whatever year or day the screen is shown as of. It
@@ -170,8 +170,8 @@ nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
     /// Kč/USD". Nil for every other value.
     var czkHelp: String?
 
-    /// Whether the payment of the invoice has been received by the chosen day ("K datu"): `czk` is then what was paid,
-    /// and otherwise an estimate. The status cannot tell, as it does not depend on the chosen day.
+    /// Whether the payment of the invoice has been received by the reporting cutoff: `czk` is then what was paid, and
+    /// otherwise an estimate. The status cannot tell, as it does not depend on the cutoff.
     var hasReceivedPayment: Bool
 
     /// What the invoice leaves after the levies its payment adds, or would add, in whole Kč: for a payment,

@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// The model of Přehled: loads what the screen shows for the selected year as of the day of "K datu" and turns it into
-/// view data (`OverviewBuilder`), and keeps the choices of the chart in the settings.
+/// The model of Přehled: loads what the screen shows for the selected year as of the reporting cutoff (`asOf`) and
+/// turns it into view data (`OverviewBuilder`), and keeps the choices of the chart in the settings.
 ///
 /// A load reads the selected year from the data: its receipts and settings, the invoices of its newest receipts, the
 /// invoices of the chart (those of all the years only when the chart groups by years), its VAT, its currencies, its

@@ -132,9 +132,9 @@ final class PaymentSheetModel {
     }
 
     /// The sheet for `invoice`: the day shown, or the day of issue when that is later, as the day the money arrived,
-    /// but never a day after today, which the sheet would refuse (`dateError`): "K datu" can be later than today, and
-    /// an invoice can be issued later than today. For an invoice that has a payment already, that payment as it is
-    /// stored.
+    /// but never a day after today, which the sheet would refuse (`dateError`): the reporting cutoff can be later than
+    /// today (it is the end of the current month), and an invoice can be issued later than today. For an invoice that
+    /// has a payment already, that payment as it is stored.
     init(app: AppModel, invoice: Invoice) {
         self.app = app
         self.invoice = invoice
