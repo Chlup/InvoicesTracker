@@ -39,7 +39,7 @@ struct SimulatorResultCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SimulatorResultCardMetrics.partSpacing) {
-            KeyFigureView(summary.keyFigure, sentenceFont: Typography.callout)
+            KeyFigureView(summary.keyFigure, sentenceFont: Typography.callout, spacing: .simulator)
             // The bar draws itself above what follows it, so its popover hangs below its legend over the net income and
             // the marginal levy.
             LevyBarView(summary.levyBar)

@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// A part of the sentence under a key figure, and whether it stands out.
@@ -53,9 +52,9 @@ nonisolated struct KeyFigureData: Sendable, Hashable {
 }
 
 /// The spaces a screen gives its key figure around the figure, in points, counted from the line of the figure, which
-/// is as tall as its 44 points: from the eyebrow down to that line, and from it down to the sentence. The board has 8
-/// and 8, and each screen of the prototype sets its own, by the gap of the column the key figure stands in and the
-/// margin above its sentence.
+/// is as tall as its 44 points: from the eyebrow down to that line, and from it down to the sentence, and between the
+/// figure and its share where they stand on one line. The board has 8, 8 and 14, and each screen of the prototype sets
+/// its own, by the gap of the column the key figure stands in, the margin above its sentence and the gap of its share.
 nonisolated struct KeyFigureSpacing: Sendable, Hashable {
     /// The space between the eyebrow and the line of the figure.
     var aboveFigure: CGFloat
@@ -63,8 +62,15 @@ nonisolated struct KeyFigureSpacing: Sendable, Hashable {
     /// The space between the line of the figure and the sentence.
     var belowFigure: CGFloat
 
-    /// The board's key figure, and the Simulátor's: a column 8 points apart.
+    /// The space between the figure and its share where they stand on one line, 14 points unless the screen's design
+    /// has another. Where the share has gone under the figure, it is 4 points under it on every screen.
+    var shareGap: CGFloat = 14
+
+    /// The board's key figure: a column 8 points apart, and the share 14 points after the figure.
     static let board = KeyFigureSpacing(aboveFigure: 8, belowFigure: 8)
+
+    /// The Simulátor: a column 8 points apart as the board has it, and the share 12 points after the figure.
+    static let simulator = KeyFigureSpacing(aboveFigure: 8, belowFigure: 8, shareGap: 12)
 
     /// Přehled: a column 8 points apart, and the sentence 4 points lower (its margin of 4).
     static let overview = KeyFigureSpacing(aboveFigure: 8, belowFigure: 12)
@@ -81,20 +87,6 @@ nonisolated struct KeyFigureSpacing: Sendable, Hashable {
 
 /// The sizes and gaps of a key figure.
 private nonisolated enum KeyFigureMetrics {
-    /// How far the letters of the figure are pulled up into its line, which the design makes as tall as the figure's
-    /// size (`line-height: 1`): half of what the line of the display font is taller than its size, which is what such
-    /// a line height leaves out above the letters, and the same again below them (the half-leading). The font keeps
-    /// about 52 points of line for its 44 points, for its highest and lowest letters, so this is about 4 points.
-    static let figureHalfLeading: CGFloat = {
-        let size = Typography.displaySize
-        let bold = NSFont.systemFont(ofSize: size, weight: .bold)
-        let font = bold.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? bold
-        return max(0, (font.ascender - font.descender + font.leading - size) / 2)
-    }()
-
-    /// The space between the figure and its share where they stand on one line.
-    static let shareGap: CGFloat = 14
-
     /// The space between the figure and its share where the share has gone under the figure.
     static let shareLineGap: CGFloat = 4
 
@@ -165,7 +157,7 @@ struct KeyFigureView: View {
     private var figureLine: some View {
         if let share = data.share {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: KeyFigureMetrics.shareGap) {
+                HStack(alignment: .firstTextBaseline, spacing: spacing.shareGap) {
                     figure
                     shareText(share)
                 }
@@ -195,7 +187,7 @@ struct KeyFigureView: View {
             .lineLimit(1)
             .minimumScaleFactor(KeyFigureMetrics.minimumFigureScale)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, -KeyFigureMetrics.figureHalfLeading)
+            .padding(.top, -Typography.displayHalfLeading)
             .frame(height: Typography.displaySize, alignment: .top)
     }
 

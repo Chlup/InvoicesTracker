@@ -74,6 +74,42 @@ struct SimulatorResultCardTests {
         #expect(abs(strip.height - expected) <= 1.5, "\(strip.height) and \(expected)")
     }
 
+    // MARK: The share of the key figure
+
+    /// The share of the key figure, "18,4 %", stands 12 points after the figure in the card of the Simulátor, where the
+    /// prototype has a gap of 12 (the board and the other screens that have a share have 14): its letters start 2
+    /// points nearer the figure than in a key figure with the spacing of the board, both under the padding of 20.
+    @Test func theShareStands12PointsAfterTheFigureInTheCardOfTheSimulator() throws {
+        let summary = try page(income: 2_500_000).summary
+        let data = summary.keyFigure
+        #expect(data.share != nil, "The key figure has no share")
+        // The line of the figure: under the padding of 20, the eyebrow and the 8 points of the spacing, 44 points tall.
+        let eyebrow = fittingHeight(of: Text(verbatim: data.eyebrow).eyebrow(), width: 320)
+        let top = 20 + eyebrow + 8
+
+        for scheme in schemes {
+            let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
+            let text2 = try OffscreenPicture.bytes(of: Palette.text2, in: scheme)
+            /// Where the share starts: the left edge of the grey letters in the line of the figure, from 3 points after
+            /// the figure, whose soft edge passes through every shade of grey.
+            func shareStart(of view: some View) throws -> CGFloat {
+                let picture = try OffscreenPicture(of: view.background(Palette.bgCard), in: scheme)
+                let line = CGRect(x: 10, y: top, width: picture.size.width - 20, height: 44)
+                let figure = try #require(picture.extent(near: text, in: line, by: 3), "\(scheme): no figure")
+                let after = CGRect(x: figure.maxX + 3, y: top, width: picture.size.width - figure.maxX - 13, height: 44)
+                return try #require(picture.extent(near: text2, in: after, by: 3), "\(scheme): no share").minX
+            }
+            let card = try shareStart(of: SimulatorResultCard(summary: summary).frame(width: 360))
+            let board = try shareStart(
+                of: KeyFigureView(data, sentenceFont: Typography.callout, spacing: .board).frame(width: 320)
+                    .padding(20))
+
+            #expect(
+                abs((board - card) - 2) <= 0.5,
+                "\(scheme): the share starts at \(card), with the board's gap at \(board)")
+        }
+    }
+
     // MARK: The hairlines
 
     /// The groups of consecutive `rows` (the y of pixel rows, half a point apart) that are one line each.

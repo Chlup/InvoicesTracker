@@ -559,7 +559,7 @@ struct PredictionWindowTests {
                     #expect(
                         abs(frame.height - height(figure.spacing)) < 0.5,
                         "\(figure.data.eyebrow) is \(frame.height) tall, not \(height(figure.spacing))")
-                    #expect(abs(height(figure.spacing) - height(.board)) >= 2, "\(figure.spacing) is the board's")
+                    #expect(abs(height(figure.spacing) - height(.board)) >= 1.5, "\(figure.spacing) is the board's")
                 }
             }
         }

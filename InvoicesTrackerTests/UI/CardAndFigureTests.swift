@@ -259,6 +259,30 @@ struct CardAndFigureTests {
         #expect(abs(figure.width - own.width) <= 0.5, "The figure is \(figure.width) wide, alone \(own.width)")
     }
 
+    /// The letters of the figure are pulled up into its line of 44 points by the half-leading: half of what the natural
+    /// line of the display font is taller than 44. With SwiftUI's own line as the measure, the top of the digits stands
+    /// as far under the top of the line of the figure as it does in a line of the font laid out alone, less the
+    /// half-leading. Without the pull-up the digits would stand about 4 points lower, in the middle of a line that is
+    /// 44 points tall and lower than the line of the font.
+    @Test func theLettersOfTheFigureAreSetHigherByTheHalfLeading() throws {
+        let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
+        let inKeyFigure = try OffscreenPicture(
+            of: KeyFigureView(lineData).frame(width: 400).padding(20).background(Palette.bgCard), in: .light)
+        let alone = try OffscreenPicture(
+            of: Text(verbatim: lineData.figure).font(Typography.display).monospacedDigit().tracking(-0.88)
+                .padding(20).background(Palette.bgCard),
+            in: .light)
+        let figure = try #require(inKeyFigure.extent(near: text, by: 20), "No figure in the key figure")
+        let own = try #require(alone.extent(near: text, by: 20), "No figure alone")
+        let naturalLine = fittingHeight(of: Text(verbatim: lineData.figure).font(Typography.display), width: 400)
+        #expect(naturalLine > 44 + 4, "The line of the display font is \(naturalLine) points tall")
+        // The line of the figure starts under the padding of 20, the eyebrow and the 8 points of the board, and the
+        // letters start where they do in the picture of the figure alone (whose padding is 20), less the half-leading.
+        let expected = 20 + heightsOfTheEyebrowAndTheSentence().eyebrow + 8 + (own.minY - 20) - (naturalLine - 44) / 2
+
+        #expect(abs(figure.minY - expected) <= 1, "The digits start \(figure.minY) points down, not \(expected)")
+    }
+
     /// The figure is set in the colour of text of the design, in a light and in a dark window. Text that sets no colour
     /// of its own takes the colour of labels of the system, black or white at 85 %, which over a card is 9 levels off
     /// the colour of text in a light window and 24 in a dark one.
@@ -276,13 +300,17 @@ struct CardAndFigureTests {
     /// A screen gives the key figure the spaces its design has around the figure, counted from the line of 44 points:
     /// Přehled sets the sentence 12 points under the figure (the gap of 8 and the sentence's margin of 4), Výpočet and
     /// the levies of Odhad odvodů 10 (a margin of 2), what is left to settle on Odhad odvodů has 6 above and below,
-    /// and the Simulátor has the 8 of the board.
+    /// and the Simulátor has the 8 of the board. The share stands 14 points after the figure, as the board has it,
+    /// and 12 in the Simulátor.
     @Test(arguments: [
-        (KeyFigureSpacing.board, CGFloat(8), CGFloat(8)), (.overview, 8, 12), (.computation, 8, 10),
-        (.prediction, 8, 10), (.predictionDue, 6, 6),
+        (KeyFigureSpacing.board, CGFloat(8), CGFloat(8), CGFloat(14)), (.simulator, 8, 8, 12),
+        (.overview, 8, 12, 14), (.computation, 8, 10, 14), (.prediction, 8, 10, 14), (.predictionDue, 6, 6, 14),
     ])
-    func theSpacesAroundTheFigureAreThoseOfTheScreen(spacing: KeyFigureSpacing, above: CGFloat, below: CGFloat) {
+    func theSpacesAroundTheFigureAreThoseOfTheScreen(
+        spacing: KeyFigureSpacing, above: CGFloat, below: CGFloat, shareGap: CGFloat
+    ) {
         #expect(spacing.aboveFigure == above && spacing.belowFigure == below, "\(spacing)")
+        #expect(spacing.shareGap == shareGap, "\(spacing)")
         let parts = heightsOfTheEyebrowAndTheSentence()
         let whole = fittingHeight(of: KeyFigureView(lineData, spacing: spacing), width: 400)
         let expected = parts.eyebrow + above + 44 + below + parts.sentence

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The colour tokens of the design. Each one is a colorset in the asset catalog under `Token<Name>` with a value for a
@@ -135,6 +136,21 @@ nonisolated enum Typography {
     /// The key figure of a screen: 44 points, bold and rounded. It is the one size in this enum that is set in
     /// points.
     static let display = Font.system(size: displaySize, weight: .bold, design: .rounded)
+
+    /// How far the letters of the key figure are pulled up into its line, which the design makes as tall as the
+    /// figure's size (`line-height: 1`): half of what the line of the display font is taller than its size, which is
+    /// what such a line height leaves out above the letters, and the same again below them (the half-leading). The font
+    /// keeps about 52 points of line for its 44 points, for its highest and lowest letters, so this is about 4 points.
+    /// It is worked out from the metrics of the display font, taken for the same weight and design as `display` has and
+    /// set down beside it, so that a change of the one is a change of the other.
+    static let displayHalfLeading: CGFloat = {
+        let bold = NSFont.systemFont(ofSize: displaySize, weight: .bold)
+        let font = bold.fontDescriptor.withDesign(.rounded).flatMap {
+            NSFont(descriptor: $0, size: displaySize)
+        }
+        let line = font ?? bold
+        return max(0, (line.ascender - line.descender + line.leading - displaySize) / 2)
+    }()
 
     /// The large title style (26 points), bold and rounded, for a big figure such as a percentage.
     static let largeTitle = Font.system(.largeTitle, design: .rounded, weight: .bold)
