@@ -70,42 +70,6 @@ struct PDFPreviewSheetTests {
 
     // MARK: What the sheet looks like
 
-    /// The frame of the button that VoiceOver reads under `label` in `window`, in points from the top left of its
-    /// content.
-    private func buttonFrame(_ label: String, in window: NSWindow) throws -> CGRect {
-        let screen = try #require(
-            accessibilityButton(labelled: label, in: window)?.accessibilityFrame?(), "No button \(label)")
-        return try pictureFrame(of: screen, in: window)
-    }
-
-    /// `screen`, a frame in the coordinates of the screen, as points from the top left of the content of `window`.
-    private func pictureFrame(of screen: CGRect, in window: NSWindow) throws -> CGRect {
-        let frame = window.convertFromScreen(screen)
-        let height = try #require(window.contentView).bounds.height
-        return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
-    }
-
-    /// Whether the pixel at `point` of `picture` is `colour`, within 2 levels in every channel.
-    private func isColour(_ colour: [Int], at point: CGPoint, in picture: OffscreenPicture) -> Bool {
-        guard let found = pixel(at: point, in: picture) else { return false }
-        return zip(found, colour).allSatisfy { abs($0 - $1) <= 2 }
-    }
-
-    /// The bytes of the pixel at `point` of `picture`, or nil where the point is outside it.
-    private func pixel(at point: CGPoint, in picture: OffscreenPicture) -> [Int]? {
-        guard CGRect(origin: .zero, size: picture.size).contains(point) else { return nil }
-        return picture.bytes(at: point)
-    }
-
-    /// Expects the pixel at `point` of `picture` to be `colour`, and says what `what` is instead when it is not.
-    private func expectColour(
-        _ colour: [Int], at point: CGPoint, in picture: OffscreenPicture, _ what: String,
-        sourceLocation: SourceLocation = #_sourceLocation
-    ) {
-        let found = pixel(at: point, in: picture).map { "\($0)" } ?? "outside the picture"
-        #expect(isColour(colour, at: point, in: picture), "\(what) is \(found)", sourceLocation: sourceLocation)
-    }
-
     /// The buttons of the sheet are the capsules of a dialog, 32 points tall, at its trailing end: Zavřít on the grey
     /// fill, and Stáhnout PDF in the accent. The sheet has no "Uložit PDF…" any more: the button saves the page, and
     /// the save panel asks where.
@@ -181,8 +145,7 @@ struct PDFPreviewSheetTests {
                 let warning = "Poznámka se na stránku nevešla celá."
                 try await waitUntil { frameOfText(startingWith: warning, in: window) != nil }
                 try await layOut(window)
-                let frame = try pictureFrame(
-                    of: try #require(frameOfText(startingWith: warning, in: window)), in: window)
+                let frame = try textFrame(startingWith: warning, in: window)
                 let picture = try OffscreenPicture(of: window)
                 let orange = try OffscreenPicture.bytes(of: Palette.orangeText, in: scheme)
 

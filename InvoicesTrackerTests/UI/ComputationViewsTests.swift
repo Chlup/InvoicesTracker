@@ -12,24 +12,11 @@ import Testing
 struct ComputationViewsTests {
     // MARK: Helpers
 
-    /// How many levels a pixel may differ from a colour, in each channel, and still be of it.
-    private let margin = 2
-
     private let schemes = [ColorScheme.light, .dark]
 
     /// The bytes of `colour` in a window of `scheme`, drawn as the pictures draw everything.
     private func bytes(_ colour: Color, _ scheme: ColorScheme) throws -> [Int] {
         try OffscreenPicture.bytes(of: colour, in: scheme)
-    }
-
-    /// Whether `pixel` is `colour`, give or take `margin` levels.
-    private func isColour(_ pixel: [Int], _ colour: [Int]) -> Bool {
-        zip(pixel, colour).allSatisfy { abs($0 - $1) <= margin }
-    }
-
-    /// Whether the pixel of `picture` at `point`, in points from its top left, is `colour`.
-    private func hasColour(_ colour: [Int], at point: CGPoint, in picture: OffscreenPicture) -> Bool {
-        isColour(picture.bytes(at: point), colour)
     }
 
     /// The pixels of the column of `picture` at `x` points, from `top` to `bottom` points, one for each half point.
@@ -83,7 +70,7 @@ struct ComputationViewsTests {
         var found = 0
         for y in stride(from: CGFloat(0), to: picture.size.height, by: 0.5) {
             for x in stride(from: CGFloat(0), to: picture.size.width, by: 0.5)
-            where hasColour(colour, at: CGPoint(x: x, y: y), in: picture) {
+            where pixelIs(colour, at: CGPoint(x: x, y: y), in: picture) {
                 found += 1
             }
         }
@@ -132,16 +119,16 @@ struct ComputationViewsTests {
 
             // The parts end at 15 %, 31,06 % and 37,81 % of the 400 points, which are 80, 144,2 and 171,2 points from
             // the left of the picture: the colour changes there, and the track runs on to the end of the bar.
-            #expect(hasColour(tax, at: CGPoint(x: 50, y: middle), in: picture), "\(scheme): the middle of the tax")
-            #expect(hasColour(tax, at: CGPoint(x: 77, y: middle), in: picture), "\(scheme): before the tax ends")
-            #expect(hasColour(social, at: CGPoint(x: 83, y: middle), in: picture), "\(scheme): the social starts")
-            #expect(hasColour(social, at: CGPoint(x: 112, y: middle), in: picture), "\(scheme): the middle of it")
-            #expect(hasColour(social, at: CGPoint(x: 141, y: middle), in: picture), "\(scheme): before it ends")
-            #expect(hasColour(health, at: CGPoint(x: 147, y: middle), in: picture), "\(scheme): the health starts")
-            #expect(hasColour(health, at: CGPoint(x: 168, y: middle), in: picture), "\(scheme): before it ends")
-            #expect(hasColour(track, at: CGPoint(x: 175, y: middle), in: picture), "\(scheme): the track starts")
-            #expect(hasColour(track, at: CGPoint(x: 220, y: middle), in: picture), "\(scheme): the middle of the bar")
-            #expect(hasColour(track, at: CGPoint(x: 410, y: middle), in: picture), "\(scheme): the end of the bar")
+            #expect(pixelIs(tax, at: CGPoint(x: 50, y: middle), in: picture), "\(scheme): the middle of the tax")
+            #expect(pixelIs(tax, at: CGPoint(x: 77, y: middle), in: picture), "\(scheme): before the tax ends")
+            #expect(pixelIs(social, at: CGPoint(x: 83, y: middle), in: picture), "\(scheme): the social starts")
+            #expect(pixelIs(social, at: CGPoint(x: 112, y: middle), in: picture), "\(scheme): the middle of it")
+            #expect(pixelIs(social, at: CGPoint(x: 141, y: middle), in: picture), "\(scheme): before it ends")
+            #expect(pixelIs(health, at: CGPoint(x: 147, y: middle), in: picture), "\(scheme): the health starts")
+            #expect(pixelIs(health, at: CGPoint(x: 168, y: middle), in: picture), "\(scheme): before it ends")
+            #expect(pixelIs(track, at: CGPoint(x: 175, y: middle), in: picture), "\(scheme): the track starts")
+            #expect(pixelIs(track, at: CGPoint(x: 220, y: middle), in: picture), "\(scheme): the middle of the bar")
+            #expect(pixelIs(track, at: CGPoint(x: 410, y: middle), in: picture), "\(scheme): the end of the bar")
         }
     }
 
@@ -159,8 +146,8 @@ struct ComputationViewsTests {
             #expect(runs(of: try bytes(Palette.social, scheme), in: pixels) == [16], "\(scheme)")
             // The end of the bar is rounded: a point in from the end, in the middle, is the first part, and the corner
             // is cut away, so it is the card.
-            #expect(hasColour(tax, at: CGPoint(x: 21, y: 24), in: picture), "\(scheme): the middle of the end")
-            #expect(hasColour(card, at: CGPoint(x: 20.25, y: 20.25), in: picture), "\(scheme): the corner is cut")
+            #expect(pixelIs(tax, at: CGPoint(x: 21, y: 24), in: picture), "\(scheme): the middle of the end")
+            #expect(pixelIs(card, at: CGPoint(x: 20.25, y: 20.25), in: picture), "\(scheme): the corner is cut")
         }
     }
 
@@ -171,7 +158,7 @@ struct ComputationViewsTests {
             let track = try bytes(Palette.fill, scheme)
 
             for x in [CGFloat(22), 120, 220, 418] {
-                #expect(hasColour(track, at: CGPoint(x: x, y: 24), in: picture), "\(scheme) at \(x)")
+                #expect(pixelIs(track, at: CGPoint(x: x, y: 24), in: picture), "\(scheme) at \(x)")
             }
         }
     }
@@ -188,8 +175,8 @@ struct ComputationViewsTests {
             let health = try bytes(Palette.health, scheme)
             let social = try bytes(Palette.social, scheme)
 
-            #expect(hasColour(social, at: CGPoint(x: 150, y: 24), in: picture), "\(scheme): the half of the bar")
-            #expect(hasColour(health, at: CGPoint(x: 410, y: 24), in: picture), "\(scheme): the end of the bar")
+            #expect(pixelIs(social, at: CGPoint(x: 150, y: 24), in: picture), "\(scheme): the half of the bar")
+            #expect(pixelIs(health, at: CGPoint(x: 410, y: 24), in: picture), "\(scheme): the end of the bar")
         }
     }
 
@@ -214,8 +201,8 @@ struct ComputationViewsTests {
             let point = CGPoint(x: 24 + 180, y: 24 + 8)
             #expect(!isColour(card, window), "\(scheme): a card is not the colour of the window")
 
-            #expect(hasColour(card, at: point, in: try picture(compact: false, scheme: scheme)), "\(scheme): card")
-            #expect(hasColour(window, at: point, in: try picture(compact: true, scheme: scheme)), "\(scheme): section")
+            #expect(pixelIs(card, at: point, in: try picture(compact: false, scheme: scheme)), "\(scheme): card")
+            #expect(pixelIs(window, at: point, in: try picture(compact: true, scheme: scheme)), "\(scheme): section")
         }
     }
 
@@ -291,11 +278,11 @@ struct ComputationViewsTests {
 
             // The full bar runs to the end, the other two stop at their fractions, 233,5 and 136,8 points from the
             // left of the picture.
-            #expect(hasColour(neutral, at: CGPoint(x: 441, y: y[0]), in: picture), "\(scheme): the cap is full")
-            #expect(hasColour(tax, at: CGPoint(x: 228, y: y[1]), in: picture), "\(scheme): the tax before it ends")
-            #expect(hasColour(track, at: CGPoint(x: 239, y: y[1]), in: picture), "\(scheme): the track after it")
-            #expect(hasColour(social, at: CGPoint(x: 131, y: y[2]), in: picture), "\(scheme): the social before")
-            #expect(hasColour(track, at: CGPoint(x: 142, y: y[2]), in: picture), "\(scheme): the track after it")
+            #expect(pixelIs(neutral, at: CGPoint(x: 441, y: y[0]), in: picture), "\(scheme): the cap is full")
+            #expect(pixelIs(tax, at: CGPoint(x: 228, y: y[1]), in: picture), "\(scheme): the tax before it ends")
+            #expect(pixelIs(track, at: CGPoint(x: 239, y: y[1]), in: picture), "\(scheme): the track after it")
+            #expect(pixelIs(social, at: CGPoint(x: 131, y: y[2]), in: picture), "\(scheme): the social before")
+            #expect(pixelIs(track, at: CGPoint(x: 142, y: y[2]), in: picture), "\(scheme): the track after it")
         }
     }
 
@@ -362,8 +349,8 @@ struct ComputationViewsTests {
                 #expect(runs(of: expected, in: pixels) == [20], "\(scheme) \(name)")
                 let run = try #require(firstRun(of: expected, atLeast: 20, in: pixels), "\(scheme) \(name)")
                 let middle = 25 + CGFloat(run.start * 2 + run.length) / 4
-                #expect(!hasColour(expected, at: CGPoint(x: 43.5, y: middle), in: picture), "\(scheme) \(name)")
-                #expect(hasColour(expected, at: CGPoint(x: 45, y: middle), in: picture), "\(scheme) \(name)")
+                #expect(!pixelIs(expected, at: CGPoint(x: 43.5, y: middle), in: picture), "\(scheme) \(name)")
+                #expect(pixelIs(expected, at: CGPoint(x: 45, y: middle), in: picture), "\(scheme) \(name)")
             }
         }
     }
@@ -391,10 +378,10 @@ struct ComputationViewsTests {
             let top = 26 + CGFloat(pixels.firstIndex { isColour($0, strong) } ?? 0) / 2
 
             // The card is 400 wide from 24, the padding is 20 points: the rule is from 44 to 404.
-            #expect(hasColour(card, at: CGPoint(x: 43.5, y: top), in: picture), "\(scheme): left of the rule")
-            #expect(hasColour(strong, at: CGPoint(x: 44.25, y: top), in: picture), "\(scheme): its beginning")
-            #expect(hasColour(strong, at: CGPoint(x: 403.75, y: top), in: picture), "\(scheme): its end")
-            #expect(hasColour(card, at: CGPoint(x: 404.25, y: top), in: picture), "\(scheme): right of the rule")
+            #expect(pixelIs(card, at: CGPoint(x: 43.5, y: top), in: picture), "\(scheme): left of the rule")
+            #expect(pixelIs(strong, at: CGPoint(x: 44.25, y: top), in: picture), "\(scheme): its beginning")
+            #expect(pixelIs(strong, at: CGPoint(x: 403.75, y: top), in: picture), "\(scheme): its end")
+            #expect(pixelIs(card, at: CGPoint(x: 404.25, y: top), in: picture), "\(scheme): right of the rule")
         }
     }
 

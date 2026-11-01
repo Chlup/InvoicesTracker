@@ -3,6 +3,11 @@ import SwiftUI
 import Testing
 @testable import InvoicesTracker
 
+// The helpers the window tests share to look at a picture of a window: the frames of what VoiceOver reads, given as a
+// picture counts them, the pixels at a point, and the colour of text. A test that needs one writes none of its own.
+
+// MARK: Frames as a picture counts them
+
 /// The frame `screen`, given in the coordinates of the screen with the origin at its bottom left, as a picture of
 /// `window` counts it: in points from the top left of the content of the window.
 @MainActor
@@ -12,23 +17,61 @@ func pictureFrame(ofScreenFrame screen: CGRect, in window: NSWindow) throws -> C
     return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
 }
 
+/// The frame of the button that VoiceOver reads under `label` in `window`, in points from the top left of its content.
+@MainActor
+func buttonFrame(_ label: String, in window: NSWindow) throws -> CGRect {
+    let screen = try #require(
+        accessibilityButton(labelled: label, in: window)?.accessibilityFrame?(), "No button \(label)")
+    return try pictureFrame(ofScreenFrame: screen, in: window)
+}
+
+/// The frame of the card that VoiceOver reads under `label` in `window`, in points from the top left of its content.
+@MainActor
+func cardFrame(_ label: String, in window: NSWindow) throws -> CGRect {
+    let screen = try #require(frameOfCard(labelled: label, in: window), "No card \(label)")
+    return try pictureFrame(ofScreenFrame: screen, in: window)
+}
+
+/// The frame of the first text of `window` that VoiceOver reads as a phrase starting with `phrase`, in points from the
+/// top left of its content.
+@MainActor
+func textFrame(startingWith phrase: String, in window: NSWindow) throws -> CGRect {
+    let screen = try #require(frameOfText(startingWith: phrase, in: window), "No text \(phrase)")
+    return try pictureFrame(ofScreenFrame: screen, in: window)
+}
+
+// MARK: Pixels
+
+/// Whether the red, green and blue bytes `found` are `colour` within `margin` levels in every channel.
+func isColour(_ found: [Int], _ colour: [Int], within margin: Int = 2) -> Bool {
+    found.count >= colour.count && zip(colour, found).allSatisfy { abs($0 - $1) <= margin }
+}
+
+/// The bytes of the pixel of `picture` at `point`, in points from its top left, or nil where the point is outside the
+/// picture.
+@MainActor
+func pixel(at point: CGPoint, in picture: OffscreenPicture) -> [Int]? {
+    guard CGRect(origin: .zero, size: picture.size).contains(point) else { return nil }
+    return picture.bytes(at: point)
+}
+
 /// Whether the pixel of `picture` at `point`, in points from its top left, is `colour` within `margin` levels in every
-/// channel.
+/// channel. A point outside the picture, such as one of a button under the fold of the page, is no colour at all.
 @MainActor
 func pixelIs(_ colour: [Int], at point: CGPoint, in picture: OffscreenPicture, within margin: Int = 2) -> Bool {
-    let found = picture.bytes(at: point)
-    return found.count >= colour.count && zip(colour, found).allSatisfy { abs($0 - $1) <= margin }
+    guard let found = pixel(at: point, in: picture) else { return false }
+    return isColour(found, colour, within: margin)
 }
 
-/// The window appearance of `scheme`, so that a window of a test is light or dark whatever the Mac is.
-func appearance(of scheme: ColorScheme) -> NSAppearance? {
-    NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
-}
-
-/// The height of `view` laid out `width` points wide, as its hosting view needs it.
+/// Expects the pixel of `picture` at `point` to be `colour`, within 2 levels in every channel, and says what the pixel
+/// is instead when it is not: `what` is what stands at the point.
 @MainActor
-func fittingHeight(of view: some View, width: CGFloat) -> CGFloat {
-    NSHostingView(rootView: view.frame(width: width)).fittingSize.height
+func expectColour(
+    _ colour: [Int], at point: CGPoint, in picture: OffscreenPicture, _ what: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    let found = pixel(at: point, in: picture).map { "\($0)" } ?? "outside the picture"
+    #expect(pixelIs(colour, at: point, in: picture), "\(what) is \(found)", sourceLocation: sourceLocation)
 }
 
 extension OffscreenPicture {
@@ -65,6 +108,19 @@ extension OffscreenPicture {
             "\(what): pixels within 3 levels of \(found); it needs \(least) of its colour and three times the others",
             sourceLocation: sourceLocation)
     }
+}
+
+// MARK: Appearance and size
+
+/// The window appearance of `scheme`, so that a window of a test is light or dark whatever the Mac is.
+func appearance(of scheme: ColorScheme) -> NSAppearance? {
+    NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+}
+
+/// The height of `view` laid out `width` points wide, as its hosting view needs it.
+@MainActor
+func fittingHeight(of view: some View, width: CGFloat) -> CGFloat {
+    NSHostingView(rootView: view.frame(width: width)).fittingSize.height
 }
 
 /// Expects a note that is `height` points tall and `width` points wide, in the tone of an error with the warning icon

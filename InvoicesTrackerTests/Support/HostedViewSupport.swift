@@ -34,6 +34,14 @@ func withHostedView<Content: View>(
     }
 }
 
+/// What a sheet shown alone in a window (`withHostedView`) was told to do: how many times it asked its owner to close
+/// it. The sheets that only close, such as the text of a licence and the restore of a backup, take
+/// `{ calls.closed += 1 }` as the way to close.
+@MainActor
+final class SheetCalls {
+    var closed = 0
+}
+
 /// The keys a test presses, with what the key types and the code of the key.
 enum PressedKey {
     case escape

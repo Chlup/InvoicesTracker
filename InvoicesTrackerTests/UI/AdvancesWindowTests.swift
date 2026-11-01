@@ -134,8 +134,10 @@ struct AdvancesWindowTests {
                     let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
                     let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
 
-                    let prefillFrame = try pictureFrame(of: try #require(prefill.accessibilityFrame?()), in: window)
-                    let copyFrame = try pictureFrame(of: try #require(copy.accessibilityFrame?()), in: window)
+                    let prefillFrame = try pictureFrame(
+                        ofScreenFrame: try #require(prefill.accessibilityFrame?()), in: window)
+                    let copyFrame = try pictureFrame(
+                        ofScreenFrame: try #require(copy.accessibilityFrame?()), in: window)
                     #expect(abs(prefillFrame.height - 28) <= 0.5, "\(scheme): Předvyplnit is \(prefillFrame.height)")
                     #expect(abs(copyFrame.height - 28) <= 0.5, "\(scheme): the copy is \(copyFrame.height) tall")
                     // Each capsule is drawn in its own colour, 28 points tall.
@@ -161,7 +163,7 @@ struct AdvancesWindowTests {
                     // The note under them is in the colour of captions, and the colour of text is not in it.
                     let note = "Předvyplnit zapíše částky do všech měsíců"
                     let noteFrame = try pictureFrame(
-                        of: try #require(frameOfText(startingWith: note, in: window)), in: window)
+                        ofScreenFrame: try #require(frameOfText(startingWith: note, in: window)), in: window)
                     let caption = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
                     let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
                     #expect(picture.count(near: caption, in: noteFrame, by: 8) > 40, "\(scheme): not a caption")
@@ -186,7 +188,7 @@ struct AdvancesWindowTests {
                     try await waitUntil { frameOfText(startingWith: hint, in: window) != nil }
                     try await layOut(window)
                     let note = try pictureFrame(
-                        of: try #require(frameOfText(startingWith: hint, in: window)), in: window)
+                        ofScreenFrame: try #require(frameOfText(startingWith: hint, in: window)), in: window)
                     let picture = try OffscreenPicture(of: window)
                     let tint = try OffscreenPicture.bytes(of: Palette.orangeTint, in: .light)
                     let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
@@ -220,7 +222,7 @@ struct AdvancesWindowTests {
                         try await waitUntil { frameOfText(startingWith: failure, in: window) != nil }
                         try await layOut(window)
                         let note = try pictureFrame(
-                            of: try #require(frameOfText(startingWith: failure, in: window)), in: window)
+                            ofScreenFrame: try #require(frameOfText(startingWith: failure, in: window)), in: window)
                         let picture = try OffscreenPicture(of: window)
                         let tint = try OffscreenPicture.bytes(of: Palette.redTint, in: .light)
                         let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
@@ -347,14 +349,6 @@ struct AdvancesWindowTests {
     }
 
     // MARK: Helpers
-
-    /// The frame `screen` of a view, given in the coordinates of the screen with the origin at its bottom left, as a
-    /// picture of `window` counts it: in points from the top left of the content of the window.
-    private func pictureFrame(of screen: CGRect, in window: NSWindow) throws -> CGRect {
-        let frame = window.convertFromScreen(screen)
-        let height = try #require(window.contentView).bounds.height
-        return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
-    }
 
     /// Chooses `percent` for the flat-rate expenses of 2026 in the data and tells the app, so that the screen reads it.
     private func store(expensePercent percent: Int, in f: EditorFixture) async throws {

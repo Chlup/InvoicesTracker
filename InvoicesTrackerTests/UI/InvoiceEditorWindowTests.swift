@@ -24,68 +24,12 @@ struct InvoiceEditorWindowTests {
 
     // MARK: What the tests look at
 
-    /// `screen`, a frame in the coordinates of the screen with the origin at its bottom left, as points from the top
-    /// left of the content of `window`, where a picture of the window counts them.
-    private func pictureFrame(of screen: CGRect, in window: NSWindow) throws -> CGRect {
-        let frame = window.convertFromScreen(screen)
-        let height = try #require(window.contentView).bounds.height
-        return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
-    }
-
-    /// The frame of the button that VoiceOver reads under `label` in `window`, in points from the top left of its
-    /// content.
-    private func buttonFrame(_ label: String, in window: NSWindow) throws -> CGRect {
-        let screen = try #require(
-            accessibilityButton(labelled: label, in: window)?.accessibilityFrame?(), "No button \(label)")
-        return try pictureFrame(of: screen, in: window)
-    }
-
-    /// The frame of the card that VoiceOver reads under `label` in `window`, in points from the top left of its
-    /// content.
-    private func cardFrame(_ label: String, in window: NSWindow) throws -> CGRect {
-        try pictureFrame(of: try #require(frameOfCard(labelled: label, in: window), "No card \(label)"), in: window)
-    }
-
     /// The frame of the first group of `window` that holds a text which VoiceOver reads as `text`, such as a bar, in
     /// points from the top left of its content.
     private func groupFrame(holdingText text: String, in window: NSWindow) throws -> CGRect {
         try pictureFrame(
-            of: try #require(frameOfGroup(holdingText: text, in: window), "No group holding \(text)"), in: window)
-    }
-
-    /// The frame of the first text of `window` that VoiceOver reads as a phrase starting with `phrase`, in points from
-    /// the top left of its content.
-    private func textFrame(startingWith phrase: String, in window: NSWindow) throws -> CGRect {
-        try pictureFrame(
-            of: try #require(frameOfText(startingWith: phrase, in: window), "No text \(phrase)"), in: window)
-    }
-
-    /// Whether the pixel at `point` of `picture` is `colour`, within 2 levels in every channel. A point outside the
-    /// picture, such as one of a button under the fold of the page, is no colour at all.
-    private func isColour(_ colour: [Int], at point: CGPoint, in picture: OffscreenPicture) -> Bool {
-        guard let found = pixel(at: point, in: picture) else { return false }
-        return zip(found, colour).allSatisfy { abs($0 - $1) <= 2 }
-    }
-
-    /// The bytes of the pixel at `point` of `picture`, or nil where the point is outside it.
-    private func pixel(at point: CGPoint, in picture: OffscreenPicture) -> [Int]? {
-        guard CGRect(origin: .zero, size: picture.size).contains(point) else { return nil }
-        return picture.bytes(at: point)
-    }
-
-    /// The pixel at `point` of `picture` as a failed expectation says it.
-    private func described(_ point: CGPoint, in picture: OffscreenPicture) -> String {
-        pixel(at: point, in: picture).map { "\($0)" } ?? "outside the picture"
-    }
-
-    /// Expects the pixel at `point` of `picture` to be `colour`, and says what `what` is instead when it is not.
-    private func expectColour(
-        _ colour: [Int], at point: CGPoint, in picture: OffscreenPicture, _ what: String,
-        sourceLocation: SourceLocation = #_sourceLocation
-    ) {
-        #expect(
-            isColour(colour, at: point, in: picture), "\(what) is \(described(point, in: picture))",
-            sourceLocation: sourceLocation)
+            ofScreenFrame: try #require(frameOfGroup(holdingText: text, in: window), "No group holding \(text)"),
+            in: window)
     }
 
     /// Expects `bar`, a frame in points from the top left of `picture`, to be a panel on the window: the colour of a
@@ -579,7 +523,7 @@ struct InvoiceEditorWindowTests {
                     }
                     try await layOut(window)
                     let row = try #require(accessibilityElement(labelStartingWith: "Služby pro Alfa", in: window))
-                    let rowFrame = try pictureFrame(of: try #require(row.accessibilityFrame?()), in: window)
+                    let rowFrame = try pictureFrame(ofScreenFrame: try #require(row.accessibilityFrame?()), in: window)
                     let picture = try OffscreenPicture(of: window)
                     let inset = try bytes(Palette.bgInset, scheme)
                     let line = try bytes(Palette.sep, scheme)
@@ -600,7 +544,8 @@ struct InvoiceEditorWindowTests {
                     let cap = CGPoint(x: zrusit.minX + 8, y: zrusit.midY)
                     expectColour(fill, at: cap, in: picture, "\(scheme): Zrušit")
                     let linkElement = try #require(accessibilityElement(labelled: link, in: window))
-                    let linkFrame = try pictureFrame(of: try #require(linkElement.accessibilityFrame?()), in: window)
+                    let linkFrame = try pictureFrame(
+                        ofScreenFrame: try #require(linkElement.accessibilityFrame?()), in: window)
                     #expect(linkElement.accessibilityRole?() == .link)
                     #expect(
                         picture.count(near: accentText, in: linkFrame, by: 12) > 20, "\(scheme): the link is not blue")

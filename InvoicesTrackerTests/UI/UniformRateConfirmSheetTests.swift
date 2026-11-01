@@ -20,14 +20,6 @@ struct UniformRateConfirmSheetTests {
         return (app, finding)
     }
 
-    /// The frame `screen` of a view, given in the coordinates of the screen with the origin at its bottom left, as a
-    /// picture of `window` counts it: in points from the top left of the content of the window.
-    private func pictureFrame(of screen: CGRect, in window: NSWindow) throws -> CGRect {
-        let frame = window.convertFromScreen(screen)
-        let height = try #require(window.contentView).bounds.height
-        return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
-    }
-
     /// The three answers are the capsules of the design, 32 points tall as the buttons of a dialog are: Použít, the
     /// one that stores the table, in the accent, and Později and Zadat ručně on the grey fill. The headline stands in
     /// the colour of text, with the seal of the finding in the accent in front of it, and the two links of the source
@@ -48,7 +40,7 @@ struct UniformRateConfirmSheetTests {
                 for title in ["Později", "Zadat ručně", "Použít"] {
                     let screen = try #require(accessibilityButton(labelled: title, in: window)?.accessibilityFrame?())
                     #expect(abs(screen.height - 32) < 0.5, "\(scheme): \(title) is \(screen.height) points tall")
-                    frames[title] = try pictureFrame(of: screen, in: window)
+                    frames[title] = try pictureFrame(ofScreenFrame: screen, in: window)
                 }
                 let picture = try OffscreenPicture(of: window)
                 let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
@@ -67,7 +59,7 @@ struct UniformRateConfirmSheetTests {
                 #expect(picture.count(near: accent, in: top, by: 8) > 40, "\(scheme): the seal is not the accent")
                 // The links stand to the right of "Zdroj:", on its line.
                 let source = try pictureFrame(
-                    of: try #require(frameOfText(startingWith: "Zdroj:", in: window)), in: window)
+                    ofScreenFrame: try #require(frameOfText(startingWith: "Zdroj:", in: window)), in: window)
                 let links = CGRect(
                     x: source.maxX, y: source.minY - 2, width: picture.size.width - source.maxX,
                     height: source.height + 4)

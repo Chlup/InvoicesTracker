@@ -16,14 +16,6 @@ struct UniformRateCardWindowTests {
         #expect(control.accessibilityPerformPress?() == true)
     }
 
-    /// The frame `screen` of a view, given in the coordinates of the screen with the origin at its bottom left, as a
-    /// picture of `window` counts it: in points from the top left of the content of the window.
-    private func pictureFrame(of screen: CGRect, in window: NSWindow) throws -> CGRect {
-        let frame = window.convertFromScreen(screen)
-        let height = try #require(window.contentView).bounds.height
-        return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
-    }
-
     /// The links of a rate entered by hand are the links of the design, Upravit in the blue of a link and Odstranit… in
     /// the red of text, and the note of what the rate stands in for is a panel on the inset background, as wide as the
     /// card's content, with its words in secondary text.
@@ -53,9 +45,9 @@ struct UniformRateCardWindowTests {
                 let removeScreen = try #require(
                     accessibilityElement(labelled: remove, in: window)?.accessibilityFrame?())
                 let noteScreen = try #require(frameOfText(startingWith: note, in: window))
-                let editFrame = try pictureFrame(of: editScreen, in: window)
-                let removeFrame = try pictureFrame(of: removeScreen, in: window)
-                let noteFrame = try pictureFrame(of: noteScreen, in: window)
+                let editFrame = try pictureFrame(ofScreenFrame: editScreen, in: window)
+                let removeFrame = try pictureFrame(ofScreenFrame: removeScreen, in: window)
+                let noteFrame = try pictureFrame(ofScreenFrame: noteScreen, in: window)
                 let picture = try OffscreenPicture(of: window)
                 let blue = try OffscreenPicture.bytes(of: Palette.accentText, in: scheme)
                 let red = try OffscreenPicture.bytes(of: Palette.redText, in: scheme)

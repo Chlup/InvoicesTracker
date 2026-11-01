@@ -159,19 +159,6 @@ struct WelcomeScreensTests {
 
     // MARK: The cards of the design
 
-    /// The frame of the card of `window` that VoiceOver reads under `label`, in points from the top left of the
-    /// content.
-    private func cardFrame(_ label: String, in window: NSWindow) throws -> CGRect {
-        let frame = try #require(frameOfCard(labelled: label, in: window), "No card \(label)")
-        return try pictureFrame(ofScreenFrame: frame, in: window)
-    }
-
-    /// The frame of the button of `window` that VoiceOver reads under `label`, in points from the top left.
-    private func buttonFrame(_ label: String, in window: NSWindow) throws -> CGRect {
-        let frame = try #require(accessibilityButton(labelled: label, in: window)?.accessibilityFrame?(), "No \(label)")
-        return try pictureFrame(ofScreenFrame: frame, in: window)
-    }
-
     /// The frame of the first element of `window` whose label starts with `prefix`, in points from the top left.
     private func elementFrame(startingWith prefix: String, in window: NSWindow) throws -> CGRect {
         let element = try #require(accessibilityElement(labelStartingWith: prefix, in: window), "No \(prefix)")

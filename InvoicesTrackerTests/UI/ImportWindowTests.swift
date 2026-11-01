@@ -28,18 +28,6 @@ struct ImportWindowTests {
         return app
     }
 
-    /// The frame of the first text of `window` that starts with `phrase`, in points from the top left.
-    private func textFrame(startingWith phrase: String, in window: NSWindow) throws -> CGRect {
-        let frame = try #require(frameOfText(startingWith: phrase, in: window), "No text \(phrase)")
-        return try pictureFrame(ofScreenFrame: frame, in: window)
-    }
-
-    /// The frame of the button of `window` that VoiceOver reads under `label`, in points from the top left.
-    private func buttonFrame(_ label: String, in window: NSWindow) throws -> CGRect {
-        let button = try #require(accessibilityButton(labelled: label, in: window), "No \(label)")
-        return try pictureFrame(ofScreenFrame: try #require(button.accessibilityFrame?()), in: window)
-    }
-
     // MARK: The choice of files
 
     /// The zone where files are dropped is the accent tint with a ring of the soft accent, rounded by 10 points as a

@@ -16,23 +16,10 @@ import Testing
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct SettingsWindowTests {
-    /// The frame `screen` of a view, given in the coordinates of the screen with the origin at its bottom left, as a
-    /// picture of `window` counts it: in points from the top left of the content of the window.
-    private func pictureFrame(of screen: CGRect, in window: NSWindow) throws -> CGRect {
-        let frame = window.convertFromScreen(screen)
-        let height = try #require(window.contentView).bounds.height
-        return CGRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)
-    }
-
     /// The height of the button of `window` that VoiceOver reads under `label`.
     private func height(ofButton label: String, in window: NSWindow) throws -> CGFloat {
         try #require(accessibilityButton(labelled: label, in: window)?.accessibilityFrame?(), "No button \(label)")
             .height
-    }
-
-    /// What a sheet was told to do.
-    private final class Calls {
-        var closed = 0
     }
 
     /// The first button among `elements` and their children, in the order of the tree.
@@ -47,11 +34,6 @@ struct SettingsWindowTests {
             }
         }
         return nil
-    }
-
-    /// Whether the pixel at `point` of `picture` is `colour`, within 2 levels in every channel.
-    private func isColour(_ colour: [Int], at point: CGPoint, in picture: OffscreenPicture) -> Bool {
-        zip(picture.bytes(at: point), colour).allSatisfy { abs($0 - $1) <= 2 }
     }
 
     // MARK: The buttons inside the cards
@@ -138,16 +120,16 @@ struct SettingsWindowTests {
                     try await waitUntil { frameOfCard(labelled: "Účet v USD", in: window) != nil }
                     try await layOut(window)
                     let box = try pictureFrame(
-                        of: try #require(frameOfCard(labelled: "Účet v USD", in: window)), in: window)
+                        ofScreenFrame: try #require(frameOfCard(labelled: "Účet v USD", in: window)), in: window)
                     let card = try pictureFrame(
-                        of: try #require(frameOfCard(labelled: "Bankovní účty", in: window)), in: window)
+                        ofScreenFrame: try #require(frameOfCard(labelled: "Bankovní účty", in: window)), in: window)
                     let picture = try OffscreenPicture(of: window)
                     let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
                     let cardColour = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
 
-                    #expect(isColour(inset, at: CGPoint(x: box.minX + 6, y: box.midY), in: picture), "\(scheme): inset")
+                    #expect(pixelIs(inset, at: CGPoint(x: box.minX + 6, y: box.midY), in: picture), "\(scheme): inset")
                     #expect(
-                        isColour(cardColour, at: CGPoint(x: box.minX - 6, y: box.midY), in: picture),
+                        pixelIs(cardColour, at: CGPoint(x: box.minX - 6, y: box.midY), in: picture),
                         "\(scheme): outside the box")
                     // The box is as wide as the card's content: the card pads it by 20 points on either side.
                     #expect(
@@ -174,13 +156,13 @@ struct SettingsWindowTests {
                     try await waitUntil { frameOfText(startingWith: warning, in: window) != nil }
                     try await layOut(window)
                     let note = try pictureFrame(
-                        of: try #require(frameOfText(startingWith: warning, in: window)), in: window)
+                        ofScreenFrame: try #require(frameOfText(startingWith: warning, in: window)), in: window)
                     let picture = try OffscreenPicture(of: window)
                     let tint = try OffscreenPicture.bytes(of: Palette.orangeTint, in: scheme)
                     let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
 
                     #expect(
-                        isColour(tint, at: CGPoint(x: note.minX + 4, y: note.minY + 4), in: picture),
+                        pixelIs(tint, at: CGPoint(x: note.minX + 4, y: note.minY + 4), in: picture),
                         "\(scheme): the note is \(picture.bytes(at: CGPoint(x: note.minX + 4, y: note.minY + 4)))")
                     #expect(picture.count(near: text, in: note, by: 8) > 40, "\(scheme): the words are not text")
                 }
@@ -208,10 +190,10 @@ struct SettingsWindowTests {
                     try await waitUntil { accessibilityButton(labelled: "Označit i tady", in: window) != nil }
                     try await layOut(window)
                     let note = try pictureFrame(
-                        of: try #require(frameOfText(startingWith: hint, in: window)), in: window)
+                        ofScreenFrame: try #require(frameOfText(startingWith: hint, in: window)), in: window)
                     let buttonFrame = try #require(
                         accessibilityButton(labelled: "Označit i tady", in: window)?.accessibilityFrame?())
-                    let button = try pictureFrame(of: buttonFrame, in: window)
+                    let button = try pictureFrame(ofScreenFrame: buttonFrame, in: window)
                     let picture = try OffscreenPicture(of: window)
                     let tint = try OffscreenPicture.bytes(of: Palette.accentTint, in: scheme)
                     let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
@@ -220,7 +202,7 @@ struct SettingsWindowTests {
 
                     // Inside the padding of the note, to the left of its words, where no glyph stands.
                     #expect(
-                        isColour(tint, at: CGPoint(x: note.minX - 6, y: note.midY), in: picture),
+                        pixelIs(tint, at: CGPoint(x: note.minX - 6, y: note.midY), in: picture),
                         "\(scheme): the note is not the information tint")
                     #expect(picture.count(near: text, in: note, by: 8) > 40, "\(scheme): the words are not text")
                     #expect(abs(button.height - 28) < 0.5, "\(scheme): the button is \(button.height) points tall")
@@ -262,11 +244,11 @@ struct SettingsWindowTests {
                     accessibilityButton(labelled: "Vytvořit nový kód", in: window)?.accessibilityFrame?())
                 let cancelFrame = try #require(
                     accessibilityButton(labelled: "Zrušit", in: window)?.accessibilityFrame?())
-                let create = try pictureFrame(of: createFrame, in: window)
-                let cancel = try pictureFrame(of: cancelFrame, in: window)
+                let create = try pictureFrame(ofScreenFrame: createFrame, in: window)
+                let cancel = try pictureFrame(ofScreenFrame: cancelFrame, in: window)
                 let warning = "Zálohy vytvořené do dneška"
                 let note = try pictureFrame(
-                    of: try #require(frameOfText(startingWith: warning, in: window)), in: window)
+                    ofScreenFrame: try #require(frameOfText(startingWith: warning, in: window)), in: window)
                 let picture = try OffscreenPicture(of: window)
                 let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
                 let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
@@ -279,7 +261,7 @@ struct SettingsWindowTests {
                     picture.extent(near: fill, in: cancel.insetBy(dx: -2, dy: -2), by: 2) != nil,
                     "\(scheme): Zrušit is not on the grey fill")
                 #expect(
-                    isColour(tint, at: CGPoint(x: note.minX + 4, y: note.minY + 4), in: picture),
+                    pixelIs(tint, at: CGPoint(x: note.minX + 4, y: note.minY + 4), in: picture),
                     "\(scheme): the warning is not an attention note")
             }
         }
@@ -337,13 +319,13 @@ struct SettingsWindowTests {
                     try await waitUntil { accessibilityElement(labelled: "Zálohy", in: window) != nil }
                     let list = try #require(accessibilityElement(labelled: "Zálohy", in: window))
                     let row = try #require(firstButton(among: list.accessibilityChildren?() ?? []))
-                    let frame = try pictureFrame(of: try #require(row.accessibilityFrame?()), in: window)
+                    let frame = try pictureFrame(ofScreenFrame: try #require(row.accessibilityFrame?()), in: window)
                     let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: scheme)
                     let paleBlue = try OffscreenPicture.bytes(of: Palette.accentTint, in: scheme)
                     let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
                     let before = try OffscreenPicture(of: window)
                     #expect(
-                        isColour(inset, at: CGPoint(x: frame.minX + 6, y: frame.midY), in: before),
+                        pixelIs(inset, at: CGPoint(x: frame.minX + 6, y: frame.midY), in: before),
                         "\(scheme): a row that is not chosen is not on the inset background")
 
                     #expect(row.accessibilityPerformPress?() == true)
@@ -351,7 +333,7 @@ struct SettingsWindowTests {
                     try await layOut(window)
                     let after = try OffscreenPicture(of: window)
                     #expect(
-                        isColour(paleBlue, at: CGPoint(x: frame.minX + 6, y: frame.midY), in: after),
+                        pixelIs(paleBlue, at: CGPoint(x: frame.minX + 6, y: frame.midY), in: after),
                         "\(scheme): the chosen row is not pale blue")
                     #expect(
                         after.count(near: accent, in: frame.insetBy(dx: -2, dy: -2), by: 2) > 200,
@@ -368,7 +350,7 @@ struct SettingsWindowTests {
     /// The sheet with the text of a licence ends in Zavřít, a capsule in the accent 32 points tall, over the text on
     /// the inset background; Esc closes it.
     @Test func theSheetOfALicenceEndsInACapsuleOfTheAccentOverTheTextOnTheInsetBackground() async throws {
-        let calls = Calls()
+        let calls = SheetCalls()
         let sheet = LicenseSheet(licence: AppTabModel.licences[0]) { calls.closed += 1 }
 
         try await withHostedView(sheet, size: CGSize(width: 640, height: 640)) { window in
@@ -380,7 +362,7 @@ struct SettingsWindowTests {
                 #expect(abs(height - 32) < 0.5, "Zavřít is \(height) points tall")
                 let closeFrame = try #require(
                     accessibilityButton(labelled: "Zavřít", in: window)?.accessibilityFrame?())
-                let close = try pictureFrame(of: closeFrame, in: window)
+                let close = try pictureFrame(ofScreenFrame: closeFrame, in: window)
                 let picture = try OffscreenPicture(of: window)
                 let accent = try OffscreenPicture.bytes(of: Palette.accent, in: .light)
                 let inset = try OffscreenPicture.bytes(of: Palette.bgInset, in: .light)

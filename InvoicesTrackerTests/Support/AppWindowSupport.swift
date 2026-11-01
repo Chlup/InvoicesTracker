@@ -313,24 +313,17 @@ private func collectContainerLabels(among elements: [Any], into labels: inout Se
 }
 
 /// Expects `names` among the containers of `window` (`containerLabels(in:)`), giving the views up to ten seconds to
-/// show them. Only the time that the loop ran counts, at most 50 milliseconds for each look, as `waitUntil` counts it:
-/// in a full run of the suite the process is so busy that one look can wait seconds for its turn. The missing names
-/// are in the failure, so that a table of names says which one a screen lacks.
+/// show them, with a look every 50 milliseconds. The time is counted as `waitUntil` counts it
+/// (`holdsWithin(_:every:_:)`). The missing names are in the failure, so that a table of names says which one a
+/// screen lacks.
 @MainActor
 func expectContainers(
     _ names: [String], in window: NSWindow, _ screen: String, sourceLocation: SourceLocation = #_sourceLocation
 ) async throws {
-    let clock = ContinuousClock()
-    var remaining = Duration.seconds(10)
-    var lookedAt = clock.now
-    var missing = Set(names).subtracting(containerLabels(in: window))
-    while !missing.isEmpty {
-        let now = clock.now
-        remaining -= min(now - lookedAt, .milliseconds(50))
-        lookedAt = now
-        guard remaining > .zero else { break }
-        try await Task.sleep(for: .milliseconds(50))
+    var missing = Set(names)
+    _ = try await holdsWithin(.seconds(10), every: .milliseconds(50)) {
         missing = Set(names).subtracting(containerLabels(in: window))
+        return missing.isEmpty
     }
     let named = missing.sorted().map { "„\($0)“" }.joined(separator: ", ")
     #expect(missing.isEmpty, "\(screen) has no container named \(named)", sourceLocation: sourceLocation)

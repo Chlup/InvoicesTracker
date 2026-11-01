@@ -247,7 +247,7 @@ struct AppWindowLayoutTests {
 
                     let detail = try #require(detailCardFrame(in: window))
                     let table = try #require(tableCardFrame(in: window))
-                    let delete = try #require(buttonFrame("Smazat fakturu…", in: window))
+                    let delete = try #require(buttonFrameInWindow("Smazat fakturu…", in: window))
                     #expect(detail.height < table.height - 50, "The detail \(detail) is not shorter than \(table)")
                     #expect((detail.maxY - table.maxY).magnitude <= 1, "\(detail) does not start with \(table)")
                     #expect((delete.minY - detail.minY - 20).magnitude <= 1.5, "\(delete) in \(detail)")
@@ -295,8 +295,10 @@ struct AppWindowLayoutTests {
         return max(0, document.frame.height - scrolled.contentView.bounds.height)
     }
 
-    /// The frame of the button that VoiceOver reads under `label` in `window`, in the coordinates of the window.
-    private func buttonFrame(_ label: String, in window: NSWindow) -> CGRect? {
+    /// The frame of the button that VoiceOver reads under `label` in `window`, in the coordinates of the window, whose
+    /// origin is at its bottom left, or nil where there is no such button. (`buttonFrame(_:in:)` gives the frame as a
+    /// picture of the window counts it, from the top left.)
+    private func buttonFrameInWindow(_ label: String, in window: NSWindow) -> CGRect? {
         let frame = accessibilityButton(labelled: label, in: window)?.accessibilityFrame?()
         return frame.map { window.convertFromScreen($0) }
     }
@@ -672,7 +674,7 @@ struct AppWindowLayoutTests {
             problems.append("The detail reaches below the card of the table: \(detail), \(table)")
         }
         if detail.minY > table.minY + 1 {
-            guard let delete = buttonFrame("Smazat fakturu…", in: window) else {
+            guard let delete = buttonFrameInWindow("Smazat fakturu…", in: window) else {
                 return problems + ["The detail has no Smazat fakturu…"]
             }
             if (delete.minY - detail.minY - 20).magnitude > 1.5 {
@@ -2670,7 +2672,7 @@ struct AppWindowLayoutTests {
                         #expect(clientDetailShows("Bravo Labs, Inc.", in: window))
                         #expect(window.frame.size == size)
                         for label in ["Nová faktura pro Bravo Labs, Inc.", "Upravit", "Zavřít detail"] {
-                            let height = buttonFrame(label, in: window)?.height ?? 0
+                            let height = buttonFrameInWindow(label, in: window)?.height ?? 0
                             #expect((height - DesignMetrics.smallControlHeight).magnitude < 0.5, "\(label): \(height)")
                         }
 
@@ -3067,11 +3069,11 @@ struct AppWindowLayoutTests {
                     press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
                     let use = "Vystavit podle šablony Software development"
                     let edit = "Upravit šablonu Software development"
-                    try await waitUntil { buttonFrame(edit, in: window) != nil }
+                    try await waitUntil { buttonFrameInWindow(edit, in: window) != nil }
                     try await layOut(window)
 
-                    let first = try #require(buttonFrame(use, in: window))
-                    let second = try #require(buttonFrame(edit, in: window))
+                    let first = try #require(buttonFrameInWindow(use, in: window))
+                    let second = try #require(buttonFrameInWindow(edit, in: window))
                     #expect((first.midY - second.midY).magnitude < 0.5, "Not on one line: \(first), \(second)")
                     #expect((second.minX - first.maxX - 6).magnitude < 0.5, "Not 6 points apart: \(first), \(second)")
                 }
@@ -3096,7 +3098,7 @@ struct AppWindowLayoutTests {
                         let use = "Vystavit podle šablony Software development"
                         try await waitUntil { accessibilityButton(labelled: use, in: window) != nil }
                         for label in [use, edit] {
-                            let height = buttonFrame(label, in: window)?.height ?? 0
+                            let height = buttonFrameInWindow(label, in: window)?.height ?? 0
                             #expect((height - DesignMetrics.smallControlHeight).magnitude < 0.5, "\(label): \(height)")
                         }
 
@@ -3262,7 +3264,7 @@ struct AppWindowLayoutTests {
             return problems + ["The page has no table"]
         }
         let room = window.contentLayoutRect
-        if let button = buttonFrame("Nový odběratel", in: window) {
+        if let button = buttonFrameInWindow("Nový odběratel", in: window) {
             if (button.maxX - (room.maxX - 16)).magnitude >= 0.5 {
                 problems.append("Nový odběratel does not stand at the right margin of the page: \(button)")
             }
