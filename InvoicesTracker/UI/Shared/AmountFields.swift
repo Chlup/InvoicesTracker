@@ -49,8 +49,8 @@ struct TitledAmountField: View {
     /// the column is too narrow for it.
     private var titleText: some View {
         Text(title)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .fixedSize(horizontal: width != nil, vertical: true)
     }
 }
@@ -97,14 +97,14 @@ private nonisolated struct IsFieldMessage: LayoutValueKey {
     static let defaultValue = false
 }
 
-/// The message under a field whose text was refused.
+/// The message under a field whose text was refused, in callout and the red of text.
 struct FieldMessage: View {
     let text: String
 
     var body: some View {
         Text(verbatim: text)
-            .font(.callout)
-            .foregroundStyle(.red)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.redText)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

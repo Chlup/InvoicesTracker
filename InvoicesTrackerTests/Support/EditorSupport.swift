@@ -6,8 +6,8 @@ import Testing
 /// 17. 10. 2026, with the invented supplier and accounts of the invoice page, three invented clients (Alfa and Cetus in
 /// crowns, Bravo in dollars), the sample year 2026 without its October draft (so that October has no invoice yet, and
 /// August and September have two each), the ČNB rates of the fixtures (the newest is 16. 10. 2026) and two templates.
-/// The server answers what `http` says (nothing, unless a test gives it files), and the clock of the app is `clock`
-/// (noon of 17. 10. 2026, a Saturday).
+/// The server answers what `http` says (nothing, unless a test gives it files), after `gate` where a test gives one,
+/// and the clock of the app is `clock` (noon of 17. 10. 2026, a Saturday).
 @MainActor
 struct EditorFixture {
     let app: AppModel
@@ -34,18 +34,29 @@ struct EditorFixture {
         name: "Cetus Data s.r.o.", street: "Zahradní 5", postcode: "602 00", city: "Brno", country: "CZ",
         ico: "87654321", dic: "CZ87654321", email: "fakturace@example.com")
 
-    /// Runs `body` with a fixture in a temporary folder that is removed afterwards.
+    /// Runs `body` with a fixture in a temporary folder that is removed afterwards. With a `gate`, every request to the
+    /// server waits at it before `http` answers it, so that a test can look at what goes on while a file is on its way.
     static func with(
-        http: StubHTTPClient = StubHTTPClient(), clock: ManualClock = ManualClock(localNoon(2026, 10, 17)),
-        _ body: (EditorFixture) async throws -> Void
+        http: StubHTTPClient = StubHTTPClient(), gate: Gate? = nil,
+        clock: ManualClock = ManualClock(localNoon(2026, 10, 17)), _ body: (EditorFixture) async throws -> Void
     ) async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
-        try await body(try await make(in: directory, http: http, clock: clock))
+        try await body(try await make(in: directory, http: http, gate: gate, clock: clock))
     }
 
-    static func make(in directory: URL, http: StubHTTPClient, clock: ManualClock) async throws -> EditorFixture {
-        let app = makeAppModel(in: directory, clock: clock, http: http)
+    /// The fixture in `directory`: its server answers what `http` says, after `gate` where there is one, and its clock
+    /// is `clock`.
+    static func make(
+        in directory: URL, http: StubHTTPClient, gate: Gate? = nil, clock: ManualClock
+    ) async throws -> EditorFixture {
+        let server: any HTTPClient
+        if let gate {
+            server = GatedHTTPClient(base: http, gate: gate)
+        } else {
+            server = http
+        }
+        let app = makeAppModel(in: directory, clock: clock, http: server)
         try await startFresh(app)
         let database = try #require(app.database)
         try await database.saveSupplier(InvoicePageFixtures.supplier)

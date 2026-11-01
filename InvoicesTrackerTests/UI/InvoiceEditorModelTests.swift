@@ -214,7 +214,7 @@ struct InvoiceEditorModelTests {
 
             #expect(model.qrEnabled == false)
             #expect(model.qrAvailable == false)
-            #expect(model.qrNote == "Pro USD standard QR platby není.")
+            #expect(model.qrNote == "Pro platby v USD QR standard není, faktura bude bez QR kódu.")
 
             // A person who unticks the box on a crown invoice gets it back on picking a client again.
             model.pickClient(f.cetusID)
@@ -699,6 +699,11 @@ struct InvoiceEditorModelTests {
             #expect(model.validation.isEmpty)
             #expect(model.noteLineCount == 20)
         }
+    }
+
+    /// While the note is empty it shows the example of the prototype in it, as a field with a prompt does.
+    @Test func theNoteShowsAnExampleWhileItIsEmpty() {
+        #expect(InvoiceEditorModel.notePlaceholder == "Např. platební instrukce")
     }
 
     @Test func whatChangedInTheDataMeanwhileIsSeenWhenTheInvoiceIsWorkedOutAgain() async throws {

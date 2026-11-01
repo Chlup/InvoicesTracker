@@ -11,9 +11,9 @@ struct SpouseIncomeInput {
 // MARK: - Děti
 
 /// "Děti · daňové zvýhodnění": what the children bring for the year, the rates, a row for each child of the year that
-/// opens its dialog, the hints about the other parent and the bonus, and Přidat dítě, in the Simulátor with the note
-/// beside it that nothing is stored, which goes under it where the card is too narrow for both. The words and the
-/// figures are the builder's (`FamilyCardsBuilder`); the card only shows them.
+/// opens its dialog, the hints about the other parent and the bonus in a panel on the inset background, and Přidat
+/// dítě, in the Simulátor with the note beside it that nothing is stored, which goes under it where the card is too
+/// narrow for both. The words and the figures are the builder's (`FamilyCardsBuilder`); the card only shows them.
 struct ChildrenCard: View {
     let content: ChildrenCardContent
 
@@ -21,43 +21,41 @@ struct ChildrenCard: View {
     let open: (FamilyChild?) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Card(spacing: 0, label: content.label) {
             FamilyCardHeader(title: "Děti · daňové zvýhodnění", total: content.total, totalCounts: true)
             Text(verbatim: content.rates)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
                 .padding(.bottom, 10)
             ForEach(Array(content.rows.enumerated()), id: \.offset) { _, row in
-                Divider()
+                Hairline()
                 ChildRowButton(row: row) {
                     open(row.member)
                 }
             }
             if content.rows.isEmpty {
-                Divider()
-                Text(verbatim: ChildrenCardContent.noChildren)
-                    .foregroundStyle(.secondary)
+                Hairline()
+                Text(verbatim: content.emptyText)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text3)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 10)
             }
             if let hint = content.hint {
                 Text(verbatim: hint)
-                    .font(.callout)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+                    .insetPanel(horizontal: 12, vertical: 10)
                     .padding(.top, 4)
             }
-            Divider()
+            Hairline()
                 .padding(.top, 8)
             addRow
                 .padding(.top, 10)
         }
-        .familyCard(label: "Děti")
     }
 
     /// Přidat dítě, with the note of the card at the other end of its line, or under it where the line is too narrow
@@ -81,27 +79,28 @@ struct ChildrenCard: View {
         }
     }
 
+    /// Přidat dítě, with a plus before it: a capsule 28 points tall on the grey fill, as the buttons inside a card are.
     private var addButton: some View {
         Button {
             open(nil)
         } label: {
             Label("Přidat dítě", systemImage: "plus")
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.small)
+        .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
     }
 
+    /// The note beside Přidat dítě, in callout and the grey of captions, as the design of the Simulátor sets it.
     private func noteText(_ note: String) -> some View {
         Text(verbatim: note)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
 
 /// The row of a child: its name and its date of birth, its rates and months or why it counts in no month, and what it
-/// brings, as one button that opens its dialog. VoiceOver reads the row whole.
+/// brings, as one button that opens its dialog. The status is in the orange of text while the child counts in no month,
+/// the amount in the grey of captions while the child brings nothing. VoiceOver reads the row whole.
 struct ChildRowButton: View {
     let row: ChildCardRow
     let action: () -> Void
@@ -111,21 +110,23 @@ struct ChildRowButton: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(heading)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(verbatim: row.status)
-                        .font(.callout)
-                        .foregroundStyle(row.countsInNoMonth ? Color(.attentionText) : Color.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(row.countsInNoMonth ? Palette.orangeText : Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Text(verbatim: row.amount)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
                     .monospacedDigit()
-                    .foregroundStyle(row.hasAmount ? Color.primary : Color.secondary)
+                    .foregroundStyle(row.hasAmount ? Palette.text : Palette.text3)
                     .fixedSize()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(Typography.subheadlineSemibold)
+                    .foregroundStyle(Palette.text4)
                     .accessibilityHidden(true)
             }
             .padding(.vertical, 8)
@@ -136,12 +137,12 @@ struct ChildRowButton: View {
         .accessibilityLabel(Text(verbatim: row.spokenText))
     }
 
-    /// The name in bold, and the date of birth after it.
+    /// The name in semibold, and the date of birth after it in secondary text.
     private var heading: AttributedString {
         var name = AttributedString(row.name)
-        name.font = .body.weight(.semibold)
+        name.font = Typography.bodySemibold
         var birth = AttributedString(" · " + row.birth)
-        birth.foregroundColor = .secondary
+        birth.foregroundColor = Palette.text2
         return name + birth
     }
 }
@@ -150,10 +151,10 @@ struct ChildRowButton: View {
 
 /// "Manžel / manželka · sleva na dani": whether the credit is claimed, and for a claimed spouse the months married and
 /// in the household, the own income with the limit and what counts in it, ZTP/P with its months, from 2024 the children
-/// under three that the credit asks for, and the months and the amount that result. Every choice is saved at once
-/// (`FamilyEditing.setSpouse`): a first month chosen after the last, or a last one before the first, moves the other
-/// end of its range along, so a range is always one. The income is a typed field (`income`). The words and the figures
-/// are the builder's (`FamilyCardsBuilder`); the choices show the spouse as the screen has it.
+/// under three that the credit asks for, in a note, and the months and the amount that result. Every choice is saved at
+/// once (`FamilyEditing.setSpouse`): a first month chosen after the last, or a last one before the first, moves the
+/// other end of its range along, so a range is always one. The income is a typed field (`income`). The words and the
+/// figures are the builder's (`FamilyCardsBuilder`); the choices show the spouse as the screen has it.
 struct SpouseCard: View {
     let content: SpouseCardContent
     let editing: any FamilyEditing
@@ -165,33 +166,33 @@ struct SpouseCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Card(spacing: 0, label: content.label) {
             FamilyCardHeader(
                 title: "Manžel / manželka · sleva na dani", total: content.total, totalCounts: content.totalCounts
             )
             .padding(.bottom, 6)
-            Divider()
+            Hairline()
             claim
             if let spouse, spouse.claim {
-                Divider()
+                Hairline()
                 months(of: spouse)
-                Divider()
+                Hairline()
                 ownIncome
-                Divider()
+                Hairline()
                 ztpp(of: spouse)
                 if let note = content.youngChild {
                     youngChild(note)
                 }
                 if let result = content.result {
                     Text(verbatim: result)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                         .monospacedDigit()
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 10)
                 }
             }
         }
-        .familyCard(label: "Manžel nebo manželka")
     }
 
     // MARK: The rows
@@ -201,19 +202,22 @@ struct SpouseCard: View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle("Uplatnit slevu na manžela / manželku", isOn: claimChoice)
                 .toggleStyle(.checkbox)
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
             Text(verbatim: content.claimLine)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 20)
         }
         .padding(.vertical, 10)
     }
 
+    /// The months the spouses lived together in the household: the text and the two menus of the first and the last.
     private func months(of spouse: SpouseYear) -> some View {
         HStack(spacing: 12) {
             Text("Manželé ve společné domácnosti")
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             MonthChoice(
@@ -227,16 +231,20 @@ struct SpouseCard: View {
     }
 
     /// The field of the income with "Kč", the message of a refused text under it, whether the income is within the
-    /// limit, and what counts in it.
+    /// limit, in the green of text, or over it, in the red of text, and what counts in it.
     private var ownIncome: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
                 Text(verbatim: content.incomeTitle)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 6) {
                     AmountTextField(title: content.incomeTitle, text: income.text, width: 110, submit: income.submit)
                     Text("Kč")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
                 }
                 .fixedSize()
             }
@@ -245,19 +253,19 @@ struct SpouseCard: View {
             }
             if let status = content.incomeStatus {
                 Text(verbatim: status)
-                    .font(.callout)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(content.incomeIsOverLimit ? Color.red : Color(.bannerText))
+                    .font(Typography.calloutSemibold)
+                    .foregroundStyle(content.incomeIsOverLimit ? Palette.redText : Palette.greenText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text(verbatim: SpouseCardContent.incomeNote)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 10)
     }
 
+    /// The box of ZTP/P of the spouse, and its months once it is ticked.
     private func ztpp(of spouse: SpouseYear) -> some View {
         HStack(spacing: 12) {
             // The label breaks where the months leave it too little room, as on the narrowest card.
@@ -280,18 +288,10 @@ struct SpouseCard: View {
         .padding(.vertical, 10)
     }
 
-    /// The box about the children under three: green while there is one, amber while there is none.
+    /// The note about the children under three: green while there is one, orange while there is none. It has no icon,
+    /// as the box of the design has none.
     private func youngChild(_ note: YoungChildNote) -> some View {
-        Text(verbatim: note.text)
-            .font(.callout)
-            .foregroundStyle(note.isMet ? Color(.bannerText) : Color(.simulationText))
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                note.isMet ? Color.green.opacity(0.12) : Color.orange.opacity(0.14),
-                in: RoundedRectangle(cornerRadius: 10))
+        Note(note.isMet ? .success : .attention, icon: .none, text: note.text)
     }
 
     // MARK: Choices
@@ -341,7 +341,7 @@ struct SpouseCard: View {
 
 // MARK: - Parts
 
-/// A month to choose, "od" or "do" before it, which VoiceOver reads under `title`.
+/// A month to choose, "od" or "do" before it in secondary text, which VoiceOver reads under `title`.
 struct MonthChoice: View {
     let label: String
     let title: String
@@ -350,7 +350,8 @@ struct MonthChoice: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(verbatim: label)
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .accessibilityHidden(true)
             Picker(title, selection: month) {
                 ForEach(1...12, id: \.self) { month in
@@ -365,8 +366,8 @@ struct MonthChoice: View {
     }
 }
 
-/// The title of a card of the family, a heading for VoiceOver, with its total at the other end: in the colour of the
-/// text while `totalCounts`, otherwise grey.
+/// The title of a card of the family (`CardTitle`), with its total at the other end in semibold: in the colour of the
+/// text while `totalCounts`, otherwise in the grey of captions.
 private struct FamilyCardHeader: View {
     let title: String
     let total: String?
@@ -374,31 +375,16 @@ private struct FamilyCardHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(verbatim: title)
-                .font(.system(size: 15, weight: .semibold))
+            CardTitle(text: title)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             if let total {
                 Text(verbatim: total)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
                     .monospacedDigit()
-                    .foregroundStyle(totalCounts ? Color.primary : Color.secondary)
+                    .foregroundStyle(totalCounts ? Palette.text : Palette.text3)
                     .fixedSize()
             }
         }
-    }
-}
-
-private extension View {
-    /// A card of the family, which VoiceOver reads under `label`.
-    func familyCard(label: String) -> some View {
-        padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
     }
 }

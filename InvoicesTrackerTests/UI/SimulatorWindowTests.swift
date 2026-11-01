@@ -73,7 +73,7 @@ struct SimulatorWindowTests {
                 #expect(f.app.asOf.year == 2025)
                 #expect(model.year == 2026)
                 #expect(model.canCopyDeductionsAndFamily)
-                #expect(model.page?.summary.heading == "Zaplatíte za rok 2026")
+                #expect(model.page?.summary.keyFigure.eyebrow == "Odvody za rok 2026")
             }
         }
     }
@@ -87,7 +87,7 @@ struct SimulatorWindowTests {
                 try await withAccessibilityElements {
                     try await expectSettled(window) { mainToolbarProblems(in: window) }
                     f.app.screen = .computation
-                    try await waitUntil { window.title == "Rozpis výpočtu" }
+                    try await waitUntil { window.title == "Výpočet" }
                     try await expectSettled(window) { mainToolbarProblems(in: window) }
                     #expect(f.app.asOf.asOf == civilDate("2026-07-15"))
                     #expect(!f.app.asOf.followsToday)
@@ -103,7 +103,7 @@ struct SimulatorWindowTests {
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     let screens: [(screen: Screen, title: String)] = [
-                        (.prediction, "Odhad odvodů"), (.simulator, "Simulátor"), (.computation, "Rozpis výpočtu"),
+                        (.prediction, "Odhad odvodů"), (.simulator, "Simulátor"), (.computation, "Výpočet"),
                     ]
                     for (screen, title) in screens {
                         f.app.screen = screen
@@ -155,7 +155,7 @@ struct SimulatorWindowTests {
                     #expect(f.app.asOf.asOf == civilDate("2025-12-31"))
                     try await expectSettled(window) { mainToolbarProblems(in: window) }
                     #expect(model.year == 2026)
-                    #expect(model.page?.summary.heading == "Zaplatíte za rok 2026")
+                    #expect(model.page?.summary.keyFigure.eyebrow == "Odvody za rok 2026")
 
                     f.app.selectYear(2026)
                     #expect(f.app.asOf.asOf == civilDate("2026-10-31"))
@@ -183,6 +183,41 @@ struct SimulatorWindowTests {
         let center = CGPoint(x: frame.midX, y: frame.midY)
         return toolbarItems(of: window).firstIndex { item in
             item.view.map { window.convertToScreen(frameInWindow($0)).contains(center) } ?? false
+        }
+    }
+
+    // MARK: The texts of the inputs
+
+    /// The note under the income says that the amount is without VAT and in crowns, and that no employment or other
+    /// taxable income is counted, as the prototype words it ("Bez DPH, v Kč. …"), where the app said only "V Kč. …".
+    @Test func theNoteUnderTheIncomeSaysItIsWithoutVatAndInCrowns() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                _ = try await showSimulator(of: f.app, in: window)
+                try await withAccessibilityElements {
+                    let note = "Bez DPH, v Kč. Bez zaměstnání a jiných zdanitelných příjmů."
+                    try await waitUntil { showsText(note, in: window) }
+                    #expect(!showsText("V Kč. Bez zaměstnání a jiných zdanitelných příjmů.", in: window))
+                }
+            }
+        }
+    }
+
+    /// "Začít znovu" in the note at the top and "Převzít ze Záloh a odpočtů 2026" over the cards of the deductions are
+    /// capsules 28 points tall, the height of a button inside a card, and not the 22 points of a system button.
+    @Test func theRestartAndTheCopyButtonsAreCapsulesOfTheHeightOfAButtonInACard() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                _ = try await showSimulator(of: f.app, in: window)
+                try await withAccessibilityElements {
+                    for label in ["Začít znovu", "Převzít ze Záloh a odpočtů 2026"] {
+                        try await waitUntil { accessibilityButton(labelled: label, in: window) != nil }
+                        let frame = try #require(
+                            accessibilityButton(labelled: label, in: window)?.accessibilityFrame?())
+                        #expect((frame.height - 28).magnitude < 0.5, "\(label) is \(frame.height) points tall")
+                    }
+                }
+            }
         }
     }
 
@@ -235,7 +270,7 @@ struct SimulatorWindowTests {
 
                         try type("6", into: field, in: window)
                         try await waitUntil { model.monthsError == nil }
-                        #expect(model.page?.summary.total == "49\u{00A0}860\u{00A0}Kč")
+                        #expect(model.page?.summary.keyFigure.figure == "49\u{00A0}860\u{00A0}Kč")
                         try await expectSettled(window) { focusProblems(of: field, in: window) }
                     }
                 }
@@ -287,13 +322,13 @@ struct SimulatorWindowTests {
                 model.setActivity(.secondary)
                 try await withAccessibilityElements {
                     try await waitUntil { accessibilityElement(labelled: Self.healthSwitch, in: window) != nil }
-                    #expect(model.page?.summary.lines.last?.amount == "3\u{00A0}306\u{00A0}Kč")
+                    #expect(model.page?.summary.levyBar.parts.last?.legendValue == "3\u{00A0}306\u{00A0}Kč")
 
                     let box = try #require(accessibilityElement(labelled: Self.healthSwitch, in: window))
                     _ = box.accessibilityPerformPress?()
 
                     try await waitUntil { model.healthMinimumExempt }
-                    #expect(model.page?.summary.lines.last?.amount == "135\u{00A0}Kč")
+                    #expect(model.page?.summary.levyBar.parts.last?.legendValue == "135\u{00A0}Kč")
                     try await waitUntil {
                         accessibilityElement(labelled: Self.healthSwitch, in: window).flatMap(isTicked) == true
                     }
@@ -365,7 +400,7 @@ struct SimulatorWindowTests {
 
                         try await waitUntil { window.attachedSheet == nil }
                         #expect(model.family?.children.isEmpty == true)
-                        try await waitUntil { showsText(ChildrenCardContent.noChildren, in: window) }
+                        try await waitUntil { showsText(ChildrenCardContent.noChildrenInSimulation, in: window) }
                     }
                     #expect(f.app.dataVersion == versionBefore)
                     #expect(try await f.database.family(year: 2026).children.isEmpty)

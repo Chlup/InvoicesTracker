@@ -3,11 +3,11 @@ import Testing
 @testable import InvoicesTracker
 
 /// The rest of the page of Výpočet that the builder makes from the result of the tax engine, besides the sections: the
-/// banner about the day the computation counts up to, the "Zbývá zaplatit" equation, the marginal levy, the thresholds
-/// of the year, the assumptions, and the tags of the sections. The sample year is the engine's regression year as of
-/// 17. 10. 2026; its figures and those of the other years were worked out for the same data by a separate
-/// implementation of the rules (exact fractions, run in Python). In every expected string `\u{00A0}` is the no-break
-/// space.
+/// banner about the day the computation counts up to, the key figure of what is left to pay, the levy bar of Přehled,
+/// the marginal levy, the thresholds of the year, the assumptions, and the tags of the sections. The sample year is the
+/// engine's regression year as of 17. 10. 2026; its figures and those of the other years were worked out for the same
+/// data by a separate implementation of the rules (exact fractions, run in Python). In every expected string
+/// `\u{00A0}` is the no-break space.
 struct ComputationCardsTests {
     // MARK: Helpers
 
@@ -25,6 +25,11 @@ struct ComputationCardsTests {
 
     private func isClose(_ actual: Double, _ expected: Double) -> Bool {
         abs(actual - expected) < 1e-9
+    }
+
+    /// The part of the levy bar `levies` that is of `authority`, or a failure of the test where the bar has none.
+    private func part(of authority: Authority, in levies: LevyBarData) throws -> LevyBarPart {
+        try #require(levies.parts.first { $0.authority == authority }, "The bar has no part of \(authority)")
     }
 
     /// The amounts with two decimals in `text`, in hundredths: "12,45" is 1245.
@@ -98,65 +103,62 @@ struct ComputationCardsTests {
         #expect(page.banner.contains("Zálohy za leden až březen bereme"))
     }
 
-    // MARK: The equation
+    // MARK: The key figure
 
-    @Test func theEquationAddsWhatEachAuthorityStillHasToGetAndSaysWhereItGoes() {
-        let equation = computationPage(sample).equation
+    /// What the key figure says after what is left to pay: only positive balances are added.
+    private let onlyPositiveBalances =
+        " Sčítají se jen kladné zůstatky – přeplatek u jednoho úřadu nezaplatí dluh u jiného."
 
-        #expect(equation.heading == "Zbývá zaplatit k 17.\u{00A0}10.\u{00A0}2026")
+    @Test func theKeyFigureAddsWhatEachAuthorityStillHasToGetAndSaysWhereItGoes() {
+        let keyFigure = computationPage(sample).keyFigure
+
+        #expect(keyFigure.eyebrow == "Zbývá zaplatit k 17.\u{00A0}10.\u{00A0}2026")
+        #expect(keyFigure.figure == "110\u{00A0}844\u{00A0}Kč")
+        #expect(keyFigure.share == nil)
+        #expect(keyFigure.sentenceEmphasis == nil)
         #expect(
-            equation.caption == "sčítají se jen kladné zůstatky – přeplatek u jednoho úřadu nezaplatí dluh u jiného")
-        #expect(equation.tiles.map(\.sign) == [.blank, .plus, .plus, .equals])
-        #expect(equation.tiles.map(\.label) == ["Daň", "Sociální", "Zdravotní", "Zbývá zaplatit"])
-        #expect(
-            equation.tiles.map(\.value) == [
-                "71\u{00A0}440", "33\u{00A0}019", "6\u{00A0}385", "110\u{00A0}844\u{00A0}Kč",
-            ])
-        #expect(equation.tiles.map(\.isResult) == [false, false, false, true])
-        #expect(
-            equation.split
+            keyFigure.sentence
                 == "Z toho 53\u{00A0}685\u{00A0}Kč odejde naplánovanými zálohami do konce roku"
-                + " a 57\u{00A0}159\u{00A0}Kč doplatíte po podání přiznání a přehledů.")
+                + " a 57\u{00A0}159\u{00A0}Kč doplatíte po podání přiznání a přehledů." + onlyPositiveBalances)
     }
 
     @Test func withoutIncomeEachAuthorityStillWantsItsMinimum() {
-        // Nothing is received, so there is no tax; the insurances are the minimums of ten months.
-        let equation = computationPage(computationYearInput()).equation
+        // Nothing is received, so there is no tax; the insurances are the minimums of ten months. The figure is the
+        // whole of the part that is paid after the return, and the sentence says "0 Kč" as it stands.
+        let keyFigure = computationPage(computationYearInput()).keyFigure
 
-        #expect(equation.tiles.map(\.value) == ["0", "50\u{00A0}046", "33\u{00A0}053", "83\u{00A0}099\u{00A0}Kč"])
+        #expect(keyFigure.figure == "83\u{00A0}099\u{00A0}Kč")
         #expect(
-            equation.split
+            keyFigure.sentence
                 == "Z toho 0\u{00A0}Kč odejde naplánovanými zálohami do konce roku"
-                + " a 83\u{00A0}099\u{00A0}Kč doplatíte po podání přiznání a přehledů.")
+                + " a 83\u{00A0}099\u{00A0}Kč doplatíte po podání přiznání a přehledů." + onlyPositiveBalances)
     }
 
     @Test func aYearThatIsOverSaysWhatIsDueAndWhatTheAdvancesPaid() {
         // A payment of 4 500 Kč in 2025: no tax, social insurance 57 098 Kč and health insurance 37 712 Kč.
-        let page = computationPage(
-            computationYearInput(year: 2025, netHalere: 450_000, vatHalere: 94_500), asOf: "2025-12-31")
+        let keyFigure = computationPage(
+            computationYearInput(year: 2025, netHalere: 450_000, vatHalere: 94_500), asOf: "2025-12-31"
+        ).keyFigure
 
-        #expect(page.equation.heading == "Doplatek za rok 2025")
-        #expect(page.equation.tiles.map(\.label) == ["Daň", "Sociální", "Zdravotní", "Doplatek za rok"])
-        #expect(
-            page.equation.tiles.map(\.value) == [
-                "0", "57\u{00A0}098", "37\u{00A0}712", "94\u{00A0}810\u{00A0}Kč",
-            ])
-        #expect(page.equation.split == "Zálohami se za rok zaplatilo 0\u{00A0}Kč.")
+        #expect(keyFigure.eyebrow == "Doplatek za rok 2025")
+        #expect(keyFigure.figure == "94\u{00A0}810\u{00A0}Kč")
+        #expect(keyFigure.sentence == "Zálohami se za rok zaplatilo 0\u{00A0}Kč." + onlyPositiveBalances)
     }
 
     @Test func aYearThatIsOverSaysThatOverpaymentsAreReturned() {
         // 10 000 Kč of income tax advances were paid in March, and the tax is 0 Kč.
         var advances = AdvancePlan.empty
         advances.tax[2] = 10_000
-        let page = computationPage(
+        let keyFigure = computationPage(
             computationYearInput(year: 2025, netHalere: 450_000, vatHalere: 94_500, advances: advances),
-            asOf: "2025-12-31")
+            asOf: "2025-12-31"
+        ).keyFigure
 
-        #expect(page.equation.tiles.map(\.value).last == "94\u{00A0}810\u{00A0}Kč")
+        #expect(keyFigure.figure == "94\u{00A0}810\u{00A0}Kč")
         #expect(
-            page.equation.split
+            keyFigure.sentence
                 == "Zálohami se za rok zaplatilo 10\u{00A0}000\u{00A0}Kč,"
-                + " přeplatky 10\u{00A0}000\u{00A0}Kč se vrací.")
+                + " přeplatky 10\u{00A0}000\u{00A0}Kč se vrací." + onlyPositiveBalances)
     }
 
     /// The sample family in the whole of 2026, seen from 15. 1. 2027, with 120 000 Kč received on 20. 1. and 130 000 Kč
@@ -166,9 +168,10 @@ struct ComputationCardsTests {
             TaxEngineFamilyTests.input(TaxEngineFamilyTests.earlyReceipts), asOf: "2026-12-31", today: "2027-01-15")
 
         #expect(
-            page.equation.split
+            page.keyFigure.sentence
                 == "Zálohami se za rok zaplatilo 0\u{00A0}Kč,"
-                + " vrátí se 37\u{00A0}524\u{00A0}Kč (z toho daňový bonus 37\u{00A0}524\u{00A0}Kč).")
+                + " vrátí se 37\u{00A0}524\u{00A0}Kč (z toho daňový bonus 37\u{00A0}524\u{00A0}Kč)."
+                + onlyPositiveBalances)
     }
 
     /// The same family with 10 000 Kč of tax advances paid in January: the bonus comes back with the advances.
@@ -179,9 +182,10 @@ struct ComputationCardsTests {
         let page = computationPage(family, asOf: "2026-12-31", today: "2027-01-15")
 
         #expect(
-            page.equation.split
+            page.keyFigure.sentence
                 == "Zálohami se za rok zaplatilo 10\u{00A0}000\u{00A0}Kč,"
-                + " vrátí se 47\u{00A0}524\u{00A0}Kč (z toho daňový bonus 37\u{00A0}524\u{00A0}Kč).")
+                + " vrátí se 47\u{00A0}524\u{00A0}Kč (z toho daňový bonus 37\u{00A0}524\u{00A0}Kč)."
+                + onlyPositiveBalances)
     }
 
     @Test func aYearThatIsOverShownAsOfAMidYearDaySaysWhatIsLeftAndWhereItGoesLikeAYearInProgress() {
@@ -189,18 +193,123 @@ struct ComputationCardsTests {
         // and 18 856 Kč of health insurance, no tax, and 1 000 Kč of social insurance advances in each month.
         var advances = AdvancePlan.empty
         advances.social = [Int64](repeating: 1_000, count: 12)
+        let keyFigure = computationPage(
+            computationYearInput(year: 2025, netHalere: 450_000, vatHalere: 94_500, advances: advances),
+            asOf: "2025-06-30"
+        ).keyFigure
+
+        #expect(keyFigure.eyebrow == "Zbývá zaplatit k 30.\u{00A0}6.\u{00A0}2025")
+        #expect(keyFigure.figure == "41\u{00A0}405\u{00A0}Kč")
+        #expect(
+            keyFigure.sentence
+                == "Z toho 6\u{00A0}000\u{00A0}Kč odejde naplánovanými zálohami do konce roku"
+                + " a 35\u{00A0}405\u{00A0}Kč doplatíte po podání přiznání a přehledů." + onlyPositiveBalances)
+    }
+
+    // MARK: The levy bar
+
+    @Test func theLevyBarOfTheSampleYearIsThatOfPrehled() throws {
+        let page = computationPage(sample)
+        let result = TaxEngine.compute(sample, asOf: civilDate("2026-10-17"))
+
+        #expect(
+            page.levies
+                == LevyBarBuilder.balances(
+                    of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.",
+                    showsTotal: true))
+        // The key figure beside the bar is what is left to pay, not the levies, so the bar shows their total and its
+        // share of the income.
+        #expect(page.levies.header == "Odvody z příjmů do 17.\u{00A0}10.")
+        #expect(page.levies.total == "320\u{00A0}664\u{00A0}Kč")
+        #expect(page.levies.totalShare == "14,6\u{00A0}% z příjmů")
+        #expect(page.levies.parts.map(\.authority) == [.tax, .social, .health])
+        #expect(page.levies.parts.map(\.weight) == [94_440, 159_279, 66_945])
+        #expect(
+            page.levies.parts.map(\.legendValue) == [
+                "94\u{00A0}440\u{00A0}Kč", "159\u{00A0}279\u{00A0}Kč", "66\u{00A0}945\u{00A0}Kč",
+            ])
+        let rows = page.levies.parts.map { part in part.rows.map { "\($0.label): \($0.value)" } }
+        #expect(
+            rows == [
+                [
+                    "Odvody z příjmů: 94\u{00A0}440\u{00A0}Kč", "Zaplaceno zálohami: 23\u{00A0}000\u{00A0}Kč",
+                    "Zbývá: 71\u{00A0}440\u{00A0}Kč",
+                ],
+                [
+                    "Odvody z příjmů: 159\u{00A0}279\u{00A0}Kč", "Zaplaceno zálohami: 126\u{00A0}260\u{00A0}Kč",
+                    "Zbývá: 33\u{00A0}019\u{00A0}Kč",
+                ],
+                [
+                    "Odvody z příjmů: 66\u{00A0}945\u{00A0}Kč", "Zaplaceno zálohami: 60\u{00A0}560\u{00A0}Kč",
+                    "Zbývá: 6\u{00A0}385\u{00A0}Kč",
+                ],
+            ])
+        #expect(
+            page.levies.parts.map(\.shareLine) == [
+                "4,3\u{00A0}% z příjmů bez DPH", "7,3\u{00A0}% z příjmů bez DPH", "3,0\u{00A0}% z příjmů bez DPH",
+            ])
+    }
+
+    @Test func theLevyBarOfAYearThatIsOverNamesTheLeviesOfTheYearAndTheDoplatek() throws {
+        let page = computationPage(
+            computationYearInput(year: 2025, netHalere: 450_000, vatHalere: 94_500), asOf: "2025-12-31")
+
+        #expect(page.levies.header == "Odvody za rok 2025")
+        let social = try part(of: .social, in: page.levies)
+        #expect(social.rows.map(\.label) == ["Odvody za rok", "Zaplaceno zálohami", "Doplatek"])
+        #expect(social.rows.map(\.value) == ["57\u{00A0}098\u{00A0}Kč", "0\u{00A0}Kč", "57\u{00A0}098\u{00A0}Kč"])
+        #expect(social.rows.map(\.style) == [.strong, .muted, .strong])
+    }
+
+    @Test func aYearInProgressNamesTheLeviesToTheDayAndWhatIsLeft() throws {
+        let page = computationPage(computationYearInput(year: 2025), asOf: "2025-06-30")
+
+        #expect(page.levies.header == "Odvody z příjmů do 30.\u{00A0}6.")
+        let social = try part(of: .social, in: page.levies)
+        #expect(social.rows.map(\.label) == ["Odvody z příjmů", "Zaplaceno zálohami", "Zbývá"])
+    }
+
+    @Test func aTaxBonusIsAZeroWidthPartWithTheBonusInTheLegendAndWhatComesBackInGreen() throws {
+        // The sample family's children's 37 524 Kč are paid as a bonus: the tax is below zero.
+        let page = computationPage(
+            TaxEngineFamilyTests.input(TaxEngineFamilyTests.earlyReceipts), asOf: "2026-12-31", today: "2027-01-15")
+        let tax = try part(of: .tax, in: page.levies)
+
+        #expect(tax.weight == -37_524)
+        #expect(tax.weight < 0)
+        #expect(tax.legendValue == "bonus 37\u{00A0}524\u{00A0}Kč")
+        #expect(tax.rows.map(\.label) == ["Odvody za rok", "Zaplaceno zálohami", "Vrátí se"])
+        #expect(
+            tax.rows.map(\.value) == [
+                "bonus 37\u{00A0}524\u{00A0}Kč", "0\u{00A0}Kč", "37\u{00A0}524\u{00A0}Kč",
+            ])
+        #expect(tax.rows.map(\.style) == [.strong, .muted, .positive])
+        // The bonus is no levy: it takes nothing of the bar and is counted into the total of the levies as it is.
+        #expect(LevyBarLayout.partWidths(weights: page.levies.parts.map(\.weight), width: 400)[0] == 0)
+    }
+
+    @Test func anOverpaymentIsInGreenUnderItsNameAndWhatIsLeftIsNot() throws {
+        // 10 000 Kč of tax advances against no tax at all: the advances are an overpayment.
+        var advances = AdvancePlan.empty
+        advances.tax[2] = 10_000
         let page = computationPage(
             computationYearInput(year: 2025, netHalere: 450_000, vatHalere: 94_500, advances: advances),
-            asOf: "2025-06-30")
+            asOf: "2025-12-31")
 
-        #expect(page.equation.heading == "Zbývá zaplatit k 30.\u{00A0}6.\u{00A0}2025")
-        #expect(page.equation.tiles.map(\.label) == ["Daň", "Sociální", "Zdravotní", "Zbývá zaplatit"])
-        #expect(
-            page.equation.tiles.map(\.value) == ["0", "22\u{00A0}549", "18\u{00A0}856", "41\u{00A0}405\u{00A0}Kč"])
-        #expect(
-            page.equation.split
-                == "Z toho 6\u{00A0}000\u{00A0}Kč odejde naplánovanými zálohami do konce roku"
-                + " a 35\u{00A0}405\u{00A0}Kč doplatíte po podání přiznání a přehledů.")
+        let tax = try part(of: .tax, in: page.levies)
+        #expect(tax.rows.map(\.label) == ["Odvody za rok", "Zaplaceno zálohami", "Přeplatek"])
+        #expect(tax.rows.last?.style == .positive)
+        #expect(tax.rows.last?.value == "10\u{00A0}000\u{00A0}Kč")
+        #expect(try part(of: .social, in: page.levies).rows.last?.style == .strong)
+    }
+
+    @Test func withoutIncomeTheLevyBarHasNoShareOfTheIncome() {
+        // Nothing is received, so there is no income to take a share of; the minimum insurance is all there is.
+        let page = computationPage(computationYearInput())
+
+        #expect(page.levies.total != nil)
+        #expect(page.levies.totalShare == nil)
+        #expect(page.levies.parts.allSatisfy { $0.shareLine == nil })
     }
 
     // MARK: The marginal levy
@@ -215,9 +324,12 @@ struct ComputationCardsTests {
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 37,81\u{00A0}Kč:"
                 + " daň 15,00 · sociální 16,06 · zdravotní 6,75.")
         #expect(marginal.shares.map(\.authority) == [.tax, .social, .health])
-        #expect(isClose(marginal.shares[0].fraction, 0.3967204443268976))
-        #expect(isClose(marginal.shares[1].fraction, 0.42475535572599843))
-        #expect(isClose(marginal.shares[2].fraction, 0.17852419994710395))
+        // Each part of the bar is the rate itself, 15 %, 16,06 % and 6,75 % of the whole width, so that the three
+        // together fill 37,81 % of it, as much as the levy total is of a hundred crowns.
+        #expect(isClose(marginal.shares[0].fraction, 0.15))
+        #expect(isClose(marginal.shares[1].fraction, 0.1606))
+        #expect(isClose(marginal.shares[2].fraction, 0.0675))
+        #expect(isClose(marginal.shares.map(\.fraction).reduce(0, +), 0.3781))
     }
 
     @Test func aHighIncomeHasNoMarginalSocialInsuranceAndTheTopRateOfTax() {
@@ -229,9 +341,9 @@ struct ComputationCardsTests {
             marginal.text
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 29,75\u{00A0}Kč:"
                 + " daň 23,00 · sociální 0,00 · zdravotní 6,75.")
-        #expect(isClose(marginal.shares[0].fraction, 0.773109243697479))
+        #expect(isClose(marginal.shares[0].fraction, 0.23))
         #expect(marginal.shares[1].fraction == 0)
-        #expect(isClose(marginal.shares[2].fraction, 0.226890756302521))
+        #expect(isClose(marginal.shares[2].fraction, 0.0675))
     }
 
     @Test func thePartsOfTheMarginalLevyAddUpToTheTotalShown() {
@@ -262,6 +374,32 @@ struct ComputationCardsTests {
                 == "Ze 100\u{00A0}Kč dalšího příjmu bez DPH odvedete 9,06\u{00A0}Kč:"
                 + " daň 0,00 · sociální 6,43 · zdravotní 2,63.")
         #expect(marginal.shares[0].fraction == 0)
+        #expect(isClose(marginal.shares[1].fraction, 0.06424))
+        #expect(isClose(marginal.shares[2].fraction, 0.02634))
+    }
+
+    @Test func theBarOfTheMarginalLevyHoldsTheRatesExactlyWhileTheTextRoundsThem() {
+        // 1 125 000 Kč of income: the rates are 6 %, 6,424 % and 0,022 %. The text rounds them to the hundredth of a
+        // crown and gives the largest remainder the hundredth that the sum needs, but the bar is drawn from the rates.
+        let marginal = computationPage(computationYearInput(netHalere: 112_500_000)).marginal
+
+        #expect(isClose(marginal.shares[0].fraction, 0.06))
+        #expect(isClose(marginal.shares[1].fraction, 0.06424))
+        #expect(isClose(marginal.shares[2].fraction, 0.00022))
+    }
+
+    @Test func aRateBelowZeroFillsNothingOfTheBarAndOneAboveOneFillsAllOfIt() {
+        var result = TaxEngine.compute(sample, asOf: civilDate("2026-10-17"))
+        result.marginal[.tax] = decimal("-0.05")
+        result.marginal[.social] = decimal("1.5")
+        result.marginal[.health] = decimal("0.0675")
+
+        let shares = ComputationBuilder.marginal(of: result).shares
+
+        #expect(shares.map(\.authority) == [.tax, .social, .health])
+        #expect(shares[0].fraction == 0)
+        #expect(shares[1].fraction == 1)
+        #expect(isClose(shares[2].fraction, 0.0675))
     }
 
     @Test func withoutIncomeNothingMoreIsLeviedAndTheBarIsEmpty() {
@@ -488,7 +626,8 @@ struct ComputationCardsTests {
             ])
         #expect(page.year == 2026)
         #expect(!page.banner.isEmpty)
-        #expect(page.equation.tiles.count == 4)
+        #expect(!page.keyFigure.figure.isEmpty)
+        #expect(page.levies.parts.count == 3)
         #expect(page.marginal.shares.count == 3)
         #expect(page.thresholds.bars.count == 3)
         #expect(page.assumptions.items.count == 5)
@@ -519,27 +658,53 @@ struct ComputationCardsTests {
         #expect(
             page.banner.hasSuffix(isOver ? "za celý rok." : "jen za uplynulé měsíce hlavní činnosti."), "\(context)")
 
-        // The equation.
-        let remaining = Authority.allCases.map { CzechFormat.grouped(result.balance($0).remaining) }
-        #expect(Array(page.equation.tiles.map(\.value).prefix(3)) == remaining, "\(context)")
-        #expect(page.equation.tiles.last?.value == CzechFormat.wholeKc(result.remainingTotal), "\(context)")
-        #expect(page.equation.tiles.last?.isResult == true, "\(context)")
-        #expect(page.equation.heading.hasPrefix(isOver ? "Doplatek za rok" : "Zbývá zaplatit k"), "\(context)")
+        // The key figure: what is left to pay, said by the sentence that adds only the positive balances.
+        let keyFigure = page.keyFigure
+        #expect(keyFigure.figure == CzechFormat.wholeKc(result.remainingTotal), "\(context)")
+        #expect(keyFigure.eyebrow.hasPrefix(isOver ? "Doplatek za rok" : "Zbývá zaplatit k"), "\(context)")
+        #expect(keyFigure.share == nil && keyFigure.sentenceEmphasis == nil, "\(context)")
+        let sentence = keyFigure.sentence ?? ""
+        #expect(sentence.hasSuffix(onlyPositiveBalances), "\(context)")
         if isOver {
-            #expect(page.equation.split.contains(CzechFormat.wholeKc(result.advancesPaidTotal)), "\(context)")
-            #expect(page.equation.split.contains("přeplatky") == (result.overpaymentTotal > 0), "\(context)")
+            #expect(sentence.contains(CzechFormat.wholeKc(result.advancesPaidTotal)), "\(context)")
+            // A bonus comes back with the advances, and the sentence names it instead of the overpayments.
+            let returnsOverpayments = result.overpaymentTotal > 0 && result.childBonus == 0
+            #expect(sentence.contains("přeplatky") == returnsOverpayments, "\(context)")
         } else {
-            #expect(page.equation.split.contains(CzechFormat.wholeKc(result.leavesViaPlannedAdvances)), "\(context)")
-            #expect(page.equation.split.contains(CzechFormat.wholeKc(result.settlementTotal)), "\(context)")
+            #expect(sentence.contains(CzechFormat.wholeKc(result.leavesViaPlannedAdvances)), "\(context)")
+            #expect(sentence.contains(CzechFormat.wholeKc(result.settlementTotal)), "\(context)")
         }
 
-        // The marginal levy: the shares fill the bar, or it is empty.
+        // The levy bar is the one of Přehled: the levies of each authority, as they are, and their sum.
+        let levies = page.levies
+        #expect(levies.parts.map(\.authority) == Authority.allCases, "\(context)")
+        #expect(levies.parts.map(\.weight) == Authority.allCases.map { result.balance($0).liability }, "\(context)")
+        #expect(levies.total == CzechFormat.wholeKc(result.liabilityTotal), "\(context)")
+        let day = BuilderText.date(result.asOf, omittingYear: input.year)
+        #expect(levies.header == (isOver ? "Odvody za rok \(input.year)" : "Odvody z příjmů do " + day), "\(context)")
+        let lastRows = Authority.allCases.map { authority in
+            let balance = result.balance(authority)
+            if balance.overpayment > 0 {
+                return balance.liability < 0 ? "Vrátí se" : "Přeplatek"
+            }
+            return isOver ? "Doplatek" : "Zbývá"
+        }
+        #expect(levies.parts.map { $0.rows.last?.label } == lastRows, "\(context)")
+
+        // The marginal levy: each part of the bar is the rate of its authority, 0 to 1 of the whole width, so that the
+        // parts fill as much of the bar as the levy total is of a hundred crowns.
         #expect(page.marginal.total == CzechFormat.percent(result.marginalTotal), "\(context)")
         #expect(page.marginal.shares.map(\.authority) == Authority.allCases, "\(context)")
         let fractions = page.marginal.shares.map(\.fraction)
+        let rates = Authority.allCases.map { NSDecimalNumber(decimal: result.marginal[$0] ?? 0).doubleValue }
         #expect(fractions.allSatisfy { (0...1).contains($0) }, "\(context)")
-        #expect(
-            isClose(fractions.reduce(0, +), result.marginalTotal > 0 ? 1 : 0), "\(context) \(fractions)")
+        for (fraction, rate) in zip(fractions, rates) {
+            #expect(isClose(fraction, min(1, max(0, rate))), "\(context) \(fractions) \(rates)")
+        }
+        if rates.allSatisfy({ $0 >= 0 }) {
+            let total = NSDecimalNumber(decimal: result.marginalTotal).doubleValue
+            #expect(isClose(fractions.reduce(0, +), total), "\(context) \(fractions) \(total)")
+        }
         // The parts in the sentence add up to the total in it, to the hundredth.
         let shown = hundredths(in: page.marginal.text)
         #expect(shown.count == 4, "\(context) \(page.marginal.text)")

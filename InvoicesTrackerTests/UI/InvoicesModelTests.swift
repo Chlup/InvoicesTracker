@@ -3,9 +3,10 @@ import Testing
 @testable import InvoicesTracker
 
 /// The model of Faktury: what it loads for the selected year, scope, status chip and search; when the detail opens and
-/// when it closes, also on the arrow keys of the table; the other-year links; and deleting an invoice with its number
-/// typed. The data is the sample year 2026 with invented clients and two invoices of 2025 for Alfa, in a temporary
-/// database; the app is as of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
+/// when it closes, also on the arrow keys of the table; the other-year links; and deleting an invoice, and removing its
+/// payment, with its number typed. The data is the sample year 2026 with invented clients and two invoices of 2025 for
+/// Alfa, in a temporary database; the app is as of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break
+/// space.
 @Suite(.settlesBackups)
 @MainActor
 struct InvoicesModelTests {
@@ -70,8 +71,8 @@ struct InvoicesModelTests {
         #expect(data.chipCounts[.paid] == 11)
         #expect(data.chipCounts[.drafts] == 1)
         #expect(data.visibleChips == [.all, .drafts, .awaiting, .overdue, .paid])
-        #expect(data.countTile.value == "12")
-        #expect(data.countTile.subtitle == "vystavené v roce 2026 · všechny stavy")
+        #expect(data.countText == "12\u{00A0}faktur")
+        #expect(data.categoryText == " · všechny stavy")
         #expect(data.searchLine == nil)
         #expect(model.errorText == nil)
         // The detail starts closed.
@@ -91,7 +92,8 @@ struct InvoicesModelTests {
         #expect(row.client == "Bravo Labs, Inc.")
         #expect(row.net == "14\u{00A0}350,00\u{00A0}USD")
         #expect(row.czk == "305\u{00A0}726,75\u{00A0}Kč")
-        #expect(row.czkNote == "ČNB 21,305 · 2.\u{00A0}10.")
+        #expect(row.paidDate == "2.\u{00A0}10.")
+        #expect(row.listStatus == "Uhrazená")
         #expect(row.status.label(asOf: civilDate("2026-10-17")) == "Uhrazená 2.\u{00A0}10.")
     }
 
@@ -112,7 +114,8 @@ struct InvoicesModelTests {
         #expect(model.filter == .all)
         await model.load()
         #expect(model.data?.rows.count == 11)
-        #expect(model.data?.countTile.subtitle == "zaplacené v roce 2026 · všechny stavy")
+        #expect(model.data?.countText == "11\u{00A0}faktur")
+        #expect(model.data?.categoryText == " · všechny stavy")
     }
 
     @Test func aPaymentAfterTheDayShownIsPaidByTodayButIsNotInWhatWasPaidByThatDay() async throws {
@@ -181,14 +184,16 @@ struct InvoicesModelTests {
 
     // MARK: The net income
 
-    /// Writes an income adjustment dated 30. 2. 2025, a day that does not exist, as a change of the data outside the
-    /// app could write it. The year 2025 finds it by its dates, so its levies cannot be worked out, and no other year
-    /// finds it.
-    private nonisolated func storeAnAdjustmentOfADayThatIsNone(in database: Database) async throws {
+    /// Writes an income adjustment dated 30. 2. of `year` (2025 unless a test says otherwise), a day that does not
+    /// exist, as a change of the data outside the app could write it. The year finds it by its dates, so its levies
+    /// cannot be worked out, and no other year finds it.
+    private nonisolated func storeAnAdjustmentOfADayThatIsNone(
+        of year: Int = 2025, in database: Database
+    ) async throws {
         try await database.write { connection in
             try connection.run(
                 "INSERT INTO income_adjustment(date, amount_halere, description) VALUES (?, ?, ?)",
-                [.text("2025-02-30"), .integer(5_000_000), .text("Mimo faktury")])
+                [.text("\(year)-02-30"), .integer(5_000_000), .text("Mimo faktury")])
         }
     }
 
@@ -201,11 +206,9 @@ struct InvoicesModelTests {
 
             let first = try #require(model.data?.rows.first { $0.id == 1 })
             #expect(first.netIncome == "253\u{00A0}401\u{00A0}Kč")
-            #expect(first.netIncomeNote == "odvody snížila")
             #expect(first.netIncomeKind == .paid)
             let draft = try #require(model.data?.rows.first { $0.id == 12 })
             #expect(draft.netIncome == "≈\u{00A0}159\u{00A0}636\u{00A0}Kč")
-            #expect(draft.netIncomeNote == "odhad")
             #expect(draft.netIncomeKind == .estimate)
 
             try await storeAnAdjustmentOfADayThatIsNone(in: try #require(app.database))
@@ -215,7 +218,6 @@ struct InvoicesModelTests {
             #expect(model.errorText == nil)
             let unreadable = try #require(model.data?.rows.first { $0.id == 25 })
             #expect(unreadable.netIncome == "—")
-            #expect(unreadable.netIncomeNote == "")
             #expect(unreadable.netIncomeKind == .none)
         }
     }
@@ -240,7 +242,8 @@ struct InvoicesModelTests {
         let line = try #require(data.searchLine)
         #expect(line.text == "Hledání „alfa“: 5 z 12 faktur v roce 2026")
         #expect(line.otherYears == [OtherYearMatches(year: 2025, count: 2)])
-        #expect(data.countTile.subtitle == "vystavené v roce 2026 · všechny stavy · podle hledání")
+        #expect(data.countText == "5\u{00A0}faktur")
+        #expect(data.categoryText == " · všechny stavy · podle hledání")
     }
 
     @Test func aSearchWithoutMatchesSaysSoAndPointsToTheOtherYears() async throws {
@@ -330,8 +333,9 @@ struct InvoicesModelTests {
         let excerpt = try #require(row.excerpt)
         // The line says which field the text is from; the match is the part that is marked.
         #expect(excerpt.label == "Poznámka")
+        // The line follows the name of the client in its cell.
         let line = excerpt.attributedLine
-        #expect(String(line.characters).hasPrefix("Poznámka: Platba na účet. Routing number"))
+        #expect(String(line.characters).hasPrefix(" · Poznámka: Platba na účet. Routing number"))
         let marked = line.runs.filter { $0.inlinePresentationIntent == .stronglyEmphasized }
             .map { String(line[$0.range].characters) }
         // Both words of the note match "routing", in the case the note writes them; the first place is the excerpt's.
@@ -613,6 +617,46 @@ struct InvoicesModelTests {
         #expect(payment.effect?.rows.map(\.value) == ["+675", "+723", "+304"])
         #expect(model.detail?.estimate == nil)
         #expect(model.detail?.canPay == false)
+    }
+
+    /// The list of a past year is shown as of its last day, but the detail says that a payment comes later only when it
+    /// is dated after today (17. 10. 2026): in the list of 2025 an invoice paid on 7. 1. 2026 has no such note, as the
+    /// money has come, and one paid on 1. 12. 2026 has it.
+    @Test func theDetailInTheListOfAPastYearSaysThatAPaymentComesLaterOnlyAfterToday() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        func invoice(_ number: String, paid day: String) -> Invoice {
+            var invoice = SearchFixtures.earlierCrownInvoice()
+            invoice.number = number
+            invoice.issueDate = civilDate("2025-12-20")
+            invoice.duzp = civilDate("2025-12-20")
+            invoice.dueDate = civilDate("2026-01-03")
+            invoice.payment = .fixture(on: day)
+            return invoice
+        }
+        let january = try await database.saveInvoice(invoice("20251201", paid: "2026-01-07"))
+        let december = try await database.saveInvoice(invoice("20251202", paid: "2026-12-01"))
+        await app.didWriteAndBackUp()
+        let model = await loadedModel(of: app)
+        model.switchToYear(2025)
+        await model.load()
+        #expect(app.asOf.asOf == civilDate("2025-12-31"))
+
+        model.click(january)
+        await model.loadDetail()
+
+        #expect(model.detail?.number == "20251201")
+        #expect(model.detail?.statusLabel == "Uhrazená 7.\u{00A0}1.\u{00A0}2026")
+        #expect(model.detail?.payment?.laterNote == nil)
+
+        model.click(december)
+        await model.loadDetail()
+
+        #expect(model.detail?.number == "20251202")
+        #expect(
+            model.detail?.payment?.laterNote == "Platba má datum po dnešku – do příjmů se započítá až ten den.")
     }
 
     @Test func theDetailOfAnInvoiceThatIsNotPaidSaysRoughlyWhatItWouldAdd() async throws {
@@ -1105,6 +1149,137 @@ struct InvoicesModelTests {
         #expect(try await model.deletionSummary(for: 999) == nil)
     }
 
+    // MARK: Removing a payment
+
+    /// The payment of invoice 11 is removed with its number typed: the invoice is issued and unpaid again, its detail
+    /// stays open and shows it so at once, with the buttons of an unpaid invoice, and the banner says what happened.
+    @Test func removingAPaymentLeavesTheDetailOpenWithTheNotice() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        model.click(11)
+        await model.load()
+        #expect(model.detail?.canEditPayment == true)
+        let versionBefore = app.dataVersion
+        let changesBefore = app.changeCount
+
+        let removed = try await model.removePayment(11, typed: "20260902")
+
+        #expect(removed)
+        #expect(model.openInvoiceID == 11)
+        #expect(
+            app.banner
+                == AppBanner(
+                    text: "Platba faktury 20260902 byla odebrána – faktura je znovu nezaplacená.", screen: .invoices))
+        #expect(app.dataVersion > versionBefore)
+        #expect(app.changeCount > changesBefore)
+        let database = try #require(app.database)
+        let stored = try #require(try await database.invoice(id: 11))
+        #expect(stored.status == .issued)
+        #expect(stored.payment == nil)
+        #expect(try await database.receipts(year: 2026).contains { $0.source == .invoice(11) } == false)
+        #expect(model.openInvoice == stored)
+        #expect(model.detail?.payment == nil)
+        #expect(model.detail?.canPay == true)
+        #expect(model.detail?.canEdit == true)
+        #expect(model.detail?.canEditPayment == false)
+    }
+
+    @Test func aWrongNumberRemovesNoPayment() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        model.click(11)
+        await model.load()
+        let versionBefore = app.dataVersion
+
+        let removed = try await model.removePayment(11, typed: "20260901")
+
+        #expect(removed == false)
+        #expect(app.banner == nil)
+        #expect(app.dataVersion == versionBefore)
+        let database = try #require(app.database)
+        #expect(try await database.invoice(id: 11)?.payment != nil)
+        #expect(model.detail?.canEditPayment == true)
+    }
+
+    /// The payments of 2025 are in crowns, so converting the year again after the payment of 20250901 is removed
+    /// writes nothing: the removal is told to the app as a write of its own, once, which loads the screens again and
+    /// schedules the backups.
+    @Test func theRemovalIsAWriteOfItsOwnWhenTheYearHasNothingToConvertAgain() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        let versionBefore = app.dataVersion
+        let changesBefore = app.changeCount
+
+        #expect(try await model.removePayment(13, typed: "20250901"))
+
+        #expect(app.changeCount == changesBefore + 1)
+        #expect(app.dataVersion > versionBefore)
+        let database = try #require(app.database)
+        #expect(try await database.invoice(id: 13)?.payment == nil)
+        #expect(try await database.invoice(id: 14)?.payment != nil)
+    }
+
+    /// The step that removes the payment of invoice 11 names the payment and what removing it takes away: its income
+    /// and the 1 702 Kč it adds to the levies, the "Dopad na odvody" of its detail.
+    @Test func theRemovalSummaryNamesTheIncomeAndTheLevyDropOfThePayment() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+
+        let summary = try #require(await model.paymentRemovalSummary(for: 11))
+
+        #expect(summary.title == "Odebrat platbu faktury 20260902?")
+        #expect(
+            summary.subtitle == "Cetus Data s.r.o. · zaplaceno 15.\u{00A0}10.\u{00A0}2026 · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(summary.number == "20260902")
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 4\u{00A0}500,00\u{00A0}Kč a odvody o 1\u{00A0}702\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+        model.click(11)
+        await model.loadDetail()
+        #expect(model.detail?.payment?.effect?.total == "+1\u{00A0}702\u{00A0}Kč")
+    }
+
+    /// The draft 20261001 has no payment, and no invoice has the id 999: there is nothing to remove, and nothing is
+    /// said on the screen, as the sheet that asks says it.
+    @Test func thereIsNoRemovalSummaryWithoutAPaymentToRemove() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+
+        #expect(await model.paymentRemovalSummary(for: 12) == nil)
+        #expect(await model.paymentRemovalSummary(for: 999) == nil)
+        #expect(model.actionFailure == nil)
+    }
+
+    @Test func theRemovalSummaryLeavesTheLeviesOutWhenTheyCannotBeWorkedOut() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        try await storeAnAdjustmentOfADayThatIsNone(of: 2026, in: try #require(app.database))
+
+        let summary = try #require(await model.paymentRemovalSummary(for: 11))
+
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 4\u{00A0}500,00\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+    }
+
     // MARK: A load that fails
 
     @Test func aLoadThatFailsShowsAShortLineInsteadOfTheTable() async throws {
@@ -1141,5 +1316,322 @@ struct InvoicesModelTests {
         #expect(document.supplier == supplier)
         #expect(document.account == account)
         #expect(try await model.pdfDocument(for: 999) == nil)
+    }
+}
+
+/// "Vystavit" in the detail of a draft on Faktury, which issues the draft in one click without the editor: the rate of
+/// the DUZP fixed on it, also after the file of its year was asked of the ČNB, and the detail that stays on it; the
+/// reason the editor gives where the draft cannot be issued, in the words of the detail, and when that reason goes; a
+/// second press while the draft is being issued; and a draft that was changed, issued or deleted meanwhile. The data
+/// is that of the tests of the editor (`EditorFixture`): the sample year 2026 with invented clients, the supplier and
+/// the accounts of the invoice page, and the ČNB rates of 2025 and 2026; the app is as of 17. 10. 2026, and its server
+/// answers what each test says, nothing unless told.
+@Suite(.settlesBackups)
+@MainActor
+struct InvoicesModelIssuingTests {
+    /// An invoice that is issued is measured on its page in the font the page is set in, so the fonts are registered
+    /// before any test, as the app does at its launch.
+    init() {
+        InvoiceFonts.register()
+    }
+
+    /// What the detail says of a draft whose rate of the DUZP is not in the cache, also once the file of its year was
+    /// asked for: the reason of the editor, without its advice to save the draft, which is saved already.
+    private let rateNotDownloaded = "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou."
+
+    /// What the detail says of a draft that was changed while it was being issued: the reason of the editor, with the
+    /// advice that fits the detail, as each press loads the draft afresh.
+    private let changedMeanwhile = "Faktura se mezitím změnila. Zkuste ji vystavit znovu."
+
+    // MARK: Helpers
+
+    /// The model of Faktury of `f`, loaded on the screen Faktury (a banner belongs to the screen that is shown), with
+    /// the detail of the invoice `id` open and loaded.
+    private func model(withTheDetailOf id: Int64, in f: EditorFixture) async -> InvoicesModel {
+        f.app.screen = .invoices
+        let model = InvoicesModel(app: f.app)
+        await model.load()
+        model.openInvoiceID = id
+        await model.loadDetail()
+        return model
+    }
+
+    /// Stores a draft of 10 hours at 70,00 USD for Bravo numbered `number`, supplied and issued on `duzp` and due on
+    /// `dueDate` (both `YYYY-MM-DD`), tells the app of the write and returns the id of the draft. The cache of the ČNB
+    /// holds the rates of 2025 and 2026 alone, so a draft of another year has no rate of its DUZP to be issued with.
+    private func storeDollarDraft(
+        number: String, duzp: String, dueDate: String, in f: EditorFixture
+    ) async throws -> Int64 {
+        var draft = Invoice.fixture(
+            number: number, currency: .usd, duzp: duzp, dueDate: dueDate,
+            items: [InvoiceItem(description: "Vývoj", quantity: decimal("10"), unit: "h", unitPriceMinor: 7_000)],
+            vatMode: .outsideCountry, status: .draft)
+        draft.clientID = f.bravoID
+        draft.client = ClientSnapshot(client: SearchFixtures.bravo)
+        draft.language = .en
+        draft.paymentMethod = "ACH (USD)"
+        let id = try await f.database.saveInvoice(draft)
+        await f.app.didWrite()
+        return id
+    }
+
+    // MARK: Issuing
+
+    /// A draft in dollars supplied on 30. 9. 2026, saved with the rate known then (21,359), is issued with the ČNB rate
+    /// of its DUZP as the editor issues it (21,522), and with the data of its client as they are now. The detail stays
+    /// on it and shows it issued, waiting for its payment. The editor does not open, the screen does not move, and no
+    /// banner says so; the app is told of the write once.
+    @Test func issuingADraftInOneClickFixesItsRateAndKeepsTheDetailOpen() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            var bravo = try #require(try await f.database.client(id: f.bravoID))
+            bravo.street = "Nová 7"
+            try await f.database.saveClient(bravo)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            #expect(model.detail?.canIssue == true)
+            let version = f.app.dataVersion
+
+            await model.issue(draft.id)
+
+            let issued = try await f.stored(draft.id)
+            #expect(issued.status == .issued)
+            #expect(issued.number == "20260905")
+            #expect(issued.invoiceRate == storedRate("USD", "21.522", declaredOn: "2026-09-30"))
+            #expect(issued.client.street == "Nová 7")
+            #expect(model.openInvoiceID == draft.id)
+            #expect(model.issueProblem == nil)
+            #expect(model.isIssuing == false)
+            #expect(model.detail?.invoiceID == draft.id)
+            #expect(model.detail?.statusLabel == "Čeká na platbu")
+            #expect(model.detail?.canIssue == false)
+            #expect(model.detail?.canPay == true)
+            #expect(f.app.banner == nil)
+            #expect(f.app.editorRequest == nil)
+            #expect(f.app.screen == .invoices)
+            #expect(f.app.pendingDetailInvoiceID == nil)
+            #expect(f.app.dataVersion == version + 1)
+            // The rate of its DUZP is in the cache: nothing is asked of the ČNB.
+            #expect(f.http.requests.isEmpty)
+        }
+    }
+
+    /// A draft in dollars supplied on 31. 5. 2024, a day the cache of the ČNB has no rate of, asks for the file of 2024
+    /// as the editor does once it shows the draft. Where the file does not come (the Mac is offline), the draft cannot
+    /// be issued: it stays a draft with its detail open, and the detail keeps the reason the editor gives, in its own
+    /// words, which VoiceOver is told. Nothing is written.
+    @Test func aDraftThatCannotBeIssuedSaysWhyAndStaysADraft() async throws {
+        let offline = StubHTTPClient(failures: [CNBEndpoints.yearly(2024): URLError(.notConnectedToInternet)])
+        try await EditorFixture.with(http: offline) { f in
+            let id = try await storeDollarDraft(number: "20240501", duzp: "2024-05-31", dueDate: "2024-06-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+            var announced: [String] = []
+            f.app.announce = { announced.append($0) }
+            let version = f.app.dataVersion
+
+            await model.issue(id)
+
+            #expect(f.http.requests == [CNBEndpoints.yearly(2024)])
+            #expect(try await f.stored(id).status == .draft)
+            #expect(model.issueProblem == rateNotDownloaded)
+            #expect(announced == [rateNotDownloaded])
+            #expect(model.openInvoiceID == id)
+            #expect(model.detail?.canIssue == true)
+            #expect(model.isIssuing == false)
+            #expect(f.app.banner == nil)
+            #expect(f.app.editorRequest == nil)
+            #expect(f.app.dataVersion == version)
+        }
+    }
+
+    /// The reason belongs to the detail of its draft: it goes when the detail moves to another invoice, and when the
+    /// detail closes.
+    @Test func theReasonGoesWhenTheDetailMovesToAnotherInvoiceOrCloses() async throws {
+        try await EditorFixture.with { f in
+            let id = try await storeDollarDraft(number: "20240501", duzp: "2024-05-31", dueDate: "2024-06-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+            await model.issue(id)
+            #expect(model.issueProblem == rateNotDownloaded)
+
+            model.click(10)
+
+            #expect(model.openInvoiceID == 10)
+            #expect(model.issueProblem == nil)
+
+            model.openInvoiceID = id
+            await model.issue(id)
+            #expect(model.issueProblem == rateNotDownloaded)
+
+            model.closeDetail()
+
+            #expect(model.openInvoiceID == nil)
+            #expect(model.issueProblem == nil)
+        }
+    }
+
+    /// A draft that could not be issued is issued once what stopped it is put right, here once the rates of its year
+    /// are in the cache: the reason goes, and the draft has the rate of its DUZP, 30. 6. 2022. The file of 2022 is
+    /// asked for by the first press alone, which did not get it; the second finds the rates in the cache.
+    @Test func theReasonGoesOnceTheDraftIsIssuedAfterAll() async throws {
+        try await EditorFixture.with { f in
+            let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+            await model.issue(id)
+            #expect(model.issueProblem == rateNotDownloaded)
+
+            try await f.addDollarRates(ofYears: [2022])
+            await model.issue(id)
+
+            #expect(f.http.requests == [CNBEndpoints.yearly(2022)])
+            #expect(model.issueProblem == nil)
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.invoiceRate?.rate.currency == .usd)
+            #expect(issued.invoiceRate?.declaredOn == civilDate("2022-06-30"))
+            #expect(model.openInvoiceID == id)
+            #expect(model.detail?.canIssue == false)
+        }
+    }
+
+    /// A draft whose DUZP is in a year the cache of the ČNB does not hold asks for the file of that year, as the editor
+    /// does once it shows the draft, and is issued with the rate of its DUZP, 30. 6. 2022, once the file has come.
+    /// "Vystavit" is off while the file is on its way, and a press meanwhile does nothing: the file is asked for once.
+    @Test func aDraftOfAYearNotInTheCacheIsIssuedOnceTheFileOfItsYearHasCome() async throws {
+        let file = try Data(contentsOf: fixtureURL("cnb_rok_2022", "txt"))
+        let gate = Gate()
+        try await EditorFixture.with(http: StubHTTPClient([CNBEndpoints.yearly(2022): file]), gate: gate) { f in
+            let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+
+            let first = Task { await model.issue(id) }
+            try await waitUntil { await gate.heldCount == 1 }
+            #expect(model.isIssuing)
+            #expect(try await f.stored(id).status == .draft)
+            await model.issue(id)
+            await gate.open()
+            await first.value
+
+            #expect(f.http.requests == [CNBEndpoints.yearly(2022)])
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.invoiceRate?.rate.currency == .usd)
+            #expect(issued.invoiceRate?.declaredOn == civilDate("2022-06-30"))
+            #expect(model.issueProblem == nil)
+            #expect(model.isIssuing == false)
+            #expect(model.detail?.canIssue == false)
+        }
+    }
+
+    /// A draft that is changed while it is being issued, here in another window while the file of its year is on its
+    /// way, is not issued over that change: the detail says so, and that it can be issued again, which the next press
+    /// does with the draft as it is now, as each press loads the draft afresh.
+    @Test func aDraftChangedWhileItIsBeingIssuedSaysSoAndIsIssuedOnTheNextPress() async throws {
+        let file = try Data(contentsOf: fixtureURL("cnb_rok_2022", "txt"))
+        let gate = Gate()
+        try await EditorFixture.with(http: StubHTTPClient([CNBEndpoints.yearly(2022): file]), gate: gate) { f in
+            let id = try await storeDollarDraft(number: "20220601", duzp: "2022-06-30", dueDate: "2022-07-30", in: f)
+            let model = await model(withTheDetailOf: id, in: f)
+
+            let first = Task { await model.issue(id) }
+            try await waitUntil { await gate.heldCount == 1 }
+            var changed = try await f.stored(id)
+            changed.note = "Changed in another window"
+            try await f.database.saveInvoice(changed)
+            await gate.open()
+            await first.value
+
+            #expect(model.issueProblem == changedMeanwhile)
+            #expect(try await f.stored(id) == changed)
+
+            await model.issue(id)
+
+            #expect(model.issueProblem == nil)
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.note == "Changed in another window")
+        }
+    }
+
+    /// The detail gives the reason the editor gives, without the advice that only fits the editor: a draft whose rate
+    /// is not downloaded is saved already, and there is no editing to close when the draft changed meanwhile. Every
+    /// other reason is the editor's word for word, and the editor keeps its own texts.
+    @Test func theDetailSaysTheReasonOfTheEditorWithoutTheAdviceThatOnlyFitsTheEditor() {
+        #expect(
+            InvoicesModel.issueProblemText(for: InvoiceEditorError.invalid(EditorText.ratesNotDownloaded))
+                == rateNotDownloaded)
+        #expect(InvoicesModel.issueProblemText(for: InvoiceEditorError.invoiceChanged) == changedMeanwhile)
+        for reason in [EditorText.currencyNotQuoted, EditorText.totalNotPositive, EditorText.noItems] {
+            #expect(InvoicesModel.issueProblemText(for: InvoiceEditorError.invalid(reason)) == reason)
+        }
+        #expect(InvoicesModel.issueProblemText(for: InvoiceError.duplicateNumber("1")) == "Číslo faktury už existuje.")
+        #expect(InvoicesModel.issueProblemText(for: VaultError.locked) == "Fakturu se nepodařilo uložit.")
+        #expect(
+            EditorText.ratesNotDownloaded
+                == "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou"
+                + " – koncept můžete uložit už teď.")
+        #expect(
+            InvoiceEditorModel.failureText(for: InvoiceEditorError.invoiceChanged)
+                == "Faktura se mezitím změnila. Zavřete úpravy a otevřete ji znovu.")
+    }
+
+    /// A press of "Vystavit" while the draft is being issued starts no other issue: the button is off meanwhile
+    /// (`isIssuing`), and the model does nothing with the press. The draft is issued once, and nothing fails.
+    @Test func aSecondPressWhileTheDraftIsBeingIssuedStartsNoOtherIssue() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            let version = f.app.dataVersion
+
+            // The first issue has begun, and waits for the data, when its task is made.
+            let first = Task.immediate { await model.issue(draft.id) }
+            #expect(model.isIssuing)
+            await model.issue(draft.id)
+            // The second press is done with at once: the first issue is still the one that runs.
+            #expect(model.isIssuing)
+            await first.value
+
+            #expect(model.isIssuing == false)
+            #expect(model.issueProblem == nil)
+            #expect(try await f.stored(draft.id).status == .issued)
+            #expect(f.app.dataVersion == version + 1)
+        }
+    }
+
+    /// A draft that was issued meanwhile, in another window, is what "Vystavit" asks for: the detail shows it issued,
+    /// with no reason, and nothing is written again.
+    @Test func aDraftIssuedMeanwhileIsShownIssuedWithoutAReason() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            var issued = try await f.stored(draft.id)
+            issued.status = .issued
+            try await f.database.saveInvoice(issued)
+            let version = f.app.dataVersion
+
+            await model.issue(draft.id)
+
+            #expect(model.issueProblem == nil)
+            #expect(model.openInvoiceID == draft.id)
+            #expect(model.detail?.canIssue == false)
+            #expect(model.detail?.canPay == true)
+            #expect(try await f.stored(draft.id) == issued)
+            #expect(f.app.dataVersion == version)
+        }
+    }
+
+    /// A draft that was deleted meanwhile is not there to issue: its detail closes, and the screen says that it was
+    /// deleted, as it does for the other actions on an invoice that is gone.
+    @Test func aDraftDeletedMeanwhileClosesItsDetailAndTheScreenSaysSo() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            let model = await model(withTheDetailOf: draft.id, in: f)
+            try await f.database.deleteInvoice(id: draft.id)
+
+            await model.issue(draft.id)
+
+            #expect(model.openInvoiceID == nil)
+            #expect(model.issueProblem == nil)
+            #expect(model.actionFailure == "Faktura mezitím byla smazána.")
+            #expect(try await f.database.invoice(id: draft.id) == nil)
+        }
     }
 }

@@ -64,6 +64,10 @@ struct RootView: View {
 /// inside it over them, and the sheets over the window. While the app is locked after inactivity, the window has no
 /// title and no toolbar: they show the invoice that is edited, the year and how it converts its income, and offer what
 /// acts on the data.
+///
+/// The page stands on the window background of the design (`Palette.bgWindow`), under the toolbar too, not on the
+/// system's, which is white on macOS 26 and later. Each screen pads its own page (`pagePadding(_:)`); the green banner
+/// of an action, above the page, is padded like it.
 private struct AppWindow: View {
     let model: AppModel
 
@@ -78,10 +82,12 @@ private struct AppWindow: View {
                     BannerView(text: banner.text) {
                         model.banner = nil
                     }
-                    .padding([.horizontal, .top], 16)
+                    .pagePadding([.horizontal, .top])
                 }
                 screenContent
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Palette.bgWindow)
             .navigationTitle(model.isIdleLocked ? "" : header.title)
             .navigationSubtitle(model.isIdleLocked ? "" : header.subtitle)
             .toolbar {
@@ -102,14 +108,14 @@ private struct AppWindow: View {
         .discardQuestion(of: model)
         .sheet(isPresented: chooserShown) {
             NewInvoiceChooser(app: model)
-                .idleLockCover()
+                .sheetChrome()
         }
         .sheet(isPresented: uniformRateSheetShown) {
             if let finding = model.uniformRateOffer {
                 UniformRateConfirmSheet(app: model, finding: finding)
                     // Another finding is another sheet.
                     .id(finding)
-                    .idleLockCover()
+                    .sheetChrome()
             }
         }
         .task(id: model.editorKey) {
@@ -124,7 +130,7 @@ private struct AppWindow: View {
     }
 
     /// The selected screen: Přehled, Faktury (or the invoice editor in its place), Zálohy a odpočty, Výpočet,
-    /// Odhad odvodů, Odběratelé, Šablony faktur, Simulátor, Nastavení and Import.
+    /// Odhad odvodů, Odběratelé, Simulátor, Nastavení and Import.
     @ViewBuilder
     private var screenContent: some View {
         switch model.screen {
@@ -144,8 +150,6 @@ private struct AppWindow: View {
             PredictionScreen(app: model)
         case .clients:
             ClientsScreen(app: model)
-        case .templates:
-            TemplatesScreen(app: model)
         case .simulator:
             SimulatorScreen(app: model)
         case .settings:
@@ -183,7 +187,7 @@ private struct AppWindow: View {
             .id(ObjectIdentifier(editor))
         } else if let editorProblem = model.editorProblem {
             Text(verbatim: editorProblem)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Color.clear

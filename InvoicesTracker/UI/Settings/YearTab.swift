@@ -14,10 +14,10 @@ struct YearTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
             Text(verbatim: "Platí jen pro rok \(model.year) · jiný rok vyberete v liště nahoře")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
             if let warning = model.rulesWarning {
                 RulesWarning(text: warning)
             }
@@ -25,7 +25,7 @@ struct YearTab: View {
                 SettingsFailureLine(text: line)
             }
             if let settings = model.settings {
-                AdaptiveColumns(minimumColumnWidth: 440, spacing: 16) {
+                AdaptiveColumns(minimumColumnWidth: 440, spacing: DesignMetrics.cardSpacing) {
                     ProfileCard(model: model, showAdvances: { app.screen = .advances })
                     ActivityCard(model: model, settings: settings)
                     UniformRateCard(model: model)
@@ -58,11 +58,12 @@ private struct ProfileCard: View {
     let showAdvances: () -> Void
 
     var body: some View {
-        SettingsCard(title: "Profil", spacing: 6) {
+        Card(title: "Profil", spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsRow(label: "Výdaje") {
                     Button(model.expenseText, action: showAdvances)
-                        .buttonStyle(.link)
+                        .buttonStyle(TextLinkButtonStyle(.accent))
+                        .accessibilityAddTraits(.isLink)
                 }
                 SettingsRow(label: "DPH") {
                     Text("plátce · měsíčně")
@@ -101,71 +102,67 @@ private struct ActivityCard: View {
     let settings: YearSettings
 
     var body: some View {
-        SettingsCard(title: "Činnost") {
+        Card(title: "Činnost") {
             HStack(alignment: .center, spacing: 12) {
                 monthPicker("od", selection: from)
                 monthPicker("do", selection: to)
                 Text(verbatim: model.activityText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text3)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Divider()
-            Text("Měsíce bez minima zdravotního pojištění")
-                .fontWeight(.semibold)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 6), spacing: 6) {
-                ForEach(1...12, id: \.self) { month in
-                    MonthToggle(
-                        month: month, isOn: settings.healthExemptMonths.contains(month),
-                        isActive: YearTabModel.isActiveMonth(month, in: settings)
-                    ) {
-                        Task { await model.setHealthExempt(month: month, !settings.healthExemptMonths.contains(month)) }
+            Hairline()
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Měsíce bez minima zdravotního pojištění")
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 6), spacing: 6) {
+                    ForEach(1...12, id: \.self) { month in
+                        MonthToggle(
+                            month: month, isOn: settings.healthExemptMonths.contains(month),
+                            isActive: YearTabModel.isActiveMonth(month, in: settings)
+                        ) {
+                            Task {
+                                await model.setHealthExempt(month: month, !settings.healthExemptMonths.contains(month))
+                            }
+                        }
                     }
                 }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Měsíce bez minima zdravotního pojištění")
-            Text(
-                """
-                Minimum se nepočítá za měsíc, kdy jste po celý měsíc byli i zaměstnaní s pojistným aspoň z minimální \
-                mzdy, studovali, pobírali důchod, byli na rodičovské, měli průkaz ZTP/P a podobně (§ 3a zákona \
-                592/1992). Vedlejší činnost pro sociální pojištění se nastavuje v Zálohách.
-                """
-            )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            if let hint = model.secondaryHint {
-                SettingsBox(kind: .hint) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .center, spacing: 8) {
-                            Text(verbatim: hint)
-                                .fixedSize(horizontal: false, vertical: true)
-                            markButton
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(verbatim: hint)
-                                .fixedSize(horizontal: false, vertical: true)
-                            markButton
-                        }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Měsíce bez minima zdravotního pojištění")
+                Text(
+                    """
+                    Minimum se nepočítá za měsíc, kdy jste po celý měsíc byli i zaměstnaní s pojistným aspoň z \
+                    minimální mzdy, studovali, pobírali důchod, byli na rodičovské, měli průkaz ZTP/P a podobně (§ 3a \
+                    zákona 592/1992). Vedlejší činnost pro sociální pojištění se nastavuje v Zálohách.
+                    """
+                )
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
+                .fixedSize(horizontal: false, vertical: true)
+                if let hint = model.secondaryHint {
+                    Note(.info, icon: .none, text: hint) {
+                        markButton
                     }
-                    .font(.callout)
                 }
             }
         }
     }
 
+    /// Označit i tady: a capsule in the colour of a card with its words in the blue of a link, as a button in a note
+    /// is.
     private var markButton: some View {
         Button("Označit i tady") {
             Task { await model.markSecondaryAsExempt() }
         }
-        .settingsCardButton()
+        .buttonStyle(CapsuleButtonStyle(.onWindowAccent, size: .small))
     }
 
     private func monthPicker(_ label: String, selection: Binding<Int>) -> some View {
         HStack(spacing: 6) {
             Text(verbatim: label)
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .accessibilityHidden(true)
             Picker(label == "od" ? "Činnost od" : "Činnost do", selection: selection) {
                 ForEach(1...12, id: \.self) { month in
@@ -194,34 +191,95 @@ private struct ActivityCard: View {
     }
 }
 
-/// A month of the toggles: dark when the health minimum does not apply in it, dimmed when the activity was not carried
-/// on in it. VoiceOver reads its full name and whether it is marked.
-private struct MonthToggle: View {
+/// What a month of the toggles of the months without the health minimum shows: marked, or not marked while the activity
+/// was carried on in it, or not marked and outside the activity.
+nonisolated enum MonthToggleTone: Sendable, Hashable {
+    /// The health minimum does not apply in the month.
+    case selected
+
+    /// The month has the minimum, and the activity was carried on in it.
+    case available
+
+    /// The month has the minimum, but the activity was not carried on in it.
+    case outsideActivity
+
+    /// The tone of a month that is marked as without the minimum (`isOn`) or not, and that the activity was carried on
+    /// in (`isActive`) or not. A marked month is selected whether the activity was carried on in it or not.
+    init(isOn: Bool, isActive: Bool) {
+        if isOn {
+            self = .selected
+        } else {
+            self = isActive ? .available : .outsideActivity
+        }
+    }
+}
+
+/// The colours of the tones of a month toggle, from the palette.
+extension MonthToggleTone {
+    /// The colour of the toggle: the accent, as every choice of the design is, while the month is selected; the colour
+    /// of a card while it has the minimum, and the inset background where the activity was not carried on.
+    var background: Color {
+        switch self {
+        case .selected: Palette.accent
+        case .available: Palette.bgCard
+        case .outsideActivity: Palette.bgInset
+        }
+    }
+
+    /// Whether the toggle stands off the page, with the elevation of a control, as a button on the window does: every
+    /// month that is not selected, inside the activity and outside it, as the prototype rings both of those tones.
+    var isRaised: Bool {
+        self != .selected
+    }
+
+    /// The colour of the name of the month: on an accent while it is selected, the colour of text, and the faintest
+    /// text where the activity was not carried on.
+    var foreground: Color {
+        switch self {
+        case .selected: Palette.onAccent
+        case .available: Palette.text
+        case .outsideActivity: Palette.text4
+        }
+    }
+}
+
+/// A month of the toggles: a capsule 28 points tall, in the accent when the health minimum does not apply in it, and
+/// otherwise raised with the ring of a control, dimmed when the activity was not carried on in it (`MonthToggleTone`).
+/// VoiceOver reads its full name and whether it is marked.
+struct MonthToggle: View {
     let month: Int
     let isOn: Bool
     let isActive: Bool
     let toggle: () -> Void
 
+    /// What the toggle shows, from whether the month is marked and whether the activity was carried on in it.
+    private var tone: MonthToggleTone {
+        MonthToggleTone(isOn: isOn, isActive: isActive)
+    }
+
     var body: some View {
         Button(action: toggle) {
             Text(verbatim: CzechFormat.monthShort[month - 1])
-                .font(.callout)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .foregroundStyle(isOn ? Color(nsColor: .windowBackgroundColor) : (isActive ? .primary : .secondary))
-                .background(
-                    isOn ? Color.primary : Color.secondary.opacity(isActive ? 0.08 : 0.04),
-                    in: RoundedRectangle(cornerRadius: 8)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.secondary.opacity(isOn ? 0 : 0.25), lineWidth: 0.5)
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .font(Typography.calloutSemibold)
+                .foregroundStyle(tone.foreground)
+                .frame(maxWidth: .infinity)
+                .frame(height: DesignMetrics.smallControlHeight)
+                .background { capsule }
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(CzechFormat.monthNames[month - 1])
         .accessibilityValue(isOn ? "bez minima" : "")
         .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    /// The capsule behind the name, raised off the page where the tone calls for it.
+    @ViewBuilder
+    private var capsule: some View {
+        if tone.isRaised {
+            Capsule().surface(tone.background, elevation: .control)
+        } else {
+            Capsule().fill(tone.background)
+        }
     }
 }

@@ -302,6 +302,17 @@ struct SettingsModelsTests {
                     tone: .plain))
     }
 
+    /// The state of a row is in the green of text while the rates are current, in the colour of text for a fact such as
+    /// a rate, in the grey of secondary text where there is nothing yet, and in the orange of text where something is
+    /// behind. The colours are the tokens of the design, not the system's.
+    @MainActor
+    @Test func theStateOfARowOfKurzyTakesTheColourOfItsTone() {
+        #expect(RateStatusRow.Tone.current.color == Palette.greenText)
+        #expect(RateStatusRow.Tone.plain.color == Palette.text)
+        #expect(RateStatusRow.Tone.quiet.color == Palette.text2)
+        #expect(RateStatusRow.Tone.warning.color == Palette.orangeText)
+    }
+
     /// The row of the uniform rate of 2026 without a rate follows the search of the app for it on the day, as the card
     /// of Nastavení › Rok and the toolbar do: until 2 January 2027 it says when the app starts looking, until 31 March
     /// that the app looks for it, and from 1 April that it was not found and is entered by hand.

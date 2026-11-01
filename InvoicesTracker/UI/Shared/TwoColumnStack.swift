@@ -2,28 +2,35 @@ import SwiftUI
 
 /// Two stacks of views laid out as two columns of one width. Where the width has room for both columns at
 /// `minimumColumnWidth` and the gap between them, 856 points as it is by default, they stand side by side, aligned at
-/// the top; where it has less, they come one under the other, the left stack first. Each stack is a column that runs on
-/// by itself, with `spacing` between its views, so the shorter one just ends earlier and leaves no hole. Cards in the
-/// rows of `AdaptiveColumns` over one list would make a card wait for the tallest of its row, and would change columns
-/// as the width changes. Výpočet and Simulátor keep the tax on the left and the insurances on the right so.
+/// the top; where it has less, they come one under the other, the left stack first, `stackedSpacing` points apart (as
+/// far apart as the columns are unless told otherwise). Each stack is a column that runs on by itself, with `spacing`
+/// between its views, so the shorter one just ends earlier and leaves no hole. Cards in the rows of `AdaptiveColumns`
+/// over one list would make a card wait for the tallest of its row, and would change columns as the width changes.
+/// Výpočet and Simulátor keep the tax on the left and the insurances on the right so.
 struct TwoColumnStack<Left: View, Right: View>: View {
     let minimumColumnWidth: CGFloat
     let spacing: CGFloat
+
+    /// The space between the two stacks where they come one under the other.
+    let stackedSpacing: CGFloat
     private let left: Left
     private let right: Right
 
     init(
-        minimumColumnWidth: CGFloat = 420, spacing: CGFloat = 16, @ViewBuilder left: () -> Left,
-        @ViewBuilder right: () -> Right
+        minimumColumnWidth: CGFloat = 420, spacing: CGFloat = 16, stackedSpacing: CGFloat? = nil,
+        @ViewBuilder left: () -> Left, @ViewBuilder right: () -> Right
     ) {
         self.minimumColumnWidth = minimumColumnWidth
         self.spacing = spacing
+        self.stackedSpacing = stackedSpacing ?? spacing
         self.left = left()
         self.right = right()
     }
 
     var body: some View {
-        TwoColumnLayout(minimumColumnWidth: minimumColumnWidth, spacing: spacing) {
+        TwoColumnLayout(
+            minimumColumnWidth: minimumColumnWidth, spacing: spacing, stackedSpacing: stackedSpacing
+        ) {
             VStack(alignment: .leading, spacing: spacing) {
                 left
             }
@@ -40,6 +47,7 @@ struct TwoColumnStack<Left: View, Right: View>: View {
 private struct TwoColumnLayout: Layout {
     let minimumColumnWidth: CGFloat
     let spacing: CGFloat
+    let stackedSpacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard subviews.count == 2 else { return .zero }
@@ -48,7 +56,7 @@ private struct TwoColumnLayout: Layout {
         if isBeside(width) {
             return CGSize(width: width, height: max(sizes.left.height, sizes.right.height))
         }
-        return CGSize(width: width, height: sizes.left.height + spacing + sizes.right.height)
+        return CGSize(width: width, height: sizes.left.height + stackedSpacing + sizes.right.height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -67,7 +75,7 @@ private struct TwoColumnLayout: Layout {
                 at: CGPoint(x: bounds.minX, y: bounds.minY), anchor: .topLeading,
                 proposal: ProposedViewSize(width: bounds.width, height: nil))
             subviews[1].place(
-                at: CGPoint(x: bounds.minX, y: bounds.minY + heightOfLeft + spacing), anchor: .topLeading,
+                at: CGPoint(x: bounds.minX, y: bounds.minY + heightOfLeft + stackedSpacing), anchor: .topLeading,
                 proposal: ProposedViewSize(width: bounds.width, height: nil))
         }
     }

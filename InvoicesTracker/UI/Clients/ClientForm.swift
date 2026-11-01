@@ -10,8 +10,8 @@ struct ClientForm: View {
     /// Zrušit.
     let cancel: () -> Void
 
-    /// The client was saved.
-    let saved: () -> Void
+    /// The client was saved: its id, which a new client got from the save.
+    let saved: (Int64) -> Void
 
     @FocusState private var nameFocused: Bool
 
@@ -32,6 +32,7 @@ struct ClientForm: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
         .frame(width: 620)
+        .dialogNamed(model.title)
         .defaultFocus($nameFocused, model.isNew)
         .task {
             await model.load()
@@ -123,27 +124,27 @@ struct ClientForm: View {
 
     // MARK: The buttons
 
+    /// The buttons of the sheet, the capsules of a dialog, 32 points high: Zrušit, which Esc presses, on the grey fill,
+    /// and Uložit odběratele in the accent, which Return presses, at the trailing end.
     private var footer: some View {
         HStack(spacing: 8) {
             Spacer()
             Button("Zrušit", action: cancel)
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
             Button("Uložit odběratele", action: save)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.isSaving)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
     }
 
     private func save() {
         Task {
             // A save that does not happen says why in the sheet (`errors` and `failure` of the model, which has logged
             // what the database said), so there is nothing more to do here.
-            if (try? await model.save()) != nil {
-                saved()
+            if let id = try? await model.save() {
+                saved(id)
             }
         }
     }

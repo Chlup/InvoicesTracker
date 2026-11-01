@@ -22,7 +22,10 @@ struct OnboardingView: View {
 
 // MARK: - Indicator
 
-/// "Kód pro obnovení · Vaše údaje · Faktury": the steps of the start, with the one the person is at.
+/// "Kód pro obnovení · Vaše údaje · Faktury": the steps of the start, with the one the person is at. The step the
+/// person is at is an accent circle with its number in the colour of text on an accent; a step that is done is a green
+/// circle with a check, and its name in the green text; one to come is a grey circle, and its number and name in the
+/// faintest text.
 private struct StepIndicator: View {
     /// The index of the step the person is at: 0, 1 or 2.
     let current: Int
@@ -34,44 +37,43 @@ private struct StepIndicator: View {
             ForEach(Self.titles.indices, id: \.self) { index in
                 HStack(spacing: 6) {
                     Text(index < current ? "✓" : String(index + 1))
-                        .font(.system(size: 11, weight: .bold))
+                        .font(Typography.subheadlineBold)
                         .foregroundStyle(numberColor(index))
                         .frame(width: 18, height: 18)
                         .background(circleColor(index), in: Circle())
                         .accessibilityHidden(true)
                     Text(Self.titles[index])
-                        .fontWeight(index == current ? .semibold : .regular)
-                        .foregroundStyle(titleStyle(index))
+                        .font(index == current ? Typography.calloutSemibold : Typography.callout)
+                        .foregroundStyle(titleColor(index))
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityValue(index == current ? "aktuální krok" : (index < current ? "hotovo" : ""))
             }
             Spacer(minLength: 0)
         }
-        .font(.callout)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Kroky nastavení")
     }
 
     private func circleColor(_ index: Int) -> Color {
         if index == current {
-            return .accentColor
+            return Palette.accent
         }
-        return index < current ? Color(.bannerText).opacity(0.15) : Color.secondary.opacity(0.15)
+        return index < current ? Palette.greenTint : Palette.fill
     }
 
     private func numberColor(_ index: Int) -> Color {
         if index == current {
-            return .white
+            return Palette.onAccent
         }
-        return index < current ? Color(.bannerText) : .secondary
+        return index < current ? Palette.greenText : Palette.text4
     }
 
-    private func titleStyle(_ index: Int) -> Color {
+    private func titleColor(_ index: Int) -> Color {
         if index == current {
-            return .primary
+            return Palette.text
         }
-        return index < current ? Color(.bannerText) : .secondary
+        return index < current ? Palette.greenText : Palette.text4
     }
 }
 
@@ -105,27 +107,17 @@ private struct RecoveryCodeStep: View {
             RecoveryCodeCard(
                 code: code, caption: WelcomeTexts.codeCaption(number: number, created: created),
                 note: "32 znaků · velikost písmen ani pomlčky nehrají roli", label: label)
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                    .padding(.top, 1)
-                    .accessibilityHidden(true)
-                Text(
-                    """
+            Note(
+                .attention, icon: .warning,
+                text: """
                     Kód nikam neposíláme a aplikace si ho nepamatuje. Kdo ztratí tento Mac i kód, data už neotevře – \
                     ani autor aplikace. Uložte ho do správce hesel nebo ho vytiskněte a schovejte mimo počítač.
-                    """
-                )
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+                    """)
             Toggle(isOn: $touchID) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Odemykat přes Touch ID")
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                     Text(
                         """
                         Doporučeno. Aplikace se zeptá na Touch ID nebo heslo k Macu při spuštění a po \
@@ -133,19 +125,19 @@ private struct RecoveryCodeStep: View {
                         data na disku zůstanou šifrovaná.
                         """
                     )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .toggleStyle(.checkbox)
-            Toggle("Kód mám uložený mimo tento Mac", isOn: $stored)
-                .toggleStyle(.checkbox)
-                .fontWeight(.semibold)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+            Toggle(isOn: $stored) {
+                Text("Kód mám uložený mimo tento Mac")
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
+            }
+            .toggleStyle(.checkbox)
+            .insetPanel(horizontal: 14, vertical: 12)
             if let errorText = runner.errorText {
                 WelcomeErrorLine(text: errorText)
             }
@@ -207,8 +199,8 @@ private struct SupplierStep: View {
                 Z importu Fakturoidu lze prázdné údaje doplnit automaticky.
                 """
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
             if let errorText = runner.errorText {
                 WelcomeErrorLine(text: errorText)
@@ -222,9 +214,7 @@ private struct SupplierStep: View {
                 Button("Přeskočit") {
                     model.skipSupplierStep()
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
                 .disabled(runner.isWorking)
                 Button("Pokračovat") {
                     guard draft.ibanError == nil else {
@@ -237,9 +227,7 @@ private struct SupplierStep: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(runner.isWorking)
             }
@@ -253,18 +241,18 @@ private struct SupplierStep: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
             TextField(label, text: text, prompt: Text(verbatim: prompt))
                 .textFieldStyle(.roundedBorder)
                 .labelsHidden()
                 .controlSize(.large)
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.red, lineWidth: error == nil ? 0 : 1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignMetrics.controlRadius)
+                        .strokeBorder(Palette.red, lineWidth: error == nil ? 0 : 1)
+                )
             if let error {
-                Text(verbatim: error)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                FieldMessage(text: error)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -290,13 +278,13 @@ private struct ImportOfferStep: View {
             )
             VStack(spacing: 10) {
                 WelcomeOptionRow(
-                    systemImage: "square.and.arrow.down", tint: .accentColor, title: "Importovat z Fakturoidu",
+                    systemImage: "square.and.arrow.down", tone: .accent, title: "Importovat z Fakturoidu",
                     detail: "CSV export faktur, klidně za víc let najednou.", showsChevron: false
                 ) {
                     model.finishOnboarding(importNow: true)
                 }
                 WelcomeOptionRow(
-                    systemImage: "arrow.right", tint: .secondary, title: "Začít bez importu",
+                    systemImage: "arrow.right", tone: .neutral, title: "Začít bez importu",
                     detail: "Import najdete kdykoli dole v postranním panelu.", showsChevron: false
                 ) {
                     model.finishOnboarding(importNow: false)

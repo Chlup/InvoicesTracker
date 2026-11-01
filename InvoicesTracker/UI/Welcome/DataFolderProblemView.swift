@@ -5,10 +5,11 @@ import SwiftUI
 struct DataFolderProblemView: View {
     var body: some View {
         Text("Složku pro data se nepodařilo vytvořit.")
-            .font(.title2.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(Typography.title2)
+            .foregroundStyle(Palette.text2)
             .multilineTextAlignment(.center)
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Palette.bgWindow.ignoresSafeArea())
     }
 }

@@ -1,11 +1,28 @@
 import SwiftUI
 
-/// "Kdy čekám faktury": the months of the clients, in a card of its own on Odhad odvodů. The heading is a button that
-/// unfolds the card (it starts folded, and folded it keeps the heading and its subtitle), with the legend of the cells
-/// beside it or under it once it is unfolded. Unfolded, the card has a block for each client that is expected to
-/// invoice: its name and how it invoices, what it still adds to the year, a button to take its months back to the app's
-/// choice where the person changed them, the twelve months in a grid of equal cells, and a note. The other clients are
-/// in a group of their own that is folded, with the number of clients and their names beside its button.
+/// The sizes and gaps of the card of the months that its parts do not set themselves, in points.
+private nonisolated enum PredictionMonthsMetrics {
+    /// The space between the parts of the card: the heading, the line about a change that could not be saved, and the
+    /// clients.
+    static let spacing: CGFloat = 14
+
+    /// The space between the hairline over a client and its block.
+    static let clientTop: CGFloat = 12
+
+    /// How far the blocks of the other clients are set in from the left.
+    static let othersIndent: CGFloat = 22
+
+    /// The radius of the corners of a swatch of the legend of the cells.
+    static let swatchRadius: CGFloat = 3
+}
+
+/// "Kdy čekám faktury": the months of the clients, in a card of its own on Odhad odvodů, padded 20 points like every
+/// card. The heading is a button that unfolds the card (it starts folded, and folded it keeps the heading and its
+/// subtitle), with the legend of the cells beside it or under it once it is unfolded. Unfolded, the card has a block
+/// for each client that is expected to invoice, each under a hairline: its name and how it invoices, what it still adds
+/// to the year, a link to take its months back to the app's choice where the person changed them, the twelve months in
+/// a grid of equal cells, and a note. The other clients are in a group of their own that is folded, with the number of
+/// clients and their names beside its button. Everything takes its colours and fonts from the design's tokens.
 ///
 /// The card reads the page and nothing else. Whether it is unfolded, and whether the group of the other clients is,
 /// belong to the caller, who also keeps the change that could not be saved (`saveFailure`), which is said under the
@@ -25,7 +42,7 @@ struct PredictionMonthsSection: View {
     let reset: (Int64) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PredictionMonthsMetrics.spacing) {
             header
             if let saveFailure {
                 SettingsFailureLine(text: saveFailure)
@@ -34,11 +51,9 @@ struct PredictionMonthsSection: View {
                 months
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 18)
-        .padding(.bottom, 16)
+        .padding(DesignMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(page.monthsHead)
     }
@@ -75,10 +90,11 @@ struct PredictionMonthsSection: View {
                     .padding(.top, 3)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: page.monthsHead)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Typography.title3)
+                        .foregroundStyle(Palette.text)
                     Text(verbatim: page.monthsSub)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -103,8 +119,8 @@ struct PredictionMonthsSection: View {
                 }
             }
         }
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(Typography.callout)
+        .foregroundStyle(Palette.text2)
         .accessibilityHidden(true)
     }
 
@@ -114,14 +130,15 @@ struct PredictionMonthsSection: View {
     private var months: some View {
         if let text = page.noActiveText {
             Text(verbatim: text)
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         ForEach(page.activeRows) { row in
             VStack(alignment: .leading, spacing: 0) {
-                Divider()
+                Hairline()
                 ClientMonths(row: row, toggle: toggle, reset: reset)
-                    .padding(.top, 12)
+                    .padding(.top, PredictionMonthsMetrics.clientTop)
             }
         }
         if !page.otherRows.isEmpty {
@@ -133,7 +150,7 @@ struct PredictionMonthsSection: View {
     /// the blocks of them, set in from the left.
     private var others: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Divider()
+            Hairline()
             Button {
                 othersAreOpen.toggle()
             } label: {
@@ -155,7 +172,7 @@ struct PredictionMonthsSection: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.top, 12)
+            .padding(.top, PredictionMonthsMetrics.clientTop)
             .padding(.bottom, 2)
             .accessibilityLabel(page.othersTitle)
             .accessibilityValue(othersAreOpen ? "rozbaleno" : "sbaleno")
@@ -163,8 +180,8 @@ struct PredictionMonthsSection: View {
             if othersAreOpen {
                 ForEach(page.otherRows) { row in
                     ClientMonths(row: row, toggle: toggle, reset: reset)
-                        .padding(.top, 12)
-                        .padding(.leading, 22)
+                        .padding(.top, PredictionMonthsMetrics.clientTop)
+                        .padding(.leading, PredictionMonthsMetrics.othersIndent)
                 }
             }
         }
@@ -172,13 +189,14 @@ struct PredictionMonthsSection: View {
 
     private var othersTitle: some View {
         Text(verbatim: page.othersTitle)
-            .fontWeight(.semibold)
+            .font(Typography.bodySemibold)
+            .foregroundStyle(Palette.text)
     }
 
     private var othersSub: some View {
         Text(verbatim: page.othersSub)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -204,8 +222,8 @@ private struct ClientMonths: View {
             .accessibilityLabel("Měsíce – \(row.name)")
             if let note = row.note {
                 Text(verbatim: note)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -230,11 +248,12 @@ private struct ClientMonths: View {
     private var identity: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(verbatim: row.name)
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
             Text(verbatim: row.how)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -245,14 +264,12 @@ private struct ClientMonths: View {
                 Button("Vrátit odhad aplikace") {
                     reset(row.id)
                 }
-                .buttonStyle(.plain)
-                .font(.callout)
-                .foregroundStyle(Color(.uniformRateText))
+                .calloutLink(isLink: false)
             }
             Text(verbatim: row.adds)
-                .fontWeight(.bold)
+                .font(Typography.bodyBold)
                 .monospacedDigit()
-                .foregroundStyle(row.addsIsMuted ? Color.secondary : Color.primary)
+                .foregroundStyle(row.addsIsMuted ? Palette.text4 : Palette.text)
         }
     }
 }
@@ -266,8 +283,10 @@ private struct DisclosureChevron: View {
 
     var body: some View {
         Image(systemName: "chevron.right")
-            .font(.system(size: size - 3, weight: .bold))
-            .foregroundStyle(.secondary)
+            .font(Typography.subheadline)
+            .fontWeight(.bold)
+            .imageScale(.small)
+            .foregroundStyle(Palette.text2)
             .rotationEffect(.degrees(isOpen ? 90 : 0))
             .frame(width: size, height: size)
             .accessibilityHidden(true)
@@ -280,11 +299,11 @@ private struct CellSwatch: View {
 
     var body: some View {
         let style = kind.style
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: PredictionMonthsMetrics.swatchRadius)
             .fill(style.fill)
             .overlay {
                 if let edge = style.edge {
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: PredictionMonthsMetrics.swatchRadius)
                         .strokeBorder(edge.color, style: StrokeStyle(lineWidth: edge.width, dash: edge.dash))
                 }
             }

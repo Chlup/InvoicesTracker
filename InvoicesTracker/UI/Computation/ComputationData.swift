@@ -74,39 +74,15 @@ nonisolated struct ComputationSection: Identifiable, Sendable, Hashable {
     }
 }
 
-// MARK: - The cards under the sections
-
-/// A box of the equation of what is left to pay: one authority's share, or the sum.
-nonisolated struct ComputationTile: Identifiable, Sendable, Hashable {
-    /// The sign in front of the box: none for the first, "+" between the shares, "=" before the sum.
-    var sign: ComputationSign
-    var label: String
-    var value: String
-
-    /// Whether the box is the sum, which is set apart.
-    var isResult: Bool
-
-    var id: String {
-        label
-    }
-}
-
-/// "Zbývá zaplatit": what each authority still has to get, added up, and where the sum goes.
-nonisolated struct ComputationEquation: Sendable, Hashable {
-    var heading: String
-    var caption: String
-    var tiles: [ComputationTile]
-
-    /// The sentence under the tiles: what leaves with the planned advances and what is paid after the return, or for a
-    /// year that is over what the advances paid.
-    var split: String
-}
+// MARK: - The cards under the result
 
 /// What one authority takes of the next crown, as a part of the bar of the marginal levy.
 nonisolated struct MarginalShare: Identifiable, Sendable, Hashable {
     var authority: Authority
 
-    /// The part of the bar, 0 to 1. It is for drawing only; the rates are in the text.
+    /// The rate of the authority, as the part of the full width of the bar, 0 to 1: a tax of 15 % of the next crown is
+    /// 0,15 of the width, so the three parts together fill as much of the bar as the levy total is of a hundred
+    /// crowns. It is for drawing only; the money is in the texts.
     var fraction: Double
 
     var id: Authority {
@@ -119,7 +95,8 @@ nonisolated struct ComputationMarginal: Sendable, Hashable {
     /// "37,8 %".
     var total: String
 
-    /// The parts of the bar: tax, social, health.
+    /// The parts of the bar: tax, social, health. Each one is as wide as the rate of its authority, so the parts
+    /// together fill as much of the bar as `total` is of a hundred crowns.
     var shares: [MarginalShare]
     var text: String
 }
@@ -163,16 +140,23 @@ nonisolated struct ComputationAssumptions: Sendable, Hashable {
 
 // MARK: - The page
 
-/// Everything the screen shows for a year as of a day: the result, the cards between it and the banner, the banner
-/// and the sections of the breakdown.
+/// Everything the screen shows for a year as of a day: the result, which is the key figure of what is left to pay and
+/// the bar of the levies, the cards under it, the note and the sections of the breakdown.
 nonisolated struct ComputationPage: Sendable, Hashable {
     /// The year it was built for.
     var year: Int
 
-    /// What the computation counts up to the day shown.
+    /// What the computation counts up to the day shown, in the note under the cards.
     var banner: String
     var sections: [ComputationSection]
-    var equation: ComputationEquation
+
+    /// "Zbývá zaplatit": what each authority still has to get, added up, and where the sum goes. It stands at the left
+    /// of the result card.
+    var keyFigure: KeyFigureData
+
+    /// The levies of the three authorities with their total, as Přehled shows them. It stands at the right of the
+    /// result card, which has the total here because the key figure beside it is what is left to pay, not the levies.
+    var levies: LevyBarData
     var marginal: ComputationMarginal
     var thresholds: ComputationThresholds
     var assumptions: ComputationAssumptions

@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// The toolbar of the window, the same on every screen: the back arrow while the invoice editor is shown, the year
-/// menu, the rate capsule with how the year converts its income in other currencies (`RateCapsule`), and Nová faktura.
+/// menu, the rate capsule with how the year converts its income in other currencies (`RateCapsule`), and Nová faktura,
+/// which is in the accent of the design (`Palette.accent`) whatever accent the system has. The toolbar itself stays
+/// native.
 ///
 /// There is no control for the day the screens report as of. The current year is reported through the last day of the
 /// current month automatically (`AsOfState`), and the year menu is the only choice: a year that is over is shown as a
@@ -32,6 +34,7 @@ struct MainToolbar: ToolbarContent {
                     .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.borderedProminent)
+            .tint(Palette.accent)
         }
     }
 

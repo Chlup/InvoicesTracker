@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// The filter row of Faktury: the scope picker, the chips and the search, side by side where they fit and wrapping like
-/// words in a paragraph where they do not. Every subview but the last is placed at the size it asks for, on to the next
-/// line where the width is used up. The last one, the search, is flexible: it takes the room that is left on its line,
-/// between its least and its greatest width, and stands at the end of the line, flush with the trailing edge. Where its
-/// least width does not fit the line it goes on to a line of its own, again at the end.
+/// The filter row of Faktury: the segment of the scope, the chips and the search, in one row where they fit and
+/// wrapping like words in a paragraph where they do not, as the prototype's row of flexible boxes does. Every subview
+/// but the last is placed at the size it asks for, on to the next line where the width is used up. The last one, the
+/// search, is flexible: it takes the room that is left on its line, between its least and its greatest width, and
+/// stands at the end of the line, flush with the trailing edge. Where its least width does not fit the line it goes on
+/// to a line of its own, again at the end, as in the least window.
 ///
 /// The subviews are laid out in place rather than chosen between by a `ViewThatFits` of the possible rows, because the
 /// search is a text field that must stay the same view through every wrap: a field made anew when the row wraps (the

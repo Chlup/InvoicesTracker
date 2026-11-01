@@ -19,12 +19,24 @@ enum AppWindowSize {
 /// The window is never a tab of another window. Where the person prefers tabs, the windows of the tests that run at the
 /// same time would become tabs of one window, which share one frame: this window would take the size of another test's
 /// window and follow it when that one is resized or closed.
+///
+/// The window is on the screen at 100, 100, where the pointer of the person who runs the tests can pass over it, or
+/// not be. With `ignoringTheRealPointer` the window is closed to that pointer (`TestWindow`): it takes no event of
+/// the real mouse, passes no event of the pointer on to its views and says for itself where its pointer is, so that
+/// the popover and the hover that a test brings about with events of its own do not depend on where the real pointer
+/// is; as a precaution, it also has its views make the areas they follow the pointer in anew once it is laid out
+/// (`TestWindow.makeTheAreasOfThePointerAnew()`). A test that moves the pointer by hand (`movePointer(to:in:)`) asks
+/// for it, and the helper refuses a window without it. A test that clicks or scrolls through the event handling of the
+/// app keeps the ordinary window.
 @MainActor
 func withAppWindow(
-    of app: AppModel, size: CGSize, _ body: (NSWindow) async throws -> Void
+    of app: AppModel, size: CGSize, ignoringTheRealPointer: Bool = false, _ body: (NSWindow) async throws -> Void
 ) async throws {
     app.screen = .overview
-    let window = NSWindow(contentViewController: NSHostingController(rootView: RootView(model: app)))
+    let window = TestWindow(contentViewController: NSHostingController(rootView: RootView(model: app)))
+    if ignoringTheRealPointer {
+        window.closeToTheRealPointer()
+    }
     window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
     window.tabbingMode = .disallowed
     window.toolbarStyle = .unified
@@ -32,8 +44,11 @@ func withAppWindow(
     window.setFrameOrigin(NSPoint(x: 100, y: 100))
     window.orderFront(nil)
     defer { window.close() }
+    if ignoringTheRealPointer {
+        try await window.makeTheAreasOfThePointerAnew()
+    }
     app.screen = .computation
-    try await waitUntil { window.title == "Rozpis výpočtu" }
+    try await waitUntil { window.title == "Výpočet" }
     try await body(window)
 }
 
@@ -96,6 +111,15 @@ private func collectViews(outside room: CGRect, of content: NSView, from view: N
 @MainActor
 func frameInWindow(_ view: NSView) -> CGRect {
     view.convert(view.bounds, to: nil)
+}
+
+/// The date pickers under `view`, and `view` itself where it is one, in the order of the view tree.
+@MainActor
+func datePickers(in view: NSView) -> [NSDatePicker] {
+    if let picker = view as? NSDatePicker {
+        return [picker]
+    }
+    return view.subviews.flatMap { datePickers(in: $0) }
 }
 
 /// Runs `body` alone among the tests that type into a window: SwiftUI's text fields share one field editor across
@@ -210,6 +234,25 @@ func frameOfCard(headed title: String, in window: NSWindow) -> CGRect? {
     return card?.accessibilityFrame?()
 }
 
+/// The frame of the first group of `window` that holds a text which VoiceOver reads as `text`, in the coordinates of
+/// the screen, whose origin is at the bottom left. A note with actions, such as the green banner with its Zavřít, is a
+/// group (`accessibilityElement(children: .contain)`) that reads no label of its own, and its text is a value, not a
+/// label, so `frameOfCard(labelled:in:)` and `frameOfCard(headed:in:)` cannot find it. Nil when `window` has no such
+/// group, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func frameOfGroup(holdingText text: String, in window: NSWindow) -> CGRect? {
+    let group = firstElement(among: window.accessibilityChildren() ?? []) { element in
+        guard element.accessibilityRole?() == .group else { return false }
+        return (element.accessibilityChildren?() ?? []).contains { child in
+            // The value is asked for as a function of its type, because the protocols of accessibility declare
+            // `accessibilityValue()` with more than one type.
+            let value: (() -> Any?)? = (child as AnyObject).accessibilityValue
+            return (value?() ?? nil) as? String == text
+        }
+    }
+    return group?.accessibilityFrame?()
+}
+
 /// The frame of the first text of `window` that VoiceOver reads as a phrase starting with `phrase`, in the coordinates
 /// of the screen, whose origin is at the bottom left. A note or a tile that is read as one phrase (it combines its
 /// parts) is a text with no label, whose value is the phrase, so `frameOfCard(labelled:in:)` cannot find it. Nil when
@@ -241,6 +284,63 @@ func accessibilityElement(labelled label: String, in window: NSWindow) -> AnyObj
     }
 }
 
+/// The names VoiceOver reads for the containers of `window`, however deep they are: the label of every element that is
+/// not a control, a text, a heading or a link, such as a card, a section of a detail, a group of chips or the picture
+/// of a bar.
+/// Empty while the views of `window` make no accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func containerLabels(in window: NSWindow) -> Set<String> {
+    var labels: Set<String> = []
+    collectContainerLabels(among: window.accessibilityChildren() ?? [], into: &labels)
+    return labels
+}
+
+/// Adds the labels of the containers among `elements` and of their children to `labels`.
+@MainActor
+private func collectContainerLabels(among elements: [Any], into labels: inout Set<String>) {
+    let controls: Set<String> = [
+        "AXButton", "AXCheckBox", "AXComboBox", "AXDateTimeArea", "AXHeading", "AXIncrementor", "AXLink",
+        "AXMenuButton", "AXPopUpButton", "AXRadioButton", "AXSlider", "AXStaticText", "AXTextArea", "AXTextField",
+    ]
+    for item in elements {
+        let element = item as AnyObject
+        let role = element.accessibilityRole?()?.rawValue ?? ""
+        let label: String? = element.accessibilityLabel?() ?? nil
+        if let label, !label.isEmpty, !controls.contains(role) {
+            labels.insert(label)
+        }
+        collectContainerLabels(among: element.accessibilityChildren?() ?? [], into: &labels)
+    }
+}
+
+/// Expects `names` among the containers of `window` (`containerLabels(in:)`), giving the views up to ten seconds to
+/// show them, with a look every 50 milliseconds. The time is counted as `waitUntil` counts it
+/// (`holdsWithin(_:every:_:)`). The missing names are in the failure, so that a table of names says which one a
+/// screen lacks.
+@MainActor
+func expectContainers(
+    _ names: [String], in window: NSWindow, _ screen: String, sourceLocation: SourceLocation = #_sourceLocation
+) async throws {
+    var missing = Set(names)
+    _ = try await holdsWithin(.seconds(10), every: .milliseconds(50)) {
+        missing = Set(names).subtracting(containerLabels(in: window))
+        return missing.isEmpty
+    }
+    let named = missing.sorted().map { "„\($0)“" }.joined(separator: ", ")
+    #expect(missing.isEmpty, "\(screen) has no container named \(named)", sourceLocation: sourceLocation)
+}
+
+/// The element of `window` that VoiceOver reads under `label` with `role`, such as the heading of a sheet whose title
+/// is also the name of the sheet: `accessibilityElement(labelled:in:)` finds the first element under that label, which
+/// is the sheet. Nil when `window` has no such element, and while its views make no accessibility elements
+/// (`withAccessibilityElements(_:)`).
+@MainActor
+func accessibilityElement(role: NSAccessibility.Role, labelled label: String, in window: NSWindow) -> AnyObject? {
+    firstElement(among: window.accessibilityChildren() ?? []) { element in
+        element.accessibilityRole?() == role && element.accessibilityLabel?() == label
+    }
+}
+
 /// The element under `container` that VoiceOver reads under `label` with `role`, such as a control of a card that was
 /// found by its label (`accessibilityElement(labelled:in:)`). It is for a control that another one of the page reads
 /// like, such as the Zkontrolovat teď of two cards, or a switch that reads like the text beside it, so the control is
@@ -253,6 +353,137 @@ func accessibilityElement(
     firstElement(among: container.accessibilityChildren?() ?? []) { element in
         element.accessibilityRole?() == role && element.accessibilityLabel?() == label
     }
+}
+
+/// The first element of `window` whose label VoiceOver reads starts with `prefix`, whatever its role: the picture of
+/// the levy bar, whose label starts with what the bar shows and goes on with its three parts. Nil when `window` has no
+/// such element, and while its views make no accessibility elements (`withAccessibilityElements(_:)`).
+@MainActor
+func accessibilityElement(labelStartingWith prefix: String, in window: NSWindow) -> AnyObject? {
+    firstElement(among: window.accessibilityChildren() ?? []) { element in
+        // The label is asked for as an optional of an optional, as the elements of SwiftUI answer by name.
+        let label: String? = element.accessibilityLabel?() ?? nil
+        return label?.hasPrefix(prefix) == true
+    }
+}
+
+/// Moves the pointer over `point` in `window`, given in the coordinates of the window (the origin at its bottom left),
+/// as a mouse does for the views of SwiftUI that follow it (`onHover`): SwiftUI hears of the pointer on its hosting
+/// view, the one with an area that follows the pointer (`hostingViewTrackingThePointer(in:)`), as the pointer leaving
+/// that area, coming into it and moving in it. The events are made as AppKit makes the events of the area
+/// (`crossing(_:of:at:in:)`) and handed to the view itself: the window of the test passes no event of the pointer on to
+/// its views (`TestWindow.sendEvent(_:)`). A point outside what follows the pointer, such as the corner of the window,
+/// takes the pointer away again, and a point outside the area leaves the pointer out of it. The real cursor does not
+/// move, and no event is posted to the system.
+///
+/// SwiftUI decides whether it takes the pointer to be inside the view when it makes the area, from where the window
+/// says the pointer is then, and afterwards only by the events that name the area: once it has made its area, nothing
+/// that the view shows or how large the window is changes that. While it takes the pointer to be outside, it ignores
+/// the pointer moving, so a view whose area was made while the window said the pointer was outside it, or that has
+/// heard a pointer leave, would stay deaf to a pointer that only moved for as long as its window is open; while it
+/// takes the pointer to be inside, the pointer coming in again does not move what follows it. So every move takes the
+/// pointer out of the area and brings it in again at `point`, as a pointer that leaves the window and comes back at
+/// that point: SwiftUI follows it there, whatever it took the pointer to be before.
+///
+/// What a test sees is that leave and return. A target under the pointer hears its hover end and begin again within
+/// one move, even where the pointer stays over it, and a target that the pointer is taken away from hears its hover
+/// end with the leave, before the pointer has moved: a check that a hover ends when the pointer is taken away, such as
+/// a popover that closes, is met by the leave. So a test must not count the changes of a hover, nor rely on a hover
+/// lasting across a move.
+///
+/// The window must be closed to the real pointer (`withAppWindow(of:size:ignoringTheRealPointer:_:)`), and its pointer
+/// is put at `point` as the events arrive. In any other window the real pointer of the person who runs the tests has a
+/// say: SwiftUI takes where it is when it makes the area, and the real pointer's own events of the area reach the view,
+/// so the pointer passing over the window would change what the test has opened, and the test would pass or fail by
+/// where that pointer is. The helper refuses such a window, and it fails at once where no view follows the pointer.
+@MainActor
+func movePointer(to point: CGPoint, in window: NSWindow) throws {
+    let testWindow = try #require(window as? TestWindow, "The window is not a window of the test helpers")
+    try #require(
+        testWindow.isClosedToTheRealPointer,
+        "The window is open to the real pointer: open it with ignoringTheRealPointer: true")
+    testWindow.putPointer(at: point)
+    let view = try #require(
+        hostingViewTrackingThePointer(in: window.contentView),
+        "No view follows the pointer: no hosting view has an area that follows the pointer coming in and leaving")
+    let pointInView = view.convert(point, from: nil)
+    for area in areasFollowingThePointer(of: view) {
+        view.mouseExited(with: try crossing(.mouseExited, of: area, at: point, in: window))
+        let rect = area.options.contains(.inVisibleRect) ? view.visibleRect : area.rect
+        if rect.contains(pointInView) {
+            view.mouseEntered(with: try crossing(.mouseEntered, of: area, at: point, in: window))
+        }
+    }
+    view.mouseMoved(with: try pointerMotion(to: point, in: window))
+}
+
+/// The event of a pointer crossing the edge of `area` at `point` of `window`, given in the coordinates of the window:
+/// coming into the area (`.mouseEntered`) or leaving it (`.mouseExited`). It is made as AppKit makes the events of a
+/// tracking area, which name their area by their tracking number (`NSEvent.trackingArea`), so the owner of the area
+/// takes it for an event of that area. It requires that AppKit reads the area back from the event.
+@MainActor
+func crossing(
+    _ type: NSEvent.EventType, of area: NSTrackingArea, at point: CGPoint, in window: NSWindow
+) throws -> NSEvent {
+    let event = try #require(
+        NSEvent.enterExitEvent(
+            with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+            trackingNumber: Int(bitPattern: Unmanaged.passUnretained(area).toOpaque()), userData: nil))
+    try #require(event.trackingArea === area, "AppKit does not name the area of an event by its tracking number")
+    return event
+}
+
+/// The event of the pointer moving to `point` of `window`, given in the coordinates of the window.
+@MainActor
+func pointerMotion(to point: CGPoint, in window: NSWindow) throws -> NSEvent {
+    try #require(
+        NSEvent.mouseEvent(
+            with: .mouseMoved, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+}
+
+/// The tracking areas of `view` in which it follows the pointer as the hosting view of SwiftUI does: the areas that the
+/// view owns and that report the pointer coming into them and leaving them. `movePointer(to:in:)` takes the pointer out
+/// of each of them and brings it in again, and finds the view it moves the pointer in by them.
+@MainActor
+func areasFollowingThePointer(of view: NSView) -> [NSTrackingArea] {
+    view.trackingAreas.filter { area in
+        (area.owner as AnyObject?) === view && area.options.contains(.mouseEnteredAndExited)
+    }
+}
+
+/// The hosting view of SwiftUI under `view` that follows the pointer: the first, in the order of the view tree, that
+/// has an area following the pointer (`areasFollowingThePointer(of:)`). It is the view that `movePointer(to:in:)` hands
+/// its events to. Nil while SwiftUI has made no such area, as before a window shows anything that follows the pointer.
+@MainActor
+func hostingViewTrackingThePointer(in view: NSView?) -> NSView? {
+    guard let view else { return nil }
+    if String(describing: type(of: view)).contains("NSHostingView"), !areasFollowingThePointer(of: view).isEmpty {
+        return view
+    }
+    for subview in view.subviews {
+        if let found = hostingViewTrackingThePointer(in: subview) {
+            return found
+        }
+    }
+    return nil
+}
+
+/// The colour of the picture of `window`, as its bytes, at the middle of the part of the social insurance in a levy bar
+/// that stands at `bar` (its frame in the window, the origin at the bottom left) and shares its width as `weights` say,
+/// one for each authority in the order of `Authority.allCases`. The part fades while the popover of another part is
+/// open, so its colour changes when the pointer comes over the part of the tax or over its item in the legend, and
+/// comes back when the pointer is taken away: a test that moves the pointer waits for the one and the other before it
+/// checks anything else, and so cannot pass when the pointer moved nothing.
+@MainActor
+func colourOfTheSocialPartOfTheLevyBar(weights: [Int64], bar: CGRect, in window: NSWindow) throws -> [Int] {
+    let content = try #require(window.contentView)
+    let widths = LevyBarLayout.partWidths(weights: weights, width: bar.width)
+    let centres = LevyBarLayout.partCentres(widths: widths)
+    let social = try #require(Authority.allCases.firstIndex(of: .social))
+    let point = CGPoint(x: bar.minX + centres[social], y: content.bounds.height - bar.midY)
+    return try WindowPicture(of: window).bytes(at: point)
 }
 
 /// The element of `window` that carries the accessibility identifier `identifier`: a group that a test measures or

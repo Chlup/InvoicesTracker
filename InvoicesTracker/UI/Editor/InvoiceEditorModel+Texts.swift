@@ -2,7 +2,7 @@ import Foundation
 
 /// The texts the editor shows, worked out from what the model holds: the title and the line under it, the bars of a
 /// new invoice and of an invoice that is edited, what the client chosen starts an invoice with, the currency with its
-/// rate, the due date, the note under the QR box and the amounts of the rows.
+/// rate, the due date, the note under the QR box, the example in the note and the amounts of the rows.
 extension InvoiceEditorModel {
     /// "Nová faktura", or "Upravit fakturu <number>".
     var title: String {
@@ -147,6 +147,9 @@ extension InvoiceEditorModel {
     var canAddItem: Bool {
         items.count < EditorLimits.items
     }
+
+    /// The example in the note while it is empty, as the prototype has it.
+    static let notePlaceholder = "Např. platební instrukce"
 
     /// How many lines the note prints.
     var noteLineCount: Int {

@@ -4,10 +4,10 @@ import Foundation
 
 /// Turns the result of the tax engine for a year into the page of Výpočet, so that each number of the tax return and of
 /// the overviews can be checked: the five cards of the breakdown (here, in `+Tax`, `+Social`, `+Authorities` and
-/// `+NetIncome`), the banner and the cards under them in `+Cards`. Nothing of the levies is worked out again: every
-/// figure comes from the result. What the result does not hold as a number is derived from it for the rows and notes
-/// alone (the shares and bases of the rows of a year with both main and secondary activity, the day the cap of the
-/// expenses was reached), and the tests check that these add up to what the engine worked out.
+/// `+NetIncome`), and the result, the cards under it and the note in `+Cards`. Nothing of the levies is worked out
+/// again: every figure comes from the result. What the result does not hold as a number is derived from it for the rows
+/// and notes alone (the shares and bases of the rows of a year with both main and secondary activity, the day the cap
+/// of the expenses was reached), and the tests check that these add up to what the engine worked out.
 ///
 /// A card is one calculation from the top down: each row has the sign of what it does to the rows above, a subtracted
 /// value carries its minus, and an amount has no currency except the amount left to pay and the average per month of
@@ -179,32 +179,21 @@ nonisolated enum ComputationBuilder {
         CzechFormat.percent(share, fractionDigits: fractionDigits)
     }
 
+    /// A number of payments with the noun in the form Czech wants and a no-break space between them:
+    /// "1 platba", "2 platby", "5 plateb".
     private static func payments(_ count: Int) -> String {
-        counted(count, "platba", "platby", "plateb")
+        CzechCount.counted(count, one: "platba", few: "platby", many: "plateb", separator: CzechFormat.noBreakSpace)
     }
 
+    /// A number of months with the noun in the form Czech wants and a no-break space between them:
+    /// "1 měsíc", "2 měsíce", "5 měsíců".
     static func months(_ count: Int) -> String {
-        counted(count, "měsíc", "měsíce", "měsíců")
+        CzechCount.counted(count, one: "měsíc", few: "měsíce", many: "měsíců", separator: CzechFormat.noBreakSpace)
     }
 
-    /// `count` with the noun in the form Czech wants and a no-break space between them: "1 měsíc", "2 měsíce",
-    /// "5 měsíců".
-    static func counted(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
-        let noun =
-            switch count {
-            case 1: one
-            case 2...4: few
-            default: many
-            }
-        return "\(count)\u{00A0}\(noun)"
-    }
-
-    /// The name of an authority in a column or a tile: "Daň", "Sociální", "Zdravotní".
+    /// The name of an authority in a column or a tile, its short name (`Authority.shortTitle`): "Daň", "Sociální",
+    /// "Zdravotní".
     static func shortName(of authority: Authority) -> String {
-        switch authority {
-        case .tax: "Daň"
-        case .social: "Sociální"
-        case .health: "Zdravotní"
-        }
+        authority.shortTitle
     }
 }

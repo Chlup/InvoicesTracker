@@ -2,8 +2,9 @@ import Foundation
 
 /// One month of the chart on the card of the estimate in Přehled: what was issued in it, what was received in it, and
 /// what the payments received in it leave after the levies they add. Each is in two parts, the actual figure up to
-/// today and the estimate of what is still to come. Amounts are in haléře. The texts say them in crowns and haléře, or
-/// "—" for a part that does not apply to the month: the estimate of a past month and the actual figure of a future one.
+/// today and the estimate of what is still to come. Amounts are in haléře. The texts say them in whole Kč, or "—" for a
+/// part that does not apply to the month: the estimate of a past month and the actual figure of a future one. None of
+/// them has the sign "≈", as the card they stand in is an area of estimates as a whole.
 nonisolated struct PredictionChartMonth: Sendable, Hashable, Identifiable {
     /// Where a month stands against today.
     nonisolated enum Part: Sendable, Hashable {
@@ -52,26 +53,27 @@ nonisolated struct PredictionChartMonth: Sendable, Hashable, Identifiable {
     /// for a past month.
     var netEstimateHalere: Int64
 
-    /// `issuedActualHalere` in crowns and haléře, "310 226,75 Kč", or "—" for a future month.
+    /// `issuedActualHalere` in whole Kč, rounded half up, "310 227 Kč", or "—" for a future month.
     var issuedActualText: String
 
-    /// `issuedEstimateHalere` in crowns and haléře, or "—" for a past month.
+    /// `issuedEstimateHalere` in whole Kč, or "—" for a past month.
     var issuedEstimateText: String
 
-    /// `receivedActualHalere` in crowns and haléře, or "—" for a future month.
+    /// `receivedActualHalere` in whole Kč, or "—" for a future month.
     var receivedActualText: String
 
-    /// `receivedEstimateHalere` in crowns and haléře, or "—" for a past month.
+    /// `receivedEstimateHalere` in whole Kč, or "—" for a past month.
     var receivedEstimateText: String
 
-    /// `netActualHalere` in crowns and haléře, or "—" for a future month.
+    /// `netActualHalere` in whole Kč, or "—" for a future month.
     var netActualText: String
 
-    /// `netEstimateHalere` in crowns and haléře, or "—" for a past month.
+    /// `netEstimateHalere` in whole Kč, or "—" for a past month.
     var netEstimateText: String
 
     /// Whether `issuedActualHalere` is approximate: an invoice in another currency whose ČNB rate of the day of issue
-    /// is not declared yet is worth the latest declared rate. `issuedActualText` has "≈" before it then.
+    /// is not declared yet is worth the latest declared rate. The amount has no sign for it, the card being an area of
+    /// estimates as a whole; the note under the figures of the month says why it is approximate (`notes`).
     var issuedActualIsApproximate = false
 
     /// The sentences under the figures of the tooltip, which VoiceOver reads after them: that the invoices issued cover
@@ -129,7 +131,7 @@ nonisolated enum PredictionChartBuilder {
     ///
     /// A month before the one of `today` is past and has only its actual figures, the month of `today` is current and
     /// has both, and a month after it is future and has only its estimate. A part that does not apply is 0 in the
-    /// amounts and "—" in the texts; one that applies and has nothing in it is 0 and "0,00 Kč".
+    /// amounts and "—" in the texts; one that applies and has nothing in it is 0 and "0 Kč".
     ///
     /// The actual figures leave out drafts and invoices in review. What was issued is reported through `issuedThrough`,
     /// the reporting cutoff, which is the end of the current month and so after `today` (it is never before it; `nil`
@@ -176,7 +178,7 @@ nonisolated enum PredictionChartBuilder {
                 issuedActualHalere: actual?.issued ?? 0, issuedEstimateHalere: estimate?.issued ?? 0,
                 receivedActualHalere: actual?.received ?? 0, receivedEstimateHalere: estimate?.received ?? 0,
                 netActualHalere: actual?.net ?? 0, netEstimateHalere: estimate?.net ?? 0,
-                issuedActualText: text(actual?.issued, approximate: approximate),
+                issuedActualText: text(actual?.issued),
                 issuedEstimateText: text(estimate?.issued),
                 receivedActualText: text(actual?.received), receivedEstimateText: text(estimate?.received),
                 netActualText: text(actual?.net), netEstimateText: text(estimate?.net),
@@ -307,10 +309,9 @@ nonisolated enum PredictionChartBuilder {
         }
     }
 
-    /// `halere` in crowns and haléře, with "≈" before it when it is approximate, or "—" for a part that does not apply,
-    /// which has no amount.
-    private static func text(_ halere: Int64?, approximate: Bool = false) -> String {
-        halere.map { (approximate ? PredictionBuilder.estimateSign : "") + CzechFormat.halere($0) } ?? notApplicable
+    /// `halere` in whole Kč, rounded half up, or "—" for a part that does not apply, which has no amount.
+    private static func text(_ halere: Int64?) -> String {
+        halere.map { PredictionBuilder.kc(ofHalere: $0) } ?? notApplicable
     }
 
     /// The sentences under the figures of a month. The current month says that the invoices issued are of the whole

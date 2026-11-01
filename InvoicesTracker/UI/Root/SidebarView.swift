@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The sidebar: the screens of the selected year under "Rok 2026", Faktury with the number of its drafts, the records
 /// under "Evidence", the tools under "Nástroje" (Simulátor, and Import with the progress of an import that runs), and
-/// Nastavení pinned at the bottom.
+/// Nastavení pinned at the bottom with the version of the app under it.
 struct SidebarView: View {
     let model: AppModel
 
@@ -20,7 +20,6 @@ struct SidebarView: View {
             }
             Section("Evidence") {
                 row(.clients)
-                row(.templates)
             }
             Section("Nástroje") {
                 row(.simulator)
@@ -34,9 +33,7 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 pinnedRow(.settings)
-                Text(verbatim: Self.versionText(info: Bundle.main.infoDictionary))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                SidebarVersionLine(text: Self.versionText(info: Bundle.main.infoDictionary))
                     .padding(.leading, 8)
             }
             .padding(.horizontal, 10)
@@ -44,12 +41,12 @@ struct SidebarView: View {
         }
     }
 
-    /// The line under Nastavení, "Verze: 1.4.0 (7)": the marketing version and the build of the app from `info`, its
+    /// The line under Nastavení, "Verze 1.6.0 (9)": the marketing version and the build of the app from `info`, its
     /// Info.plist. A value it lacks reads "?".
     nonisolated static func versionText(info: [String: Any]?) -> String {
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "Verze: \(version) (\(build))"
+        return "Verze \(version) (\(build))"
     }
 
     private var selection: Binding<Screen?> {
@@ -101,12 +98,25 @@ struct SidebarView: View {
             .contentShape(Rectangle())
             .background {
                 if selected {
-                    RoundedRectangle(cornerRadius: 6).fill(.quaternary)
+                    RoundedRectangle(cornerRadius: DesignMetrics.controlRadius).fill(Palette.fillStrong)
                 }
             }
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The line under Nastavení that names the version of the app: small print, the subheadline in the third colour of
+/// text, with digits of one width, so that the line does not shift when the version or the build changes.
+struct SidebarVersionLine: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(Typography.subheadline)
+            .monospacedDigit()
+            .foregroundStyle(Palette.text3)
     }
 }
 
@@ -120,7 +130,6 @@ private extension Screen {
         case .computation: "sum"
         case .prediction: "chart.line.uptrend.xyaxis"
         case .clients: "person.2"
-        case .templates: "doc.on.doc"
         case .simulator: "plus.forwardslash.minus"
         case .settings: "gearshape"
         case .importer: "square.and.arrow.down"

@@ -2,11 +2,12 @@ import AppKit
 import SwiftUI
 
 extension View {
-    /// Covers a sheet while the app is locked after inactivity (`AppModel.isIdleLocked`); every sheet root has it. A
-    /// sheet cannot be hidden without losing what it holds, and the card of the lock of its window is under it, out of
-    /// reach while the sheet is up. So the sheet keeps what it shows and what is typed in it under a lock of its own,
-    /// which says that the app is locked and has Odemknout (`IdleLockCover`). The app model is that of the window the
-    /// sheet is shown over (`RootView` puts it in the environment); a sheet shown elsewhere is shown as it is.
+    /// Covers a sheet while the app is locked after inactivity (`AppModel.isIdleLocked`); every sheet root has it, with
+    /// the rest of the chrome of a sheet (`sheetChrome()`). A sheet cannot be hidden without losing what it holds, and
+    /// the card of the lock of its window is under it, out of reach while the sheet is up. So the sheet keeps what it
+    /// shows and what is typed in it under a lock of its own, which says that the app is locked and has Odemknout
+    /// (`IdleLockCover`). The app model is that of the window the sheet is shown over (`RootView` puts it in the
+    /// environment); a sheet shown elsewhere is shown as it is.
     func idleLockCover() -> some View {
         modifier(SheetIdleLockCover())
     }
@@ -74,7 +75,7 @@ struct IdleLockCover: ViewModifier {
         case .window:
             // Over the whole window, under the toolbar too, which the window empties under the lock.
             LockedView(model: app, kind: .inactivity)
-                .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
+                .background(Palette.bgWindow.ignoresSafeArea())
         case .sheet:
             SheetLock(app: app)
                 // A sheet takes the environment of the window it is shown over, which the lock disables: its own lock
@@ -84,10 +85,10 @@ struct IdleLockCover: ViewModifier {
     }
 }
 
-/// What a sheet shows while the app is locked after inactivity, over everything it holds and on its background: the
-/// lock, its title and Odemknout, which asks for Touch ID or the password of the Mac (`AppModel.unlockAfterIdle()`) and
-/// is the default button of the sheet (Return). The text of the lock is there too where the sheet is tall enough. Esc
-/// does nothing: the sheet would close with what is typed in it.
+/// What a sheet shows while the app is locked after inactivity, over everything it holds and on its background, the
+/// colour of a card: the lock, its title and Odemknout, which asks for Touch ID or the password of the Mac
+/// (`AppModel.unlockAfterIdle()`) and is the default button of the sheet (Return). The text of the lock is there too
+/// where the sheet is tall enough. Esc does nothing: the sheet would close with what is typed in it.
 private struct SheetLock: View {
     let app: AppModel
 
@@ -100,7 +101,7 @@ private struct SheetLock: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Palette.bgCard)
         .background(escape)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Zamčeno")
@@ -121,12 +122,14 @@ private struct SheetLock: View {
         VStack(spacing: 10) {
             LockSymbol()
             Text(LockedView.title)
-                .font(.title2.weight(.bold))
+                .font(Typography.title2)
+                .foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
             if withText {
                 Text(verbatim: WelcomeTexts.idleLockText(app.appSettings.idleLock))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: 380)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
+                    .frame(maxWidth: LockedView.textWidth)
                     .fixedSize(horizontal: false, vertical: true)
             }
             UnlockButton(runner: runner) {

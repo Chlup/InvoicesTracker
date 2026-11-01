@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Lays out a column and a panel beside it: the panel is `sideWidth` wide on the right and the column takes the rest,
 /// as long as the column keeps `mainMinimumWidth`; where the width is less, the panel comes under the column. Both are
-/// aligned at the top. Zálohy a odpočty puts the impact of the deductions beside them so, and Simulátor what the year
-/// costs beside its inputs.
+/// aligned at the top. Zálohy a odpočty puts the impact of the deductions beside them so, and Simulátor its result
+/// beside its inputs.
 struct SidePanelLayout: Layout {
     let sideWidth: CGFloat
     let mainMinimumWidth: CGFloat

@@ -2,22 +2,41 @@ import SwiftUI
 
 // MARK: - Rok a příjem
 
+/// The sizes and gaps of the cards of the inputs that their parts do not set themselves, in points.
+private nonisolated enum SimulatorCardsMetrics {
+    /// The space between the parts of the card "Rok a příjem": the year, the income and the assumptions.
+    static let yearCardSpacing: CGFloat = 16
+
+    /// The space between the hairline that sets the income and the assumptions apart and the part under it.
+    static let belowHairline: CGFloat = 14
+}
+
 /// "Rok a příjem": the year of the simulation with the rules it is computed with, the income of the year in a large
 /// field with what it is a month, and the assumptions — the flat-rate expenses, the activity (a secondary one with the
 /// box that asks for the exemption from the health minimum) and its months — with what the expenses come to under
-/// them. A text that was refused has its message under its field.
+/// them. A text that was refused has its message under its field. The income and the assumptions each stand under a
+/// hairline.
 struct SimulatorYearAndIncomeCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Card(spacing: SimulatorCardsMetrics.yearCardSpacing, label: "Rok a příjem") {
             year
-            Divider()
-            income
-            Divider()
-            assumptions
+            underHairline {
+                income
+            }
+            underHairline {
+                assumptions
+            }
         }
-        .simulatorCard(label: "Rok a příjem")
+    }
+
+    /// `content` under a hairline of the width of the card, 14 points below it.
+    private func underHairline<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: SimulatorCardsMetrics.belowHairline) {
+            Hairline()
+            content()
+        }
     }
 
     private var year: some View {
@@ -49,7 +68,7 @@ struct SimulatorYearAndIncomeCard: View {
             if let message = model.incomeError {
                 FieldMessage(text: message)
             }
-            Text("V Kč. Bez zaměstnání a jiných zdanitelných příjmů.")
+            Text("Bez DPH, v Kč. Bez zaměstnání a jiných zdanitelných příjmů.")
                 .simulatorNote()
         }
     }
@@ -62,10 +81,10 @@ struct SimulatorYearAndIncomeCard: View {
                     model.readTypedTexts()
                 }
             )
-            .font(.system(size: 20, weight: .semibold))
+            .font(Typography.title.weight(.semibold))
             // The unit keeps its width, which the row would otherwise share out with the amount a month.
             Text("Kč")
-                .font(.system(size: 15))
+                .font(Typography.title3.weight(.regular))
                 .fixedSize()
         }
     }
@@ -75,7 +94,7 @@ struct SimulatorYearAndIncomeCard: View {
     private var perMonth: some View {
         if let perMonth = model.page?.incomePerMonth {
             Text(verbatim: perMonth)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.text2)
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -183,7 +202,8 @@ struct SimulatorYearAndIncomeCard: View {
     /// The title of the year and of the income, which their controls carry for VoiceOver.
     private func inputTitle(_ title: String) -> some View {
         Text(verbatim: title)
-            .font(.system(size: 15, weight: .semibold))
+            .font(Typography.title3)
+            .foregroundStyle(Palette.text)
             .accessibilityHidden(true)
     }
 
@@ -216,19 +236,21 @@ struct SimulatorYearAndIncomeCard: View {
 // MARK: - Odpočty a slevy
 
 /// The heading over the cards of the deductions and of the family, with the button that copies the deductions and the
-/// family of the year into them as Zálohy a odpočty shows them, once the year has been read. The fields and the lines
-/// under them in the cards are those of Zálohy a odpočty.
+/// family of the year into them as Zálohy a odpočty shows them, once the year has been read: a capsule of the colour of
+/// a card inside the cards, 28 points tall. The fields and the lines under them in the cards are those of Zálohy a
+/// odpočty.
 struct SimulatorDeductionsHeading: View {
     let model: SimulatorModel
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            SimulatorCardTitle(text: "Odpočty a slevy")
+            CardTitle(text: "Odpočty a slevy")
             Spacer(minLength: 8)
             if model.canCopyDeductionsAndFamily {
                 Button("Převzít ze Záloh a odpočtů \(String(model.year))") {
                     Task { await model.copyDeductionsAndFamily() }
                 }
+                .buttonStyle(CapsuleButtonStyle(.onWindow, size: .small))
             }
         }
         .padding(.horizontal, 4)
@@ -242,14 +264,13 @@ struct SimulatorMortgageCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SimulatorCardTitle(text: "Úroky z úvěru na bydlení")
+        Card(label: "Úroky z úvěru na bydlení") {
+            CardTitle(text: "Úroky z úvěru na bydlení")
             MortgageInterestFields(inputs: model.deductionInputs, cap: capChoice)
             if let hints = model.page?.hints {
                 MortgageClaimSummary(hints: hints)
             }
         }
-        .simulatorCard(label: "Úroky z úvěru na bydlení")
     }
 
     private var capChoice: Binding<MortgageCap> {
@@ -263,15 +284,14 @@ struct SimulatorRetirementCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SimulatorCardTitle(text: "Spoření a pojištění na stáří")
+        Card(spacing: 10, label: "Spoření a pojištění na stáří") {
+            CardTitle(text: "Spoření a pojištění na stáří")
             if let hints = model.page?.hints {
                 RetirementLimitBars(limits: hints.retirementLimits)
             }
             RetirementFieldGrid(fields: fieldList, inputs: model.deductionInputs)
             RetirementNote(year: model.year, allowed: model.page?.hints.retirementAllowed)
         }
-        .simulatorCard(label: "Spoření a pojištění na stáří")
     }
 
     private var fieldList: [(field: DeductionField, title: String)] {
@@ -293,15 +313,14 @@ struct SimulatorGiftsCard: View {
     let model: SimulatorModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SimulatorCardTitle(text: "Dary a slevy na dani")
+        Card(spacing: 0, label: "Dary a slevy na dani") {
+            CardTitle(text: "Dary a slevy na dani")
                 .padding(.bottom, 6)
-            Divider()
+            Hairline()
             GiftsRow(inputs: model.deductionInputs, hints: model.page?.hints)
-            Divider()
+            Hairline()
             TaxpayerCreditRow(year: model.year, isOn: creditChoice)
         }
-        .simulatorCard(label: "Dary a slevy na dani", verticalPadding: 14)
     }
 
     private var creditChoice: Binding<Bool> {
@@ -311,10 +330,13 @@ struct SimulatorGiftsCard: View {
 
 // MARK: - The family
 
-/// The cards of the children and of the spouse of the simulation, after "Dary a slevy na dani": those of Zálohy a
-/// odpočty, without what the tax return asks for. A row of a child and Přidat dítě open the dialog of a child of the
-/// simulation (`openChild`); a choice of the spouse changes the simulation at once, and the spouse's own income is a
-/// typed field, read as the other amounts of the Simulátor are. Nothing of it is stored.
+/// The cards of the children and of the spouse of the simulation, after "Dary a slevy na dani": the shared cards of the
+/// family in the mode of the Simulátor (`FamilyCardsMode.simulation`). They leave out what the tax return asks for and
+/// speak the words of the Simulátor's own design: the sentence of the rates without its introduction, the text of a
+/// year without a child, the names VoiceOver reads the cards under, and the note beside Přidat dítě in the grey of
+/// captions. A row of a child and Přidat dítě open the dialog of a child of the simulation (`openChild`); a choice of
+/// the spouse changes the simulation at once, and the spouse's own income is a typed field, read as the other amounts
+/// of the Simulátor are. Nothing of it is stored.
 struct SimulatorFamilyCards: View {
     let model: SimulatorModel
 
@@ -343,25 +365,14 @@ struct SimulatorFamilyCards: View {
 
 // MARK: - Parts
 
-/// The title of a card of the Simulátor, a heading for VoiceOver.
-struct SimulatorCardTitle: View {
-    let text: String
-
-    var body: some View {
-        Text(verbatim: text)
-            .font(.system(size: 15, weight: .semibold))
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
 /// The small title over a menu, which the menu carries for VoiceOver.
 private struct FieldTitle: View {
     let text: String
 
     var body: some View {
         Text(verbatim: text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .accessibilityHidden(true)
     }
 }
@@ -382,20 +393,11 @@ extension SimulatorModel {
 }
 
 extension View {
-    /// A card of the Simulátor, which VoiceOver reads under `label`.
-    fileprivate func simulatorCard(label: String, verticalPadding: CGFloat = 18) -> some View {
-        padding(.horizontal, 20)
-            .padding(.vertical, verticalPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
-    }
-
-    /// A line of the Simulátor in small secondary type that breaks where it has to.
+    /// A line of the Simulátor in callout and tertiary text, the colour of the notes and captions under a field, that
+    /// breaks where it has to.
     func simulatorNote() -> some View {
-        font(.callout)
-            .foregroundStyle(.secondary)
+        font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

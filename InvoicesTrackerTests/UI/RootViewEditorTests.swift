@@ -4,9 +4,10 @@ import Testing
 
 /// The window of the app with the invoice editor: what it shows in its title bar while an invoice is made or edited,
 /// the chooser as a sheet over the screen or over the editor, where "Zahodit rozepsanou fakturu?" is asked (in the
-/// chooser for a choice of the chooser, in the window for any other), and what leaving Faktury does to the editor. The
-/// window is a real one in the test host, with the data of `EditorFixture`, and the question is read as VoiceOver reads
-/// it. Faktury itself is never on screen here: it comes back only when the editor closes.
+/// chooser for a choice of the chooser, in the window for any other), the link of the chooser to Odběratelé, and what
+/// leaving Faktury does to the editor. The window is a real one in the test host, with the data of `EditorFixture`, and
+/// the question is read as VoiceOver reads it. Faktury itself is never on screen here: it comes back only when the
+/// editor closes.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct RootViewEditorTests {
@@ -198,7 +199,7 @@ struct RootViewEditorTests {
                 try await waitUntil { window.sheets.count == 1 }
                 f.app.cancelChooser()
                 try await waitUntil { window.sheets.isEmpty }
-                #expect(window.title == "Rozpis výpočtu")
+                #expect(window.title == "Výpočet")
 
                 // Over an editor, the editor stays under the sheet, with its title, and is there again on Zrušit.
                 f.app.startNewInvoice(templateID: f.dollarTemplate.id)
@@ -217,6 +218,32 @@ struct RootViewEditorTests {
                 f.app.startNewInvoice(templateID: nil)
                 try await waitUntil { window.subtitle == "Prázdná faktura" }
                 #expect(window.sheets.isEmpty)
+            }
+        }
+    }
+
+    /// The link under the choices of the chooser says where the templates are edited, "Šablony upravíte u odběratelů",
+    /// and opens Odběratelé: the sheet closes and the window shows the screen. VoiceOver reads it as a link, not as a
+    /// button.
+    @Test func theLinkOfTheChooserOpensOdberatele() async throws {
+        try await EditorFixture.with { f in
+            try await withWindow(of: f.app) { window in
+                f.app.editorRequest = .chooser
+                try await waitUntil { window.sheets.count == 1 }
+                let chooser = try #require(window.sheets.first)
+                let label = "Šablony upravíte u odběratelů"
+
+                try await withAccessibilityElements {
+                    try await waitUntil { accessibilityElement(labelled: label, in: chooser) != nil }
+                    let link = try #require(accessibilityElement(labelled: label, in: chooser))
+                    #expect(link.accessibilityRole?() == .link)
+                    #expect(link.accessibilityPerformPress?() == true)
+                }
+
+                try await waitUntil { window.sheets.isEmpty }
+                #expect(f.app.editorRequest == nil)
+                #expect(f.app.screen == .clients)
+                try await waitUntil { window.title == "Odběratelé" }
             }
         }
     }

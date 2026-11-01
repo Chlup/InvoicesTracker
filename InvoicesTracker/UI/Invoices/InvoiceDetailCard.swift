@@ -1,23 +1,34 @@
 import SwiftUI
 
-/// The detail of one invoice, in a card of the page at the right of the table: its number and status, the buttons for
-/// what can be done with it, the client, the amount, the dates, the VAT and the ČNB rate of the DUZP, the payment with
-/// what it leaves after the levies and what it adds to the levies of its year (or what a payment would add and leave),
-/// and Smazat fakturu…. The card is `width` points wide and as tall as the room it is given, and what does not fit in
-/// it scrolls.
+/// The detail of one invoice, in the panel of the page at the right of the table (`DetailPanel`): its number and status
+/// in the header and under them the buttons for what can be done with it, then the client, the amount and the items,
+/// the dates, the VAT and the ČNB rate of the DUZP, the payment with what it leaves after the levies and what it adds
+/// to the levies of its year (or what a payment would add and leave), and Smazat fakturu….
+///
+/// A draft is issued, edited and shown as a PDF; an invoice that waits for its payment is marked paid, edited and
+/// shown; one that has a payment has the payment changed and is shown. A paid invoice is not edited, only its payment,
+/// so its detail has no "Upravit", not even one that is off. A draft is issued in one click, without the editor:
+/// "Vystavit" is off while it is being issued, and where it could not be issued a red note right under the buttons
+/// says why, while the buttons stay. The card is as wide as a detail panel (`DetailPanelMetrics.width`) and as high as
+/// its content, or as the room it is given where that is less, and what does not fit in it then scrolls.
 struct InvoiceDetailCard: View {
-    /// The width of the card.
-    static let width: CGFloat = 320
-
     let detail: InvoiceDetail
 
-    /// The × of the header.
+    /// Why the draft could not be issued in one click, the reason the editor gives, or nil: a red note right under the
+    /// buttons says it, for as long as the invoice can still be issued. An invoice that a first press has issued is no
+    /// draft any more, and a second press that fails after it leaves nothing to say.
+    var issueProblem: String?
+
+    /// Whether the draft is being issued in one click: "Vystavit" is off meanwhile.
+    var isIssuing = false
+
+    /// The ✕ of the header.
     let close: () -> Void
 
     /// Označit jako uhrazenou, or Upravit platbu for an invoice that has a payment: both open the sheet of the payment.
     let pay: () -> Void
 
-    /// Vystavit, for a draft: opens the editor on it, where "Vystavit fakturu" issues it.
+    /// Vystavit, for a draft: issues it in one click, as "Vystavit fakturu" in the editor would, without the editor.
     let issue: () -> Void
 
     /// Upravit.
@@ -30,184 +41,108 @@ struct InvoiceDetailCard: View {
     let delete: () -> Void
 
     var body: some View {
-        ScrollView {
-            content
-        }
-        .frame(width: Self.width)
-        .frame(maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .screenCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Detail faktury")
-    }
-
-    /// Everything the detail shows, which the scroll view holds.
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
-            summary
-            facts
+        DetailPanel(
+            title: detail.number, pill: (text: detail.statusLabel, tone: detail.status.pillTone), close: close,
+            scrolls: true
+        ) {
+            actions
+        } content: {
+            if detail.canIssue, let issueProblem {
+                Note(.error, icon: .info, text: issueProblem)
+            }
+            figure
+            DetailFacts(detail.facts)
             if let payment = detail.payment {
                 PaymentSection(payment: payment)
             }
             if let estimate = detail.estimate {
-                NoteBox(symbol: "info.circle", text: estimate)
+                Note(.attention, icon: .info, text: estimate)
             }
             if let review = detail.reviewNote {
-                NoteBox(symbol: "exclamationmark.triangle", text: review)
+                Note(.attention, icon: .warning, text: review)
             }
-            Divider()
-            Button(role: .destructive, action: delete) {
-                Label("Smazat fakturu…", systemImage: "trash")
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
-            .tint(.red)
+            deletion
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: DetailPanelMetrics.width)
+        .accessibilityLabel("Detail faktury")
     }
 
     // MARK: Parts
 
-    /// The number, the status and the ×, and under them the buttons.
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text(verbatim: detail.number)
-                    .font(.title3.weight(.bold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                StatusPill(status: detail.status, label: detail.statusLabel)
-                Spacer(minLength: 4)
-                Button(action: close) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .background(Color.secondary.opacity(0.14), in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Zavřít detail")
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
-                    payButton
-                    issueButton
-                    editButton
-                    pdfButton
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    payButton
-                    issueButton
-                    HStack(spacing: 6) {
-                        editButton
-                        pdfButton
-                    }
-                }
-            }
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
-        }
-    }
-
+    /// The buttons under the header, the main one in the accent: Označit jako uhrazenou for an invoice that waits for
+    /// its payment, or Vystavit for a draft, off while the draft is being issued, then Upravit where the invoice can be
+    /// edited, or Upravit platbu where it has a payment that can be changed, and Zobrazit PDF always. A button that
+    /// does not apply is not there.
     @ViewBuilder
-    private var payButton: some View {
+    private var actions: some View {
         if detail.canPay {
-            Button("Označit jako uhrazenou", action: pay)
-                .buttonStyle(.borderedProminent)
-        } else if detail.canEditPayment {
-            Button("Upravit platbu", action: pay)
-                .buttonStyle(.bordered)
+            button("Označit jako uhrazenou", .primary, action: pay)
         }
-    }
-
-    @ViewBuilder
-    private var issueButton: some View {
         if detail.canIssue {
-            Button("Vystavit", action: issue)
-                .buttonStyle(.borderedProminent)
+            button("Vystavit", .primary, action: issue)
+                .disabled(isIssuing)
         }
+        if detail.canEdit {
+            button("Upravit", .secondary, action: edit)
+        }
+        if detail.canEditPayment {
+            button("Upravit platbu", .secondary, action: pay)
+        }
+        button("Zobrazit PDF", .secondary, action: showPDF)
     }
 
-    /// Upravit, which is off for a paid invoice: only its payment can be changed then (Upravit platbu).
-    private var editButton: some View {
-        Button("Upravit", action: edit)
-            .buttonStyle(.bordered)
-            .disabled(!detail.canEdit)
-            .help(Text(detail.canEdit ? "" : "Uhrazená faktura se nedá upravit, jen její platba."))
-    }
-
-    private var pdfButton: some View {
-        Button("Zobrazit PDF", action: showPDF)
-            .buttonStyle(.bordered)
+    /// A button of a kind of the design, 28 points high as the buttons inside a card are.
+    private func button(
+        _ title: LocalizedStringKey, _ kind: CapsuleButtonKind, action: @escaping () -> Void
+    ) -> some View {
+        Button(title, action: action)
+            .buttonStyle(CapsuleButtonStyle(kind, size: .small))
     }
 
     /// The client, the amount with VAT in big rounded numerals, and a line for each item.
-    private var summary: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: detail.client)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Text(verbatim: detail.total)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            ForEach(Array(detail.itemLines.enumerated()), id: \.offset) { _, line in
-                Text(verbatim: line)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+    private var figure: some View {
+        DetailFigure(
+            label: detail.client, figure: detail.total,
+            context: detail.itemLines.isEmpty ? nil : detail.itemLines.joined(separator: "\n"))
     }
 
-    private var facts: some View {
-        Grid(alignment: .topLeading, horizontalSpacing: 14, verticalSpacing: 6) {
-            ForEach(detail.facts, id: \.label) { fact in
-                GridRow {
-                    Text(fact.label)
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(verbatim: fact.value)
-                            .monospacedDigit()
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let note = fact.note {
-                            Text(verbatim: note)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+    /// The way into deleting the invoice, under a hairline at the end of the card, a red capsule that asks first.
+    private var deletion: some View {
+        DetailSection {
+            Button(role: .destructive, action: delete) {
+                HStack(spacing: 6) {
+                    Image(systemName: "trash")
+                        .accessibilityHidden(true)
+                    Text("Smazat fakturu…")
                 }
             }
+            .buttonStyle(CapsuleButtonStyle(.destructive, size: .small))
         }
     }
 }
 
 // MARK: - The payment
 
-/// "Platba": the day and the amount received, the income in crowns and how it was converted, and in the same grey box
-/// under a divider what the payment leaves of it after the levies ("Čistý příjem"), then under the box the levies the
-/// payment adds to. The row of the net income is there exactly when the levies are.
+/// "Platba": the day and the amount received, the income in crowns and how it was converted, and in the same box on
+/// the inset background, under a rule, what the payment leaves of it after the levies ("Čistý příjem"); under the box
+/// a line that says so when the payment is dated after today, and then the levies the payment adds to. The row of the
+/// net income is there exactly when the levies are.
 private struct PaymentSection: View {
     let payment: PaymentDetail
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Divider()
+        VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
+            DetailSection(label: "Platba") {
                 Text("Platba")
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
                     .accessibilityAddTraits(.isHeader)
-                    .padding(.top, 6)
                 box
                 if let later = payment.laterNote {
-                    Text(later)
-                        .font(.callout)
-                        .foregroundStyle(Color(.attentionText))
+                    Text(verbatim: later)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.orangeText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             if let effect = payment.effect {
@@ -216,44 +151,52 @@ private struct PaymentSection: View {
         }
     }
 
-    /// The grey box that VoiceOver reads as one phrase: the payment and the income, and under a divider across the box
-    /// the net income, when the levies are known.
+    /// The box on the inset background that VoiceOver reads as one phrase: the payment and the income, and under a rule
+    /// across the box the net income, when the levies are known. The right column, as wide as its widest cell, is
+    /// aligned to the right: the amounts and the words in it end at one edge.
     private var box: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: payment.line)
-                        .fontWeight(.semibold)
-                    Text(verbatim: payment.note)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(verbatim: payment.crowns)
-                        .fontWeight(.semibold)
-                    Text("příjem pro daň")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .fixedSize()
+        Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 2) {
+            GridRow {
+                Text(verbatim: payment.line)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(verbatim: payment.crowns)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
+                    .fixedSize()
+                    .gridColumnAlignment(.trailing)
+            }
+            GridRow {
+                Text(verbatim: payment.note)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("příjem pro daň")
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
+                    .fixedSize()
             }
             if let netIncome = payment.netIncome {
-                Divider()
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Rectangle()
+                    .fill(Palette.fill)
+                    .frame(height: 1)
+                    .padding(.vertical, 6)
+                    .accessibilityHidden(true)
+                GridRow {
                     Text("Čistý příjem")
-                        .fontWeight(.semibold)
-                    Spacer(minLength: 4)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                     Text(verbatim: netIncome)
-                        .fontWeight(.bold)
-                        .foregroundStyle(Color(.bannerText))
+                        .font(Typography.bodyBold)
+                        .foregroundStyle(Palette.greenText)
+                        .fixedSize()
                 }
             }
         }
         .monospacedDigit()
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .insetPanel(horizontal: 12, vertical: 10)
         .accessibilityElement(children: .combine)
     }
 }
@@ -263,61 +206,42 @@ private struct EffectSection: View {
     let effect: LevyEffectDetail
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
+        DetailSection(spacing: 10, label: "Dopad na odvody") {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(verbatim: effect.heading)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
+                    .foregroundStyle(Palette.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 4)
                 Text(verbatim: effect.total)
-                    .fontWeight(.bold)
+                    .font(Typography.bodyBold)
                     .monospacedDigit()
-                    .foregroundStyle(Color(.attentionText))
+                    .foregroundStyle(Palette.orangeText)
             }
-            .padding(.top, 6)
             VStack(spacing: 6) {
                 ForEach(effect.rows) { row in
                     HStack(spacing: 8) {
                         Circle()
                             .fill(row.authority.color)
                             .frame(width: 8, height: 8)
+                            .frame(width: 10, alignment: .leading)
                             .accessibilityHidden(true)
                         Text(verbatim: row.title)
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.text)
                         Spacer(minLength: 4)
                         Text(verbatim: row.value)
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.text)
                             .monospacedDigit()
                     }
                     .accessibilityElement(children: .combine)
                 }
             }
             Text(verbatim: effect.note)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .contain)
-    }
-}
-
-/// A sentence in an orange box with a symbol: what a payment would add to the levies and what it would leave, or why an
-/// invoice is to check.
-private struct NoteBox: View {
-    let symbol: String
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: symbol)
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            Text(verbatim: text)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
     }
 }

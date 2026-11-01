@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// The sheet "Nové dítě" / "Upravit dítě", with "v simulaci" in the Simulátor: the name and the date of birth, and what
-/// the year says about the child — its months in the household or "V roce Y s vámi nežije", who claims it, its order in
-/// the household, ZTP/P and, for a child from 18 to 25 in the year, the studies, each with their months — then what it
-/// comes to in the year as the fields change, and what is wrong with them after Uložit dítě. Uložit dítě saves it and
-/// Zrušit throws the edit away. Odebrat dítě removes a child: in Zálohy a odpočty after the question that the sheet
-/// asks in a red box in place of its buttons, in the Simulátor at once. The words and the figures are the model's
+/// the year says about the child — its months in the household or "V roce Y s vámi nežije", who claims it (the
+/// segmented control of the design), its order in the household, ZTP/P and, for a child from 18 to 25 in the year, the
+/// studies, each with their months — then what it comes to in the year as the fields change, in a panel on the inset
+/// background, and what is wrong with them after Uložit dítě. Uložit dítě saves it and Zrušit throws the edit away.
+/// Odebrat dítě, a link in the red of text, removes a child: in Zálohy a odpočty after the question that the sheet asks
+/// in a red box in place of its buttons, in the Simulátor at once. The words and the figures are the model's
 /// (`ChildDialogModel`); the sheet only shows them.
 struct ChildDialog: View {
     @Bindable var model: ChildDialogModel
@@ -22,24 +23,17 @@ struct ChildDialog: View {
             rows
             if let result = model.liveResult {
                 Text(verbatim: result.text)
-                    .fontWeight(.semibold)
+                    .font(Typography.bodySemibold)
                     .monospacedDigit()
-                    .foregroundStyle(result.counts ? Color.primary : Color(.simulationText))
+                    .foregroundStyle(result.counts ? Palette.text2 : Palette.orangeText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+                    .insetPanel(horizontal: 12, vertical: 10)
             }
             if let error = model.error {
-                Text(verbatim: error)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                problem(error)
             }
             if let failure = model.failure {
-                Text(verbatim: failure)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                problem(failure)
             }
             if model.confirmsRemoval {
                 ConfirmationBox(
@@ -54,11 +48,13 @@ struct ChildDialog: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
         .frame(width: 620)
+        .dialogNamed(model.title)
         .defaultFocus($nameFocused, model.isNew)
     }
 
     // MARK: The child
 
+    /// The name and the date of birth, each in a field under its title.
     private var nameAndBirth: some View {
         HStack(alignment: .top, spacing: 16) {
             LabeledField("Jméno") {
@@ -72,22 +68,30 @@ struct ChildDialog: View {
         }
     }
 
+    /// A line that says what is wrong, in the red of text.
+    private func problem(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(Typography.body)
+            .foregroundStyle(Palette.redText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     // MARK: The year
 
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Divider()
+            Hairline()
             household
-            Divider()
+            Hairline()
             claimant
-            Divider()
+            Hairline()
             order
-            Divider()
+            Hairline()
             ztpp
-            Divider()
+            Hairline()
             if model.showsStudies {
                 studies
-                Divider()
+                Hairline()
             }
         }
     }
@@ -97,6 +101,8 @@ struct ChildDialog: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Text(verbatim: model.householdTitle)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 MonthChoice(label: "od", title: model.householdTitle + " od", month: $model.householdFrom)
                 MonthChoice(label: "do", title: model.householdTitle + " do", month: $model.householdTo)
@@ -108,30 +114,33 @@ struct ChildDialog: View {
         .padding(.vertical, 10)
     }
 
+    /// Who claims the benefit, in the segmented control of the design: Já or Druhý rodič.
     private var claimant: some View {
         HStack(spacing: 12) {
             Text("Zvýhodnění uplatňuje")
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Picker("Zvýhodnění uplatňuje", selection: $model.claimant) {
-                Text("Já")
-                    .tag(Claimant.me)
-                Text("Druhý rodič")
-                    .tag(Claimant.otherParent)
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
+            SegmentedControl(
+                "Zvýhodnění uplatňuje", selection: $model.claimant,
+                segments: [(value: Claimant.me, title: "Já"), (value: Claimant.otherParent, title: "Druhý rodič")]
+            )
             .fixedSize()
         }
         .padding(.vertical, 10)
     }
 
+    /// The place of the child in the household, which sets its rate, with the note of what it does, and the menu of the
+    /// places.
     private var order: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pořadí v domácnosti")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
                 Text(verbatim: ChildDialogModel.orderNote)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -148,6 +157,7 @@ struct ChildDialog: View {
         .padding(.vertical, 10)
     }
 
+    /// The box of ZTP/P, and its months once it is ticked.
     private var ztpp: some View {
         HStack(spacing: 12) {
             Toggle("Průkaz ZTP/P – zvýhodnění dvojnásobné", isOn: $model.hasZTPP)
@@ -161,6 +171,7 @@ struct ChildDialog: View {
         .padding(.vertical, 10)
     }
 
+    /// The box of the studies after the 18th birthday, its months once it is ticked, and the note of what counts.
     private var studies: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
@@ -173,8 +184,8 @@ struct ChildDialog: View {
                 }
             }
             Text(verbatim: ChildDialogModel.studiesNote)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 10)
@@ -182,30 +193,32 @@ struct ChildDialog: View {
 
     // MARK: The buttons
 
+    /// Odebrat dítě, a link in the red of text, at the leading end of the footer of a stored child; at the trailing end
+    /// Zrušit, which Esc presses, and Uložit dítě, which Return presses: the capsules of a dialog, 32 points tall.
     private var footer: some View {
         HStack(spacing: 8) {
             if !model.isNew {
-                Button("Odebrat dítě", role: .destructive) {
+                Button("Odebrat dítě") {
                     if model.asksBeforeRemoving {
                         model.askToRemove()
                     } else {
                         remove()
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(TextLinkButtonStyle(.destructive))
+                .font(Typography.body)
                 .disabled(model.isWorking)
             }
             Spacer()
             Button("Zrušit", action: close)
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
             Button("Uložit dítě", action: save)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.isWorking)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .padding(.top, 4)
     }
 
     private func save() {

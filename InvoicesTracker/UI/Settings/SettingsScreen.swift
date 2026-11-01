@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Nastavení: four tabs in a segmented control — Aplikace, Moje údaje, Zabezpečení a zálohy and Rok Y — and under them
-/// the green banner with the result of the last action, then the tab. The banner belongs to the tab it came from and
-/// closes when another tab is chosen. The title and the line under it are the shell's.
+/// Nastavení: four tabs in the segmented control of the design — Aplikace, Moje údaje, Zabezpečení a zálohy and Rok Y —
+/// and under them the green banner with the result of the last action, then the tab. The banner belongs to the tab it
+/// came from and closes when another tab is chosen. The title and the line under it are the shell's.
 ///
 /// The page fills the room the window gives it and asks for no minimum size of its own: what is under the tabs scrolls.
 /// The tabs stand above what scrolls, and what scrolls is as wide as the room, so the tabs stay where they are whatever
@@ -14,8 +14,7 @@ struct SettingsScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             tabs
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
+                .pagePadding([.horizontal, .top])
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if let banner = app.banner, banner.screen == .settings {
@@ -26,22 +25,18 @@ struct SettingsScreen: View {
                     tabContent
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 20)
+                .pagePadding([.horizontal, .bottom])
             }
         }
     }
 
+    /// The tabs in the segmented control "Části nastavení", which VoiceOver reads as a group of buttons. The control is
+    /// as wide as its tabs and stands at the leading edge of the page.
     private var tabs: some View {
-        Picker("Části nastavení", selection: selectedTab) {
-            ForEach(SettingsTab.allCases, id: \.self) { tab in
-                Text(verbatim: tab.title(year: app.asOf.year))
-                    .tag(tab)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        SegmentedControl(
+            "Části nastavení", selection: selectedTab,
+            segments: SettingsTab.allCases.map { (value: $0, title: $0.title(year: app.asOf.year)) }
+        )
     }
 
     private var selectedTab: Binding<SettingsTab> {

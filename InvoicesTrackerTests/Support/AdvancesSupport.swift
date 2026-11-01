@@ -6,6 +6,18 @@ import Testing
 /// common message of the amounts would invite haléře, which these fields refuse.
 let advancesWholeKcMessage = "Zadejte částku v celých korunách, například 13 340."
 
+/// The sizes of the window that the tests of Zálohy a odpočty try besides the least and the large window of the app
+/// (`AppWindowSize`).
+enum AdvancesWindowSize {
+    /// The least window in which the impact panel stands beside the cards instead of under them: 1 150 points wide and
+    /// as high as the least window. The page of the app is the window less 272 points (the sidebar of 232 and the
+    /// padding of the page, 24 and 16), and the panel stands beside the cards from a page of 876 points, which are the
+    /// least width of the cards, 520, the gap of 16 and the panel, 340 (`DetailPanelMetrics.width`). The first round
+    /// width that gives it is 1 150 points: a page of 878, the cards 2 points over their least. In the least window,
+    /// 1 100 points, the page is 828 and the panel stands under the cards.
+    static let impactPanelBeside = CGSize(width: 1_150, height: AppWindowSize.minimum.height)
+}
+
 /// An app model on a new folder, as of 17. 10. 2026, with the sample year 2026 stored: the regression plan of advances
 /// (13 340 Kč and 6 920 Kč until April, 12 150 Kč and 5 480 Kč after it, 23 000 Kč of income tax in June and December)
 /// and its deductions.

@@ -2,30 +2,23 @@ import AppKit
 import SwiftUI
 
 /// The confirmations that the window asks itself, such as the deletion of an invoice, are dialogs inside the window
-/// (`windowDialog(item:title:content:)`): a card over the sidebar and the page, under the toolbar, where a sheet would
-/// drop from under the toolbar on glass that takes the colours of what is behind it.
+/// (`windowDialog(item:title:content:)`): a card of the design over the sidebar and the page, under the toolbar, where
+/// a sheet would drop from under the toolbar on glass that takes the colours of what is behind it.
 enum WindowDialog {
     /// The identifier of the card, which the tests find it by.
     static let accessibilityID = "windowDialog"
 
-    /// What dims the sidebar and the page under the card: rgba(28, 28, 34, 0.32).
-    static let dimming = Color(.sRGB, red: 28 / 255, green: 28 / 255, blue: 34 / 255, opacity: 0.32)
-
-    /// The hairline along the edge of the card: rgba(0, 0, 0, 0.18), and white of the same strength in a dark window,
-    /// where the card is as dark as the page under it and black would not show.
-    static let hairline = Color(
-        nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                ? NSColor(white: 1, alpha: 0.18) : NSColor(white: 0, alpha: 0.18)
-        })
+    /// The width of the card, at most.
+    static let width: CGFloat = 520
 }
 
 extension View {
     /// Shows `content` for `item`, while it is not nil, in a dialog inside the window: a card at most 520 points wide,
-    /// centred 48 points under the toolbar, opaque, over the sidebar and the page. These are dimmed and take no click
-    /// and no key meanwhile, the keyboard focus stays in the card (`FocusKeeper`), and VoiceOver reads the card alone,
-    /// named by `title`, the title of the content for `item`. Esc sets `item` to nil, which is what the Zrušit of the
-    /// content does. The toolbar is in the title bar, which no view of the window covers.
+    /// centred 48 points under the toolbar, on the colour of a card with the corners of a card (16 points) and the
+    /// shadow of a pop, over the sidebar and the page. These are dimmed and take no click and no key meanwhile, the
+    /// keyboard focus stays in the card (`FocusKeeper`), and VoiceOver reads the card alone, named by `title`, the
+    /// title of the content for `item`. Esc sets `item` to nil, which is what the Zrušit of the content does. The
+    /// toolbar is in the title bar, which no view of the window covers.
     ///
     /// It is applied to the content of the window (`RootView`), never as a sheet; an overlay that the window puts above
     /// it covers it. Such an overlay disables what it covers, the dialog with it, and the dialog then leaves the focus
@@ -67,11 +60,11 @@ private struct WindowDialogCard<Dialog: View>: View {
     let close: () -> Void
     @ViewBuilder let dialog: Dialog
 
-    private let shape = RoundedRectangle(cornerRadius: 22)
+    private let shape = RoundedRectangle(cornerRadius: DesignMetrics.cardRadius)
 
     var body: some View {
         ZStack(alignment: .top) {
-            WindowDialog.dimming
+            Palette.scrim
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
             card
@@ -86,14 +79,11 @@ private struct WindowDialogCard<Dialog: View>: View {
             .padding(.top, 22)
             .padding(.horizontal, 24)
             .padding(.bottom, 20)
-            .frame(maxWidth: 520)
+            .frame(maxWidth: WindowDialog.width)
             .background {
-                // The shadow is the card's alone, not one of every text on it.
-                shape
-                    .fill(Color(nsColor: .windowBackgroundColor))
-                    .shadow(color: .black.opacity(0.28), radius: 30, y: 24)
+                // The shadow and the hairline along the edge are the card's alone, not those of every text on it.
+                shape.surface(Palette.bgCard, elevation: .pop)
             }
-            .overlay(shape.strokeBorder(WindowDialog.hairline, lineWidth: 0.5))
             .background(escape)
             .background(FocusKeeper())
             .accessibilityElement(children: .contain)

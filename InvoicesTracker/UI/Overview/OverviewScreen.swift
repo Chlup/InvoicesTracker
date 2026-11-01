@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Přehled: the headline with the bars of the three authorities, the income chart with the net income of the year above
-/// it, the card with the estimate of the whole year and the chart of its months (for the current year while it is in
-/// progress), the latest payments and the upcoming ones, with the banner that reminds of a uniform rate to enter by
-/// hand, the New Year banner, the warning about rules that are only an estimate and the line about income converted at
-/// a provisional rate above them. The title and the line under it are the shell's. The data is loaded again whenever
-/// what it depends on changes, and when the day changes.
+/// Přehled: the result card with what is left to pay, the bar of the levies of the three authorities and the tiles
+/// under them, the income chart with the net income of the year above it, the card with the estimate of the whole year
+/// and the chart of its months (for the current year while it is in progress), the latest payments and the upcoming
+/// ones, with the banner that reminds of a uniform rate to enter by hand, the New Year banner, the warning about rules
+/// that are only an estimate and the line about income converted at a provisional rate above them. The title and the
+/// line under it are the shell's. The data is loaded again whenever what it depends on changes, and when the day
+/// changes.
 struct OverviewScreen: View {
     let app: AppModel
     @State private var model: OverviewModel
@@ -41,8 +42,7 @@ struct OverviewScreen: View {
                 }
                 content
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
         }
         .task(id: LoadTrigger(key: app.reloadKey, years: app.years, today: app.today)) {
             await model.load()
@@ -51,8 +51,8 @@ struct OverviewScreen: View {
 
     /// What the data of the screen depends on: what every screen loads for, the years to choose from, which the chart
     /// by years shows and which a write changes only after it has changed the key, and today, because the estimate
-    /// counts the invoices up to today: when midnight passes while "K datu" is on another day, nothing else changes and
-    /// the estimate is out of date.
+    /// counts the invoices up to today and the average that counts the invoices due is worked out as of today: when
+    /// midnight passes while the reporting cutoff stays where it is, nothing else changes and both are out of date.
     private struct LoadTrigger: Hashable {
         var key: ReloadKey
         var years: [Int]
@@ -68,9 +68,13 @@ struct OverviewScreen: View {
     @ViewBuilder
     private var content: some View {
         if let data = model.data {
-            HeroCard(
-                hero: data.hero, mini: data.mini, bars: data.bars,
-                showComputation: { app.screen = .computation }, editAdvances: { app.screen = .advances })
+            // The popover of the bar hangs out of the card over the cards that follow it, so the card is drawn above
+            // them, and nothing clips it.
+            OverviewResultCard(
+                keyFigure: data.keyFigure, levies: data.levies, tiles: data.tiles,
+                showComputation: { app.screen = .computation }, editAdvances: { app.screen = .advances }
+            )
+            .zIndex(1)
             IncomeChart(
                 columns: data.columns, subtitle: data.chartSubtitle, netIncome: data.netIncome,
                 uniformLine: data.uniformLine, mode: app.appSettings.chartMode, withVAT: app.appSettings.chartWithVAT,
@@ -92,8 +96,9 @@ struct OverviewScreen: View {
                     showInvoices: { app.screen = .invoices })
             }
         } else if let errorText = model.errorText {
-            Text(errorText)
-                .foregroundStyle(.secondary)
+            Text(verbatim: errorText)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         }

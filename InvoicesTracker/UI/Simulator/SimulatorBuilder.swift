@@ -46,24 +46,10 @@ nonisolated struct SimulatorInput: Sendable, Hashable {
 
 // MARK: - The page
 
-/// A line of the result card: a levy with its amount, and, where something applies to it, a note.
-nonisolated struct SimulatorLevyLine: Identifiable, Sendable, Hashable {
-    var authority: Authority
-    var label: String
-
-    /// In whole Kč: "164 160 Kč".
-    var amount: String
-    var note: String?
-
-    var id: Authority {
-        authority
-    }
-}
-
-/// What the income leaves after the levies ("čistý příjem"), as the line under the divider of the result card shows it:
+/// What the income leaves after the levies ("čistý příjem"), as the strip under the bar of the result card shows it:
 /// its average per month with the words for it, and under them the sum of the whole year. Both figures are texts in
 /// whole Kč, and both are negative where the levies are more than the income, which the minimum of the insurance makes
-/// possible.
+/// possible. The figure is set in the colour of text whatever its sign.
 nonisolated struct SimulatorNetIncome: Sendable, Hashable {
     /// The words of the line: "Čistý příjem průměrně za měsíc".
     var label: String
@@ -75,38 +61,32 @@ nonisolated struct SimulatorNetIncome: Sendable, Hashable {
     /// business are not taken off: "za rok 2 039 310 Kč · skutečné výdaje podnikání tu odečtené nejsou". The sum is
     /// negative, "za rok −99 720 Kč", where the levies are more than the income.
     var sub: String
-
-    /// Whether the levies are more than the income, that is, whether the sum of the year is below zero. The amount is
-    /// below zero then too, except for a sum less than 6 Kč below it, whose average per month rounds to 0 Kč. The view
-    /// shows the amount in the orange of a warning.
-    var isNegative: Bool
 }
 
-/// The result card: the three levies together, what they come to a month and of the income, the bar of their parts, a
-/// line for each, and what the income leaves after them.
+/// The result card: the key figure with the three levies together, the bar of the levies with the rows of its
+/// popovers, what the income leaves after them, and what the next thousand crowns of income cost.
 nonisolated struct SimulatorSummary: Sendable, Hashable {
-    /// "Zaplatíte za rok 2026".
-    var heading: String
+    /// The three levies together in whole Kč, the tax less a tax bonus ("460 690 Kč") under the eyebrow with the year
+    /// ("Odvody za rok 2026"), their share of the income beside it ("18,4 %") and under it what they are a month
+    /// ("38 391 Kč měsíčně"), or "zadejte příjem" and no share while there is no income.
+    var keyFigure: KeyFigureData
 
-    /// The three levies together in whole Kč, the tax less a tax bonus: "460 690 Kč".
-    var total: String
-
-    /// "≈ 38 391 Kč měsíčně · 18,4 % z příjmu", or "Zadejte příjem" while there is no income.
-    var subline: String
-
-    /// The parts of the bar: tax, social, health, of what is paid to each, so a tax bonus is no part of it. All of them
-    /// are 0 when there is nothing to pay. It is for drawing only; the money is in the lines.
-    var shares: [MarginalShare]
-    var lines: [SimulatorLevyLine]
+    /// The bar of the levies "Odvody podle úřadů", which has no total as the key figure beside it is the total. Each
+    /// part weighs what its authority is paid, so a tax bonus, a levy below zero, is no part of it, and its popover has
+    /// the rows "Za rok", "Měsíčně" and "Z příjmu" and, where something applies to the levy, the note.
+    var levyBar: LevyBarData
 
     /// What the income leaves after the three levies, as an average per month and as the sum of the whole year.
     var netIncome: SimulatorNetIncome
+
+    /// The marginal levy in the words of the Simulátor: what the next thousand crowns of income cost, with its parts
+    /// in whole Kč adding up to the sum.
+    var marginal: ComputationMarginal
 }
 
 /// Everything the Simulátor shows for one simulation besides its inputs.
 nonisolated struct SimulatorPage: Sendable, Hashable {
     var summary: SimulatorSummary
-    var marginal: ComputationMarginal
 
     /// "Rozpis výpočtu": the cards of the tax, the social insurance and the health insurance, and the card of the net
     /// income that these levies leave.
@@ -170,15 +150,14 @@ nonisolated enum SimulatorBuilder {
     /// percentage still comes from the settings of the year.
     static func page(_ result: TaxResult, choices: SimulatorInput, rateFromSettings: Bool) -> SimulatorPage {
         SimulatorPage(
-            summary: summary(result, income: choices.incomeKc),
-            marginal: ComputationBuilder.marginal(of: result),
+            summary: summary(result),
             sections: [
                 taxSection(result, choices), socialSection(result, choices), healthSection(result, choices),
                 netIncomeSection(result),
             ],
             hints: DeductionHints.make(from: result.deductionLines, deductions: choices.deductions),
             expenseNote: expenseNote(result, rateFromSettings: rateFromSettings),
-            incomePerMonth: choices.incomeKc > 0 ? perMonth(choices.incomeKc) : nil,
+            incomePerMonth: choices.incomeKc > 0 ? "≈ " + perMonth(choices.incomeKc) : nil,
             family: FamilyCardsBuilder.content(
                 family: choices.family, result: result, mode: .simulation, isWholeYear: true))
     }
@@ -196,25 +175,25 @@ nonisolated enum SimulatorBuilder {
 
     // MARK: Result card
 
-    /// What the year costs counts the tax less a tax bonus, which the tax office pays, so a bonus lowers it. The bar is
-    /// of what is paid to each authority: a bonus is no part of it.
-    private static func summary(_ result: TaxResult, income: Int64) -> SimulatorSummary {
+    /// The result card for `result`: the key figure, the bar of the levies, the net income and the marginal levy.
+    private static func summary(_ result: TaxResult) -> SimulatorSummary {
+        SimulatorSummary(
+            keyFigure: keyFigure(result),
+            levyBar: LevyBarBuilder.simulation(of: result, header: "Odvody podle úřadů", notes: levyNotes(result)),
+            netIncome: netIncome(result), marginal: marginal(of: result))
+    }
+
+    /// What the year costs counts the tax less a tax bonus, which the tax office pays, so a bonus lowers it. Under the
+    /// eyebrow with the year stand the three levies together and, on the line of the figure, their share of the income
+    /// (`IncomeShares`, so that it is the sum of the shares in the popovers), and under them what the levies are a
+    /// month, with no "≈". While there is no income, the line under the figure asks for it and there is no share.
+    private static func keyFigure(_ result: TaxResult) -> KeyFigureData {
         let total = result.netTax + result.social.insurance + result.health.insurance
-        let paid = [result.tax, result.social.insurance, result.health.insurance]
-        let paidTotal = paid.reduce(0, +)
-        let subline: String
-        if income > 0 {
-            let share = CzechFormat.percent(Decimal(total) / Decimal(income), fractionDigits: 1)
-            subline = perMonth(total) + " · " + share + " z příjmu"
-        } else {
-            subline = "Zadejte příjem"
-        }
-        let shares = zip(Authority.allCases, paid).map { authority, levy in
-            MarginalShare(authority: authority, fraction: paidTotal > 0 ? Double(levy) / Double(paidTotal) : 0)
-        }
-        return SimulatorSummary(
-            heading: "Zaplatíte za rok \(result.year)", total: CzechFormat.wholeKc(total), subline: subline,
-            shares: shares, lines: levyLines(result), netIncome: netIncome(result))
+        let shares = IncomeShares(result)
+        return KeyFigureData(
+            eyebrow: "Odvody za rok \(result.year)", figure: CzechFormat.wholeKc(total),
+            share: shares.map { BuilderText.share(tenths: $0.leviesTenths) },
+            sentence: shares == nil ? "zadejte příjem" : perMonth(total))
     }
 
     /// The net income of the year: the income less the three levies, as an average per month, with the sum of the year
@@ -224,40 +203,55 @@ nonisolated enum SimulatorBuilder {
         let net = NetIncome(result)
         return SimulatorNetIncome(
             label: "Čistý příjem průměrně za měsíc", amount: CzechFormat.wholeKc(net.monthlyKc),
-            sub: "za rok " + CzechFormat.wholeKc(net.yearKc) + " · " + BuilderText.expensesNotSubtracted,
-            isNegative: net.yearKc < 0)
+            sub: "za rok " + CzechFormat.wholeKc(net.yearKc) + " · " + BuilderText.expensesNotSubtracted)
     }
 
-    /// The three levies, each with the note that applies to it: a minimum that is paid, the maximum base that is
-    /// reached, or a secondary activity that pays no social insurance. A negative tax, a tax bonus, reads as the bonus.
-    private static func levyLines(_ result: TaxResult) -> [SimulatorLevyLine] {
+    /// The condition that applies to the levy of an authority, where one does, which stands under the rows of its
+    /// popover: a minimum that is paid, the maximum base that is reached, or a secondary activity that pays no social
+    /// insurance.
+    private static func levyNotes(_ result: TaxResult) -> [Authority: String] {
         let social = result.social
-        let health = result.health
-        let socialNote: String?
+        var notes: [Authority: String] = [:]
         if social.secondaryInsured == false {
-            socialNote = "vedlejší činnost pod rozhodnou částkou – neplatí se"
+            notes[.social] = "vedlejší činnost pod rozhodnou částkou – neplatí se"
         } else if social.computedBase >= social.maximumBase {
-            socialNote = "dosažen maximální vyměřovací základ"
+            notes[.social] = "dosažen maximální vyměřovací základ"
         } else if social.computedBase < social.minimumBase {
-            socialNote = payingMinimum
-        } else {
-            socialNote = nil
+            notes[.social] = payingMinimum
         }
-        return [
-            SimulatorLevyLine(
-                authority: .tax, label: taxName, amount: BuilderText.taxOrBonus(result.netTax)),
-            SimulatorLevyLine(
-                authority: .social, label: socialName, amount: CzechFormat.wholeKc(social.insurance),
-                note: socialNote),
-            SimulatorLevyLine(
-                authority: .health, label: healthName, amount: CzechFormat.wholeKc(health.insurance),
-                note: health.computedBaseHalere < health.minimumBaseHalere ? payingMinimum : nil),
-        ]
+        if result.health.computedBaseHalere < result.health.minimumBaseHalere {
+            notes[.health] = payingMinimum
+        }
+        return notes
     }
 
-    /// "≈ 38 391 Kč měsíčně": a twelfth of `kc`, rounded half up.
+    /// "38 391 Kč měsíčně": a twelfth of `kc`, rounded half up.
     private static func perMonth(_ kc: Int64) -> String {
-        "≈ " + CzechFormat.wholeKc(DecimalMath.halfUp(Decimal(kc) / 12)) + " měsíčně"
+        CzechFormat.wholeKc(DecimalMath.halfUp(Decimal(kc) / 12)) + " měsíčně"
+    }
+
+    /// What the next thousand crowns of income cost, from the levies with 100 000 Kč more income that the engine worked
+    /// out. The total and the bar are those of Výpočet (`ComputationBuilder.marginal(of:)`): the bar fills to the rate
+    /// of each authority. The sentence names the sum and the three parts in whole crowns for a thousand, "odvedete
+    /// 378 Kč: daň 150 Kč, sociální 161 Kč a zdravotní 67 Kč", the parts rounded so that they add up to the sum
+    /// (`DecimalMath.roundedKeepingSum`). It ends with whether the flat-rate expenses still cover part of the next
+    /// crown: not once the percentage of the income has reached their cap, also exactly, where a crown of income more
+    /// adds nothing to the expenses, which `expensesCapped` (over the cap) does not say.
+    private static func marginal(of result: TaxResult) -> ComputationMarginal {
+        let base = ComputationBuilder.marginal(of: result)
+        // Tax, social, health: the order of `Authority.allCases`, which the text and the bar follow.
+        let rates = Authority.allCases.map { result.marginal[$0] ?? 0 }
+        let (parts, total) = DecimalMath.roundedKeepingSum(
+            rates.map { $0 * 1_000 }, total: result.marginalTotal * 1_000)
+        let covered =
+            result.uncappedExpenses >= result.expenseCap
+            ? "Paušál je na stropu, takže každá další koruna je celá zisk."
+            : "Část každé další koruny ještě pokryje paušál."
+        let text =
+            "Z každé další tisícovky příjmu odvedete \(CzechFormat.wholeKc(total)):"
+            + " daň \(CzechFormat.wholeKc(parts[0])), sociální \(CzechFormat.wholeKc(parts[1]))"
+            + " a zdravotní \(CzechFormat.wholeKc(parts[2])). " + covered
+        return ComputationMarginal(total: base.total, shares: base.shares, text: text)
     }
 
     /// "Paušál je na stropu 1 200 000 Kč." or "Paušál 600 000 Kč, strop 1 200 000 Kč.", then, while the percentage

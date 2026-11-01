@@ -1,11 +1,12 @@
 import Foundation
 import Observation
 
-/// The model of Faktury: loads what the screen shows for the selected year as of the day of "K datu", in the chosen
-/// scope, status chip and search, and turns it into view data (`InvoiceListBuilder`); keeps the detail of one invoice
-/// open or closed; and deletes an invoice once its number is typed.
+/// The model of Faktury: loads what the screen shows for the selected year as of the reporting cutoff (`asOf`), in the
+/// chosen scope, status chip and search, and turns it into view data (`InvoiceListBuilder`); keeps the detail of one
+/// invoice open or closed; issues a draft from its detail in one click, without the editor; and deletes an invoice, or
+/// removes its payment, once its number is typed.
 ///
-/// The money is as of the day of "K datu", but the status of an invoice is as of today, whatever year or day is shown:
+/// The money is as of the reporting cutoff, but the status of an invoice is as of today, whatever year or day is shown:
 /// it drives the pill, the chips and their counts, the chosen chip and the detail with its buttons. A payment of
 /// January makes an invoice of the year before paid in the list of that year too.
 ///
@@ -45,9 +46,10 @@ final class InvoicesModel {
     /// What the screen shows: nil until the first load has finished, and after a load that failed.
     private(set) var data: InvoiceListData?
 
-    /// The day `data` is shown as of, which the status of a row is worded for (`InvoiceDisplayStatus.label(asOf:)`): a
-    /// payment is written with its year when that is another than the year of this day. The status itself is as of
-    /// today.
+    /// The day `data` is shown as of, which the detail of an invoice opened from the list is worked out for until its
+    /// own load has finished: its money, and its pill, which writes a payment with its year when that is another than
+    /// the year of this day (`InvoiceDisplayStatus.label(asOf:)`). The status itself is as of today. The rows write
+    /// the dates with their year themselves (`InvoiceRow`).
     private(set) var shownDay: CivilDate?
 
     /// What the screen says in place of the table when the last load failed, otherwise nil.
@@ -60,13 +62,26 @@ final class InvoicesModel {
     /// What the alert says when the invoice that an action was asked for was deleted meanwhile.
     nonisolated static let invoiceGoneText = "Faktura mezitím byla smazána."
 
+    /// What the detail of a draft says when the ČNB rate of its DUZP is not in the cache, also once the file of its
+    /// year was asked for: the reason of the editor (`EditorText.ratesNotDownloaded`) without its advice to save the
+    /// draft, which is saved already.
+    nonisolated static let rateNotDownloadedText =
+        "Kurz ČNB k DUZP zatím není stažený. Fakturu vystavíte, až se kurzy stáhnou."
+
+    /// What the detail of a draft says when the draft was changed while it was being issued, in another window: the
+    /// reason of the editor (`InvoiceEditorError.invoiceChanged`) with advice that fits the detail in place of closing
+    /// the editing, as each press of "Vystavit" loads the draft afresh.
+    nonisolated static let changedMeanwhileText = "Faktura se mezitím změnila. Zkuste ji vystavit znovu."
+
     /// The invoice whose detail is open, or nil when it is closed. Setting it shows that invoice's detail as far as
-    /// the list can tell, until `loadDetail()` has the rest.
+    /// the list can tell, until `loadDetail()` has the rest; why the draft of the detail before could not be issued
+    /// goes with that detail.
     var openInvoiceID: Int64? {
         didSet {
             guard openInvoiceID != oldValue else { return }
             openInvoice = nil
             detail = nil
+            issueProblem = nil
             if let id = openInvoiceID, let invoice = loadedInvoices[id] {
                 openInvoice = invoice
                 detail = InvoiceDetailBuilder.build(
@@ -82,6 +97,15 @@ final class InvoicesModel {
 
     /// What the detail says about the open invoice.
     private(set) var detail: InvoiceDetail?
+
+    /// Why the draft whose detail is open could not be issued in one click (`issue(_:)`): the reason the editor gives,
+    /// without the advice that only fits the editor (`issueProblemText(for:)`), or nil. It goes when the detail moves
+    /// to another invoice or closes, and when the draft is issued after all.
+    private(set) var issueProblem: String?
+
+    /// Whether a draft is being issued in one click (`issue(_:)`), the file of the ČNB it may ask for included:
+    /// "Vystavit" is off meanwhile, and a press of it does nothing.
+    private(set) var isIssuing = false
 
     private let app: AppModel
 
@@ -267,7 +291,8 @@ final class InvoicesModel {
     }
 
     /// What the payment of `invoice` adds to the levies of its year, or nil when that cannot be worked out: the figure
-    /// the dialog that deletes the invoice names (`deletionSummary(for:)`).
+    /// the dialog that deletes the invoice names (`deletionSummary(for:)`), and the step that removes its payment
+    /// (`paymentRemovalSummary(for:)`).
     private func effect(of payment: Payment, for invoice: Invoice) async -> ReceiptEffect? {
         let receipt = Receipt(
             day: payment.date, czkNetHalere: payment.czkNetHalere, czkVatHalere: payment.czkVatHalere,
@@ -319,6 +344,56 @@ final class InvoicesModel {
         app.searchText = ""
     }
 
+    // MARK: Issuing
+
+    /// What the detail of a draft says when issuing it in one click failed with `error`: the reason the editor gives
+    /// (`InvoiceEditorModel.failureText(for:)`), without the advice that only fits the editor. A rate of the DUZP that
+    /// is not downloaded says it without the advice to save the draft (`rateNotDownloadedText`), and a draft changed
+    /// meanwhile says that it can be issued again instead of closing the editing (`changedMeanwhileText`). Every other
+    /// reason is the editor's, word for word; the editor keeps its own texts.
+    static func issueProblemText(for error: any Error) -> String {
+        switch error {
+        case InvoiceEditorError.invalid(let text) where text == EditorText.ratesNotDownloaded:
+            rateNotDownloadedText
+        case InvoiceEditorError.invoiceChanged:
+            changedMeanwhileText
+        default:
+            InvoiceEditorModel.failureText(for: error)
+        }
+    }
+
+    /// "Vystavit" in the detail of a draft: issues the draft `id` in one click, as "Vystavit fakturu" in the editor
+    /// would, without showing the editor, after asking the ČNB for the file of its year where the rate of its DUZP is
+    /// not in the cache (`InvoiceEditorModel.issueDraft(_:app:)`). The detail stays where it is, and once the draft is
+    /// issued it shows the invoice as issued, without a notice; the app is told of the write, so the list loads again.
+    /// A draft that cannot be issued stays a draft: the reason the editor gives, in the words of the detail
+    /// (`issueProblemText(for:)`), is kept for its detail (`issueProblem`) and told to VoiceOver, as long as the detail
+    /// is still on it. A draft that is issued already, meanwhile in another window, is what was asked for, and its
+    /// detail shows it so; a draft deleted meanwhile closes its detail, and the screen says so (`invoiceIsGone(_:)`).
+    /// One draft is issued at a time: a press while one is being issued does nothing (`isIssuing`), and the detail is
+    /// loaded again before the next press can come.
+    func issue(_ id: Int64) async {
+        guard !isIssuing else { return }
+        isIssuing = true
+        defer { isIssuing = false }
+        do {
+            try await InvoiceEditorModel.issueDraft(id, app: app)
+            issueProblem = nil
+            await loadDetail()
+        } catch InvoiceError.notFound {
+            invoiceIsGone(id)
+        } catch InvoiceEditorError.notAvailable {
+            issueProblem = nil
+            await loadDetail()
+        } catch {
+            AppModel.log("Issuing a draft from its detail", failedWith: error)
+            guard openInvoiceID == id else { return }
+            let problem = Self.issueProblemText(for: error)
+            issueProblem = problem
+            app.announceWhenUnlocked(problem)
+        }
+    }
+
     // MARK: Deleting
 
     /// What the dialog that deletes the invoice with `id` says, with what its payment adds to the levies, or nil when
@@ -354,6 +429,50 @@ final class InvoicesModel {
         await app.recomputePaymentsAfterChanges(inYears: Set([paymentYear].compactMap { $0 }))
         app.showBanner("Faktura \(number) byla smazána.")
         await app.didWrite()
+        return true
+    }
+
+    // MARK: Removing a payment
+
+    /// What the step of the payment sheet that removes the payment of the invoice with `id` says, read as the invoice
+    /// is stored now, with what its payment adds to the levies of its year: the figure the dialog that deletes the
+    /// invoice names, which is the "Dopad na odvody" of the detail, left out when it cannot be worked out. Nil when
+    /// there is nothing to remove: no invoice has the id, or it has no payment. The sheet that asks for it says so
+    /// itself, so the screen raises no alert of its own over the sheet. A failure to read the invoice is logged and
+    /// gives nil too.
+    func paymentRemovalSummary(for id: Int64) async -> PaymentRemovalSummary? {
+        do {
+            guard let database = app.database else { throw VaultError.locked }
+            guard let invoice = try await database.invoice(id: id), let payment = invoice.payment else { return nil }
+            var levies: ReceiptEffect?
+            if InvoiceDetailBuilder.countsAsIncome(invoice) {
+                levies = await effect(of: payment, for: invoice)
+            }
+            return InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: levies)
+        } catch {
+            AppModel.log("Preparing to remove a payment", failedWith: error)
+            return nil
+        }
+    }
+
+    /// Removes the payment of the invoice with `id` when `typed` is its number (or the digits of it), in one call on
+    /// the database (`Database.removePayment(ofInvoice:confirmedBy:)`): the invoice is issued and unpaid again, and can
+    /// be edited. The year of the payment is converted again by the method it uses then, as the payment may have been
+    /// its only one in a currency it has no uniform rate of (`AppModel.recomputePaymentsAfterChanges(inYears:)`); a
+    /// banner says what happened, the app is told of the write, which schedules the backups, and the detail stays open
+    /// on the invoice and shows it unpaid at once. Returns false and changes nothing when the text typed is not the
+    /// number, or the invoice is not there or has no payment. Throws `VaultError.locked` while the data is locked, and
+    /// what the database throws.
+    @discardableResult
+    func removePayment(_ id: Int64, typed: String) async throws -> Bool {
+        guard let database = app.database else { throw VaultError.locked }
+        guard let removed = try await database.removePayment(ofInvoice: id, confirmedBy: typed) else { return false }
+        await app.recomputePaymentsAfterChanges(inYears: Set([removed.payment?.date.year].compactMap { $0 }))
+        app.showBanner("Platba faktury \(removed.number) byla odebrána – faktura je znovu nezaplacená.")
+        await app.didWrite()
+        if openInvoiceID == id {
+            await loadDetail()
+        }
         return true
     }
 

@@ -50,6 +50,146 @@ struct WindowDialogTests {
         }
     }
 
+    /// The dialog is a card of the design over the scrim: the colour of a card with the corners of a card, 16 points,
+    /// not the 22 of the old dialog. Its note is the red note of the design, rounded as a panel is (10 points), and its
+    /// two buttons are the capsules of a dialog, 32 points tall: Zrušit on the grey fill, and Smazat natrvalo in solid
+    /// red once the number is typed. The pixels are those of the window, in a light and in a dark appearance.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theDeletionDialogIsACardOfTheDesignWithARedNoteAndTwoCapsules(scheme: ColorScheme) async throws {
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    window.appearance = appearance(of: scheme)
+                    window.makeKeyAndOrderFront(nil)
+                    try await withAccessibilityElements {
+                        try await askToDeleteTheInvoice(of: f.app, in: window)
+                        let field = try await focusedNumberField(in: window)
+                        try await layOut(window)
+                        let card = try pictureFrame(ofScreenFrame: try #require(dialogFrame(in: window)), in: window)
+                        let noteFrame = try #require(
+                            frameOfText(startingWith: "Smazání nejde vrátit zpět.", in: window))
+                        let note = try pictureFrame(ofScreenFrame: noteFrame, in: window)
+                        let cardColour = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+                        let tint = try OffscreenPicture.bytes(of: Palette.redTint, in: scheme)
+                        let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                        let red = try OffscreenPicture.bytes(of: Palette.red, in: scheme)
+                        let before = try OffscreenPicture(of: window)
+                        // The field of the number, as the picture counts its frame: framed in red only once the number
+                        // is typed.
+                        let fieldInWindow = frameInWindow(field)
+                        let contentHeight = try #require(window.contentView).bounds.height
+                        let fieldRoom = CGRect(
+                            x: fieldInWindow.minX - 2, y: contentHeight - fieldInWindow.maxY - 2,
+                            width: fieldInWindow.width + 4, height: fieldInWindow.height + 4)
+                        #expect(before.count(near: red, in: fieldRoom, by: 4) == 0, "\(scheme): the field is red early")
+
+                        // Where nothing stands, the dialog is the colour of a card; outside the corner of 16 points the
+                        // scrim over the page shows, and just inside it the card does (a corner of 22 would still be
+                        // outside there).
+                        #expect(
+                            pixelIs(cardColour, at: CGPoint(x: card.maxX - 30, y: card.minY + 40), in: before),
+                            "\(scheme): the dialog is not the colour of a card")
+                        #expect(
+                            !pixelIs(cardColour, at: CGPoint(x: card.minX + 3.5, y: card.minY + 3.5), in: before),
+                            "\(scheme): the corner of the card is not rounded")
+                        #expect(
+                            pixelIs(cardColour, at: CGPoint(x: card.minX + 5.5, y: card.minY + 5.5), in: before),
+                            "\(scheme): the corner of the card is rounded by more than 16 points")
+                        // The note is red-tinted and rounded by 10 points: its corner is inside at 4 points.
+                        #expect(
+                            pixelIs(tint, at: CGPoint(x: note.minX + 4, y: note.minY + 4), in: before),
+                            "\(scheme): the note is not the red tint of the design, rounded by 10 points")
+                        for label in ["Zrušit", "Smazat natrvalo"] {
+                            let height = try #require(
+                                accessibilityButton(labelled: label, in: window)?.accessibilityFrame?(), "No \(label)")
+                                .height
+                            #expect(abs(height - 32) < 0.5, "\(scheme): \(label) is \(height) points tall")
+                        }
+                        let cancel = try pictureFrame(
+                            ofScreenFrame: try #require(
+                                accessibilityButton(labelled: "Zrušit", in: window)?.accessibilityFrame?()),
+                            in: window)
+                        #expect(
+                            pixelIs(fill, at: CGPoint(x: cancel.minX + 10, y: cancel.midY), in: before),
+                            "\(scheme): Zrušit is not on the grey fill")
+
+                        try type("20260901", into: field, in: window)
+                        let delete = try #require(accessibilityButton(labelled: "Smazat natrvalo", in: window))
+                        try await waitUntil { delete.isAccessibilityEnabled?() == true }
+                        try await layOut(window)
+                        let deleteFrame = try pictureFrame(
+                            ofScreenFrame: try #require(delete.accessibilityFrame?()), in: window)
+                        let after = try OffscreenPicture(of: window)
+                        #expect(
+                            pixelIs(red, at: CGPoint(x: deleteFrame.minX + 10, y: deleteFrame.midY), in: after),
+                            "\(scheme): Smazat natrvalo is not solid red")
+                        #expect(
+                            after.count(near: red, in: fieldRoom, by: 4) > 100,
+                            "\(scheme): the field is not framed in red once the number is typed")
+                    }
+                }
+            }
+        }
+    }
+
+    /// What deleting the invoice does is said in the red note of the dialog as paragraphs of the prototype's column,
+    /// one under the other 6 points apart and 6 points under the title of the note (`Note(_:icon:title:paragraphs:)`),
+    /// and not as one block of text, whose lines would stand together and 4 points under the title. The dialog is
+    /// shown alone, in a window, with sentences some of which are long enough to wrap.
+    @Test func theNoteOfTheDeletionDialogIsMadeOfParagraphsSixPointsApart() async throws {
+        let lines = [
+            "Faktura 20260901 (Bravo Labs, Inc., 13\u{00A0}720,00\u{00A0}USD) zmizí ze seznamu faktur, z přehledů"
+                + " i z výpočtu odvodů.",
+            "Platba z 9.\u{00A0}9.\u{00A0}2026 přestane být příjmem.",
+            "Pokud jste fakturu poslali odběrateli, zůstane tam – opravte to i tam.",
+        ]
+        let summary = InvoiceDeletionSummary(
+            title: Self.title, subtitle: "Bravo Labs, Inc. · 13\u{00A0}720,00\u{00A0}USD", number: "20260901",
+            lines: lines)
+        let dialog = DeleteInvoiceDialog(summary: summary, delete: { _ in false }, cancel: {}, deleted: {})
+
+        try await withHostedView(dialog.padding(24), size: CGSize(width: 520, height: 560)) { window in
+            try await withAccessibilityElements {
+                let title = "Smazání nejde vrátit zpět."
+                try await waitUntil { frameOfText(startingWith: title, in: window) != nil }
+                try await layOut(window)
+                let note = try #require(frameOfText(startingWith: title, in: window))
+
+                expectNoteOfParagraphsSixPointsApart(height: note.height, width: note.width, title: title, lines: lines)
+            }
+        }
+    }
+
+    /// What the dialog dims is dimmed with the scrim of the palette (`Palette.scrim`): over a page of the colour of the
+    /// window, the page shows as that colour under the scrim, the same 32 % of the same grey in a light and in a dark
+    /// window, as the prototype draws it.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theDialogDimsThePageWithTheScrimOfThePalette(scheme: ColorScheme) async throws {
+        try await whileTypingAlone {
+            try await withHostedView(DialogOverAPage(), size: CGSize(width: 900, height: 600)) { window in
+                window.appearance = appearance(of: scheme)
+                try await withAccessibilityElements {
+                    try await waitUntil { dialogFrame(in: window) != nil }
+                    try await layOut(window)
+                    let picture = try OffscreenPicture(of: window)
+                    let page = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
+                    var environment = EnvironmentValues()
+                    environment.colorScheme = scheme
+                    let scrim = Palette.scrim.resolve(in: environment)
+                    let opacity = Double(scrim.opacity)
+                    let grey = [scrim.red, scrim.green, scrim.blue].map { Double($0) * 255 }
+                    let dimmed = zip(page, grey).map { Int((Double($0) * (1 - opacity) + $1 * opacity).rounded()) }
+
+                    #expect(abs(opacity - 0.32) < 0.005, "The scrim is \(opacity) of its grey")
+                    // Left of the card, which is 520 points wide and centred, and under its top.
+                    #expect(
+                        pixelIs(dimmed, at: CGPoint(x: 20, y: 300), in: picture, within: 3),
+                        "\(scheme): the page is \(picture.bytes(at: CGPoint(x: 20, y: 300))), not \(dimmed)")
+                }
+            }
+        }
+    }
+
     /// The field of the number takes the focus when the dialog opens, and keeps it: Tab goes round the dialog alone, as
     /// the sidebar, the page and the toolbar behind it take no focus. (With the keyboard navigation of the Mac off, as
     /// it is by default, the field is the one view of the dialog that takes the focus.)
@@ -402,6 +542,23 @@ struct WindowDialogTests {
                 windowNumber: window.windowNumber, context: nil, characters: characters,
                 charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
         window.sendEvent(event)
+    }
+}
+
+/// A dialog of the window over a page that is the background of the window, with nothing else in it.
+private struct DialogOverAPage: View {
+    /// The one dialog that is shown.
+    struct Shown: Identifiable {
+        let id = 1
+    }
+
+    @State private var shown: Shown? = Shown()
+
+    var body: some View {
+        Palette.bgWindow
+            .windowDialog(item: $shown, title: { _ in "Dialog nad stránkou" }) { _ in
+                Text(verbatim: "Obsah")
+            }
     }
 }
 

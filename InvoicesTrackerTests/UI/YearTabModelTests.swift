@@ -84,9 +84,10 @@ struct YearTabModelTests {
         let database = try #require(app.database)
         let model = await loadedModel(of: app)
 
-        // 2026 does not have its uniform rate yet.
+        // 2026 does not have its uniform rate yet, and the menu says no more of it than the design does: that it is
+        // not out. The longer reason of the menu of the rate capsule would make the closed menu as wide as that.
         #expect(model.canChooseUniform == false)
-        #expect(model.uniformOptionLabel == "jednotný kurz za rok – zatím nevyšel – GFŘ ho zveřejní v lednu 2027")
+        #expect(model.uniformOptionLabel == "jednotný kurz za rok – zatím nevyšel")
         #expect(model.shownFXMethod == .cnbDaily)
         // It cannot be chosen.
         await model.setFXMethod(.uniform)
@@ -233,6 +234,31 @@ struct YearTabModelTests {
 
         #expect(try await #require(app.database).yearSettings(2026).healthExemptMonths == [10])
         #expect(model.settings?.healthExemptMonths == [10])
+    }
+
+    /// The months without the health minimum are chosen like every other choice of the design: the selected month is
+    /// the accent with the text on an accent on it, not the dark fill of the prototype. The others are raised, as the
+    /// prototype rings both of its tones that are not chosen: a capsule of the colour of a card with the text where the
+    /// activity was carried on, and the inset background with the faintest text where it was not. A marked month is
+    /// selected whether or not the activity was carried on in it.
+    @Test func theMonthTogglesSelectWithTheAccent() {
+        #expect(MonthToggleTone(isOn: true, isActive: true) == .selected)
+        #expect(MonthToggleTone(isOn: true, isActive: false) == .selected)
+        #expect(MonthToggleTone(isOn: false, isActive: true) == .available)
+        #expect(MonthToggleTone(isOn: false, isActive: false) == .outsideActivity)
+
+        #expect(MonthToggleTone.selected.background == Palette.accent)
+        #expect(MonthToggleTone.selected.foreground == Palette.onAccent)
+        #expect(MonthToggleTone.available.background == Palette.bgCard)
+        #expect(MonthToggleTone.available.foreground == Palette.text)
+        #expect(MonthToggleTone.outsideActivity.background == Palette.bgInset)
+        #expect(MonthToggleTone.outsideActivity.foreground == Palette.text4)
+        #expect(MonthToggleTone.available.isRaised)
+        #expect(!MonthToggleTone.selected.isRaised)
+        #expect(MonthToggleTone.outsideActivity.isRaised)
+        // Only the selected month is the accent.
+        #expect(MonthToggleTone.available.background != Palette.accent)
+        #expect(MonthToggleTone.outsideActivity.background != Palette.accent)
     }
 
     @Test func markingTheSecondaryMonthsCopiesThemToTheMonthsWithoutTheHealthMinimum() async throws {
@@ -1215,6 +1241,12 @@ struct YearTabModelTests {
         #expect(YearTabModel.adjustmentAmountText(-100_000) == "\u{2212}1\u{00A0}000,00\u{00A0}Kč")
         #expect(YearTabModel.adjustmentAmountText(450_000) == "+4\u{00A0}500,00\u{00A0}Kč")
         #expect(app.banner?.text == "Úprava příjmů je přidaná a počítá se do roku 2026.")
+    }
+
+    /// The field of the amount shows the example of the design, "−5 200", with the minus sign and the no-break space
+    /// the app writes its numbers with.
+    @Test func theFieldOfTheAmountOfAnAdjustmentShowsTheExampleOfTheDesign() {
+        #expect(YearTabModel.adjustmentAmountPrompt == "\u{2212}5\u{00A0}200")
     }
 
     @Test func theAmountOfAnAdjustmentIsReadWithItsSign() {

@@ -88,13 +88,15 @@ nonisolated enum ImportText {
     /// "Poslední import 17. 10. 2026 · 2 soubory · nové 11, aktualizované 0, beze změny 0, přeskočené 2, ke kontrole
     /// 4": the import of `summary`, made on `day`.
     static func lastImportLine(of summary: ImportSummary, on day: CivilDate) -> String {
-        let files = ComputationBuilder.counted(summary.files.count, "soubor", "soubory", "souborů")
+        let files = CzechCount.counted(
+            summary.files.count, one: "soubor", few: "soubory", many: "souborů", separator: CzechFormat.noBreakSpace)
         return "Poslední import \(CzechFormat.date(day)) · \(files) · " + counts(of: summary)
     }
 
-    /// "1 řádek", "2 řádky", "13 řádků": the rows of a file, with a no-break space between the number and the word.
+    /// "1 řádek", "2 řádky", "13 řádků", "1 234 řádků": the rows of a file, with a no-break space between the number
+    /// and the word.
     static func rows(_ count: Int) -> String {
-        ComputationBuilder.counted(count, "řádek", "řádky", "řádků")
+        CzechCount.counted(count, one: "řádek", few: "řádky", many: "řádků", separator: CzechFormat.noBreakSpace)
     }
 
     /// "5,5 kB": the size of a file in kilobytes of 1 024 bytes, with a tenth, never less than 0,1.

@@ -88,9 +88,9 @@ struct SimulatorModelTests {
         return try #require(tax.rows.first { $0.label == label }, "No row \(label)")
     }
 
-    /// The health insurance of the simulation, in the last line of its result card.
+    /// The health insurance of the simulation, in the legend of the last part of the bar of its result card.
     private func healthLevy(of model: SimulatorModel) -> String? {
-        model.page?.summary.lines.last?.amount
+        model.page?.summary.levyBar.parts.last?.legendValue
     }
 
     /// The page the builder makes for `choices` from what the engine works out for them: the whole year, as of its
@@ -143,7 +143,7 @@ struct SimulatorModelTests {
         let model = SimulatorModel(app: app, typingDelay: .milliseconds(500), wait: ManualDelay().wait)
 
         // Before the settings are read, the page of the starting values is there, and the copy is not on offer yet.
-        #expect(model.page?.summary.total == "99\u{00A0}720\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "99\u{00A0}720\u{00A0}Kč")
         #expect(!model.canCopyDeductionsAndFamily)
 
         await model.load()
@@ -153,8 +153,8 @@ struct SimulatorModelTests {
         #expect(model.rateFromSettings)
         #expect(model.incomeText == "")
         // With no income the levies are the minimum insurance of the main activity for twelve months.
-        #expect(model.page?.summary.total == "99\u{00A0}720\u{00A0}Kč")
-        #expect(model.page?.summary.subline == "Zadejte příjem")
+        #expect(model.page?.summary.keyFigure.figure == "99\u{00A0}720\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.sentence == "zadejte příjem")
         #expect(
             model.page?.expenseNote
                 == "Paušál 0\u{00A0}Kč, strop 1\u{00A0}200\u{00A0}000\u{00A0}Kč."
@@ -187,7 +187,7 @@ struct SimulatorModelTests {
         let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2027, 3, 1)))
         let model = SimulatorModel(app: app)
         #expect(model.year == 2026)
-        #expect(model.page?.summary.heading == "Zaplatíte za rok 2026")
+        #expect(model.page?.summary.keyFigure.eyebrow == "Odvody za rok 2026")
         app.selectYear(2021)
         #expect(SimulatorModel(app: app).year == 2022)
 
@@ -213,12 +213,12 @@ struct SimulatorModelTests {
         try await waitUntil { delay.started == 2 && delay.cancelled == 1 && delay.armed == 1 }
         #expect(model.incomeText == "2 500 000")
         #expect(model.incomeError == nil)
-        #expect(model.page?.summary.total == "99\u{00A0}720\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "99\u{00A0}720\u{00A0}Kč")
 
         // When the wait is over the text is read, and the page is that of the whole amount.
         #expect(delay.fire())
 
-        try await waitUntil { model.page?.summary.total == "460\u{00A0}690\u{00A0}Kč" }
+        try await waitUntil { model.page?.summary.keyFigure.figure == "460\u{00A0}690\u{00A0}Kč" }
         #expect(model.incomeError == nil)
         #expect(try page(for: choose(income: 2_500_000), rateFromSettings: true) == model.page)
     }
@@ -230,7 +230,7 @@ struct SimulatorModelTests {
         let model = await loadedModel(of: app)
         model.setIncomeText("2 500 000")
         model.readTypedTexts()
-        #expect(model.page?.summary.total == "460\u{00A0}690\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "460\u{00A0}690\u{00A0}Kč")
 
         // Text that is no amount, haléře, or an amount below zero: the message under the field, the text stays, and the
         // page keeps the income that was taken.
@@ -240,7 +240,7 @@ struct SimulatorModelTests {
             #expect(model.incomeError == AdvancesModel.wholeKcMessage, "\(text)")
             #expect(model.incomeError == advancesWholeKcMessage, "\(text)")
             #expect(model.incomeText == text)
-            #expect(model.page?.summary.total == "460\u{00A0}690\u{00A0}Kč", "\(text)")
+            #expect(model.page?.summary.keyFigure.figure == "460\u{00A0}690\u{00A0}Kč", "\(text)")
         }
 
         // The deductions are read as in Zálohy a odpočty: whole crowns, and 0 to 12 months of interest.
@@ -267,7 +267,7 @@ struct SimulatorModelTests {
         model.setIncomeText("")
         model.readTypedTexts()
         #expect(model.incomeError == nil)
-        #expect(model.page?.summary.total == "99\u{00A0}720\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "99\u{00A0}720\u{00A0}Kč")
     }
 
     @Test func monthsOfActivityAreOneToTwelve() async throws {
@@ -292,7 +292,7 @@ struct SimulatorModelTests {
 
         #expect(model.monthsError == nil)
         #expect(try page(for: choose(months: 6), rateFromSettings: true) == model.page)
-        #expect(model.page?.summary.total == "49\u{00A0}860\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "49\u{00A0}860\u{00A0}Kč")
 
         // Nothing at all counts as no month, which is refused like any number outside 1 to 12: the field stays empty
         // with the message under it, and the page keeps the six months that were taken.
@@ -399,7 +399,7 @@ struct SimulatorModelTests {
         // The tax counts them: the interest up to its limit of 150 000 Kč and the life insurance take 156 480 Kč off.
         let tax = try #require(model.page?.sections.first)
         #expect(try #require(tax.rows.first { $0.label == "Odpočty" }).value == "\u{2212}156\u{00A0}480,00")
-        #expect(model.page?.summary.lines.first?.amount == "140\u{00A0}685\u{00A0}Kč")
+        #expect(model.page?.summary.levyBar.parts.first?.legendValue == "140\u{00A0}685\u{00A0}Kč")
         #expect(model.page?.hints.mortgageOverLimit == "69\u{00A0}000\u{00A0}Kč")
         let stored = SampleYear2026.yearSettings.deductions
         #expect(try page(for: choose(income: 2_500_000, deductions: stored), rateFromSettings: true) == model.page)
@@ -593,13 +593,15 @@ struct SimulatorModelTests {
         #expect(try taxRow("Sleva na manžela / manželku", of: model).value == "\u{2212}24\u{00A0}840")
         #expect(try taxRow("Daňové zvýhodnění na děti", of: model).value == "\u{2212}37\u{00A0}524")
         #expect(try taxRow("Daň z příjmů", of: model).value == "78\u{00A0}321\u{00A0}Kč")
-        #expect(model.page?.summary.lines.first?.amount == "78\u{00A0}321\u{00A0}Kč")
-        // The bar shares what is paid: the tax after the family's credits, 78 321 Kč, the social insurance, 208 780 Kč,
-        // and the health insurance, 87 750 Kč, of 374 851 Kč.
-        let shares = try #require(model.page?.summary.shares)
-        #expect(shares.map(\.authority) == [.tax, .social, .health])
-        for (share, expected) in zip(shares, [0.208939, 0.556968, 0.234093]) {
-            #expect(abs(share.fraction - expected) < 0.000001, "\(share.authority): \(share.fraction)")
+        #expect(model.page?.summary.levyBar.parts.first?.legendValue == "78\u{00A0}321\u{00A0}Kč")
+        // The bar weighs what is paid: the tax after the family's credits, 78 321 Kč, the social insurance, 208 780 Kč,
+        // and the health insurance, 87 750 Kč, which it draws as wide as they are of the 374 851 Kč together.
+        let parts = try #require(model.page?.summary.levyBar.parts)
+        #expect(parts.map(\.authority) == [.tax, .social, .health])
+        #expect(parts.map(\.weight) == [78_321, 208_780, 87_750])
+        let widths = LevyBarLayout.partWidths(weights: parts.map(\.weight), width: 404)
+        for (width, expected) in zip(widths, [0.208939, 0.556968, 0.234093]) {
+            #expect(abs(width - 400 * expected) < 0.01, "\(width)")
         }
         let deductions = SampleYear2026.yearSettings.deductions
         #expect(
@@ -668,9 +670,10 @@ struct SimulatorModelTests {
         let model = await modelWithTheFamily(of: app, income: "150 000")
 
         let summary = try #require(model.page?.summary)
-        #expect(summary.lines.first?.amount == "bonus 37\u{00A0}524\u{00A0}Kč")
-        #expect(summary.total == "62\u{00A0}196\u{00A0}Kč")
-        #expect(summary.shares.first?.fraction == 0)
+        #expect(summary.levyBar.parts.first?.legendValue == "bonus 37\u{00A0}524\u{00A0}Kč")
+        #expect(summary.keyFigure.figure == "62\u{00A0}196\u{00A0}Kč")
+        // A bonus is a negative levy, which the bar draws as no part.
+        #expect(summary.levyBar.parts.first?.weight == -37_524)
         let tax = try taxRow("Daň z příjmů", of: model)
         #expect(tax.value == "\u{2212}37\u{00A0}524\u{00A0}Kč")
         #expect(tax.note == "záporná daň je daňový bonus – vyplatí ho finanční úřad")
@@ -699,8 +702,8 @@ struct SimulatorModelTests {
 
         let model = await modelWithTheFamily(of: app, income: "100 000")
 
-        #expect(model.page?.summary.lines.first?.amount == "0\u{00A0}Kč")
-        #expect(model.page?.summary.total == "99\u{00A0}720\u{00A0}Kč")
+        #expect(model.page?.summary.levyBar.parts.first?.legendValue == "0\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "99\u{00A0}720\u{00A0}Kč")
         #expect(
             model.page?.family.children.hint
                 == "Zvýhodnění převyšuje daň o 37\u{00A0}524\u{00A0}Kč, bonus se ale nevyplatí: příjmy roku"
@@ -983,7 +986,7 @@ struct SimulatorModelTests {
         #expect(model.expensePercent == 60)
         #expect(model.rateFromSettings)
         #expect(model.incomeText == "")
-        #expect(model.page?.summary.total == "99\u{00A0}720\u{00A0}Kč")
+        #expect(model.page?.summary.keyFigure.figure == "99\u{00A0}720\u{00A0}Kč")
         #expect(model.canCopyDeductionsAndFamily)
         #expect(shown(model) == start)
         // The text that was being typed went with the rest, and so did the wait for it.

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The section "Položky" of the editor: a row for every item (Počet, MJ with its suggestions, Popis, Cena za MJ, the
-/// VAT rate and the amount), the button that adds one, and under them the base, the VAT and the total, with the total
-/// in crowns for a foreign currency. A quantity or a price that is not a number says so under its row.
+/// The section "Položky" of the editor, a card: a row for every item (Počet, MJ with its suggestions, Popis, Cena za
+/// MJ, the VAT rate and the amount), the button that adds one, and under them, past a hairline, the base, the VAT and
+/// the total, with the total in crowns for a foreign currency. A quantity or a price that is not a number says so under
+/// its row.
 struct InvoiceItemsEditor: View {
     @Bindable var model: InvoiceEditorModel
 
@@ -26,10 +27,7 @@ struct InvoiceItemsEditor: View {
     @State private var availableWidth: CGFloat = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Položky")
-                .font(.system(size: 15, weight: .semibold))
-                .accessibilityAddTraits(.isHeader)
+        Card(title: "Položky") {
             ScrollView(.horizontal, showsIndicators: false) {
                 grid
                     // A little room around the fields, so that their borders are not cut by the scroll view.
@@ -43,18 +41,14 @@ struct InvoiceItemsEditor: View {
                 availableWidth = width
             }
             addButton
-            Divider()
+            Hairline()
             totalsBlock
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
-        .accessibilityElement(children: .contain)
     }
 
     // MARK: The rows
 
+    /// The names of the columns over a row for every item, and under a row what is wrong with its numbers.
     private var grid: some View {
         Grid(alignment: .leading, horizontalSpacing: Width.spacing, verticalSpacing: 8) {
             GridRow {
@@ -72,8 +66,8 @@ struct InvoiceItemsEditor: View {
                 ForEach([item.quantityError, item.priceError].compactMap { $0 }, id: \.self) { message in
                     GridRow {
                         Text(verbatim: message)
-                            .font(.callout)
-                            .foregroundStyle(.red)
+                            .font(Typography.callout)
+                            .foregroundStyle(Palette.redText)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .gridCellColumns(7)
@@ -83,10 +77,12 @@ struct InvoiceItemsEditor: View {
         }
     }
 
+    /// The name of a column in callout and secondary text, `width` points wide, or as wide as the room for the
+    /// description.
     private func head(_ title: String, width: CGFloat?, alignment: Alignment) -> some View {
         Text(title)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .lineLimit(1)
             .frame(width: width, alignment: alignment)
             .frame(maxWidth: width == nil ? .infinity : nil, alignment: alignment)
@@ -104,6 +100,7 @@ struct InvoiceItemsEditor: View {
             })
     }
 
+    /// The row of item number `index` + 1: its fields, the VAT rate, the amount and the button that removes it.
     private func row(_ item: Binding<EditableItem>, index: Int) -> some View {
         GridRow {
             TextField("Počet", text: item.quantityText)
@@ -125,10 +122,13 @@ struct InvoiceItemsEditor: View {
                 .frame(width: Width.price)
                 .accessibilityLabel("Cena za MJ, položka \(index + 1)")
             Text(verbatim: "\(model.vatMode.ratePercent)\u{00A0}%")
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .monospacedDigit()
                 .frame(width: Width.vat, alignment: .trailing)
             Text(verbatim: model.amountText(ofItem: index))
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -137,7 +137,7 @@ struct InvoiceItemsEditor: View {
                 model.removeItem(at: index)
             } label: {
                 Image(systemName: "minus.circle")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.text2)
             }
             .buttonStyle(.plain)
             .help("Odebrat položku")
@@ -162,7 +162,7 @@ struct InvoiceItemsEditor: View {
                 }
             } label: {
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption)
+                    .font(Typography.subheadline)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -173,27 +173,29 @@ struct InvoiceItemsEditor: View {
         .frame(width: Width.unit, alignment: .leading)
     }
 
+    /// Přidat položku, a capsule of a card, and, once the invoice has as many items as it may, the line that says so.
     private var addButton: some View {
         HStack(spacing: 10) {
             Button {
                 model.addItem()
             } label: {
                 Label("Přidat položku", systemImage: "plus")
+                    .labelStyle(.titleAndIcon)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
+            .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
             .disabled(!model.canAddItem)
             if !model.canAddItem {
                 Text("Nejvýše \(EditorLimits.items) položek.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
             }
         }
     }
 
     // MARK: The totals
 
+    /// The base, the VAT and the total, 320 points wide at the trailing side: the total in title under a stronger rule,
+    /// and, for a foreign currency, what it comes to in crowns under it.
     @ViewBuilder
     private var totalsBlock: some View {
         if let totals = model.totals {
@@ -202,20 +204,25 @@ struct InvoiceItemsEditor: View {
                 VStack(spacing: 6) {
                     totalLine("Základ", totals.base)
                     totalLine(totals.vatLabel, totals.vat)
-                    Divider()
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text("Celkem")
-                            .fontWeight(.bold)
-                        Spacer(minLength: 8)
-                        Text(verbatim: totals.total)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
+                    VStack(spacing: 8) {
+                        Hairline(isStrong: true)
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text("Celkem")
+                                .font(Typography.bodyBold)
+                                .foregroundStyle(Palette.text)
+                            Spacer(minLength: 8)
+                            Text(verbatim: totals.total)
+                                .font(Typography.title)
+                                .foregroundStyle(Palette.text)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                        }
                     }
                     if let inCrowns = totals.inCrowns {
                         Text(verbatim: inCrowns)
-                            .foregroundStyle(.secondary)
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.text2)
                             .monospacedDigit()
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
@@ -226,12 +233,16 @@ struct InvoiceItemsEditor: View {
         }
     }
 
+    /// A line of the totals: the name in secondary text, and the amount at the trailing end.
     private func totalLine(_ label: String, _ value: String) -> some View {
         HStack(spacing: 12) {
             Text(label)
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
             Spacer(minLength: 8)
             Text(verbatim: value)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .monospacedDigit()
         }
     }

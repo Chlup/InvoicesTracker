@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The note above the cards about what the computation counts up to the day shown: a box in the semantic blue at a low
-/// opacity, so that it follows the appearance of the window. Simulátor's note has a button at its end. VoiceOver reads
-/// a note without a button as one phrase, and reaches the button of one that has it on its own.
+/// The note above the cards about what the computation counts up to the day shown: a note of the information tone,
+/// blue. Simulátor's note has a small button at its end, a capsule of the colour of a card with its label in the blue
+/// of a link. VoiceOver reads a note without a button as one phrase, and reaches the button of one that has it on its
+/// own.
 struct ComputationBanner: View {
     let text: String
 
@@ -10,133 +11,115 @@ struct ComputationBanner: View {
     var button: (title: String, action: () -> Void)?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: "info.circle")
-                .foregroundStyle(.blue)
-                .accessibilityHidden(true)
-            Text(verbatim: text)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let button {
+        if let button {
+            Note(.info, text: text) {
                 Button(button.title, action: button.action)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CapsuleButtonStyle(.onWindowAccent, size: .small))
             }
+        } else {
+            Note(.info, text: text)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: button == nil ? .combine : .contain)
-    }
-}
-
-// MARK: - Zbývá zaplatit
-
-/// The equation of what is left to pay: the shares of the three authorities in boxes, added up in a dark one, with the
-/// sentence under them about where the sum goes.
-struct EquationCard: View {
-    let equation: ComputationEquation
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    heading
-                    Spacer(minLength: 8)
-                    caption
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    heading
-                    caption
-                }
-            }
-            FlowLayout(spacing: 10) {
-                ForEach(equation.tiles) { tile in
-                    EquationTile(tile: tile)
-                }
-            }
-            Text(verbatim: equation.split)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .cardOfTheScreen(label: "Zbývá zaplatit", horizontalPadding: 22, verticalPadding: 20)
-    }
-
-    private var heading: some View {
-        Text(verbatim: equation.heading)
-            .font(.system(size: 15, weight: .semibold))
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private var caption: some View {
-        Text(verbatim: equation.caption)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// A box of the equation with the sign in front of it. The sum is set apart: the colour of the text on the colour of
-/// the background, the other way round.
-private struct EquationTile: View {
-    let tile: ComputationTile
-
-    private var inverse: Color {
-        Color(nsColor: .windowBackgroundColor)
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if tile.sign != .blank {
-                Text(verbatim: tile.sign.rawValue)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: tile.label)
-                    .font(.callout)
-                    .foregroundStyle(tile.isResult ? AnyShapeStyle(inverse.opacity(0.8)) : AnyShapeStyle(.secondary))
-                Text(verbatim: tile.value)
-                    .fontWeight(.bold)
-                    .monospacedDigit()
-                    .foregroundStyle(tile.isResult ? AnyShapeStyle(inverse) : AnyShapeStyle(.primary))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                tile.isResult ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                in: RoundedRectangle(cornerRadius: 12))
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 
 // MARK: - Mezní odvod
 
-/// What the three levies take of the next crown, in big rounded digits, with a bar of the part of each authority and
-/// the sentence that says it in crowns.
+/// The sizes and gaps of the marginal levy, in points.
+private nonisolated enum MarginalMetrics {
+    /// The space between the parts of the compact form, which is a section of a card and not a card.
+    static let compactSpacing: CGFloat = 10
+
+    /// The space between the title and the total, on one line or under each other.
+    static let headingSpacing: CGFloat = 8
+
+    /// The height of the bar of the three authorities, and the radius of its corners.
+    static let barHeight: CGFloat = 8
+    static let barRadius: CGFloat = 4
+}
+
+/// What the three levies take of the next crown: the heading "Mezní odvod" with the total at the other end of its line
+/// in the title style, a bar that the part of each authority fills to its rate, and the sentence that says it in
+/// crowns. VoiceOver reads the heading, the total and the sentence, and not the bar.
+///
+/// The full form is a card of its own, as Výpočet shows it, with a title 3 heading and the sentence in body text. The
+/// compact form is a section of another card, as the Simulátor shows it in its result card: a headline for the heading,
+/// the sentence in callout, and no card look of its own, no padding and no rule. The card it stands in sets it apart
+/// from its other sections. Both are read as a group under "Mezní odvod".
 struct MarginalCard: View {
     let marginal: ComputationMarginal
 
+    /// Whether this is the compact form, a section of another card, and not a card of its own.
+    let compact: Bool
+
+    /// The marginal levy `marginal` as a card of its own, or as a section of another card where `compact` is true.
+    init(marginal: ComputationMarginal, compact: Bool = false) {
+        self.marginal = marginal
+        self.compact = compact
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Mezní odvod")
-                .font(.system(size: 15, weight: .semibold))
-                .accessibilityAddTraits(.isHeader)
-            Text(verbatim: marginal.total)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            AuthorityShareBar(shares: marginal.shares)
-            Text(verbatim: marginal.text)
-                .fixedSize(horizontal: false, vertical: true)
+        if compact {
+            VStack(alignment: .leading, spacing: MarginalMetrics.compactSpacing) {
+                parts
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Mezní odvod")
+        } else {
+            Card(label: "Mezní odvod", fillsHeight: true) {
+                parts
+            }
         }
-        .cardOfTheScreen(label: "Mezní odvod")
+    }
+
+    /// The heading, the bar and the sentence.
+    @ViewBuilder
+    private var parts: some View {
+        heading
+        AuthorityShareBar(shares: marginal.shares)
+        Text(verbatim: marginal.text)
+            .font(compact ? Typography.callout : Typography.body)
+            .foregroundStyle(Palette.text2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The title and the total on one line, baseline to baseline, or under each other where they do not fit one.
+    private var heading: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: MarginalMetrics.headingSpacing) {
+                title
+                Spacer(minLength: MarginalMetrics.headingSpacing)
+                total
+            }
+            VStack(alignment: .leading, spacing: MarginalMetrics.headingSpacing) {
+                title
+                total
+            }
+        }
+    }
+
+    /// The title of the card, a heading of its group: title 3 in the card, headline in a section of another card.
+    private var title: some View {
+        Text("Mezní odvod")
+            .font(compact ? Typography.headline : Typography.title3)
+            .foregroundStyle(Palette.text)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// What the three levies take of the next crown, "37,8 %", in the title style. It is never cut or broken.
+    private var total: some View {
+        Text(verbatim: marginal.total)
+            .font(Typography.title)
+            .monospacedDigit()
+            .foregroundStyle(Palette.text)
+            .fixedSize()
     }
 }
 
-/// The parts of the three authorities one after the other on a track, each in its colour; nothing is drawn of an empty
-/// bar. Mezní odvod draws the parts of the next crown so, and Simulátor the parts of what the year costs.
+/// The parts of the three authorities one after the other on a track, each in its colour and as wide as its fraction
+/// of the whole bar, 8 points high with rounded ends. What no part fills is the track, so a bar of parts that add up to
+/// less than 1 is partly empty, and nothing is drawn of a part of 0. Mezní odvod draws the rates of the next crown so:
+/// the three rates together fill as much of the bar as the levy total is of a hundred crowns.
 struct AuthorityShareBar: View {
     let shares: [MarginalShare]
 
@@ -151,9 +134,9 @@ struct AuthorityShareBar: View {
                 Spacer(minLength: 0)
             }
         }
-        .frame(height: 10)
-        .background(Color.secondary.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .frame(height: MarginalMetrics.barHeight)
+        .background(Palette.fill)
+        .clipShape(RoundedRectangle(cornerRadius: MarginalMetrics.barRadius))
         .accessibilityHidden(true)
     }
 }
@@ -166,30 +149,44 @@ struct ThresholdsCard: View {
     let thresholds: ComputationThresholds
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: thresholds.heading)
-                .font(.system(size: 15, weight: .semibold))
-                .accessibilityAddTraits(.isHeader)
+        Card(title: thresholds.heading, label: "Hranice roku", fillsHeight: true) {
             ForEach(thresholds.bars) { bar in
                 ThresholdLine(bar: bar)
             }
         }
-        .cardOfTheScreen(label: "Hranice roku")
     }
 }
 
+/// The sizes and gaps of the line of a limit of the year, in points.
+private nonisolated enum ThresholdMetrics {
+    /// The space between the title and where the year stands, on the line of a limit.
+    static let valueSpacing: CGFloat = 8
+
+    /// The space between the line of a limit and its bar.
+    static let lineSpacing: CGFloat = 6
+
+    /// The height of the bar of a limit, and the radius of its corners.
+    static let barHeight: CGFloat = 6
+    static let barRadius: CGFloat = 3
+}
+
+/// A limit of the year: its title and, at the other end of the line, where the year stands, in secondary text, or in
+/// the green of text where the limit is reached and the reaching is good news; under them the bar of the way there.
 private struct ThresholdLine: View {
     let bar: ThresholdBar
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        VStack(alignment: .leading, spacing: ThresholdMetrics.lineSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: ThresholdMetrics.valueSpacing) {
                 Text(verbatim: bar.title)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
+                Spacer(minLength: ThresholdMetrics.valueSpacing)
                 Text(verbatim: bar.value)
+                    .font(Typography.body)
                     .monospacedDigit()
-                    .foregroundStyle(bar.isHighlighted ? AnyShapeStyle(Color(.bannerText)) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(bar.isHighlighted ? Palette.greenText : Palette.text2)
                     .fixedSize()
             }
             track
@@ -197,65 +194,113 @@ private struct ThresholdLine: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The way to the limit, in the colour of its authority, or a neutral one.
+    /// The way to the limit, in the colour of its authority, or in the grey of secondary text, on the track.
     private var track: some View {
         GeometryReader { proxy in
             Rectangle()
-                .fill(bar.authority?.color ?? Color.secondary)
+                .fill(bar.authority?.color ?? Palette.text2)
                 .frame(width: proxy.size.width * bar.fraction)
         }
-        .frame(height: 6)
+        .frame(height: ThresholdMetrics.barHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 3))
+        .background(Palette.fill)
+        .clipShape(RoundedRectangle(cornerRadius: ThresholdMetrics.barRadius))
         .accessibilityHidden(true)
     }
 }
 
 // MARK: - Předpoklady výpočtu
 
-/// What the computation takes for granted, with the way to the rules in Nastavení.
-struct AssumptionsCard: View {
+/// The sizes and gaps of the footnote of the assumptions, in points.
+private nonisolated enum FootnoteMetrics {
+    /// The space between the heading, the bullets and the link.
+    static let spacing: CGFloat = 6
+
+    /// The space around the footnote at its sides and above it. Under it there is none.
+    static let inset: CGFloat = 4
+
+    /// How far the list is set in from the left edge of the footnote: the dots of the bullets hang in it.
+    static let indent: CGFloat = 16
+
+    /// The space between a dot and the text of its bullet, which hangs out at the left of it.
+    static let dotGap: CGFloat = 6
+
+    /// The space under a bullet.
+    static let bulletGap: CGFloat = 3
+
+    /// The least width of a column of bullets, and the space between two columns. Two columns and their gap take 632
+    /// points of the list; with less, the bullets stand in one.
+    static let minimumColumnWidth: CGFloat = 300
+    static let columnGap: CGFloat = 32
+}
+
+/// What the computation takes for granted, as the footnote of the page. It is not a card but small text in the grey of
+/// secondary text: "Předpoklady výpočtu" in callout semibold, the assumptions as bullets under it, and the link
+/// "Pravidla v Nastavení" under them, which opens the rules of the year. The bullets stand in two columns of at least
+/// 300 points with 32 between them where the list has the 632 points that takes, the first half in the left column and
+/// the rest in the right one, and in one column where it has less. VoiceOver reads the footnote as a group under its
+/// heading, and the bullets one by one, without their dots.
+struct AssumptionsFootnote: View {
     let assumptions: ComputationAssumptions
     let showSettings: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: FootnoteMetrics.spacing) {
             Text("Předpoklady výpočtu")
-                .font(.system(size: 15, weight: .semibold))
+                .font(Typography.calloutSemibold)
                 .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(assumptions.items, id: \.self) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(verbatim: "•")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        Text(verbatim: item)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
+            bullets
+                .padding(.leading, FootnoteMetrics.indent)
             Button("Pravidla v Nastavení", action: showSettings)
-                .buttonStyle(.link)
-                .font(.callout)
+                .buttonStyle(TextLinkButtonStyle())
+                .accessibilityAddTraits(.isLink)
         }
-        .cardOfTheScreen(label: "Předpoklady")
+        .font(Typography.callout)
+        .foregroundStyle(Palette.text2)
+        .padding(.horizontal, FootnoteMetrics.inset)
+        .padding(.top, FootnoteMetrics.inset)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Předpoklady výpočtu")
     }
-}
 
-// MARK: - The look of a card
+    /// The bullets in two columns that come to one where the room is short, the first half of them (the larger one,
+    /// when there is an odd number) on the left. The bullets touch, as the lines of a list do, also where the columns
+    /// have come to one.
+    private var bullets: some View {
+        let split = (assumptions.items.count + 1) / 2
+        return TwoColumnStack(
+            minimumColumnWidth: FootnoteMetrics.minimumColumnWidth, spacing: FootnoteMetrics.columnGap,
+            stackedSpacing: 0
+        ) {
+            column(Array(assumptions.items[..<split]))
+        } right: {
+            column(Array(assumptions.items[split...]))
+        }
+    }
 
-extension View {
-    /// A card of the screen, which VoiceOver reads under `label`. It takes the height it is offered, so that the cards
-    /// of a row of equal heights (`AdaptiveColumns`) are of one height; offered none, it is as high as its content.
-    fileprivate func cardOfTheScreen(label: String, horizontalPadding: CGFloat = 20, verticalPadding: CGFloat = 18)
-        -> some View
-    {
-        padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .screenCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
+    /// The bullets of `items` one under the other.
+    private func column(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items, id: \.self) { item in
+                bullet(item)
+            }
+        }
+    }
+
+    /// A bullet: its text, 3 points of room under it, and its dot hanging out at the left of the text, in the indent of
+    /// the list or in the gap between the columns. The dot is only for the eyes.
+    private func bullet(_ text: String) -> some View {
+        Text(verbatim: text)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, FootnoteMetrics.bulletGap)
+            .overlay(alignment: .topLeading) {
+                Text(verbatim: "•")
+                    .alignmentGuide(.leading) { dot in
+                        dot[.trailing] + FootnoteMetrics.dotGap
+                    }
+                    .accessibilityHidden(true)
+            }
     }
 }

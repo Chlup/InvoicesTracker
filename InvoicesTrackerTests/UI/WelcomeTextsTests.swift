@@ -290,6 +290,23 @@ struct WelcomeTextsTests {
         #expect(WelcomeTexts.newerVersionReassurance.contains("nemusíte"))
     }
 
+    /// The prototype names the app "TaxesTracker" in the texts of these screens; the app keeps its own name, in the
+    /// texts that name it and in none of the others.
+    @Test func theTextsNameTheAppInvoicesTrackerWhereThePrototypeSaysTaxesTracker() {
+        let named = [
+            WelcomeTexts.newerVersionText,
+            WelcomeTexts.errorText(BackupError.notABackup, codeLabel: nil, forBackup: true),
+            WelcomeTexts.errorText(BackupError.newerSchema(Schema.latestVersion + 1), codeLabel: nil, forBackup: true),
+        ].compactMap { $0 }
+
+        #expect(named.count == 3)
+        #expect(named.allSatisfy { $0.contains("InvoicesTracker") })
+        let everything =
+            named + [WelcomeTexts.newerVersionTitle, WelcomeTexts.newerVersionReassurance, WelcomeTexts.newCodeHint]
+            + [WelcomeTexts.launchLockNote(.tenMinutes), WelcomeTexts.idleLockText(.tenMinutes)]
+        #expect(!everything.contains { $0.contains("TaxesTracker") })
+    }
+
     // MARK: The card after unlocking
 
     @Test func unlockingWithTheCodeEndsInOdemcenoAndNamesTheCodeThatStaysValid() {

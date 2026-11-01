@@ -35,6 +35,10 @@ final class YearTabModel {
     nonisolated static let noAmountText = "Zadejte částku v Kč – kladnou, když příjem přibyl, zápornou, když ubyl."
     nonisolated static let amountFormatText = "Zadejte částku ve tvaru 13 340 nebo 13 340,50."
 
+    /// The example in the field of the amount of a new adjustment, before anything is typed: a negative amount, with
+    /// the minus sign and a no-break space in the thousands.
+    nonisolated static let adjustmentAmountPrompt = "\u{2212}5\u{00A0}200"
+
     /// What the card of the rules says under them.
     nonisolated static let rulesNote =
         "Každý rok má vlastní verzi pravidel, takže starší výpočty se dají zopakovat se stejnými vstupy."
@@ -171,12 +175,19 @@ final class YearTabModel {
         fxState?.uniform.isReady ?? false
     }
 
-    /// "jednotný kurz za rok", the uniform rate in the menu of Příjmy v cizí měně, and while it cannot be chosen, why,
-    /// as every screen says it on the day of the app (`BuilderText.uniformRateMissing(_:year:)`): "jednotný kurz za rok
-    /// – zatím nevyšel – GFŘ ho zveřejní v lednu 2027".
+    /// "jednotný kurz za rok", the uniform rate in the menu of Příjmy v cizí měně, and while it cannot be chosen, why.
+    /// While the app waits for the GFŘ to publish the rate the menu says only that it is not out, as the design does:
+    /// "jednotný kurz za rok – zatím nevyšel". A closed menu is as wide as its longest item, and the reason that the
+    /// menu of the rate capsule adds there, when the GFŘ publishes it, would make it that wide for most of the year.
+    /// The states the design does not draw give the reason that every screen gives on the day of the app
+    /// (`BuilderText.uniformRateMissing(_:year:)`): "jednotný kurz za rok – v aplikaci není – zadáte ho v Nastavení ›
+    /// Rok 2024".
     var uniformOptionLabel: String {
         guard let fxState, let reason = BuilderText.uniformRateMissing(fxState.uniform, year: fxState.year) else {
             return "jednotný kurz za rok"
+        }
+        if case .notPublishedYet = fxState.uniform {
+            return "jednotný kurz za rok – zatím nevyšel"
         }
         return "jednotný kurz za rok – " + reason
     }
@@ -245,12 +256,14 @@ final class YearTabModel {
         Self.activityText(from: settings?.activityFrom ?? 1, to: settings?.activityTo ?? 12)
     }
 
+    /// What the months `from` to `to` of activity are called: "celý rok" for the twelve of them, otherwise their count
+    /// in the form Czech wants with a note that the other months count for no minimum, such as "5 měsíců činnosti ·
+    /// ostatní měsíce se do minim nepočítají".
     nonisolated static func activityText(from: Int, to: Int) -> String {
         // A range that runs backwards, which only damaged data can hold, has no month.
         let count = max(0, to - from + 1)
         guard count != 12 else { return "celý rok" }
-        return ComputationBuilder.counted(count, "měsíc", "měsíce", "měsíců")
-            + " činnosti · ostatní měsíce se do minim nepočítají"
+        return ComputationBuilder.months(count) + " činnosti · ostatní měsíce se do minim nepočítají"
     }
 
     /// Whether the activity was carried on in `month` by `settings`. A range that runs backwards has no month; it is

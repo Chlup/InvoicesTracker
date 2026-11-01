@@ -4,11 +4,11 @@ import Testing
 
 /// The model of the invoice editor for an invoice that exists: what the editor says of it, what stays when it is saved
 /// (the number, the rate of the DUZP, the data of the client of an issued invoice, the payment), what changes with it,
-/// the effect on the levies of the year, an imported invoice, and an invoice that was changed or deleted while the
-/// editor was open. The data is the sample year 2026 with invented clients (`EditorFixture`); invoice 10 is
-/// 20260901, 205 hours at 70,00 USD for Bravo, paid on 2. 10. 2026 at 21,305, and invoice 11 is 20260902, 7,5 hours
-/// at 600,00 Kč with 21 % VAT for Cetus, paid on 15. 10. 2026. In every expected string `\u{00A0}` is the no-break
-/// space.
+/// the effect on the levies of the year, an imported invoice, an invoice that was changed or deleted while the editor
+/// was open, and a draft issued from its detail without the editor (`InvoiceEditorModel.issueDraft(_:app:)`). The
+/// data is the sample year 2026 with invented clients (`EditorFixture`); invoice 10 is 20260901, 205 hours at 70,00
+/// USD for Bravo, paid on 2. 10. 2026 at 21,305, and invoice 11 is 20260902, 7,5 hours at 600,00 Kč with 21 % VAT for
+/// Cetus, paid on 15. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct InvoiceEditorEditingTests {
@@ -657,6 +657,71 @@ struct InvoiceEditorEditingTests {
             await #expect(throws: InvoiceEditorError.notAvailable) { try await model.issue() }
 
             #expect(try await f.stored(11).status == .issued)
+        }
+    }
+
+    // MARK: Issuing a draft from its detail
+
+    /// "Vystavit" in the detail of a draft issues it as "Vystavit fakturu" in the editor would, without the editor:
+    /// with the ČNB rate of its DUZP as of the day it is issued (21,522 of 30. 9. 2026, not the 21,359 it was saved
+    /// with) and the data of its client as they are then. What the window shows stays as it is: the screen, the editor
+    /// that is open on another invoice, and the detail, as no invoice is asked to be opened; and no banner says so. The
+    /// app is told of the write.
+    @Test func aDraftIssuedFromItsDetailIsIssuedAsTheEditorIssuesItAndLeavesTheWindowAlone() async throws {
+        try await EditorFixture.with { f in
+            let draft = try await f.storeIssuedDollarInvoice(number: "20260905", status: .draft)
+            var bravo = try #require(try await f.database.client(id: f.bravoID))
+            bravo.street = "Nová 7"
+            try await f.database.saveClient(bravo)
+            f.app.screen = .overview
+            f.app.editorRequest = .edit(11)
+            let version = f.app.dataVersion
+
+            let id = try await InvoiceEditorModel.issueDraft(draft.id, app: f.app)
+
+            #expect(id == draft.id)
+            let issued = try await f.stored(id)
+            #expect(issued.status == .issued)
+            #expect(issued.number == "20260905")
+            #expect(issued.invoiceRate == storedRate("USD", "21.522", declaredOn: "2026-09-30"))
+            #expect(issued.client.street == "Nová 7")
+            #expect(f.app.screen == .overview)
+            #expect(f.app.editorRequest == .edit(11))
+            #expect(f.app.pendingDetailInvoiceID == nil)
+            #expect(f.app.banner == nil)
+            #expect(f.app.dataVersion == version + 1)
+        }
+    }
+
+    /// Issuing from the detail refuses what the editor refuses, for the same reason: a draft whose DUZP has no rate in
+    /// the cache asks for the file of its year, as the editor shown for it does, and where the file does not come stays
+    /// a draft, with the editor's words for it; an invoice that is issued already is not issued again; and one that is
+    /// not there is not brought back. Nothing is written.
+    @Test func issuingFromTheDetailRefusesWhatTheEditorRefuses() async throws {
+        try await EditorFixture.with { f in
+            var draft = try await f.storeIssuedDollarInvoice(number: "20240501", status: .draft)
+            draft.issueDate = civilDate("2024-05-31")
+            draft.duzp = civilDate("2024-05-31")
+            draft.dueDate = civilDate("2024-06-30")
+            draft.invoiceRate = nil
+            try await f.database.saveInvoice(draft)
+            let version = f.app.dataVersion
+
+            await #expect(throws: InvoiceEditorError.invalid(ratesNotDownloaded)) {
+                try await InvoiceEditorModel.issueDraft(draft.id, app: f.app)
+            }
+            await #expect(throws: InvoiceEditorError.notAvailable) {
+                try await InvoiceEditorModel.issueDraft(11, app: f.app)
+            }
+            await #expect(throws: InvoiceError.notFound) {
+                try await InvoiceEditorModel.issueDraft(999, app: f.app)
+            }
+
+            #expect(f.http.requests == [CNBEndpoints.yearly(2024)])
+            #expect(try await f.stored(draft.id) == draft)
+            try await f.expectInvoiceCount(12)
+            #expect(f.app.banner == nil)
+            #expect(f.app.dataVersion == version)
         }
     }
 

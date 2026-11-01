@@ -21,17 +21,20 @@ struct DamagedDataView: View {
             WelcomeCard(label: "Data se nedají otevřít", width: 520) {
                 VStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 28, weight: .regular))
-                        .foregroundStyle(.orange)
+                        .font(Typography.symbolLarge)
+                        .imageScale(.large)
+                        .foregroundStyle(Palette.orange)
                         .frame(width: 64, height: 64)
-                        .background(Color.orange.opacity(0.15), in: Circle())
+                        .background(Palette.orangeTint, in: Circle())
                         .accessibilityHidden(true)
                     Text("Data se nedají otevřít")
-                        .font(.title.weight(.bold))
+                        .font(Typography.title)
+                        .foregroundStyle(Palette.text)
                         .padding(.top, 4)
                         .accessibilityAddTraits(.isHeader)
                     Text(reason)
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(
                         """
@@ -39,21 +42,22 @@ struct DamagedDataView: View {
                         daty – dosavadní soubory se odloží do složky vedle dat, takže zůstanou na disku.
                         """
                     )
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: 400)
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text2)
+                    .frame(maxWidth: WelcomeView.textWidth)
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 VStack(spacing: 10) {
                     WelcomeOptionRow(
-                        systemImage: "arrow.counterclockwise", tint: .green, title: "Obnovit ze zálohy…",
+                        systemImage: "arrow.counterclockwise", tone: .green, title: "Obnovit ze zálohy…",
                         detail: "Máte zálohu z InvoicesTracker (soubor .ttbackup).", isDisabled: runner.isWorking
                     ) {
                         restoring = true
                     }
                     WelcomeOptionRow(
-                        systemImage: "plus", tint: .accentColor, title: "Začít s prázdnými daty",
+                        systemImage: "plus", tone: .accent, title: "Začít s prázdnými daty",
                         detail: "Uložíte si nový kód pro obnovení a začnete znovu s prázdnými daty.",
                         isDisabled: runner.isWorking
                     ) {

@@ -42,6 +42,19 @@ struct ComputationModelTests {
         }
     }
 
+    /// Stores for 2026 the family of the engine's family tests: Anna (3. 9. 2019) and Tomáš (12. 4. 2024), the first
+    /// and the second child, and a spouse without income of her own, claimed the whole year.
+    private nonisolated func storeTheSampleFamily(in database: Database) async throws {
+        for (order, child) in [("Anna", "2019-09-03"), ("Tomáš", "2024-04-12")].enumerated() {
+            try await database.saveChild(
+                Child(id: nil, name: child.0, birthDate: civilDate(child.1)), year: 2026,
+                childYear: ChildYear(
+                    household: MonthRange.wholeYear, claimant: .me, order: order + 1, ztpp: nil, studies: nil))
+        }
+        try await database.saveSpouse(
+            SpouseYear(claim: true, months: MonthRange.wholeYear, ownIncomeKc: 0, ztpp: nil), year: 2026)
+    }
+
     private func row(_ label: String, in title: String, of model: ComputationModel) throws -> ComputationRow {
         let section = try #require(model.sections.first { $0.title == title }, "No section \(title)")
         return try #require(section.rows.first { $0.label == label }, "No row \(label) in \(title)")
@@ -81,10 +94,10 @@ struct ComputationModelTests {
         #expect(try row("Zbývá", in: "Daň z příjmů", of: model).value == "71\u{00A0}440\u{00A0}Kč")
         #expect(try row("Zbývá", in: "Sociální pojištění", of: model).value == "33\u{00A0}019\u{00A0}Kč")
         #expect(try row("Zbývá", in: "Zdravotní pojištění", of: model).value == "6\u{00A0}385\u{00A0}Kč")
-        let equation = try #require(model.page?.equation)
-        #expect(equation.tiles.last?.value == "110\u{00A0}844\u{00A0}Kč")
-        #expect(equation.split.contains("53\u{00A0}685\u{00A0}Kč"))
-        #expect(equation.split.contains("57\u{00A0}159\u{00A0}Kč"))
+        let keyFigure = try #require(model.page?.keyFigure)
+        #expect(keyFigure.figure == "110\u{00A0}844\u{00A0}Kč")
+        #expect(keyFigure.sentence?.contains("53\u{00A0}685\u{00A0}Kč") == true)
+        #expect(keyFigure.sentence?.contains("57\u{00A0}159\u{00A0}Kč") == true)
         // The net income so far: the income less the tax of 94 440 and the two insurances, 1 871 107, which over the
         // ten months to the day shown is 187 111 a month.
         let netIncome = try #require(model.sections.last)
@@ -218,7 +231,7 @@ struct ComputationModelTests {
         #expect(try row("Daň za rok 2025", in: "Daň z příjmů", of: model).value == "0")
         #expect(try row("Doplatek", in: "Sociální pojištění", of: model).value == "57\u{00A0}098\u{00A0}Kč")
         #expect(try row("Doplatek", in: "Zdravotní pojištění", of: model).value == "37\u{00A0}712\u{00A0}Kč")
-        #expect(model.page?.equation.tiles.last?.value == "94\u{00A0}810\u{00A0}Kč")
+        #expect(model.page?.keyFigure.figure == "94\u{00A0}810\u{00A0}Kč")
         let labels = model.sections.flatMap(\.rows).map(\.label)
         #expect(!labels.contains("Zbývá"))
         // Shown as of its last day, the year is a whole one for the net income too.
@@ -240,7 +253,8 @@ struct ComputationModelTests {
 
         let page = try #require(model.page)
         #expect(page.banner.hasPrefix("Počítáno jen ze skutečně přijatých plateb od 1.\u{00A0}1. do 30.\u{00A0}6."))
-        #expect(page.equation.heading == "Zbývá zaplatit k 30.\u{00A0}6.\u{00A0}2025")
+        #expect(page.keyFigure.eyebrow == "Zbývá zaplatit k 30.\u{00A0}6.\u{00A0}2025")
+        #expect(page.levies.header == "Odvody z příjmů do 30.\u{00A0}6.")
         #expect(
             try row("Přijaté platby", in: "Příjmy a zisk", of: model).note
                 == "1.\u{00A0}1. – 30.\u{00A0}6. · cizí měny v Kč ke dni přijetí")
@@ -299,7 +313,7 @@ struct ComputationModelTests {
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
         let line =
-            "≈ Část příjmů je zatím přepočtená předběžným kurzem. Přepočte se sama, až budou kurzy ČNB k dispozici."
+            "Část příjmů je zatím přepočtená předběžným kurzem. Přepočte se sama, až budou kurzy ČNB k dispozici."
         #expect(await loadedModel(of: app).provisionalNotice == nil)
         // The dollars that arrived on 2. 10. 2026 wait for the rate of their day.
         try await #require(app.database).markPaymentProvisional(ofInvoice: 10)
@@ -337,12 +351,87 @@ struct ComputationModelTests {
         #expect(
             page.banner.hasPrefix(
                 "Počítáno jen ze skutečně přijatých plateb od 1.\u{00A0}1. do 17.\u{00A0}10.\u{00A0}2026."))
-        #expect(page.equation.heading == "Zbývá zaplatit k 17.\u{00A0}10.\u{00A0}2026")
-        #expect(page.equation.tiles.last?.value == "110\u{00A0}844\u{00A0}Kč")
+        #expect(page.keyFigure.eyebrow == "Zbývá zaplatit k 17.\u{00A0}10.\u{00A0}2026")
+        #expect(page.keyFigure.figure == "110\u{00A0}844\u{00A0}Kč")
+        #expect(page.levies.header == "Odvody z příjmů do 17.\u{00A0}10.")
+        #expect(page.levies.total == "320\u{00A0}664\u{00A0}Kč")
         #expect(page.marginal.total == "37,8\u{00A0}%")
         #expect(page.thresholds.heading == "Hranice roku 2026")
         #expect(page.thresholds.bars.map(\.value).first == "dosažen 2.\u{00A0}10.")
         #expect(page.assumptions.items.count == 5)
+    }
+
+    // MARK: The result
+
+    @Test func theKeyFigureSaysWhatIsLeftAndThatOnlyPositiveBalancesAddUp() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+
+        let page = try #require(model.page)
+        #expect(page.keyFigure.figure == "110\u{00A0}844\u{00A0}Kč")
+        #expect(page.keyFigure.eyebrow == "Zbývá zaplatit k 17.\u{00A0}10.\u{00A0}2026")
+        let sentence = try #require(page.keyFigure.sentence)
+        #expect(sentence.contains("53\u{00A0}685\u{00A0}Kč odejde naplánovanými zálohami"))
+        #expect(sentence.hasSuffix("nezaplatí dluh u jiného."))
+        #expect(
+            sentence.hasSuffix(
+                " Sčítají se jen kladné zůstatky – přeplatek u jednoho úřadu nezaplatí dluh u jiného."))
+    }
+
+    @Test func theLevyBarIsThatOfPrehled() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+
+        let result = try await app.computeSelectedYear()
+        let page = try #require(model.page)
+        #expect(
+            page.levies
+                == LevyBarBuilder.balances(
+                    of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.",
+                    showsTotal: true))
+    }
+
+    @Test func aPastYearIsADoplatek() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = ComputationModel(app: app)
+
+        app.selectYear(2025)
+        await model.load()
+
+        let page = try #require(model.page)
+        #expect(page.keyFigure.eyebrow == "Doplatek za rok 2025")
+        #expect(page.levies.header == "Odvody za rok 2025")
+        // The levies of a year that is over are those of the year, and the last row of each is its Doplatek.
+        let labels = page.levies.parts.map { $0.rows.map(\.label) }
+        #expect(labels.allSatisfy { $0 == ["Odvody za rok", "Zaplaceno zálohami", "Doplatek"] })
+    }
+
+    @Test func aTaxBonusTakesNoPartOfTheLevyBarAndComesBackInGreen() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        // With the sample family stored, the income of 220 000 Kč of the first month is past six minimum wages as of
+        // 28. 2. 2026, the deductions take the whole profit, and the children's 37 524 Kč are a bonus: the tax is
+        // below zero.
+        try await storeTheSampleFamily(in: database)
+        await app.didWriteAndBackUp()
+        app.pickAsOf(civilDate("2026-02-28"))
+        let model = await loadedModel(of: app)
+
+        let page = try #require(model.page)
+        let tax = try #require(page.levies.parts.first { $0.authority == .tax }, "The bar has no part of the tax")
+        #expect(tax.weight < 0)
+        #expect(tax.legendValue == "bonus 37\u{00A0}524\u{00A0}Kč")
+        #expect(tax.rows.last?.label == "Vrátí se")
+        #expect(tax.rows.last?.style == .positive)
+        #expect(page.keyFigure.eyebrow == "Zbývá zaplatit k 28.\u{00A0}2.\u{00A0}2026")
     }
 
     @Test func thePageFollowsTheYearShown() async throws {
@@ -357,7 +446,8 @@ struct ComputationModelTests {
         let past = try #require(model.page)
         #expect(
             past.banner == "Rok 2025 celý: všechny přijaté platby, všechny zálohy, odpočty a slevy za celý rok.")
-        #expect(past.equation.heading == "Doplatek za rok 2025")
+        #expect(past.keyFigure.eyebrow == "Doplatek za rok 2025")
+        #expect(past.levies.header == "Odvody za rok 2025")
         #expect(past.thresholds.heading == "Hranice roku 2025")
 
         app.selectYear(2027)

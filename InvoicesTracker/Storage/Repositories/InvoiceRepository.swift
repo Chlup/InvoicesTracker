@@ -26,8 +26,9 @@ nonisolated struct InvoiceChartRow: Sendable, Hashable {
     var netMinor: Int64
     var vatMinor: Int64
 
-    /// The day the money arrived. The payment is a point of the line of the chart in the year and the month of it,
-    /// whatever the year of issue.
+    /// The day of the payment: the day the money arrived or, when it has not come yet, a day after today. A row of
+    /// `dueUnpaidRows` that has a payment always has the latter. The payment is a point of the line of the chart in the
+    /// year and the month of it, whatever the year of issue.
     var paymentDate: CivilDate?
 
     /// The net and the VAT of the payment, converted to crowns, in haléře.
@@ -151,6 +152,22 @@ nonisolated enum InvoiceQueries {
         ORDER BY 2, 1
         """
 
+    /// The invoices whose money is yet to come: issued (not drafts), without a review flag, issued on or after a day,
+    /// due on or before a day, and not paid as of a day, which is to say with no payment or with one dated after it.
+    /// By the day they are due, then by id. The columns are those of `chartRows` and are read by
+    /// `InvoiceChartRow(row:)`, but each invoice is one row, with its payment if it has one. It finds its rows in the
+    /// index of the issue day, from the first day on, so the invoices issued before that day are not read. Arguments:
+    /// the first day of issue, the last day of the due date, and today, after which a payment has not come yet.
+    static let dueUnpaidRows = """
+        SELECT invoice.id, invoice.issue_date, invoice.status, invoice.review_reason, invoice.currency,
+               invoice.net_minor, invoice.vat_minor, payment.date, payment.czk_net_halere, payment.czk_vat_halere
+        FROM invoice LEFT JOIN payment ON payment.invoice_id = invoice.id
+        WHERE invoice.issue_date >= ? AND invoice.due_date <= ?
+          AND invoice.status = '\(InvoiceStatus.issued.rawValue)' AND invoice.review_reason IS NULL
+          AND (payment.date IS NULL OR payment.date > ?)
+        ORDER BY invoice.due_date, invoice.id
+        """
+
     /// The VAT of the invoices that are not drafts and are not to be checked (no review flag), with their DUZP in a
     /// period, and the rate fixed on them. Columns: the DUZP, the currency, the VAT, then the four columns of the rate.
     /// Arguments: the first day, the last day.
@@ -270,6 +287,31 @@ extension Database {
         }
         try deleteInvoice(id: id)
         return number
+    }
+
+    /// Removes the payment of the invoice with `id` when `typed` confirms its number (`DeleteConfirmation`: the number
+    /// or its digits): the invoice is issued and unpaid again, as it was before the payment, and its search document no
+    /// longer holds the payment. An invoice imported from Fakturoid is marked as changed in the app, as any change made
+    /// in the app marks it, so that the next import of the same export keeps it unpaid. Returns the invoice as it was,
+    /// with the payment that was removed, for its number and the year of the payment; nil when nothing was removed: no
+    /// invoice has the id, it has no payment, or the text typed is not its number.
+    ///
+    /// The number is checked and the payment removed in one call on the database, the search document in the same
+    /// transaction as the invoice (`saveInvoice(_:)`), so the payment that is removed is the one of the invoice whose
+    /// number was typed, however the screen got there, and a call that removes nothing writes nothing.
+    func removePayment(ofInvoice id: Int64, confirmedBy typed: String) throws -> Invoice? {
+        guard let invoice = try invoice(id: id), invoice.payment != nil,
+            DeleteConfirmation.matches(typed: typed, number: invoice.number)
+        else {
+            return nil
+        }
+        var unpaid = invoice
+        unpaid.payment = nil
+        if case .imported(let fakturoidID, let fingerprint, _) = unpaid.source {
+            unpaid.source = .imported(fakturoidID: fakturoidID, fingerprint: fingerprint, changedInApp: true)
+        }
+        try saveInvoice(unpaid)
+        return invoice
     }
 
     /// How many drafts were issued in `year`, by the day of issue: what the Koncepty chip of Faktury counts, for its
@@ -396,52 +438,79 @@ extension Database {
         return try read { connection in
             let arguments = period.arguments + period.arguments + period.arguments
             var rows = try connection.query(InvoiceQueries.chartRows, arguments).map { try InvoiceChartRow(row: $0) }
-            // Many invoices are issued on the same day, so each rate is looked up once.
-            var lookups: [RateKey: RateLookupResult] = [:]
-            var futureRates: [CurrencyCode: ExchangeRate?] = [:]
-            var newestDeclaration: CivilDate?
-            var newestDeclarationRead = false
-            for index in rows.indices where !rows[index].currency.isCZK {
-                let key = RateKey(currency: rows[index].currency, day: rows[index].issueDate)
-                if key.day > today {
-                    let rate: ExchangeRate?
-                    if let known = futureRates[key.currency] {
-                        rate = known
-                    } else {
-                        rate = try latestCNBRate(key.currency, onOrBefore: today)?.rate
-                        futureRates.updateValue(rate, forKey: key.currency)
-                    }
-                    rows[index].issueDayRate = rate
-                    rows[index].issueDayRateIsProvisional = rate != nil
-                    continue
-                }
-                let lookup: RateLookupResult
-                if let known = lookups[key] {
-                    lookup = known
+            try addIssueDayRates(to: &rows, today: today)
+            return rows
+        }
+    }
+
+    /// The issued invoices whose money is yet to come, as chart rows: issued on or after `issuedFrom`, due on or
+    /// before `dueThrough`, without a review flag and not paid as of `today`. An invoice is not paid as of `today` when
+    /// it has no payment or its payment is dated after `today`, since money dated after today has not arrived. A draft
+    /// is never there. They come by the day they are due, then by id, each invoice once, with the payment it has, if
+    /// any, so that a row carries what the chart reads to value an invoice (`InvoiceChartRow`).
+    ///
+    /// A row in a foreign currency has the rate of its day of issue, and `issueDayRateIsProvisional` says when it only
+    /// stands in for it, by the rule of `chartRows(fromYear:throughYear:today:)`, in which `today` is the real today.
+    /// An invoice in a foreign currency that has no rate is a row without one, for the caller to value at nothing.
+    func dueUnpaidRows(issuedFrom: CivilDate, dueThrough: CivilDate, today: CivilDate) throws -> [InvoiceChartRow] {
+        try read { connection in
+            let arguments: [SQLValue] = [.day(issuedFrom), .day(dueThrough), .day(today)]
+            var rows = try connection.query(InvoiceQueries.dueUnpaidRows, arguments).map {
+                try InvoiceChartRow(row: $0)
+            }
+            try addIssueDayRates(to: &rows, today: today)
+            return rows
+        }
+    }
+
+    /// Sets `issueDayRate` and `issueDayRateIsProvisional` of each row of `rows` that is in a foreign currency, by the
+    /// rule `chartRows(fromYear:throughYear:today:)` describes. A row in crowns needs no rate and stays as it is. This
+    /// is the one place of that rule, so every read of chart rows agrees with the others.
+    private func addIssueDayRates(to rows: inout [InvoiceChartRow], today: CivilDate) throws {
+        // Many invoices are issued on the same day, so each rate is looked up once.
+        var lookups: [RateKey: RateLookupResult] = [:]
+        var futureRates: [CurrencyCode: ExchangeRate?] = [:]
+        var newestDeclaration: CivilDate?
+        var newestDeclarationRead = false
+        for index in rows.indices where !rows[index].currency.isCZK {
+            let key = RateKey(currency: rows[index].currency, day: rows[index].issueDate)
+            if key.day > today {
+                let rate: ExchangeRate?
+                if let known = futureRates[key.currency] {
+                    rate = known
                 } else {
-                    lookup = try cnbRate(key.currency, on: key.day)
-                    lookups[key] = lookup
+                    rate = try latestCNBRate(key.currency, onOrBefore: today)?.rate
+                    futureRates.updateValue(rate, forKey: key.currency)
                 }
-                switch lookup {
-                case .declared(let rate, _):
-                    rows[index].issueDayRate = rate
-                case .notYetAvailable:
-                    if !newestDeclarationRead {
-                        newestDeclaration = try newestCNBDeclaration()
-                        newestDeclarationRead = true
-                    }
-                    guard let newest = newestDeclaration, key.day > newest,
-                        let latest = try latestCNBRate(key.currency, onOrBefore: key.day)
-                    else {
-                        break
-                    }
-                    rows[index].issueDayRate = latest.rate
-                    rows[index].issueDayRateIsProvisional = true
-                case .notPublished:
+                rows[index].issueDayRate = rate
+                rows[index].issueDayRateIsProvisional = rate != nil
+                continue
+            }
+            let lookup: RateLookupResult
+            if let known = lookups[key] {
+                lookup = known
+            } else {
+                lookup = try cnbRate(key.currency, on: key.day)
+                lookups[key] = lookup
+            }
+            switch lookup {
+            case .declared(let rate, _):
+                rows[index].issueDayRate = rate
+            case .notYetAvailable:
+                if !newestDeclarationRead {
+                    newestDeclaration = try newestCNBDeclaration()
+                    newestDeclarationRead = true
+                }
+                guard let newest = newestDeclaration, key.day > newest,
+                    let latest = try latestCNBRate(key.currency, onOrBefore: key.day)
+                else {
                     break
                 }
+                rows[index].issueDayRate = latest.rate
+                rows[index].issueDayRateIsProvisional = true
+            case .notPublished:
+                break
             }
-            return rows
         }
     }
 
@@ -731,7 +800,8 @@ private nonisolated extension Payment {
 }
 
 private nonisolated extension InvoiceChartRow {
-    /// A row of `InvoiceQueries.chartRows`. The rate of the day of issue is added afterwards.
+    /// A row of `InvoiceQueries.chartRows` or of `InvoiceQueries.dueUnpaidRows`, which select the same columns. The
+    /// rate of the day of issue is added afterwards.
     init(row: SQLRow) throws {
         let status: InvoiceStatus = try row.choice(2)
         let paymentDate: CivilDate?

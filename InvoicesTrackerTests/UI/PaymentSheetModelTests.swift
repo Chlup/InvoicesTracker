@@ -35,21 +35,29 @@ struct PaymentSheetModelTests {
         return invoice
     }
 
-    /// An invoice of 205 hours at 70,00 USD that is issued and not paid, imported from Fakturoid when `imported`.
+    /// An invoice of 205 hours at 70,00 USD (14 350,00 USD) that is issued and imported from Fakturoid, not changed in
+    /// the app since, and paid with `payment`, or not paid when it is nil.
     private func importedDollarInvoice(
         in app: AppModel, duzp: String = "2026-09-30", invoiceRate: StoredRate? = nil,
-        review: ReviewFlag? = nil
+        review: ReviewFlag? = nil, payment: Payment? = nil
     ) async throws -> Invoice {
         var invoice = Invoice.fixture(
             number: "Z20260930", currency: .usd, duzp: duzp, dueDate: "2026-10-30",
             items: [InvoiceItem(description: "Software development", quantity: decimal("205"), unit: "h", unitPriceMinor: 7_000)],
-            vatMode: .outsideCountry, invoiceRate: invoiceRate, review: review)
+            vatMode: .outsideCountry, invoiceRate: invoiceRate, review: review, payment: payment)
         invoice.client = SampleYear2026.bravo
         invoice.source = .imported(fakturoidID: "F-1", fingerprint: "row-1", changedInApp: false)
         let database = try #require(app.database)
         invoice.id = try await database.saveInvoice(invoice)
         return invoice
     }
+
+    /// The payment of the imported invoice in dollars as it was stored: the 14 350,00 USD came on 2. 10. 2026 and were
+    /// converted at 21,305 Kč, which is not the rate of that day in the fixtures (21,795 Kč), so that a sheet that
+    /// converted the payment again would show another one: 305 726,75 Kč.
+    private let storedDollarPayment = Payment(
+        date: civilDate("2026-10-02"), conversion: .cnbDaily, czkNetHalere: 30_572_675, czkVatHalere: 0,
+        rate: storedRate("USD", "21.305", declaredOn: "2026-10-02"))
 
     /// The Hungarian forint, which the ČNB and the GFŘ quote for 100 units.
     private let forint = CurrencyCode("HUF")!
@@ -485,6 +493,8 @@ struct PaymentSheetModelTests {
 
         await model.recompute()
 
+        // The payment as it is stored, which adds to the levies what the detail says it does.
+        #expect(model.preview == stored.payment)
         #expect(model.effect?.total == 1_702)
         #expect(model.effect?.receipt.source == .invoice(11))
     }
@@ -878,6 +888,36 @@ struct PaymentSheetModelTests {
         #expect(model.date == invoice.payment?.date)
     }
 
+    @Test func editingSaysUlozitPlatbuAndNamesTheImpactOfThePayment() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let invoice = try #require(try await app.database?.invoice(id: 11))
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+
+        #expect(model.isEditing)
+        #expect(model.title == "Upravit platbu")
+        #expect(model.saveTitle == "Uložit platbu")
+        #expect(model.effectHeading == "Dopad platby na odvody 2026")
+
+        // The year is that of the day in the sheet.
+        model.date = civilDate("2025-12-30")
+        #expect(model.effectHeading == "Dopad platby na odvody 2025")
+    }
+
+    @Test func aNewPaymentSaysOznacitJakoUhrazenou() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let invoice = try await unpaidInvoice(11, in: app)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+
+        #expect(model.isEditing == false)
+        #expect(model.title == "Označit jako uhrazenou")
+        #expect(model.saveTitle == "Označit jako uhrazenou")
+        #expect(model.effectHeading == "Odvody za rok 2026 vzrostou o")
+    }
+
     @Test func aCrownInvoiceHasNoOptionsAndSaysWhatTheIncomeIs() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -898,7 +938,8 @@ struct PaymentSheetModelTests {
 
     // MARK: Saving
 
-    @Test func savingStoresThePaymentTellsOfTheWriteOpensTheDetailAndSaysSo() async throws {
+    /// The detail of the invoice shows what was saved; no banner says so (`savingANewPaymentShowsNoBanner`).
+    @Test func savingStoresThePaymentTellsOfTheWriteAndOpensTheDetail() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
@@ -908,6 +949,7 @@ struct PaymentSheetModelTests {
         model.date = civilDate("2026-10-15")
         await model.recompute()
         let versionBefore = app.dataVersion
+        let changesBefore = app.changeCount
 
         try await model.save()
 
@@ -917,14 +959,32 @@ struct PaymentSheetModelTests {
         #expect(stored.payment?.czkNetHalere == 450_000)
         #expect(stored.payment?.conversion == .czk)
         #expect(app.dataVersion > versionBefore)
+        #expect(app.changeCount > changesBefore)
         #expect(app.pendingDetailInvoiceID == 11)
-        #expect(app.banner == AppBanner(text: "Změny faktury 20260902 jsou uložené.", screen: .invoices))
         // The payment counts as income: it is among the receipts of the year.
         let receipts = try await database.receipts(year: 2026)
         #expect(receipts.contains { $0.source == .invoice(11) && $0.czkNetHalere == 450_000 })
     }
 
-    @Test func aPaymentAfterTheDayShownMovesTheDayShownToIt() async throws {
+    @Test func savingANewPaymentShowsNoBanner() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        app.screen = .invoices
+        let invoice = try await unpaidInvoice(11, in: app)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        model.date = civilDate("2026-10-15")
+        await model.recompute()
+
+        try await model.save()
+
+        #expect(try await #require(app.database).invoice(id: 11)?.payment?.date == civilDate("2026-10-15"))
+        #expect(app.banner == nil)
+    }
+
+    /// Nothing in the window picks a day any more, and the sheet never moves the day shown, not even for money that
+    /// came after it, which only a test can show.
+    @Test func aPaymentAfterTheDayShownLeavesTheDayShownAlone() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
@@ -936,8 +996,8 @@ struct PaymentSheetModelTests {
 
         try await model.save()
 
-        // So that the payment counts in what the screens show.
-        #expect(app.asOf.asOf == civilDate("2026-10-15"))
+        #expect(try await #require(app.database).invoice(id: 11)?.payment?.date == civilDate("2026-10-15"))
+        #expect(app.asOf.asOf == civilDate("2026-10-01"))
         #expect(app.asOf.year == 2026)
     }
 
@@ -1094,5 +1154,273 @@ struct PaymentSheetModelTests {
         #expect(
             PaymentSheetModel.failureText(for: PaymentSheetError.invoiceChanged)
                 == "Faktura se mezitím změnila. Zavřete toto okno a zkuste to znovu.")
+    }
+
+    // MARK: Changing a stored payment
+
+    /// While the day and the way of converting are as stored, the sheet shows the payment as it is stored, with its
+    /// rate, and saving it writes nothing: the invoice stays as the import left it, and the app is told of no write.
+    @Test func openingAndSavingAStoredPaymentChangesNothing() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let invoice = try await importedDollarInvoice(in: app, payment: storedDollarPayment)
+        let changesBefore = app.changeCount
+        let versionBefore = app.dataVersion
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+
+        await model.recompute()
+
+        #expect(model.preview == storedDollarPayment)
+        #expect(
+            model.methodOption
+                == PaymentOption(
+                    title: "Kurz ČNB ke dni přijetí", detail: "2.\u{00A0}10.\u{00A0}2026 · 21,305\u{00A0}Kč/USD",
+                    value: "305\u{00A0}726,75\u{00A0}Kč"))
+        // What the stored payment adds to the levies, as the detail of the invoice says it.
+        #expect(model.effect?.receipt.czkNetHalere == 30_572_675)
+
+        try await model.save()
+
+        let database = try #require(app.database)
+        let stored = try #require(try await database.invoice(id: invoice.id))
+        #expect(stored == invoice)
+        #expect(stored.source == .imported(fakturoidID: "F-1", fingerprint: "row-1", changedInApp: false))
+        #expect(app.banner == nil)
+        #expect(app.changeCount == changesBefore)
+        #expect(app.dataVersion == versionBefore)
+        #expect(app.pendingDetailInvoiceID == nil)
+    }
+
+    /// A payment stored at a rate that stood in for the rate of its day is kept with that rate as well, also once the
+    /// rate of the day is there: only another day or another way of converting works it out again. The app converts
+    /// it again when the rates come (`AppModel.ratesUpdated()`), not the sheet.
+    @Test func aProvisionalStoredPaymentIsKeptWhileNothingChanges() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        // Stored while the rate of 2. 10. 2026 was not there yet, at the latest rate up to the DUZP, 21,522 Kč of
+        // 30. 9. 2026: 308 840,70 Kč. The rate of 2. 10., 21,795 Kč, has come since.
+        let provisional = Payment(
+            date: civilDate("2026-10-02"), conversion: .cnbDaily, czkNetHalere: 30_884_070, czkVatHalere: 0,
+            rate: storedRate("USD", "21.522", declaredOn: "2026-09-30"), provisional: true)
+        let invoice = try await importedDollarInvoice(in: app, payment: provisional)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+
+        await model.recompute()
+
+        #expect(model.preview == provisional)
+        #expect(model.usesStandInRate)
+        // The rate of the day is not why the payment stands in any more: the option says only that it does.
+        #expect(
+            model.methodOption
+                == PaymentOption(
+                    title: "Kurz ČNB ke dni přijetí",
+                    detail: "2.\u{00A0}10.\u{00A0}2026 · předběžně 21,522\u{00A0}Kč/USD",
+                    value: "308\u{00A0}840,70\u{00A0}Kč"))
+
+        // Another day is worked out afresh, at the rate of that day; the stored day brings the stored payment back.
+        model.date = civilDate("2026-10-05")
+        await model.recompute()
+        #expect(model.preview?.provisional == false)
+        #expect(model.preview?.rate == storedRate("USD", "21.834", declaredOn: "2026-10-05"))
+        model.date = civilDate("2026-10-02")
+        await model.recompute()
+        #expect(model.preview == provisional)
+
+        let changesBefore = app.changeCount
+        try await model.save()
+
+        let database = try #require(app.database)
+        #expect(try await database.invoice(id: invoice.id) == invoice)
+        #expect(try await database.provisionalPayments().map(\.id) == [invoice.id])
+        #expect(app.changeCount == changesBefore)
+    }
+
+    /// A provisional payment of a year whose rates are not downloaded is kept as it is too, and says why its rate
+    /// stands in. The sheet asks for no yearly file for it: the payment needs no rate, and the rates would make the app
+    /// convert the stored payment under the open sheet. The refresh fetches the files that provisional payments wait
+    /// for.
+    @Test func aKeptPaymentWaitingForARateThatIsNotDownloadedAsksForNothing() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let server = StubHTTPClient([
+            CNBEndpoints.yearly(2025): try Data(contentsOf: fixtureURL("cnb_rok_2025", "txt"))
+        ])
+        let app = try await makeApp(in: directory, http: server)
+        let database = try #require(app.database)
+        try await database.execute("DELETE FROM cnb_rate WHERE declared_on < '2026-01-01'")
+        // 14 350,00 USD received on 20. 3. 2025 at the rate of the invoice, 23,5 Kč, until the rate of the day comes.
+        let provisional = Payment(
+            date: civilDate("2025-03-20"), conversion: .cnbDaily, czkNetHalere: 33_722_500, czkVatHalere: 0,
+            rate: storedRate("USD", "23.5", declaredOn: "2025-03-03"), provisional: true)
+        let invoice = try await importedDollarInvoice(
+            in: app, duzp: "2025-03-03", invoiceRate: storedRate("USD", "23.5", declaredOn: "2025-03-03"),
+            payment: provisional)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+
+        await model.recompute()
+
+        #expect(model.preview == provisional)
+        #expect(
+            model.methodOption?.detail
+                == "20.\u{00A0}3.\u{00A0}2025 · kurz ČNB zatím není stažený, předběžně 23,500\u{00A0}Kč/USD")
+        #expect(server.requests.isEmpty)
+        #expect(try await database.invoice(id: invoice.id) == invoice)
+    }
+
+    /// Another day is a new payment: it is converted at the rate of that day, and saving it writes it, which makes the
+    /// imported invoice one changed in the app. No banner says so; the detail of the invoice shows it.
+    @Test func changingTheDateDerivesTheConversionAfresh() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let invoice = try await importedDollarInvoice(in: app, payment: storedDollarPayment)
+        let changesBefore = app.changeCount
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        model.date = civilDate("2026-10-05")
+
+        await model.recompute()
+
+        // 14 350,00 USD at the ČNB rate of 5. 10. 2026 in the fixtures, 21,834 Kč: 313 317,90 Kč.
+        let preview = try #require(model.preview)
+        #expect(preview.date == civilDate("2026-10-05"))
+        #expect(preview.conversion == .cnbDaily)
+        #expect(preview.rate == storedRate("USD", "21.834", declaredOn: "2026-10-05"))
+        #expect(preview.czkNetHalere == 31_331_790)
+        #expect(model.methodOption?.detail == "5.\u{00A0}10.\u{00A0}2026 · 21,834\u{00A0}Kč/USD")
+
+        try await model.save()
+
+        let database = try #require(app.database)
+        let stored = try #require(try await database.invoice(id: invoice.id))
+        #expect(stored.payment == preview)
+        #expect(stored.source == .imported(fakturoidID: "F-1", fingerprint: "row-1", changedInApp: true))
+        #expect(app.changeCount > changesBefore)
+        #expect(app.pendingDetailInvoiceID == invoice.id)
+        #expect(app.banner == nil)
+    }
+
+    /// The option of the rate goes on showing the payment as it is stored while the amount from the bank is chosen, as
+    /// it is what choosing the rate again keeps.
+    @Test func choosingTheAmountOfTheBankAndTheRateAgainKeepsTheStoredPayment() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let invoice = try await importedDollarInvoice(in: app, payment: storedDollarPayment)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        model.useBankCZK = true
+        model.bankCZKText = "306 000"
+
+        await model.recompute()
+
+        #expect(model.preview?.conversion == .bankCZK)
+        #expect(model.preview?.bankCZKTotalHalere == 30_600_000)
+        #expect(model.methodOption?.detail == "2.\u{00A0}10.\u{00A0}2026 · 21,305\u{00A0}Kč/USD")
+        #expect(model.methodOption?.value == "305\u{00A0}726,75\u{00A0}Kč")
+
+        model.useBankCZK = false
+        await model.recompute()
+
+        #expect(model.preview == storedDollarPayment)
+    }
+
+    /// An amount from the bank is kept while the amount typed is the one stored, however it is written, as it is
+    /// stored and not split again; another amount, or the rate of the year, is a new payment.
+    @Test func aStoredAmountFromTheBankIsKeptUntilAnotherAmountIsTyped() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        // Stored with a split the sheet would not make now (an invoice without VAT is all net), so that a sheet that
+        // split the amount again would show another payment.
+        let fromTheBank = Payment(
+            date: civilDate("2026-10-02"), conversion: .bankCZK, czkNetHalere: 30_599_900, czkVatHalere: 100,
+            bankCZKTotalHalere: 30_600_000)
+        let invoice = try await importedDollarInvoice(in: app, payment: fromTheBank)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        #expect(model.useBankCZK)
+        #expect(model.bankCZKText == "306\u{00A0}000,00")
+
+        await model.recompute()
+        #expect(model.preview == fromTheBank)
+
+        model.bankCZKText = "306000"
+        await model.recompute()
+        #expect(model.preview == fromTheBank)
+
+        model.bankCZKText = "305 000"
+        await model.recompute()
+        #expect(model.preview?.bankCZKTotalHalere == 30_500_000)
+        #expect(model.preview?.czkNetHalere == 30_500_000)
+
+        model.bankCZKText = "306 000"
+        model.useBankCZK = false
+        await model.recompute()
+        #expect(model.preview?.conversion == .cnbDaily)
+        #expect(model.preview?.rate == storedRate("USD", "21.795", declaredOn: "2026-10-02"))
+
+        let changesBefore = app.changeCount
+        model.useBankCZK = true
+        try await model.save()
+
+        #expect(try await #require(app.database).invoice(id: invoice.id) == invoice)
+        #expect(app.changeCount == changesBefore)
+    }
+}
+
+/// The removal step of the payment sheet: "Odebrat platbu…" takes the sheet to it, with what removing the payment does
+/// (`PaymentRemovalSummary`), and Zpět takes the sheet back to the payment. The data is the sample year 2026 with
+/// invented clients, in a temporary database; the app is as of 17. 10. 2026. In every expected string `\u{00A0}` is the
+/// no-break space.
+@Suite(.settlesBackups)
+@MainActor
+struct PaymentSheetRemovalStepTests {
+    /// An app model on a new folder with the sample year stored, as of noon of 17. 10. 2026.
+    private func makeApp(in directory: URL) async throws -> AppModel {
+        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2026, 10, 17)))
+        try await startFresh(app)
+        try await SampleYear2026.store(in: try #require(app.database))
+        await app.didWriteAndBackUp()
+        return app
+    }
+
+    /// The sheet of the payment of invoice 11 shows the removal step with its title and sub-line in place of those of
+    /// the payment; Zpět takes it back to the payment with the day as it was typed, and the number typed in the step
+    /// stays for when the step is shown again. Only the number of the invoice, or its digits, matches.
+    @Test func theRemovalStepShowsItsSummaryAndZpetGoesBackToThePaymentAsItWasTyped() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        let invoice = try #require(try await database.invoice(id: 11))
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        await model.recompute()
+        #expect(model.removal == nil)
+        model.date = civilDate("2026-10-16")
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: nil)
+
+        model.showRemoval(summary)
+
+        #expect(model.removal == summary)
+        #expect(model.title == "Odebrat platbu faktury 20260902?")
+        #expect(
+            model.subtitle == "Cetus Data s.r.o. · zaplaceno 15.\u{00A0}10.\u{00A0}2026 · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(model.typedNumber.isEmpty)
+        #expect(model.typedNumberMatches == false)
+        model.typedNumber = "2026"
+        #expect(model.typedNumberMatches == false)
+
+        model.showPayment()
+
+        #expect(model.removal == nil)
+        #expect(model.title == "Upravit platbu")
+        #expect(model.subtitle == "Faktura 20260902 · Cetus Data s.r.o. · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(model.date == civilDate("2026-10-16"))
+        #expect(model.typedNumber == "2026")
+
+        model.showRemoval(summary)
+        #expect(model.typedNumber == "2026")
+        model.typedNumber = " 20260902 "
+        #expect(model.typedNumberMatches)
     }
 }

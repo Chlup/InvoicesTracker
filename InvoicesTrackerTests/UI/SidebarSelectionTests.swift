@@ -11,10 +11,10 @@ import Testing
 @MainActor
 struct SidebarSelectionTests {
     /// The rows of the list from the top: the heading of the year with its five screens, then the heading "Evidence"
-    /// with its two, then the heading "Nástroje" with Simulátor and Import.
+    /// with Odběratelé (the templates have no row: they are kept with their clients), then the heading "Nástroje" with
+    /// Simulátor and Import.
     private static let rows: [Screen?] = [
-        nil, .overview, .invoices, .advances, .computation, .prediction, nil, .clients, .templates, nil, .simulator,
-        .importer,
+        nil, .overview, .invoices, .advances, .computation, .prediction, nil, .clients, nil, .simulator, .importer,
     ]
 
     @Test func aClickOnTheRowOfAScreenShowsTheScreen() async throws {
@@ -87,8 +87,40 @@ struct SidebarSelectionTests {
     }
 
     @Test func theLineUnderNastaveniNamesTheVersionAndTheBuild() {
-        let info: [String: Any] = ["CFBundleShortVersionString": "1.4.0", "CFBundleVersion": "7"]
-        #expect(SidebarView.versionText(info: info) == "Verze: 1.4.0 (7)")
-        #expect(SidebarView.versionText(info: nil) == "Verze: ? (?)")
+        let info: [String: Any] = ["CFBundleShortVersionString": "1.6.0", "CFBundleVersion": "9"]
+        #expect(SidebarView.versionText(info: info) == "Verze 1.6.0 (9)")
+        #expect(SidebarView.versionText(info: nil) == "Verze ? (?)")
+    }
+
+    /// The line is small print in the third colour of text, in a light and in a dark window: none of its pixels is
+    /// beyond that colour (darker in a light window, lighter in a dark one), and its strokes reach it.
+    @Test func theVersionLineIsInTheThirdColourOfText() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let line = SidebarVersionLine(text: "Verze 1.6.0 (9)").padding(6).background(Palette.bgWindow)
+            let picture = try OffscreenPicture(of: line, in: scheme)
+            let text3 = try OffscreenPicture.bytes(of: Palette.text3, in: scheme)
+            let background = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
+            let room = CGRect(origin: .zero, size: picture.size)
+            let beyond =
+                scheme == .light
+                ? picture.count(darkerThan: text3, in: room, by: 6) : picture.count(lighterThan: text3, in: room, by: 6)
+            #expect(text3 != background, "\(scheme): the colours are not told apart")
+            #expect(beyond == 0, "\(scheme): \(beyond) pixels are beyond the colour of the text")
+            try picture.expectText(
+                in: room, setIn: Palette.text3, atLeast: 130, scheme: scheme,
+                "\(scheme): the strokes do not reach the colour of the text")
+        }
+    }
+
+    /// The line is set in the subheadline style (11 points), one line of that height, and its digits are of one width,
+    /// so that it does not shift when the version or the build changes.
+    @Test func theVersionLineIsOneLineOfTheSubheadlineWithDigitsOfOneWidth() {
+        let sizes = ["Verze 1.1.1 (1)", "Verze 0.0.0 (0)", "Verze 8.8.8 (8)"].map {
+            NSHostingView(rootView: SidebarVersionLine(text: $0)).fittingSize
+        }
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: .preferredFont(forTextStyle: .subheadline))
+
+        #expect(sizes.allSatisfy { abs($0.width - sizes[0].width) < 0.01 }, "\(sizes)")
+        #expect(sizes.allSatisfy { abs($0.height - lineHeight) < 1 }, "\(sizes), a line is \(lineHeight) high")
     }
 }

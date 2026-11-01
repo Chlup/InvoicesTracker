@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// What the detail of an invoice in Faktury says, and what the dialog that deletes it lists as the consequences. In
-/// every expected string `\u{00A0}` is the no-break space.
+/// What the detail of an invoice in Faktury says, and what the dialog that deletes it and the step that removes its
+/// payment list as the consequences. In every expected string `\u{00A0}` is the no-break space.
 struct InvoiceDetailBuilderTests {
     // MARK: Helpers
 
@@ -147,6 +147,34 @@ struct InvoiceDetailBuilderTests {
         invoice.vatMode = .none
 
         #expect(detailOf(invoice).facts.last == DetailFact(label: "DPH", value: "Bez DPH"))
+    }
+
+    /// A fact that has nothing to say is left out, as the design has it ("label/value facts, empty ones left out"):
+    /// an invoice whose method of payment is empty, or only white space, has no row "Platba" at all, not one with a
+    /// dash for a value.
+    @Test(arguments: ["", "  ", "\n"])
+    func anInvoiceWithoutAPaymentMethodHasNoRowForIt(method: String) {
+        var invoice = crownInvoice()
+        invoice.paymentMethod = method
+
+        let facts = detailOf(invoice).facts
+
+        #expect(facts.map(\.label) == ["Vystaveno", "DUZP", "Splatnost", "DPH"])
+        #expect(facts.allSatisfy { !$0.value.isEmpty })
+    }
+
+    /// A rate that is not known is not an empty fact, whatever the facts before it: its row stays, as a dash with the
+    /// reason under it, which only the app has to say (`withoutAnyRateTheRowSaysSo`), and it is still the last row.
+    @Test func aRateThatIsNotKnownStaysAsADashWithItsReasonWhileTheMethodOfPaymentIsLeftOut() {
+        var invoice = paidDollarInvoice
+        invoice.paymentMethod = ""
+        invoice.invoiceRate = nil
+
+        let facts = detailOf(invoice).facts
+
+        #expect(facts.map(\.label) == ["Vystaveno", "DUZP", "Splatnost", "DPH", "Kurz ČNB k DUZP"])
+        #expect(
+            facts.last == DetailFact(label: "Kurz ČNB k DUZP", value: "—", note: "kurz ČNB zatím není k dispozici"))
     }
 
     // MARK: Kurz ČNB k DUZP
@@ -340,17 +368,62 @@ struct InvoiceDetailBuilderTests {
         #expect(payment?.note == "předběžný kurz 21,359 · přepočte se, až bude kurz vyhlášen")
     }
 
-    @Test func aPaymentAfterTheDayShownDoesNotCountYet() {
+    /// What the detail says of a payment that is dated after today: that the money counts as income only from that day.
+    private static let laterNote = "Platba má datum po dnešku – do příjmů se započítá až ten den."
+
+    /// The note that the payment is dated later is for a payment dated after today alone, whichever day the screen is
+    /// shown as of: the invoice of a past year that was paid on 7. 1. of the next year has no such note on 17. 10., as
+    /// the money came, and a payment dated after today has it in the list of a past year, of the current one and of a
+    /// year to come, as the money has not. A payment of today is not after it.
+    @Test(
+        arguments: [
+            // The list of 2025, as of its last day: a payment of January 2026 is before today.
+            ("2025-12-31", "2026-10-17", "2026-01-07", false),
+            // The list of the current year, as of today: before today, on the day itself and after it.
+            ("2026-10-17", "2026-10-17", "2026-10-15", false),
+            ("2026-10-17", "2026-10-17", "2026-10-17", false),
+            ("2026-10-17", "2026-10-17", "2026-10-18", true),
+            // The list of 2025: a payment dated after today is after it there too.
+            ("2025-12-31", "2026-10-17", "2026-12-01", true),
+            // The list of 2027, as of its last day, which is after the payment: it is after today all the same.
+            ("2027-12-31", "2026-10-17", "2027-03-01", true),
+        ] as [(String, String, String, Bool)])
+    func theLaterNoteNeedsAPaymentAfterToday(asOf: String, today: String, paid: String, hasNote: Bool) {
+        let invoice = crownInvoice(dueDate: "2026-10-30", payment: .fixture(on: paid))
+
+        let detail = detailOf(invoice, asOf: civilDate(asOf), statusDay: civilDate(today))
+
+        #expect(detail.payment?.laterNote == (hasNote ? Self.laterNote : nil))
+    }
+
+    /// A payment dated before today but after the day shown is paid as of today, and has no note about the day: the
+    /// status is as of today whatever day the screen is shown as of.
+    @Test func aPaymentAfterTheDayShownButBeforeTodayIsPaidWithoutANote() {
         let invoice = crownInvoice(dueDate: "2026-10-30", payment: .fixture(on: "2026-10-15"))
 
         let detail = detailOf(invoice, asOf: civilDate("2026-10-01"))
 
-        #expect(detail.payment?.laterNote == "Platba je až po zvoleném datu, zatím se nepočítá.")
-        // The money is not counted as of the day shown, but the status is as of today, 17. 10.: the invoice is paid.
+        #expect(detail.payment?.laterNote == nil)
         #expect(detail.status == .paid(civilDate("2026-10-15")))
         #expect(detail.statusLabel == "Uhrazená 15.\u{00A0}10.")
         // It has a payment, so it cannot be marked paid again.
         #expect(detail.canPay == false)
+    }
+
+    /// A payment dated after today has not come yet, so the invoice is not paid but awaits payment or is overdue as of
+    /// today, and the note says that the money counts from the day of the payment. The payment is there, so the invoice
+    /// cannot be marked paid again and only its payment can be changed: the invoice itself cannot be edited.
+    @Test func aPaymentAfterTodayLeavesTheInvoiceUnpaidWithTheNoteAndItsPaymentToChange() {
+        let invoice = crownInvoice(dueDate: "2026-10-30", payment: .fixture(on: "2026-10-20"))
+
+        let detail = detailOf(invoice)
+
+        #expect(detail.payment?.laterNote == Self.laterNote)
+        #expect(detail.status == .awaitingPayment)
+        #expect(detail.statusLabel == "Čeká na platbu")
+        #expect(detail.canPay == false)
+        #expect(detail.canEditPayment)
+        #expect(detail.canEdit == false)
     }
 
     @Test func theDetailOfAnInvoicePaidLaterShowsItAsPaid() {
@@ -366,8 +439,9 @@ struct InvoiceDetailBuilderTests {
         // The year is written because the payment is of another year than the day shown.
         #expect(detail.statusLabel == "Uhrazená 2.\u{00A0}1.\u{00A0}2026")
         #expect(detail.canPay == false)
-        // The money keeps the day shown: it has not arrived by 31. 12.
-        #expect(detail.payment?.laterNote == "Platba je až po zvoleném datu, zatím se nepočítá.")
+        // The money came on 2. 1., before today, so nothing says that it counts later: the list of 2025 does not count
+        // it as income of 2025, because it is income of 2026 (the section of the levies says so).
+        #expect(detail.payment?.laterNote == nil)
     }
 
     @Test func theDetailOfAnInvoiceThatIsNotPaidIsOverdueByTodayWhateverTheDayShown() {
@@ -479,15 +553,20 @@ struct InvoiceDetailBuilderTests {
         #expect(payment.netIncome == "253\u{00A0}401\u{00A0}Kč")
     }
 
-    /// A payment after the day shown does not count yet, but the detail shows what it adds to the levies, as the list
-    /// shows the net income of such an invoice, so it says what the payment leaves too: 4 500,00 Kč less 1 702 Kč.
+    /// A payment after the day shown still shows what it adds to the levies, as the list shows the net income of such
+    /// an invoice, so it says what the payment leaves too: 4 500,00 Kč less 1 702 Kč. Dated before today it has no
+    /// note, and dated after today it has the note and shows the same.
     @Test func aPaymentAfterTheDayShownStillShowsWhatItLeaves() {
-        let invoice = crownInvoice(dueDate: "2026-10-30", payment: .fixture(on: "2026-10-15"))
+        let before = crownInvoice(dueDate: "2026-10-30", payment: .fixture(on: "2026-10-15"))
+        let after = crownInvoice(dueDate: "2026-10-30", payment: .fixture(on: "2026-10-20"))
 
-        let payment = detailOf(invoice, asOf: civilDate("2026-10-01"), paymentEffect: effect(of: invoice)).payment
+        let early = detailOf(before, asOf: civilDate("2026-10-01"), paymentEffect: effect(of: before)).payment
+        let late = detailOf(after, asOf: civilDate("2026-10-01"), paymentEffect: effect(of: after)).payment
 
-        #expect(payment?.laterNote == "Platba je až po zvoleném datu, zatím se nepočítá.")
-        #expect(payment?.netIncome == "2\u{00A0}798\u{00A0}Kč")
+        #expect(early?.laterNote == nil)
+        #expect(early?.netIncome == "2\u{00A0}798\u{00A0}Kč")
+        #expect(late?.laterNote == Self.laterNote)
+        #expect(late?.netIncome == "2\u{00A0}798\u{00A0}Kč")
     }
 
     // MARK: What a payment would add
@@ -862,5 +941,60 @@ struct InvoiceDetailBuilderTests {
                 == "Platba z 2.\u{00A0}10.\u{00A0}2026 přestane být příjmem: příjem za rok 2026 klesne o 305\u{00A0}726,75\u{00A0}Kč a odvody o 1\u{00A0}702\u{00A0}Kč."
         )
         #expect(summary.subtitle == "Bravo Labs, Inc. · 14\u{00A0}350,00\u{00A0}USD")
+    }
+
+    // MARK: Removing a payment
+
+    /// The invoice 20260601 of the sample year: 13 720,00 USD paid on 7. 7. 2026 at 21,050, which is 288 806,00 Kč of
+    /// income. The effect is an invented one; the step names only its total, in whole Kč.
+    @Test func theRemovalSummaryNamesWhatChanges() throws {
+        let invoice = try #require(SampleYear2026.invoices.first { $0.number == "20260601" })
+
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: effect(of: invoice, on: "2026-07-07"))
+
+        #expect(summary.title == "Odebrat platbu faktury 20260601?")
+        #expect(
+            summary.subtitle == "Bravo Labs, Inc. · zaplaceno 7.\u{00A0}7.\u{00A0}2026 · 13\u{00A0}720,00\u{00A0}USD")
+        #expect(summary.number == "20260601")
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 288\u{00A0}806,00\u{00A0}Kč a odvody o 1\u{00A0}702\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+
+        // Without the effect, the sentence about the income ends after the income.
+        let withoutEffect = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: nil)
+        #expect(
+            withoutEffect.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Příjem za rok 2026 klesne o 288\u{00A0}806,00\u{00A0}Kč.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
+    }
+
+    @Test func theRemovalNamesTheYearOfThePaymentAndTheCrownsOfAPaymentInCrowns() {
+        // Issued on 30. 9. 2026 and paid on 4. 1. 2027: the income of 2027 drops, without the VAT.
+        let invoice = crownInvoice(payment: .fixture(on: "2027-01-04"))
+
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: nil)
+
+        #expect(
+            summary.subtitle == "Alfa Systems s.r.o. · zaplaceno 4.\u{00A0}1.\u{00A0}2027 · 5\u{00A0}445,00\u{00A0}Kč")
+        #expect(summary.lines.contains("Příjem za rok 2027 klesne o 4\u{00A0}500,00\u{00A0}Kč."))
+    }
+
+    @Test func thePaymentOfAnInvoiceToCheckIsNotSaidToLowerTheIncome() {
+        // An invoice to check does not count: removing its payment takes nothing from the income of its year.
+        let invoice = crownInvoice(
+            review: ReviewFlag(reason: "neznámý stav faktury"), payment: .fixture(on: "2026-10-15"))
+
+        let summary = InvoiceDetailBuilder.paymentRemoval(of: invoice, effect: effect(of: invoice))
+
+        #expect(
+            summary.lines == [
+                "Faktura bude znovu nezaplacená a půjde upravit.",
+                "Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.",
+            ])
     }
 }

@@ -5,7 +5,7 @@ import SwiftUI
 
 /// What the chart of the income is drawn from, apart from the columns themselves: its scale, the texts of its lines and
 /// where the tooltip and the bars go. Pure, so that it is tested without a view. The amounts of the chart are in
-/// haléře and become crowns only to be drawn.
+/// haléře and become crowns only to be drawn; the tooltip tells them in whole Kč.
 nonisolated enum IncomeChartLayout {
     /// The top of an empty chart, in haléře: 100 000 Kč.
     private static let emptyTop: Int64 = 10_000_000
@@ -109,15 +109,17 @@ nonisolated enum IncomeChartLayout {
 
 // MARK: - The chart
 
-/// The card "Příjmy": under its header the strip with the net income of the year up to the day shown and its average
-/// per month, then what was issued (bars, by the day of issue) and what was received (a line with points, by the day of
-/// payment) by month or by year, with or without VAT, and under it the uniform rate of the year. The chart also has a
-/// green line with points for the net income, always without VAT: by month that of the invoices paid in each month up
-/// to the day shown, by year that of each year that has been worked out. Hovering over a column highlights it and shows
-/// a tooltip with the series with and without VAT, the net income of the column where it has it, with the words that
-/// say what it covers, and, under a divider, the average net income per month. A year that the engine worked out with
-/// the rules of another year is marked as an estimate there, with the sentence that says so, while its point stays in
-/// the chart. VoiceOver reads each column in the words of the tooltip, but for the words under the net income.
+/// The card "Příjmy": under its header, with the segmented control that groups the chart by months or by years and the
+/// checkbox for VAT, the strip with the net income of the year up to the day shown and its average per month, then
+/// what was issued (bars, by the day of issue) and what was received (a line with points, by the day of payment) by
+/// month or by year, with or without VAT, and under it the uniform rate of the year. The chart also has a green line
+/// with points for the net income, always without VAT: by month that of the invoices paid in each month up to the day
+/// shown, by year that of each year that has been worked out. Hovering over a column highlights it and shows a tooltip
+/// with the series with and without VAT, all in whole Kč, the net income of the column where it has it, with the words
+/// that say what it covers, and, under a hairline, the average net income per month. A year that the engine worked
+/// out with the rules of another year is marked as an estimate there, with the sentence that says so, while its point
+/// stays in the chart. VoiceOver reads each column in the words of the tooltip, but for the words under the net
+/// income.
 struct IncomeChart: View {
     let columns: [ChartColumn]
     let subtitle: String
@@ -145,7 +147,7 @@ struct IncomeChart: View {
     private static let axisLabelWidth: CGFloat = 56
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Card(label: "Příjmy") {
             header
             NetIncomeStrip(netIncome: netIncome)
             legend
@@ -154,11 +156,6 @@ struct IncomeChart: View {
                 UniformRateLine(line: uniformLine)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 20)
-        .screenCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Příjmy")
     }
 
     // MARK: Header and legend
@@ -167,23 +164,20 @@ struct IncomeChart: View {
         HStack(alignment: .bottom, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Příjmy")
-                    .font(.title3.weight(.semibold))
+                    .font(Typography.title3)
+                    .foregroundStyle(Palette.text)
                     .accessibilityAddTraits(.isHeader)
-                Text(subtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                Text(verbatim: subtitle)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 12) {
-                Picker("Seskupit", selection: modeSelection) {
-                    Text("Měsíce")
-                        .tag(ChartMode.months)
-                    Text("Roky")
-                        .tag(ChartMode.years)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                SegmentedControl(
+                    "Seskupit", selection: modeSelection,
+                    segments: [(value: ChartMode.months, title: "Měsíce"), (value: ChartMode.years, title: "Roky")]
+                )
                 .fixedSize()
                 Toggle("S DPH", isOn: vatSelection)
                     .toggleStyle(.checkbox)
@@ -206,33 +200,33 @@ struct IncomeChart: View {
         FlowLayout(spacing: 16, lineSpacing: 6) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(.chartIssued))
+                    .fill(Palette.accent)
                     .frame(width: 12, height: 12)
                     .accessibilityHidden(true)
                 Text("Vystaveno (podle data vystavení)")
             }
             HStack(spacing: 6) {
                 Capsule()
-                    .fill(Color(.chartReceived))
+                    .fill(Palette.orange)
                     .frame(width: 16, height: 3)
                     .accessibilityHidden(true)
                 Text("Přijato (podle data platby – z toho se platí daň)")
             }
             HStack(spacing: 6) {
                 Capsule()
-                    .fill(Color(.netIncome))
+                    .fill(Palette.green)
                     .frame(width: 16, height: 3)
                     .accessibilityHidden(true)
                 switch mode {
                 case .months:
                     Text("Čistý příjem (součet za faktury zaplacené v měsíci, bez DPH)")
                 case .years:
-                    Text("Čistý příjem za rok (po dani a pojistném, vždy bez DPH)")
+                    Text("Čistý příjem za rok (po odvodech, vždy bez DPH)")
                 }
             }
         }
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(Typography.callout)
+        .foregroundStyle(Palette.text2)
     }
 
     // MARK: The plot
@@ -255,12 +249,12 @@ struct IncomeChart: View {
             AxisMarks(position: .leading, values: (0...4).map { Double($0) * step }) { value in
                 let isBaseLine = value.as(Double.self) == 0
                 AxisGridLine()
-                    .foregroundStyle(isBaseLine ? Color.secondary.opacity(0.5) : Color(nsColor: .separatorColor))
+                    .foregroundStyle(isBaseLine ? Palette.sepStrong : Palette.fill)
                 AxisValueLabel {
                     if let kc = value.as(Double.self) {
                         Text(IncomeChartLayout.label(forKc: Int64(kc.rounded())))
-                            .font(.subheadline)
-                            .foregroundStyle(Color.secondary)
+                            .font(Typography.subheadline)
+                            .foregroundStyle(Palette.text3)
                     }
                 }
             }
@@ -270,9 +264,8 @@ struct IncomeChart: View {
                 AxisValueLabel {
                     if let label = value.as(String.self), let column = columns.first(where: { $0.label == label }) {
                         Text(label)
-                            .font(.callout)
-                            .fontWeight(column.isCurrent ? .bold : .medium)
-                            .foregroundStyle(column.isCurrent ? Color(.chartIssued) : Color.secondary)
+                            .font(column.isCurrent ? Typography.callout.bold() : Typography.callout.weight(.medium))
+                            .foregroundStyle(column.isCurrent ? Palette.accentText : Palette.text2)
                     }
                 }
             }
@@ -296,7 +289,7 @@ struct IncomeChart: View {
     private var highlight: some ChartContent {
         if let hoveredColumn {
             RectangleMark(x: .value("Období", columns[hoveredColumn].label), width: .ratio(1))
-                .foregroundStyle(Color.primary.opacity(0.06))
+                .foregroundStyle(Palette.text.opacity(0.05))
                 .accessibilityHidden(true)
         }
     }
@@ -311,7 +304,7 @@ struct IncomeChart: View {
                 y: .value("Vystaveno", crowns(issued(columns[index]))),
                 width: width > 0 ? .fixed(width) : .ratio(0.56)
             )
-            .foregroundStyle(Color(.chartIssued))
+            .foregroundStyle(Palette.accent)
             .opacity(columns[index].isFuture ? 0.35 : 1)
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4))
             .accessibilityHidden(true)
@@ -328,7 +321,7 @@ struct IncomeChart: View {
                 y: .value("Přijato", crowns(received(columns[index]))),
                 series: .value("Řada", "Přijato")
             )
-            .foregroundStyle(Color(.chartReceived))
+            .foregroundStyle(Palette.orange)
             .lineStyle(StrokeStyle(lineWidth: 2.5, lineJoin: .round))
             .interpolationMethod(.linear)
             .accessibilityHidden(true)
@@ -337,7 +330,7 @@ struct IncomeChart: View {
                 y: .value("Přijato", crowns(received(columns[index])))
             )
             .symbol {
-                ChartRing(color: Color(.chartReceived))
+                ChartRing(color: Palette.orange)
             }
             .accessibilityHidden(true)
         }
@@ -357,7 +350,7 @@ struct IncomeChart: View {
                 y: .value("Čistý příjem", drawn),
                 series: .value("Řada", "Čistý příjem")
             )
-            .foregroundStyle(Color(.netIncome))
+            .foregroundStyle(Palette.green)
             .lineStyle(StrokeStyle(lineWidth: 2.5, lineJoin: .round))
             .interpolationMethod(.linear)
             .accessibilityHidden(true)
@@ -366,7 +359,7 @@ struct IncomeChart: View {
                 y: .value("Čistý příjem", drawn)
             )
             .symbol {
-                ChartRing(color: Color(.netIncome))
+                ChartRing(color: Palette.green)
             }
             .accessibilityHidden(true)
         }
@@ -435,25 +428,26 @@ struct IncomeChart: View {
 /// fill that is not opaque is a tint and the line under the point does not show through it.
 struct ChartRing: View {
     let color: Color
-    var fill: Color = Color(nsColor: .controlBackgroundColor)
+    var fill: Color = Palette.bgCard
 
     var body: some View {
         Circle()
             .fill(fill)
-            .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+            .background(Circle().fill(Palette.bgCard))
             .overlay(Circle().strokeBorder(color, lineWidth: 2))
             .frame(width: 10, height: 10)
     }
 }
 
-/// The popover of a column: its title, and what was issued and received without and with VAT, the values without VAT in
-/// bold. A column that has a net income also has a row for it, in the text the column gives (`netIncomeText`): the net
-/// income is always without VAT, so the column with VAT has a dash. Under the row stand the words that say what the
-/// figure covers (`netIncomeNote`), across the grid in a smaller secondary type. A column that has an average net
-/// income per month ends with it, under a divider, and when the year is computed with the rules of another year, with
-/// the sentence that says so under it, in the colour of the warnings of the screens. The rows are as wide as their
-/// amounts are long, so that none of them wraps; only the words under the net income, the words of the footer and that
-/// sentence wrap, at a fixed width, and the amount of the footer does not. It is in a material, as a popover is.
+/// The popover of a column: its title, and what was issued and received without and with VAT, all in whole Kč, the
+/// values without VAT in semibold. A column that has a net income also has a row for it, in the text the column gives
+/// (`netIncomeText`): the net income is always without VAT, so the column with VAT has a dash. Under the row stand the
+/// words that say what the figure covers (`netIncomeNote`), across the grid in a smaller grey type. A column that has
+/// an average net income per month ends with it, under a hairline, and when the year is computed with the rules of
+/// another year, with the sentence that says so under it, in the orange of the warnings. The rows are as wide as their
+/// amounts are long, so that none of them wraps; only the words under the net income, the words of the footer and
+/// that sentence wrap, at a fixed width, and the amount of the footer does not. It is a panel of the colour of a card,
+/// raised off the chart as a popover is.
 struct ChartTooltip: View {
     /// The width of the words under the net income row, of the words of the footer and of the sentence under it, in
     /// points. The note, the label and the sentence are long, so they wrap at this width and the tooltip does not grow
@@ -462,15 +456,10 @@ struct ChartTooltip: View {
 
     let column: ChartColumn
 
-    /// "≈" before the issued amounts of a column whose amounts are approximate, otherwise nothing.
-    private var issuedSign: String {
-        column.issuedIsApproximate ? PredictionBuilder.estimateSign : ""
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(column.title)
-                .fontWeight(.bold)
+            Text(verbatim: column.title)
+                .font(Typography.bodyBold)
             Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 5) {
                 GridRow {
                     Color.clear
@@ -478,85 +467,83 @@ struct ChartTooltip: View {
                     Text("bez DPH")
                     Text("s DPH")
                 }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(Typography.subheadline)
+                .foregroundStyle(Palette.text3)
                 GridRow {
                     HStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(.chartIssued))
+                            .fill(Palette.accent)
                             .frame(width: 10, height: 10)
                         Text("Vystaveno")
+                            .fixedSize()
                     }
                     .gridColumnAlignment(.leading)
-                    Text(verbatim: issuedSign + CzechFormat.halere(column.issuedNetHalere))
-                        .fontWeight(.semibold)
-                    Text(verbatim: issuedSign + CzechFormat.halere(column.issuedGrossHalere))
+                    Text(verbatim: column.issuedNetText)
+                        .font(Typography.bodySemibold)
+                    Text(verbatim: column.issuedGrossText)
                 }
                 if column.issuedIsApproximate {
                     GridRow {
-                        Text(verbatim: ChartColumn.approximateIssuedNote)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(width: Self.footerWordsWidth, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .gridCellColumns(3)
-                            .gridCellAnchor(.leading)
+                        note(ChartColumn.approximateIssuedNote)
                     }
                 }
                 GridRow {
                     HStack(spacing: 6) {
-                        ChartRing(color: Color(.chartReceived))
+                        ChartRing(color: Palette.orange)
                         Text("Přijato")
+                            .fixedSize()
                     }
-                    Text(CzechFormat.halere(column.receivedNetHalere))
-                        .fontWeight(.semibold)
-                    Text(CzechFormat.halere(column.receivedGrossHalere))
+                    Text(verbatim: column.receivedNetText)
+                        .font(Typography.bodySemibold)
+                    Text(verbatim: column.receivedGrossText)
                 }
                 if let netIncomeText = column.netIncomeText {
                     GridRow {
                         HStack(spacing: 6) {
-                            ChartRing(color: Color(.netIncome))
+                            ChartRing(color: Palette.green)
                             Text("Čistý příjem")
+                            .fixedSize()
                         }
                         Text(verbatim: netIncomeText)
-                            .fontWeight(.semibold)
+                            .font(Typography.bodySemibold)
                         Text(verbatim: "—")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.text4)
                     }
-                    if let note = column.netIncomeNote {
+                    if let netIncomeNote = column.netIncomeNote {
                         GridRow {
-                            Text(verbatim: note)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .frame(width: Self.footerWordsWidth, alignment: .leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .gridCellColumns(3)
-                                .gridCellAnchor(.leading)
+                            note(netIncomeNote)
                         }
                     }
                 }
             }
             .monospacedDigit()
             if let netAverage = column.netAverage {
-                Divider()
+                Hairline()
                 footer(netAverage)
                 if let note = netAverage.note {
                     Text(verbatim: note)
-                        .font(.callout)
-                        .foregroundStyle(Color(.simulationText))
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.orangeText)
                         .frame(width: Self.footerWordsWidth, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .fixedSize(horizontal: true, vertical: false)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
-        .shadow(color: .black.opacity(0.16), radius: 14, y: 8)
+        .popPanel()
         // The column itself speaks the same words for VoiceOver.
         .accessibilityHidden(true)
+    }
+
+    /// `text` across the three columns of the grid, in the small grey type of a note, wrapping at the width of the
+    /// words of the footer.
+    private func note(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(Typography.subheadline)
+            .foregroundStyle(Palette.text3)
+            .frame(width: Self.footerWordsWidth, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .gridCellColumns(3)
+            .gridCellAnchor(.leading)
     }
 
     /// The average net income per month: its words, which wrap in `footerWordsWidth`, and its amount at the right in
@@ -564,12 +551,13 @@ struct ChartTooltip: View {
     private func footer(_ netAverage: ChartNetAverage) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
             Text(verbatim: netAverage.label)
-                .font(.callout)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
                 .frame(width: Self.footerWordsWidth, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 14)
             Text(verbatim: netAverage.value)
-                .fontWeight(.bold)
+                .font(Typography.bodyBold)
                 .monospacedDigit()
                 .fixedSize()
         }

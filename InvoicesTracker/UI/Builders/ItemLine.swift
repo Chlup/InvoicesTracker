@@ -1,7 +1,7 @@
 import Foundation
 
 /// The line that says an item of an invoice or of a template: "205 h × 70,00 USD · Software development". The detail of
-/// an invoice, the card of a template and the chooser of a new invoice write it alike.
+/// an invoice, the panel of a template in the detail of its client and the chooser of a new invoice write it alike.
 nonisolated enum ItemLine {
     /// The quantity with a decimal comma and its unit after a no-break space, "×" and the price of one unit in
     /// `currency`, and after a dot the description without the white space around it, when there is any.

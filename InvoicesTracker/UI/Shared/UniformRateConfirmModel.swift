@@ -35,7 +35,9 @@ nonisolated enum UniformRateConfirmText {
 
     /// "Tabulka má 31 měn.": how many currencies the table has, all of which are stored.
     static func currencyCount(_ count: Int) -> String {
-        "Tabulka má " + ComputationBuilder.counted(count, "měnu", "měny", "měn") + "."
+        let currencies = CzechCount.counted(
+            count, one: "měnu", few: "měny", many: "měn", separator: CzechFormat.noBreakSpace)
+        return "Tabulka má " + currencies + "."
     }
 
     /// What `found` has more and less than `previous`, the currencies of the table of `previousYear`.

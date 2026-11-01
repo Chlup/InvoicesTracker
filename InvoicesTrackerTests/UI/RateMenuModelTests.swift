@@ -49,7 +49,7 @@ struct RateMenuModelTests {
 
         let items = try #require(menu.content?.items)
         let daily = try await app.computeSelectedYear().liabilityTotal
-        #expect(items[0].comparison?.hasPrefix("daň a pojistné \(CzechFormat.wholeKc(daily)) · o ") == true)
+        #expect(items[0].comparison?.hasPrefix("odvody \(CzechFormat.wholeKc(daily)) · o ") == true)
         #expect(items[0].comparison?.hasSuffix(" méně") == true)
         #expect(items[1].comparison?.hasSuffix(" více") == true)
         #expect(items.map(\.isChecked) == [true, false])

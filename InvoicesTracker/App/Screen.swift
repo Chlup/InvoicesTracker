@@ -8,7 +8,6 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
     case computation
     case prediction
     case clients
-    case templates
     case simulator
     case settings
     case importer
@@ -22,7 +21,6 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
         case .computation: "Výpočet"
         case .prediction: "Odhad odvodů"
         case .clients: "Odběratelé"
-        case .templates: "Šablony faktur"
         case .simulator: "Simulátor"
         case .settings: "Nastavení"
         case .importer: "Import"
@@ -39,7 +37,8 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
     /// and the year converts its income in other currencies by `incomeFX` (`YearFXState.effective`), which Faktury
     /// names. `today` is the day Odhad odvodů makes its estimate as of: it names it, whatever `asOf` is. The money
     /// of the current year is received up to `today` even though the cutoff reaches the end of the month, so the lines
-    /// that name the day of the income name `min(asOf, today)` there.
+    /// that name the day of the income name `min(asOf, today)` there. The title is the name of the screen in the
+    /// sidebar (`title`), except that of Import, which reads Import faktur.
     func header(year: Int, asOf: CivilDate, today: CivilDate, incomeFX: IncomeFXMethod) -> ScreenHeader {
         let ofYear = "Rok \(year) · "
         let received = asOf.year == today.year ? min(asOf, today) : asOf
@@ -48,16 +47,15 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
             return ScreenHeader(
                 title: "Přehled", subtitle: ofYear + "příjmy od 1.\u{00A0}1. do " + CzechFormat.date(received))
         case .invoices:
-            let conversion = incomeFX == .uniform ? "platby roku \(year) jednotným kurzem" : "kurzem ČNB ke dni platby"
-            return ScreenHeader(
-                title: "Faktury",
-                subtitle: ofYear + "bez DPH a v Kč (" + conversion + ") · čistý příjem po dani a pojistném")
+            let conversion =
+                incomeFX == .uniform ? "jednotným kurzem" : "kurzem ČNB ke dni platby, nezaplacené ke dni vystavení"
+            return ScreenHeader(title: "Faktury", subtitle: ofYear + "částky bez DPH, v Kč " + conversion)
         case .advances:
             return ScreenHeader(
                 title: "Zálohy a odpočty", subtitle: ofYear + "zálohy po měsících, odpočty a slevy na dani")
         case .computation:
             return ScreenHeader(
-                title: "Rozpis výpočtu",
+                title: "Výpočet",
                 subtitle: ofYear + "k " + CzechFormat.date(received) + " · " + Self.rulesText(year: year))
         case .prediction:
             // A year is over for the prediction from its last day on: then nothing is estimated any more.
@@ -65,14 +63,12 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
             let line =
                 isOver
                 ? "skutečnost za celý rok"
-                : "odhad příjmů, daně a pojistného za celý rok z faktur do " + CzechFormat.date(today)
+                : "odhad příjmů a odvodů za celý rok z faktur do " + CzechFormat.date(today)
             return ScreenHeader(title: "Odhad odvodů", subtitle: ofYear + line)
         case .clients:
-            return ScreenHeader(title: "Odběratelé", subtitle: "Výchozí měna, DPH, platba a splatnost pro nové faktury")
-        case .templates:
-            return ScreenHeader(title: "Šablony faktur", subtitle: "Opakované faktury jedním klikem")
+            return ScreenHeader(title: "Odběratelé", subtitle: "Výchozí údaje a šablony pro nové faktury")
         case .simulator:
-            return ScreenHeader(title: "Simulátor", subtitle: "Kolik zaplatíte na dani a pojistném při zvoleném příjmu")
+            return ScreenHeader(title: "Simulátor", subtitle: "Kolik zaplatíte na odvodech při zvoleném příjmu")
         case .settings:
             return ScreenHeader(title: "Nastavení", subtitle: "Aplikace, moje údaje, zabezpečení a rok \(year)")
         case .importer:

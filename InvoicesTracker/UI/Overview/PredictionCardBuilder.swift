@@ -1,8 +1,8 @@
 import Foundation
 
 /// The card "Odhad za celý rok" of Přehled: the estimate of the current year in a head, a line under it and four
-/// figures, and under them the chart of the year's twelve months. The pill "odhad" beside the head is always there, so
-/// the data does not say so.
+/// figures, and under them the chart of the year's twelve months. The whole card is an estimate, as its head says, so
+/// no figure on it carries a sign of one.
 nonisolated struct PredictionCardData: Sendable, Hashable {
     /// "Odhad za celý rok 2026".
     var head: String
@@ -24,8 +24,8 @@ nonisolated struct PredictionCardData: Sendable, Hashable {
 /// The card of Přehled that gives the estimate of the year in four figures and leaves the rest to Odhad odvodů.
 nonisolated extension PredictionBuilder {
     /// The card for `outcome`, the estimate of a year in progress, as of the day it was made, `prediction.now`. Every
-    /// figure is an estimate and has the sign "≈" in front of it, followed by a no-break space; the lines under the
-    /// figures have none. A year that is over has no card, and the caller leaves it out.
+    /// figure is an estimate, which the head of the card says, so none of them has the sign "≈" in front of it. A year
+    /// that is over has no card, and the caller leaves it out.
     static func card(_ outcome: PredictionOutcome) -> PredictionCardData {
         let prediction = outcome.prediction
         guard prediction.isComplete else {
@@ -35,8 +35,8 @@ nonisolated extension PredictionBuilder {
                     PredictionMini(
                         label: "Příjmy za rok", value: "—",
                         sub: "z toho přišlo " + kc(ofHalere: prediction.receivedHalere)),
-                    PredictionMini(label: "Daň a pojistné", value: "—", sub: incompleteText),
-                    PredictionMini(label: "Doplatek s přiznáním", value: "—", sub: incompleteText),
+                    PredictionMini(label: "Odvody", value: "—", sub: incompleteText),
+                    PredictionMini(label: "Doplatek", value: "—", sub: incompleteText),
                     PredictionMini(label: "Čistý příjem průměrně za měsíc", value: "—", sub: incompleteText),
                 ])
         }
@@ -52,11 +52,11 @@ nonisolated extension PredictionBuilder {
     /// The income of the whole year, and how much of it has come.
     private static func incomeStat(_ prediction: IncomePrediction) -> PredictionMini {
         PredictionMini(
-            label: "Příjmy za rok", value: estimateSign + kc(ofHalere: prediction.incomeHalere),
+            label: "Příjmy za rok", value: kc(ofHalere: prediction.incomeHalere),
             sub: "z toho přišlo " + kc(ofHalere: prediction.receivedHalere))
     }
 
-    /// The tax and the insurance of the year together, beside it the share of the income they take
+    /// The tax and the insurance of the year together, "Odvody", beside it the share of the income they take
     /// (`PredictionBuilder.leviesShare(_:)`), and what each authority takes of it, without the currency. A tax below
     /// zero is a bonus that the tax office pays, and reads so in place of the tax.
     private static func leviesStat(_ result: TaxResult) -> PredictionMini {
@@ -65,22 +65,22 @@ nonisolated extension PredictionBuilder {
         let social = CzechFormat.grouped(result.balance(.social).liability)
         let health = CzechFormat.grouped(result.balance(.health).liability)
         return PredictionMini(
-            label: "Daň a pojistné", value: estimateSign + CzechFormat.wholeKc(result.liabilityTotal),
+            label: "Odvody", value: CzechFormat.wholeKc(result.liabilityTotal),
             share: leviesShare(result), sub: "\(taxText) · sociální \(social) · zdravotní \(health)")
     }
 
-    /// What is left to pay with the returns, after the advances of the whole year; or, when nothing is owed and the
-    /// advances pay more than the levies, what is overpaid. An overpayment at one authority does not lower what another
-    /// is owed, so a year with both is a sum to pay (as in the summary of Odhad odvodů).
+    /// What is left to pay with the returns, "Doplatek", after the advances of the whole year; or, when nothing is owed
+    /// and the advances pay more than the levies, what is overpaid, "Přeplatek". An overpayment at one authority does
+    /// not lower what another is owed, so a year with both is a sum to pay (as in the result card of Odhad odvodů).
     private static func settlementStat(_ outcome: PredictionOutcome) -> PredictionMini {
         let owed = outcome.owedTotal
         let overpaid = outcome.overpaidTotal
         guard owed > 0 || overpaid == 0 else {
             return PredictionMini(
-                label: "Přeplatek", value: estimateSign + CzechFormat.wholeKc(overpaid), sub: "zálohy převýší odvody")
+                label: "Přeplatek", value: CzechFormat.wholeKc(overpaid), sub: "zálohy převýší odvody")
         }
         return PredictionMini(
-            label: "Doplatek s přiznáním", value: estimateSign + CzechFormat.wholeKc(owed),
+            label: "Doplatek", value: CzechFormat.wholeKc(owed),
             sub: "po zálohách " + CzechFormat.wholeKc(outcome.result.advancesPaidTotal) + " za celý rok")
     }
 
@@ -90,7 +90,7 @@ nonisolated extension PredictionBuilder {
     private static func netIncomeStat(_ result: TaxResult) -> PredictionMini {
         let net = NetIncome(result)
         return PredictionMini(
-            label: "Čistý příjem průměrně za měsíc", value: estimateSign + CzechFormat.wholeKc(net.monthlyKc),
+            label: "Čistý příjem průměrně za měsíc", value: CzechFormat.wholeKc(net.monthlyKc),
             sub: "za celý rok " + CzechFormat.wholeKc(net.yearKc))
     }
 }

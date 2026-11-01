@@ -286,16 +286,16 @@ struct InvoiceEditorKeepingTests {
         }
     }
 
-    @Test func spravovatSablonyKeepsTheInvoiceThatWasBeingWritten() async throws {
+    @Test func theChooserLinkToOdberateleKeepsTheInvoiceThatWasBeingWritten() async throws {
         try await EditorFixture.with { f in
             let editor = try await editorOfANewInvoice(f)
             let chooser = NewInvoiceChooserModel(app: f.app)
             f.app.editorRequest = .chooser
 
-            chooser.manageTemplates()
+            chooser.showClients()
 
-            // The templates are shown, and the invoice is there when Faktury is.
-            #expect(f.app.screen == .templates)
+            // Odběratelé is shown, and the invoice is there when Faktury is.
+            #expect(f.app.screen == .clients)
             #expect(f.app.pendingDiscard == nil)
             #expect(f.app.editorRequest == .new(templateID: f.dollarTemplate.id))
             #expect(f.app.editor === editor)

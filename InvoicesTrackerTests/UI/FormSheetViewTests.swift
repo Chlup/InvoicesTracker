@@ -6,8 +6,9 @@ import Testing
 /// The sheets of the forms of a client and of a template, shown in a window with what they load (the currencies, the
 /// clients): they are 620 points wide, as the other sheets of the app are, and never taller than the window that
 /// carries them, however much they hold. A hosting view that is in no window never runs the `.task` of its content, so
-/// the sheets are measured in one. The row of the template form that names the bank account, and the box that asks
-/// before a template is deleted, are read as VoiceOver reads them.
+/// the sheets are measured in one. The row of the template form that names the bank account, the box that asks before
+/// a template is deleted, the line of the preview under the first description, the chips of the clients and the
+/// buttons of the template form are read as VoiceOver reads them.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct FormSheetViewTests {
@@ -45,7 +46,7 @@ struct FormSheetViewTests {
             try await storePoundRate(in: f.database)
             let model = ClientFormModel(app: f.app, client: try await f.storedClient(f.bravoID))
 
-            try await inWindow(ClientForm(model: model, cancel: {}, saved: {})) { hosting, window in
+            try await inWindow(ClientForm(model: model, cancel: {}, saved: { _ in })) { hosting, window in
                 try await waitUntil { model.currencies.count == 4 }
 
                 let size = try await sheetSize(of: hosting, in: window)
@@ -64,7 +65,7 @@ struct FormSheetViewTests {
             model.email = "x"
             model.dueDaysText = "x"
 
-            try await inWindow(ClientForm(model: model, cancel: {}, saved: {})) { hosting, window in
+            try await inWindow(ClientForm(model: model, cancel: {}, saved: { _ in })) { hosting, window in
                 try await waitUntil { model.currencies.count == 4 }
                 let withoutErrors = try await sheetSize(of: hosting, in: window)
                 await #expect(throws: FormSaveError.invalid) { try await model.save() }
@@ -184,6 +185,112 @@ struct FormSheetViewTests {
                 #expect(model.errors.count > 10 && model.confirmsDeletion)
                 #expect(size.width == 620)
                 #expect(size.height <= 700, "The sheet is \(size.height) points tall")
+            }
+        }
+    }
+
+    // MARK: The parts of the template form
+
+    /// What a description may hold is said at the end of the line of the preview under the first description, and in
+    /// no line of its own under the items. The form takes the focus in its name field, so the test takes its turn among
+    /// the tests that type into a window (`whileTypingAlone`).
+    @Test func theTemplateFormSaysWhatADescriptionMayHoldAtTheEndOfThePreview() async throws {
+        try await whileTypingAlone {
+            try await ClientsFixture.with { f in
+                let model = TemplateFormModel(app: f.app, template: nil)
+                let form = TemplateForm(model: model, cancel: {}, finished: {})
+                // Today is 17. 10. 2026: the preview is for the end of October.
+                let line = "Náhled: Vývoj – říjen 2026 · {měsíc}, {rok}, {month} a {year} se doplní podle DUZP"
+
+                try await withHostedView(form, size: CGSize(width: 700, height: 900)) { window in
+                    try await withAccessibilityElements {
+                        try await waitUntil { frameOfText(startingWith: line, in: window) != nil }
+
+                        #expect(frameOfText(startingWith: "V popisu lze použít", in: window) == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The form of a stored template chooses its client among filter chips of 28 points, its own client's selected,
+    /// and its buttons are the capsules of a dialog, 32 points high: Smazat šablonu at the leading end, then Zrušit
+    /// and Uložit šablonu at the trailing end. The form takes the focus in a field, so the test takes its turn among
+    /// the tests that type into a window (`whileTypingAlone`).
+    @Test func theTemplateFormChoosesItsClientWithChipsAndHasTheButtonsOfADialog() async throws {
+        try await whileTypingAlone {
+            try await ClientsFixture.with { f in
+                let stored = try await f.store(ClientsFixture.template(for: f.bravoID, name: "Služby pro Bravo"))
+                let model = TemplateFormModel(app: f.app, template: stored)
+                let form = TemplateForm(model: model, cancel: {}, finished: {})
+
+                try await withHostedView(form, size: CGSize(width: 700, height: 900)) { window in
+                    try await withAccessibilityElements {
+                        try await waitUntil { accessibilityButton(labelled: "Alfa Systems s.r.o.", in: window) != nil }
+                        @MainActor func frame(of label: String) throws -> CGRect {
+                            try #require(accessibilityButton(labelled: label, in: window)?.accessibilityFrame?())
+                        }
+
+                        let bravo = try #require(accessibilityButton(labelled: "Bravo Labs, Inc.", in: window))
+                        let alfa = try #require(accessibilityButton(labelled: "Alfa Systems s.r.o.", in: window))
+                        #expect(bravo.isAccessibilitySelected?() == true)
+                        #expect(alfa.isAccessibilitySelected?() != true)
+                        for chip in ["Alfa Systems s.r.o.", "Bravo Labs, Inc."] {
+                            let height = try frame(of: chip).height
+                            #expect((height - DesignMetrics.smallControlHeight).magnitude < 0.5, "\(chip): \(height)")
+                        }
+                        for button in ["Smazat šablonu", "Zrušit", "Uložit šablonu"] {
+                            let height = try frame(of: button).height
+                            let off = (height - DesignMetrics.regularControlHeight).magnitude
+                            #expect(off < 0.5, "\(button): \(height)")
+                        }
+                        #expect(try frame(of: "Smazat šablonu").maxX < frame(of: "Zrušit").minX)
+                        #expect(try frame(of: "Zrušit").maxX < frame(of: "Uložit šablonu").minX)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The buttons of the form of a client are the capsules of a dialog, as those of the other sheets are, 32 points
+    /// high: Zrušit on the grey fill and Uložit odběratele in the accent, at the trailing end. The form takes the focus
+    /// in a field, so the test takes its turn among the tests that type into a window (`whileTypingAlone`).
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theClientFormHasTheButtonsOfADialog(scheme: ColorScheme) async throws {
+        try await whileTypingAlone {
+            try await ClientsFixture.with { f in
+                let model = ClientFormModel(app: f.app, client: try await f.storedClient(f.bravoID))
+                let form = ClientForm(model: model, cancel: {}, saved: { _ in })
+
+                try await withHostedView(form, size: CGSize(width: 700, height: 900)) { window in
+                    window.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+                    try await withAccessibilityElements {
+                        try await waitUntil { accessibilityButton(labelled: "Uložit odběratele", in: window) != nil }
+                        try await layOut(window)
+                        @MainActor func frame(of label: String) throws -> CGRect {
+                            try #require(accessibilityButton(labelled: label, in: window)?.accessibilityFrame?())
+                        }
+
+                        for button in ["Zrušit", "Uložit odběratele"] {
+                            let height = try frame(of: button).height
+                            let off = (height - DesignMetrics.regularControlHeight).magnitude
+                            #expect(off < 0.5, "\(scheme): \(button) is \(height) points tall")
+                        }
+                        #expect(try frame(of: "Zrušit").maxX < frame(of: "Uložit odběratele").minX)
+
+                        let picture = try OffscreenPicture(of: window)
+                        let cancel = try pictureFrame(ofScreenFrame: frame(of: "Zrušit"), in: window)
+                        let save = try pictureFrame(ofScreenFrame: frame(of: "Uložit odběratele"), in: window)
+                        let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                        let accent = try OffscreenPicture.bytes(of: Palette.accent, in: scheme)
+                        let onFill = picture.extent(near: fill, in: cancel.insetBy(dx: -2, dy: -2), by: 2)
+                        let inAccent = picture.extent(near: accent, in: save.insetBy(dx: -2, dy: -2), by: 2)
+                        #expect(onFill != nil, "\(scheme): Zrušit is not on the grey fill")
+                        #expect(inAccent != nil, "\(scheme): Uložit odběratele is not in the accent")
+                        let capsule = try #require(inAccent, "\(scheme): no accent capsule")
+                        #expect(abs(capsule.height - DesignMetrics.regularControlHeight) <= 1.5, "\(capsule)")
+                    }
+                }
             }
         }
     }
@@ -334,6 +441,61 @@ struct FormSheetViewTests {
                         try await waitUntil { calls.finished == 1 }
                         #expect(try await f.database.templates().isEmpty)
                     }
+                }
+            }
+        }
+    }
+
+    /// The red box that asks before what cannot be undone is a panel of the red tint with the question in bold red text
+    /// and two capsules: Zrušit on the grey fill, and the answer that does it in solid red. The capsules are 32 points
+    /// tall as the buttons of a sheet are, and 28 where the box stands in a card and is told so with a small control.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theQuestionOfABoxIsARedPanelWithTwoCapsules(scheme: ColorScheme) async throws {
+        func box(_ size: String) -> some View {
+            ConfirmationBox(
+                title: "Smazat \(size)?", message: "Nejde to vrátit zpět.", cancelTitle: "Zrušit \(size)", cancel: {},
+                confirmTitle: "Smazat \(size)", confirm: {})
+        }
+        let boxes = VStack(spacing: 24) {
+            box("velké")
+            box("malé").controlSize(.small)
+        }
+        .padding(24)
+        .background(Palette.bgCard)
+
+        try await withHostedView(boxes, size: CGSize(width: 520, height: 400)) { window in
+            window.appearance = appearance(of: scheme)
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Smazat malé", in: window) != nil }
+                try await layOut(window)
+                let picture = try OffscreenPicture(of: window)
+                let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                let red = try OffscreenPicture.bytes(of: Palette.red, in: scheme)
+                let redText = try OffscreenPicture.bytes(of: Palette.redText, in: scheme)
+                let tint = try OffscreenPicture.bytes(of: Palette.redTint, in: scheme)
+
+                for (size, height) in [("velké", CGFloat(32)), ("malé", CGFloat(28))] {
+                    let confirm = try pictureFrame(
+                        ofScreenFrame: try #require(
+                            accessibilityButton(labelled: "Smazat \(size)", in: window)?.accessibilityFrame?()),
+                        in: window)
+                    let cancel = try pictureFrame(
+                        ofScreenFrame: try #require(
+                            accessibilityButton(labelled: "Zrušit \(size)", in: window)?.accessibilityFrame?()),
+                        in: window)
+                    #expect(abs(confirm.height - height) < 0.5, "Smazat \(size) is \(confirm.height) points tall")
+                    #expect(abs(cancel.height - height) < 0.5, "Zrušit \(size) is \(cancel.height) points tall")
+                    #expect(pixelIs(red, at: CGPoint(x: confirm.minX + 8, y: confirm.midY), in: picture))
+                    #expect(pixelIs(fill, at: CGPoint(x: cancel.minX + 8, y: cancel.midY), in: picture))
+                    let title = try pictureFrame(
+                        ofScreenFrame: try #require(frameOfText(startingWith: "Smazat \(size)?", in: window)),
+                        in: window)
+                    #expect(
+                        picture.count(near: redText, in: title, by: 6) > 10,
+                        "\(scheme): the question is not in the red text")
+                    #expect(
+                        pixelIs(tint, at: CGPoint(x: title.minX - 8, y: title.midY), in: picture),
+                        "\(scheme): the question is not on the red tint")
                 }
             }
         }

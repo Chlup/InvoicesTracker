@@ -83,22 +83,12 @@ nonisolated enum WelcomeTexts {
 
     /// "13 faktur", "1 faktura", "2 faktury".
     static func invoiceCount(_ count: Int) -> String {
-        counted(count, one: "faktura", few: "faktury", many: "faktur")
+        CzechCount.counted(count, one: "faktura", few: "faktury", many: "faktur")
     }
 
     /// "3 odběratelé", "1 odběratel", "5 odběratelů".
     static func clientCount(_ count: Int) -> String {
-        counted(count, one: "odběratel", few: "odběratelé", many: "odběratelů")
-    }
-
-    private static func counted(_ count: Int, one: String, few: String, many: String) -> String {
-        let noun =
-            switch count {
-            case 1: one
-            case 2...4: few
-            default: many
-            }
-        return CzechFormat.grouped(Int64(count)) + " " + noun
+        CzechCount.counted(count, one: "odběratel", few: "odběratelé", many: "odběratelů")
     }
 
     /// "vytvořena 16. 10. 2026 ve 21:14 na Macu „Jméno“": the day and the time of the backup in `timeZone`, and the

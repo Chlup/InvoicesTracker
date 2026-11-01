@@ -21,12 +21,13 @@ nonisolated struct LevyEstimate: Sendable, Hashable {
 nonisolated struct InvoiceDetailInput: Sendable {
     var invoice: Invoice
 
-    /// The day the screen is shown as of ("K datu"). It decides whether a payment counts yet, and a payment from
-    /// another year than this day is written with its year.
+    /// The day the screen is shown as of: the day the money of the year counts up to, which is today in the current
+    /// year and the last day of another. A payment from another year than this day is written with its year, and a
+    /// rate that is not declared by this day is said to come.
     var asOf: CivilDate
 
     /// The day the status is worked out for: today, whatever year or day the screen is shown as of. It decides the
-    /// status of the invoice and the pill that says it.
+    /// status of the invoice and the pill that says it, and whether a payment is dated later than that day.
     var statusDay: CivilDate
 
     /// The ČNB rate that stands for the DUZP: for a draft, the one that would be fixed on it now (a draft shows that
@@ -42,13 +43,6 @@ nonisolated struct InvoiceDetailInput: Sendable {
 }
 
 // MARK: - Output
-
-/// A line of the facts under the amount: a label with its value, and a smaller line under the value.
-nonisolated struct DetailFact: Sendable, Hashable {
-    var label: String
-    var value: String
-    var note: String?
-}
 
 /// What one authority takes of a payment: its name, the colour of it is the view's, and the amount with its sign.
 nonisolated struct EffectRow: Sendable, Hashable, Identifiable {
@@ -89,7 +83,8 @@ nonisolated struct PaymentDetail: Sendable, Hashable {
     /// How it was converted: "kurz ČNB ke dni přijetí 21,305".
     var note: String
 
-    /// Why the payment does not count yet, when it is after the day shown.
+    /// "Platba má datum po dnešku – do příjmů se započítá až ten den.", when the payment is dated after today: the
+    /// money has not come yet, whatever year the screen shows. A payment dated today or before has no note.
     var laterNote: String?
 
     var effect: LevyEffectDetail?
@@ -122,7 +117,8 @@ nonisolated struct InvoiceDetail: Sendable, Hashable {
     /// One line per item: "205 h × 70,00 USD · Software development".
     var itemLines: [String]
 
-    /// Vystaveno, DUZP, Splatnost, Platba, DPH and, for an invoice in a foreign currency, Kurz ČNB k DUZP.
+    /// Vystaveno, DUZP, Splatnost, Platba, DPH and, for an invoice in a foreign currency, Kurz ČNB k DUZP. A fact with
+    /// nothing to say is left out: an invoice without a method of payment has no Platba.
     var facts: [DetailFact]
     var payment: PaymentDetail?
 
@@ -135,8 +131,8 @@ nonisolated struct InvoiceDetail: Sendable, Hashable {
     /// Whether the invoice can be issued: it is a draft.
     var canIssue: Bool
 
-    /// Whether the invoice can be marked paid: it is issued and has no payment, of whatever day. A payment that the day
-    /// shown has not reached yet is a payment, so it cannot be marked paid again.
+    /// Whether the invoice can be marked paid: it is issued and has no payment, of whatever day. A payment dated after
+    /// today is a payment, so the invoice cannot be marked paid again.
     var canPay: Bool
 
     /// Whether the payment of the invoice can be changed, its day or how it was converted: it has a payment and is not
@@ -145,7 +141,7 @@ nonisolated struct InvoiceDetail: Sendable, Hashable {
     var canEditPayment: Bool
 
     /// Whether the invoice can be edited: it has no payment. A paid invoice stays as it was paid, and only its payment
-    /// can be changed (`canEditPayment`).
+    /// can be changed (`canEditPayment`); the detail has no button Upravit for it.
     var canEdit: Bool
 }
 
@@ -164,9 +160,26 @@ nonisolated struct InvoiceDeletionSummary: Sendable, Hashable {
     var lines: [String]
 }
 
+/// What the step of the payment sheet that removes the payment of an invoice says.
+nonisolated struct PaymentRemovalSummary: Sendable, Hashable {
+    /// "Odebrat platbu faktury 20260601?"
+    var title: String
+
+    /// "Bravo Labs, Inc. · zaplaceno 7. 7. 2026 · 13 720,00 USD": the client, the day of the payment and the amount
+    /// of the invoice with VAT, in its currency.
+    var subtitle: String
+
+    /// The number to type to confirm.
+    var number: String
+
+    /// What removing the payment does, one sentence each.
+    var lines: [String]
+}
+
 // MARK: - Builder
 
-/// Turns an invoice into the texts of its detail and of the dialog that deletes it.
+/// Turns an invoice into the texts of its detail, of the dialog that deletes it and of the step that removes its
+/// payment.
 nonisolated enum InvoiceDetailBuilder {
     static func build(_ input: InvoiceDetailInput) -> InvoiceDetail {
         let invoice = input.invoice
@@ -177,7 +190,9 @@ nonisolated enum InvoiceDetailBuilder {
             total: money(invoice.totalMinor, invoice.currency),
             itemLines: invoice.items.map { itemLine($0, currency: invoice.currency) },
             facts: facts(of: invoice, duzpRate: input.duzpRate, asOf: input.asOf),
-            payment: invoice.payment.map { payment($0, of: invoice, asOf: input.asOf, effect: input.paymentEffect) },
+            payment: invoice.payment.map {
+                payment($0, of: invoice, today: input.statusDay, effect: input.paymentEffect)
+            },
             estimate: invoice.payment == nil
                 ? input.estimate.map { estimateText($0, isDraft: invoice.status == .draft) } : nil,
             reviewNote: invoice.review.map { reviewNote($0, isPaid: invoice.payment != nil) },
@@ -215,6 +230,33 @@ nonisolated enum InvoiceDetailBuilder {
         return InvoiceDeletionSummary(
             title: "Smazat fakturu \(invoice.number)?", subtitle: "\(invoice.client.name) · \(total)",
             number: invoice.number, lines: lines)
+    }
+
+    /// What the step of the payment sheet that removes the payment of `invoice` says: that the invoice will be unpaid
+    /// and editable again, what income of the year of the payment goes with it, and that a return or a report that
+    /// holds the payment has to be corrected too. `effect` is what the payment adds to the levies of its year, the
+    /// "Dopad na odvody" of the detail, for a payment that counts as income; without it the sentence about the income
+    /// leaves the levies out. The payment of an invoice that does not count as income (one to check) takes no income
+    /// away, so that sentence is left out; so is it, with the day in the sub-line, for an invoice without a payment.
+    static func paymentRemoval(of invoice: Invoice, effect: ReceiptEffect?) -> PaymentRemovalSummary {
+        var subtitle = invoice.client.name
+        var lines = ["Faktura bude znovu nezaplacená a půjde upravit."]
+        if let payment = invoice.payment {
+            subtitle += " · zaplaceno \(CzechFormat.date(payment.date))"
+            if countsAsIncome(invoice) {
+                var line =
+                    "Příjem za rok \(payment.date.year) klesne o \(CzechFormat.halere(payment.czkNetHalere))"
+                if let effect {
+                    line += " a odvody o \(CzechFormat.wholeKc(effect.total))"
+                }
+                lines.append(line + ".")
+            }
+        }
+        lines.append("Pokud jste platbu už uvedli v přiznání nebo v přehledech, opravte ji i tam.")
+        return PaymentRemovalSummary(
+            title: "Odebrat platbu faktury \(invoice.number)?",
+            subtitle: subtitle + " · " + money(invoice.totalMinor, invoice.currency), number: invoice.number,
+            lines: lines)
     }
 
     // MARK: What an effect says
@@ -280,6 +322,9 @@ nonisolated enum InvoiceDetailBuilder {
 
     // MARK: Pieces
 
+    /// What the detail says of a payment that is dated after today (`PaymentDetail.laterNote`).
+    private static let laterNoteText = "Platba má datum po dnešku – do příjmů se započítá až ten den."
+
     /// Whether the invoice is income once it is paid: it is issued, and not held for review.
     static func countsAsIncome(_ invoice: Invoice) -> Bool {
         invoice.status == .issued && invoice.review == nil
@@ -302,6 +347,10 @@ nonisolated enum InvoiceDetailBuilder {
             description: item.description)
     }
 
+    /// The facts of the invoice, as the design lists them. A fact whose value is empty is left out, as the design has
+    /// it ("empty ones left out"): an invoice without a method of payment has no "Platba", where it once had a dash.
+    /// The rate of the DUZP is another matter: while it is not known it stays as a dash with the reason under it, which
+    /// is something only the app has to say.
     private static func facts(of invoice: Invoice, duzpRate: StoredRate?, asOf: CivilDate) -> [DetailFact] {
         let vat = invoice.vatMinor
         let method = invoice.paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -309,10 +358,11 @@ nonisolated enum InvoiceDetailBuilder {
             DetailFact(label: "Vystaveno", value: CzechFormat.date(invoice.issueDate)),
             DetailFact(label: "DUZP", value: CzechFormat.date(invoice.duzp)),
             DetailFact(label: "Splatnost", value: CzechFormat.date(invoice.dueDate)),
-            DetailFact(label: "Platba", value: method.isEmpty ? "—" : method),
+            DetailFact(label: "Platba", value: method),
             DetailFact(
                 label: "DPH", value: invoice.vatMode.label + (vat == 0 ? "" : " · " + money(vat, invoice.currency))),
         ]
+        .filter { !$0.value.isEmpty }
         if invoice.isForeignCurrency {
             facts.append(rateFact(of: invoice, duzpRate: duzpRate, asOf: asOf))
         }
@@ -325,10 +375,10 @@ nonisolated enum InvoiceDetailBuilder {
     private static func rateFact(of invoice: Invoice, duzpRate: StoredRate?, asOf: CivilDate) -> DetailFact {
         let isDraft = invoice.status == .draft
         let label = "Kurz ČNB k DUZP"
-        let laterNote = isDraft ? ["při vystavení se zafixuje"] : []
+        let fixedOnIssue = isDraft ? ["při vystavení se zafixuje"] : []
         let known = isDraft ? duzpRate : (invoice.invoiceRate ?? duzpRate)
         guard let known, known.rate.currency == invoice.currency, known.rate.amount > 0 else {
-            let note = (["kurz ČNB zatím není k dispozici"] + laterNote).joined(separator: " · ")
+            let note = (["kurz ČNB zatím není k dispozici"] + fixedOnIssue).joined(separator: " · ")
             return DetailFact(label: label, value: "—", note: note)
         }
         let crowns = known.rate.czkHalere(fromMinor: invoice.netMinor)
@@ -348,11 +398,14 @@ nonisolated enum InvoiceDetailBuilder {
         } else {
             note = "kurz k DUZP nebyl vyhlášen – platí kurz vyhlášený \(declared)"
         }
-        return DetailFact(label: label, value: value, note: ([note] + laterNote).joined(separator: " · "))
+        return DetailFact(label: label, value: value, note: ([note] + fixedOnIssue).joined(separator: " · "))
     }
 
+    /// The payment of `invoice` as the detail says it. The note that it is dated later is for a payment dated after
+    /// `today`, whatever year or day the screen is shown as of: the money of a past year's invoice that came in January
+    /// is not later than today.
     private static func payment(
-        _ payment: Payment, of invoice: Invoice, asOf: CivilDate, effect: ReceiptEffect?
+        _ payment: Payment, of invoice: Invoice, today: CivilDate, effect: ReceiptEffect?
     ) -> PaymentDetail {
         let rate = payment.rate.map { CzechFormat.rate($0.rate.rate) }
         let note: String
@@ -373,7 +426,7 @@ nonisolated enum InvoiceDetailBuilder {
         return PaymentDetail(
             line: "\(CzechFormat.date(payment.date)) · \(money(invoice.totalMinor, invoice.currency))",
             crowns: (payment.provisional ? "≈ " : "") + CzechFormat.halere(payment.czkNetHalere), note: note,
-            laterNote: payment.date > asOf ? "Platba je až po zvoleném datu, zatím se nepočítá." : nil,
+            laterNote: payment.date > today ? laterNoteText : nil,
             effect: effect.map { levyEffect($0, of: payment) },
             netIncome: effect.map { netIncome(of: payment, after: $0) })
     }
@@ -435,18 +488,5 @@ nonisolated enum InvoiceDetailBuilder {
         let why = reason.isEmpty ? "Ke kontrole." : "Ke kontrole: \(reason)."
         let resolution = isPaid ? "smažte ji." : "označte ji jako uhrazenou nebo ji smažte."
         return why + " Faktura se nezapočítává do příjmů, dokud ji nevyřešíte – " + resolution
-    }
-}
-
-// MARK: - Titles
-
-nonisolated extension Authority {
-    /// The name of the authority: "Daň z příjmů", "Sociální pojištění", "Zdravotní pojištění".
-    var title: String {
-        switch self {
-        case .tax: "Daň z příjmů"
-        case .social: "Sociální pojištění"
-        case .health: "Zdravotní pojištění"
-        }
     }
 }

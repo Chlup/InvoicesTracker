@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// What the list of Faktury is read from, in one call, and the deletion that needs the number typed. The data is the
-/// sample year 2026 with invented clients, a crown invoice of Alfa from September 2025 and the ČNB rates of the
-/// fixtures, which end on 16. 10. 2026.
+/// What the list of Faktury is read from, in one call, and the deletion and the removal of a payment that need the
+/// number typed. The data is the sample year 2026 with invented clients, a crown invoice of Alfa from September 2025
+/// and the ČNB rates of the fixtures, which end on 16. 10. 2026.
 struct InvoiceListRepositoryTests {
     // MARK: Helpers
 
@@ -140,6 +140,84 @@ struct InvoiceListRepositoryTests {
         defer { removeTemporaryDirectory(directory) }
 
         #expect(try await database.deleteInvoice(id: 999, confirmedBy: "20260501") == nil)
+    }
+
+    // MARK: Removing a payment with the number typed
+
+    /// The payment goes only for the number of the invoice or its digits, and the invoice is issued and unpaid again.
+    /// A text that is not the number, an invoice without a payment and an invoice that is not there remove nothing and
+    /// write nothing.
+    @Test func removingAPaymentNeedsTheInvoiceNumber() async throws {
+        let (database, directory) = try await makeSampleDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let paid = try #require(try await database.invoice(id: 5))
+        #expect(paid.payment != nil)
+        let writesBefore = await database.writeCount
+
+        #expect(try await database.removePayment(ofInvoice: 5, confirmedBy: "20260502") == nil)
+        #expect(try await database.removePayment(ofInvoice: 5, confirmedBy: "") == nil)
+        #expect(try await database.removePayment(ofInvoice: 5, confirmedBy: "2026") == nil)
+        #expect(try await database.removePayment(ofInvoice: 999, confirmedBy: "20260501") == nil)
+        #expect(await database.writeCount == writesBefore)
+        #expect(try await database.invoice(id: 5) == paid)
+
+        // 2026-05-01 typed as its digits: the invoice comes back as it was, with the payment that was removed.
+        let removed = try await database.removePayment(ofInvoice: 5, confirmedBy: " 20260501 ")
+
+        #expect(removed == paid)
+        #expect(await database.writeCount == writesBefore + 1)
+        var unpaid = paid
+        unpaid.payment = nil
+        #expect(try await database.invoice(id: 5) == unpaid)
+        #expect(try await database.invoice(id: 5)?.status == .issued)
+        // There is no payment left to remove.
+        #expect(try await database.removePayment(ofInvoice: 5, confirmedBy: "2026-05-01") == nil)
+        #expect(await database.writeCount == writesBefore + 1)
+        // The number as it is written removes a payment too.
+        #expect(try await database.removePayment(ofInvoice: 4, confirmedBy: "2026-04-01")?.number == "2026-04-01")
+        #expect(try await database.invoice(id: 4)?.payment == nil)
+        #expect(try await database.invoice(id: 3)?.payment != nil)
+    }
+
+    /// The payment of an invoice imported from Fakturoid is removed as any change made in the app is made: the invoice
+    /// is marked as changed in the app, so that the next import of the same export keeps it unpaid.
+    @Test func removingThePaymentOfAnImportedInvoiceMarksItChangedInTheApp() async throws {
+        let (database, directory) = try await makeSampleDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        var imported = SearchFixtures.crownInvoice()
+        imported.number = "20261003"
+        imported.source = .imported(fakturoidID: "F-3", fingerprint: "row-3", changedInApp: false)
+        imported.id = try await database.saveInvoice(imported)
+
+        let removed = try await database.removePayment(ofInvoice: imported.id, confirmedBy: "20261003")
+
+        #expect(removed == imported)
+        let stored = try #require(try await database.invoice(id: imported.id))
+        #expect(stored.payment == nil)
+        #expect(stored.source == .imported(fakturoidID: "F-3", fingerprint: "row-3", changedInApp: true))
+        #expect(stored.items == imported.items && stored.number == imported.number && stored.status == .issued)
+    }
+
+    /// The search document follows the removal at once: the invoice is no longer found as paid, nor by the day of its
+    /// payment, and is still found by what it is.
+    @Test(arguments: availableSearchIndexKinds)
+    func removingAPaymentRebuildsTheSearchDocument(kind: SearchIndexKind) async throws {
+        let (database, directory) = try makeDatabase(searchIndex: kind)
+        defer { removeTemporaryDirectory(directory) }
+        try await SampleYear2026.store(in: database)
+        func found(_ query: String) async throws -> Set<Int64> {
+            try await database.searchInvoiceIDs(query, scope: .issued, year: 2026, asOf: asOf)
+        }
+        #expect(try await found("uhrazená").contains(11))
+        #expect(try await found("15.10.2026") == [11])
+
+        #expect(try await database.removePayment(ofInvoice: 11, confirmedBy: "20260902") != nil)
+
+        #expect(try await found("uhrazená").contains(11) == false)
+        #expect(try await found("uhrazená").count == 10)
+        #expect(try await found("15.10.2026").isEmpty)
+        #expect(try await found("cetus 20260902") == [11])
+        #expect(try await database.integer("SELECT count(*) FROM invoice_search WHERE rowid = 11") == 1)
     }
 }
 

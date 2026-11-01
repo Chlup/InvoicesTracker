@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The green banner with the result of an action, at the top of its screen, with Zavřít to close it. VoiceOver reads it
-/// out when it appears, or once the app is unlocked when it appears under the lock after inactivity.
+/// The banner with the result of an action, at the top of its screen: a success note with the sentence in semibold and
+/// Zavřít to close it. VoiceOver reads it out when it appears, or once the app is unlocked when it appears under the
+/// lock after inactivity.
 struct BannerView: View {
     let text: String
     let close: () -> Void
@@ -9,20 +10,10 @@ struct BannerView: View {
     @Environment(AppModel.self) private var app: AppModel?
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(text)
-                .fontWeight(.semibold)
-                .foregroundStyle(Color(.bannerText))
-                .frame(maxWidth: .infinity, alignment: .leading)
+        Note(.success, icon: .none, title: text, text: "") {
             Button("Zavřít", action: close)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(Color(.bannerText))
+                .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .contain)
         .onAppear { announce(text) }
         .onChange(of: text) { _, newText in announce(newText) }
     }

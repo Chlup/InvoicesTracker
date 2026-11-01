@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// The data the tests of the forms and of the screens Odběratelé and Šablony faktur work on: an app model of a
-/// temporary folder, as of 17. 10. 2026, with two invented clients that are stored, Alfa Systems (crowns, Tuzemsko
-/// 21 %, 14 days, Czech) and Bravo Labs (dollars, outside the country, 30 days, English), and nothing else.
+/// The data the tests of the forms and of the screen Odběratelé work on: an app model of a temporary folder, as of
+/// 17. 10. 2026, with two invented clients that are stored, Alfa Systems (crowns, Tuzemsko 21 %, 14 days, Czech) and
+/// Bravo Labs (dollars, outside the country, 30 days, English), and nothing else.
 @MainActor
 struct ClientsFixture {
     let app: AppModel

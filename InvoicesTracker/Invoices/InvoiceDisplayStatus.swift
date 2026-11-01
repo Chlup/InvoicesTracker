@@ -69,9 +69,19 @@ nonisolated enum InvoiceDisplayStatus: Hashable, Sendable {
         }
     }
 
-    /// The text of the status for a screen shown as of `asOf` ("K datu"): the same as `label`, but a payment from
-    /// another year than the one of `asOf` shows its year as well (`Uhrazená 20. 12. 2025`). The day that counts here
-    /// is the one the screen is shown as of, not the one the status was worked out for: the list of 2025 says
+    /// The text of the status in the pill of a row of the list, which has no date: "Uhrazená" for a paid invoice, whose
+    /// day of payment the list shows in a column of its own, and `label` for every other status. The detail keeps the
+    /// day in its pill (`label(asOf:)`).
+    var listLabel: String {
+        switch self {
+        case .paid: "Uhrazená"
+        case .draft, .needsReview, .awaitingPayment, .overdue: label
+        }
+    }
+
+    /// The text of the status for a screen shown as of `asOf`, the reporting cutoff: the same as `label`, but a payment
+    /// from another year than the one of `asOf` shows its year as well (`Uhrazená 20. 12. 2025`). The day that counts
+    /// here is the one the screen is shown as of, not the one the status was worked out for: the list of 2025 says
     /// "Uhrazená 2. 1. 2026" of a payment of January 2026.
     func label(asOf: CivilDate) -> String {
         if case .paid(let day) = self, day.year != asOf.year {
@@ -88,8 +98,9 @@ nonisolated extension Invoice {
     /// 3. an invoice with a payment on or before `asOf` is paid, and a later payment does not count yet;
     /// 4. an invoice that is not paid is overdue from the day after its due date, and otherwise it awaits payment.
     ///
-    /// The screens pass today, never the year or the day they are shown as of ("K datu"): the status does not depend on
-    /// what is looked at, so an invoice issued in 2025 and paid in January 2026 is paid in the list of 2025 too.
+    /// The screens pass today, never the year or the day they are shown as of (the reporting cutoff): the status does
+    /// not depend on what is looked at, so an invoice issued in 2025 and paid in January 2026 is paid in the list of
+    /// 2025 too.
     func displayStatus(asOf: CivilDate) -> InvoiceDisplayStatus {
         if status == .draft {
             return .draft

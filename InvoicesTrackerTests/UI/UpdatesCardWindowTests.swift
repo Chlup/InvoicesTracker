@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 @testable import InvoicesTracker
 
@@ -10,7 +11,9 @@ import Testing
 /// - VoiceOver names the button after the card, apart from the button of the card Kurzy;
 /// - the card reads the updater again when it appears;
 /// - without an updater the card shows the version and its controls are disabled;
-/// - the card stands under Vzhled in the left column, and the licences end with the footer in place of a version.
+/// - the card stands under Vzhled in the left column, and the licences end with the footer in place of a version;
+/// - the card is made like the card Kurzy beside it, in a light and in a dark window: the title and the subtitle,
+///   the values in the colour of text and semibold, the hairlines and the button of 28 points.
 ///
 /// The tab has two buttons that show Zkontrolovat teď, this card's and the one of the rates (Kurzy). VoiceOver names
 /// this card's after the card (`UpdatesTexts.checkNowAccessibilityLabel`), and the controls of this card are looked for
@@ -264,6 +267,127 @@ struct UpdatesCardWindowTests {
                     let shortVersion = try #require(
                         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
                     #expect(!readings.contains { $0.contains("InvoicesTracker \(shortVersion)") }, "\(readings)")
+                }
+            }
+        }
+    }
+
+    // MARK: The look of the card
+
+    /// The frame of the heading that reads `title` in `card`, in points from the top left of the content of `window`.
+    /// The title of a card is a heading for VoiceOver.
+    private func headingFrame(_ title: String, in card: AnyObject, of window: NSWindow) throws -> CGRect {
+        let heading = try #require(
+            accessibilityElement(labelled: title, role: NSAccessibility.Role(rawValue: "AXHeading"), under: card),
+            "No heading \(title)")
+        return try pictureFrame(ofScreenFrame: try #require(heading.accessibilityFrame?()), in: window)
+    }
+
+    /// The lines of the colour `colour` that run across `card` in `picture`, from 24 points in from its left edge to
+    /// 24 points in from its right edge, so that the edge of the card is not taken for one: where each begins, in
+    /// points from the top of the picture, and how thick it is. The pixel rows that follow one another make one line.
+    private func lines(
+        of colour: [Int], across card: CGRect, in picture: OffscreenPicture
+    ) -> [(top: CGFloat, thickness: CGFloat)] {
+        let rows = picture.rows(near: colour, from: card.minX + 24, to: card.maxX - 24, by: 2)
+        var found: [(top: CGFloat, thickness: CGFloat)] = []
+        for row in rows where row >= card.minY && row < card.maxY {
+            if let last = found.last, abs(last.top + last.thickness - row) < 0.01 {
+                found[found.count - 1].thickness += 0.5
+            } else {
+                found.append((top: row, thickness: 0.5))
+            }
+        }
+        return found
+    }
+
+    /// The card is made like the card Kurzy beside it, in a light and in a dark window. The title (a heading in title 3
+    /// in the colour of text) and the subtitle (callout in secondary text) stand where those of Kurzy stand in their
+    /// card and are as tall. The label of a row is in secondary text and the values, the version and the last check,
+    /// are in semibold body in the colour of text. A hairline of the palette, one point thick, stands above each of the
+    /// three rows and 10 points above the button, as in Kurzy. The button is a capsule 28 points tall on the grey fill,
+    /// as tall as the button of Kurzy and as far from the edge of its card, with its words in the colour of text.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theCardIsMadeLikeTheCardKurzyBesideIt(scheme: ColorScheme) async throws {
+        try await EditorFixture.with { f in
+            f.app.updates = UpdatesModel(
+                updater: FakeUpdater(canCheck: true, automatic: true, lastCheck: try nineFourteen(of: f.app)))
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                window.appearance = appearance(of: scheme)
+                try await withTheCard(of: f.app, in: window) { card in
+                    try await waitUntil { frameOfText(startingWith: "Kurzy ČNB", in: window) != nil }
+                    try await waitUntil { cardReadings(in: window).contains("dnes 9:14") }
+                    try await layOut(window)
+                    let rates = try #require(accessibilityElement(labelled: "Kurzy", in: window))
+                    let updatesFrame = try cardFrame(UpdatesTexts.title, in: window)
+                    let ratesFrame = try cardFrame("Kurzy", in: window)
+                    let picture = try OffscreenPicture(of: window)
+
+                    // The title and the subtitle stand where and are as tall as those of Kurzy in their card.
+                    let title = try headingFrame(UpdatesTexts.title, in: card, of: window)
+                    let ratesTitle = try headingFrame("Kurzy", in: rates, of: window)
+                    let subtitle = try textFrame(startingWith: UpdatesTexts.subtitle, in: window)
+                    let ratesSubtitle = try textFrame(startingWith: "Aplikace je stahuje sama", in: window)
+                    for (mine, theirs, what) in [(title, ratesTitle, "title"), (subtitle, ratesSubtitle, "subtitle")] {
+                        let inCard = mine.offsetBy(dx: -updatesFrame.minX, dy: -updatesFrame.minY)
+                        let inRates = theirs.offsetBy(dx: -ratesFrame.minX, dy: -ratesFrame.minY)
+                        #expect(
+                            abs(inCard.minX - inRates.minX) < 0.5 && abs(inCard.minY - inRates.minY) < 0.5
+                                && abs(inCard.height - inRates.height) < 0.5,
+                            "\(scheme): the \(what) is \(inCard) in its card, in Kurzy \(inRates)")
+                    }
+                    try picture.expectText(
+                        in: title, setIn: Palette.text, atLeast: 360, scheme: scheme, "\(scheme): the title")
+                    try picture.expectText(
+                        in: subtitle, setIn: Palette.text2, atLeast: 730, scheme: scheme, "\(scheme): the subtitle")
+
+                    // The label of a row is secondary, and the values are semibold in the colour of text. Semibold is
+                    // wider than regular, so the width of a value tells its weight.
+                    let label = try textFrame(startingWith: "Poslední kontrola", in: window)
+                    try picture.expectText(
+                        in: label, setIn: Palette.text2, atLeast: 240, scheme: scheme, "\(scheme): the label")
+                    let values = [(UpdatesTexts.installedVersion, 145), ("dnes 9:14", 200)]
+                    for (words, least) in values {
+                        let frame = try textFrame(startingWith: words, in: window)
+                        try picture.expectText(
+                            in: frame, setIn: Palette.text, atLeast: least, scheme: scheme, "\(scheme): \(words)")
+                        let semibold = NSHostingView(
+                            rootView: Text(verbatim: words).font(Typography.bodySemibold).monospacedDigit()
+                        ).fittingSize.width
+                        #expect(
+                            abs(frame.width - semibold) <= 1,
+                            "\(scheme): \(words) is \(frame.width) points wide, semibold \(semibold)")
+                    }
+
+                    // The hairlines are those of the palette: above each of the three rows and above the button.
+                    let button = try buttonFrame(UpdatesTexts.checkNowAccessibilityLabel, in: window)
+                    let ratesButton = try buttonFrame(UpdatesTexts.checkNowTitle, in: window)
+                    let separator = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)
+                    let found = lines(of: separator, across: updatesFrame, in: picture)
+                    #expect(found.count == 4, "\(scheme): \(found.count) hairlines in the card: \(found)")
+                    #expect(found.allSatisfy { abs($0.thickness - 1) < 0.01 }, "\(scheme): \(found)")
+                    #expect(
+                        abs((found.last?.top ?? -1) - (button.minY - 11)) < 0.5,
+                        "\(scheme): the last hairline is \(String(describing: found.last)), the button \(button)")
+                    let ratesLast = lines(of: separator, across: ratesFrame, in: picture).last
+                    #expect(
+                        abs((ratesLast?.top ?? -1) - (ratesButton.minY - 11)) < 0.5,
+                        "\(scheme): Kurzy has its last hairline at \(String(describing: ratesLast))")
+
+                    // The button is a capsule of 28 points on the grey fill, as the button of Kurzy is.
+                    let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+                    #expect(abs(button.height - 28) < 0.5, "\(scheme): the button is \(button.height) points tall")
+                    #expect(
+                        abs(button.height - ratesButton.height) < 0.5,
+                        "\(scheme): the button is \(button.height) points tall, in Kurzy \(ratesButton.height)")
+                    #expect(
+                        abs((button.minX - updatesFrame.minX) - (ratesButton.minX - ratesFrame.minX)) < 0.5,
+                        "\(scheme): the button is \(button.minX - updatesFrame.minX) points from the edge of its card")
+                    expectColour(
+                        fill, at: CGPoint(x: button.minX + 6, y: button.midY), in: picture,
+                        "\(scheme): the fill of the button")
+                    try picture.expectText(
+                        in: button, setIn: Palette.text, atLeast: 360, scheme: scheme, "\(scheme): the button")
                 }
             }
         }

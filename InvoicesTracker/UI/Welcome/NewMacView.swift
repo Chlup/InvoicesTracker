@@ -80,16 +80,18 @@ struct NoCodePanel: View {
     let startFresh: () -> Void
 
     var body: some View {
-        WelcomeBox(spacing: 10) {
+        WelcomeBox(spacing: 10, horizontalPadding: 16, verticalPadding: 14, ringed: false) {
             Text("Bez kódu se tato data otevřít nedají")
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
             Text(
                 """
                 Nikdo jiný kód nemá – ani autor aplikace. Máte-li zálohu, ke které kód máte (třeba starší kód), \
                 obnovte ji. Zašifrovaná data zůstanou na disku, takže když kód najdete, otevřete je i později.
                 """
             )
-            .font(.callout)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
             .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button("Obnovit ze zálohy…", action: restore)

@@ -138,6 +138,47 @@ struct IdleLockWindowTests {
         }
     }
 
+    /// The lock over the window is on the background of the window of the design, and the lock over a sheet on the
+    /// colour of a card, which the sheet itself is: where the form of a client had its fields and its buttons, the
+    /// pixels are the colour of the lock, in a light and in a dark appearance.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theLocksAreOnTheBackgroundsOfTheDesign(scheme: ColorScheme) async throws {
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                    window.appearance = appearance(of: scheme)
+                    try await withAccessibilityElements {
+                        let sheet = try await openNewClientForm(of: f.app, in: window)
+                        try await waitUntil { textField(labelled: "Název", in: sheet) != nil }
+
+                        try lock(f)
+
+                        try await waitUntil { showsTheLock(in: sheet) }
+                        try await waitUntil { showsTheLock(in: window) }
+                        try await untilTheWindowHasCaughtUp(sheet)
+                        let background = try OffscreenPicture.bytes(of: Palette.bgWindow, in: scheme)
+                        let card = try OffscreenPicture.bytes(of: Palette.bgCard, in: scheme)
+                        let windowPicture = try OffscreenPicture(of: window)
+                        let sheetPicture = try OffscreenPicture(of: sheet)
+                        let sheetSize = try #require(sheet.contentView).bounds.size
+
+                        #expect(
+                            pixelIs(background, at: CGPoint(x: 40, y: 400), in: windowPicture),
+                            "\(scheme): the lock over the window is not on the background of the window")
+                        // The name of the client, the first field of the form, is under the cover.
+                        #expect(
+                            pixelIs(card, at: CGPoint(x: 60, y: 110), in: sheetPicture),
+                            "\(scheme): the lock over the sheet is not on the colour of a card")
+                        let foot = CGPoint(x: sheetSize.width - 60, y: sheetSize.height - 40)
+                        #expect(
+                            pixelIs(card, at: foot, in: sheetPicture),
+                            "\(scheme): the foot of the lock over the sheet is not on the colour of a card")
+                    }
+                }
+            }
+        }
+    }
+
     /// On a sheet under the lock, Esc closes nothing, as the hidden Zrušit takes no key, and Return is the Odemknout of
     /// the lock, not the hidden Uložit odběratele: the sheet stays open, and nothing is saved.
     @Test func returnOnALockedSheetUnlocksItAndEscLeavesItOpen() async throws {

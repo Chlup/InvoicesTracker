@@ -379,7 +379,7 @@ struct QRPayloadTests {
             accounts: [Self.czkAccount, Self.eurAccount, Self.usdAccount, account]
         )
 
-        #expect(result == .unavailable("Pro \(code) standard QR platby není."))
+        #expect(result == .unavailable("Pro platby v \(code) QR standard není, faktura bude bez QR kódu."))
     }
 
     @Test func aEuroInvoiceGetsAnEpcCodeWithTheSuppliersNameAndTheEuroAccount() {

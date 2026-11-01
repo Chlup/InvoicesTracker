@@ -325,26 +325,40 @@ extension AppModel {
 
 /// Waits until `condition` holds, looking every few milliseconds: for what an app model does in a task of its own, such
 /// as the backup that an armed wake starts or the work a callback of the refresh starts. Records an issue when it does
-/// not hold within `timeout`. Only the time that the loop ran counts, at most 50 milliseconds for each look: in a full
-/// run of the suite the process is so busy that one look can wait seconds for its turn, and the condition has had no
-/// time to hold in that. A condition that never holds is still given up on, `timeout` after the process is calm.
+/// not hold within `timeout`. Only the time that the loop ran counts (`holdsWithin(_:every:_:)`).
 @MainActor
 func waitUntil(
     timeout: Duration = .seconds(10),
     sourceLocation: SourceLocation = #_sourceLocation,
     _ condition: @MainActor () async throws -> Bool
 ) async throws {
+    guard try await holdsWithin(timeout, condition) else {
+        Issue.record("The condition did not hold within \(timeout).", sourceLocation: sourceLocation)
+        return
+    }
+}
+
+/// Looks at `condition` at once and then every `interval` until it holds, and tells whether it held within `timeout`;
+/// it records no issue, so a test that wants its own words for a condition that did not hold can use it, as
+/// `waitUntil(timeout:sourceLocation:_:)` and `expectContainers(_:in:_:sourceLocation:)` do. Only the time that the
+/// loop ran counts, at most 50 milliseconds for each look, or `interval` where that is longer: in a full run of the
+/// suite the process is so busy that one look can wait seconds for its turn, and the condition has had no time to hold
+/// in that. A condition that never holds is still given up on, `timeout` after the process is calm.
+@MainActor
+func holdsWithin(
+    _ timeout: Duration = .seconds(10), every interval: Duration = .milliseconds(5),
+    _ condition: @MainActor () async throws -> Bool
+) async throws -> Bool {
     let clock = ContinuousClock()
+    let charge = max(.milliseconds(50), interval)
     var remaining = timeout
     var lookedAt = clock.now
     while !(try await condition()) {
         let now = clock.now
-        remaining -= min(now - lookedAt, .milliseconds(50))
+        remaining -= min(now - lookedAt, charge)
         lookedAt = now
-        guard remaining > .zero else {
-            Issue.record("The condition did not hold within \(timeout).", sourceLocation: sourceLocation)
-            return
-        }
-        try await Task.sleep(for: .milliseconds(5))
+        guard remaining > .zero else { return false }
+        try await Task.sleep(for: interval)
     }
+    return true
 }

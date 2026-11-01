@@ -7,16 +7,6 @@
     "(bez vlivu na výpočet)" : {
 
     },
-    "%@ · %@" : {
-      "localizations" : {
-        "cs" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · %2$@"
-          }
-        }
-      }
-    },
     "%@ nad limit se neuplatní" : {
 
     },
@@ -39,6 +29,16 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@. Uplatníte %2$@."
+          }
+        }
+      }
+    },
+    "%@%@" : {
+      "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@%2$@"
           }
         }
       }
@@ -67,6 +67,9 @@
     "Bez DPH" : {
 
     },
+    "Bez DPH, v Kč. Bez zaměstnání a jiných zdanitelných příjmů." : {
+
+    },
     "Bez kódu se tato data otevřít nedají" : {
 
     },
@@ -74,9 +77,6 @@
 
     },
     "Bez minima zdravotního pojištění" : {
-
-    },
-    "Části nastavení" : {
 
     },
     "Částka v Kč" : {
@@ -118,13 +118,10 @@
     "Čistý příjem (součet za platby v měsíci)" : {
 
     },
-    "Čistý příjem za rok (po dani a pojistném, vždy bez DPH)" : {
+    "Čistý příjem za rok (po odvodech, vždy bez DPH)" : {
 
     },
     "další shody v letech" : {
-
-    },
-    "Dary a slevy na dani" : {
 
     },
     "Dary za rok" : {
@@ -162,25 +159,19 @@
     "Detail faktury" : {
 
     },
+    "Detail odběratele" : {
+
+    },
     "Do tohoto dne nepřišla žádná platba." : {
 
     },
-    "Dopad na daň" : {
-
-    },
     "Dopad na odvody" : {
-
-    },
-    "Dopad odpočtů a slev na daň" : {
 
     },
     "Doplnit údaje dodavatele z exportu" : {
 
     },
     "Doporučeno. Aplikace se zeptá na Touch ID nebo heslo k Macu při spuštění a po 10 minutách nečinnosti (dobu změníte v Nastavení). Bez Touch ID se otevře bez ověření; data na disku zůstanou šifrovaná." : {
-
-    },
-    "Druhý rodič" : {
 
     },
     "E-mail, telefon, účet v USD nebo v eurech a patičku českých faktur doplníte v Nastavení › Moje údaje. Z importu Fakturoidu lze prázdné údaje doplnit automaticky." : {
@@ -216,9 +207,6 @@
     "InvoicesTracker je zamčený" : {
 
     },
-    "Já" : {
-
-    },
     "Jak se to počítá" : {
 
     },
@@ -240,9 +228,6 @@
     "Kód nikam neposíláme a aplikace si ho nepamatuje. Kdo ztratí Mac i tento kód, data už neotevře – ani autor aplikace. Tento list schovejte mimo počítač." : {
 
     },
-    "Kód nikam neposíláme a aplikace si ho nepamatuje. Kdo ztratí tento Mac i kód, data už neotevře – ani autor aplikace. Uložte ho do správce hesel nebo ho vytiskněte a schovejte mimo počítač." : {
-
-    },
     "Kód pro obnovení dat InvoicesTracker" : {
 
     },
@@ -257,16 +242,13 @@
         }
       }
     },
-    "Kolik zbývá zaplatit" : {
+    "Kolik zaplatíte" : {
 
     },
     "Kopírovat" : {
 
     },
     "Kroky nastavení" : {
-
-    },
-    "Které faktury" : {
 
     },
     "kurz ČNB ke dni přijetí" : {
@@ -290,9 +272,6 @@
     "Měsíc" : {
 
     },
-    "Měsíce" : {
-
-    },
     "Měsíce – %@" : {
 
     },
@@ -300,9 +279,6 @@
 
     },
     "Mezní odvod" : {
-
-    },
-    "Mimo tento Mac se už 30 dní nepodařilo uložit zálohu. Připojte disk se zvolenou složkou, nebo vyberte jinou." : {
 
     },
     "Minimum se nepočítá za měsíc, kdy jste po celý měsíc byli i zaměstnaní s pojistným aspoň z minimální mzdy, studovali, pobírali důchod, byli na rodičovské, měli průkaz ZTP/P a podobně (§ 3a zákona 592/1992). Vedlejší činnost pro sociální pojištění se nastavuje v Zálohách." : {
@@ -332,9 +308,6 @@
     "Náhled se zobrazí, až bude faktura úplná." : {
 
     },
-    "Náhled: %@" : {
-
-    },
     "Např. platební instrukce – vytiskne se dole na faktuře" : {
 
     },
@@ -342,9 +315,6 @@
 
     },
     "nebo ho sem přetáhněte" : {
-
-    },
-    "Nejbližší platby úřadům" : {
 
     },
     "Nejvýše %lld položek." : {
@@ -383,9 +353,6 @@
     "Odběratel" : {
 
     },
-    "Odběratel a doklad" : {
-
-    },
     "Odběratel šablony" : {
 
     },
@@ -393,6 +360,12 @@
 
     },
     "Odebrat dítě" : {
+
+    },
+    "Odebrat platbu" : {
+
+    },
+    "Odebrat platbu…" : {
 
     },
     "Odebrat položku" : {
@@ -419,37 +392,22 @@
     "odhad (šrafovaně a čárkovaně)" : {
 
     },
-    "odhad do potvrzení banky" : {
-
-    },
     "Odhad odvodů" : {
-
-    },
-    "Odpočty · spoření a pojištění na stáří" : {
-
-    },
-    "Odpočty · úroky z úvěru na bydlení" : {
 
     },
     "Odstranit…" : {
 
     },
+    "Odvody podle úřadů" : {
+
+    },
     "Otevře data na jiném Macu, po opravě tohoto Macu nebo ze zálohy. Aplikace ho znovu neukáže – když ho ztratíte, vytvořte nový, dokud data ještě otevřete." : {
-
-    },
-    "Otevře úpravu odběratele." : {
-
-    },
-    "Otevřít Finanční zpravodaj" : {
 
     },
     "Označit i tady" : {
 
     },
     "Označit jako uhrazenou" : {
-
-    },
-    "PDF s tabulkou" : {
 
     },
     "PDF se nepodařilo uložit." : {
@@ -464,9 +422,6 @@
     "Platba" : {
 
     },
-    "Platba, měna a DPH" : {
-
-    },
     "plátce · měsíčně" : {
 
     },
@@ -474,9 +429,6 @@
 
     },
     "Platný kód" : {
-
-    },
-    "plná část pruhu je zaplacená zálohami, světlá zbývá zaplatit" : {
 
     },
     "Po 18. narozeninách studuje" : {
@@ -500,9 +452,6 @@
     "Položka %lld" : {
 
     },
-    "Položky" : {
-
-    },
     "Popis" : {
 
     },
@@ -512,13 +461,7 @@
     "Pořadí v domácnosti" : {
 
     },
-    "Poslední přijaté platby" : {
-
-    },
     "Použít" : {
-
-    },
-    "Použít šablonu %@" : {
 
     },
     "Později" : {
@@ -581,12 +524,6 @@
     "Pro potvrzení napište číslo faktury %@" : {
 
     },
-    "Průběh" : {
-
-    },
-    "Průběh importu" : {
-
-    },
     "Průběh importu %@" : {
 
     },
@@ -608,16 +545,16 @@
     "Rok %@" : {
 
     },
-    "Roky" : {
-
-    },
     "rozbaleno" : {
 
     },
-    "Rozpis odhadu odvodů" : {
+    "Rozpis odhadu" : {
 
     },
     "Rozpis výpočtu" : {
+
+    },
+    "Rozpis výpočtu simulace" : {
 
     },
     "s DPH" : {
@@ -629,13 +566,19 @@
     "Šablona" : {
 
     },
+    "Šablony" : {
+
+    },
+    "Šablony faktur" : {
+
+    },
+    "Šablony upravíte u odběratelů" : {
+
+    },
     "Sazba paušálních výdajů" : {
 
     },
     "sbaleno" : {
-
-    },
-    "Seskupit" : {
 
     },
     "Seznam faktur" : {
@@ -651,9 +594,6 @@
 
     },
     "Složku pro data se nepodařilo vytvořit." : {
-
-    },
-    "Smazání nejde vrátit zpět." : {
 
     },
     "Smazat" : {
@@ -683,13 +623,10 @@
     "Splatnost ve dnech" : {
 
     },
-    "Spravovat šablony" : {
+    "Stáhnout PDF" : {
 
     },
     "Stav" : {
-
-    },
-    "Stav: %@" : {
 
     },
     "TaxesTracker je zamčený" : {
@@ -709,9 +646,6 @@
     "Typ účtu" : {
 
     },
-    "Uhrazená faktura se nedá upravit, jen její platba." : {
-
-    },
     "Uložit dítě" : {
 
     },
@@ -722,9 +656,6 @@
 
     },
     "Uložit odběratele" : {
-
-    },
-    "Uložit PDF…" : {
 
     },
     "Uložit šablonu" : {
@@ -755,16 +686,10 @@
     "Upravit platbu" : {
 
     },
-    "Upravit šablonu %@" : {
-
-    },
     "Upravujete fakturu" : {
 
     },
-    "V Kč" : {
-
-    },
-    "V Kč. Bez zaměstnání a jiných zdanitelných příjmů." : {
+    "V Kč bez DPH" : {
 
     },
     "V tomto Macu zatím žádná záloha není." : {
@@ -799,9 +724,6 @@
     "Všechny faktury" : {
 
     },
-    "Výběr souborů" : {
-
-    },
     "Vybrat jinou" : {
 
     },
@@ -814,19 +736,10 @@
     "Vybrat soubory…" : {
 
     },
-    "Výchozí hodnoty odběratele se použijí při vystavení nové faktury." : {
-
-    },
     "Výdaje paušálem" : {
 
     },
-    "Vydání Finančního zpravodaje" : {
-
-    },
     "vypnuto" : {
-
-    },
-    "Vystavené v roce %@" : {
 
     },
     "Vystaveno" : {
@@ -836,6 +749,9 @@
 
     },
     "Vystavit" : {
+
+    },
+    "Vystavit podle šablony" : {
 
     },
     "Vytisknout nebo uložit jako PDF…" : {
@@ -868,9 +784,6 @@
     "Zálohy" : {
 
     },
-    "Zálohy jsou zatím jen v tomto Macu. Když Mac přestane fungovat, pomůže jen záloha jinde – vyberte složku na externím disku, NAS nebo v iCloud Drive. Aplikace tam jednou denně uloží šifrovanou zálohu." : {
-
-    },
     "Zálohy na rok %@" : {
 
     },
@@ -878,9 +791,6 @@
 
     },
     "Zamknout při nečinnosti" : {
-
-    },
-    "Zaplacené v roce %@" : {
 
     },
     "Zaplaceno" : {
@@ -892,16 +802,7 @@
     "započteno" : {
 
     },
-    "Zatím nemáte žádného odběratele." : {
-
-    },
-    "Zatím nemáte žádnou šablonu." : {
-
-    },
     "Zavřít" : {
-
-    },
-    "Zavřít detail" : {
 
     },
     "Zdroj:" : {
@@ -941,6 +842,9 @@
 
     },
     "Zobrazit PDF" : {
+
+    },
+    "Zpět" : {
 
     },
     "Zpět na faktury" : {

@@ -64,7 +64,7 @@ extension View {
 }
 
 /// "Zahodit rozepsanou fakturu?" in the dialog of the window: Pokračovat v úpravách, which Esc is too, and the red
-/// Zahodit.
+/// Zahodit, both capsules of a dialog, 32 points tall.
 private struct DiscardQuestionDialog: View {
     let keepEditing: () -> Void
     let discard: () -> Void
@@ -72,17 +72,15 @@ private struct DiscardQuestionDialog: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(verbatim: DiscardQuestion.title)
-                .font(.system(size: 17, weight: .bold))
+                .font(Typography.title2)
+                .foregroundStyle(Palette.text)
             HStack(spacing: 8) {
                 Spacer()
                 Button(DiscardQuestion.keepEditing, action: keepEditing)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CapsuleButtonStyle(.secondary))
                 Button(DiscardQuestion.discard, action: discard)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
+                    .buttonStyle(CapsuleButtonStyle(.destructiveConfirm))
             }
-            .buttonBorderShape(.capsule)
-            .controlSize(.large)
         }
     }
 }

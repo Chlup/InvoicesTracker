@@ -1,9 +1,12 @@
 import SwiftUI
 
 /// The card "Zálohy na rok …": the rate of the flat-rate expenses (with a note under it while 30 % is chosen), the
-/// reduced base of the social insurance, the box that fills the months from one on, the copy of the year before, and
-/// the table of the twelve months with the totals of the year and to the day shown. The cells are texts that are saved
-/// by themselves; a cell whose text is not an amount in whole Kč has the message under its row and is not saved.
+/// reduced base of the social insurance, the hint about the refunded advances while 2026 is shown, the helper that
+/// fills the months from one on and copies the year before, and the table of the twelve months with the totals of the
+/// year and to the day shown. The helper is a panel on the inset background with a primary button, Předvyplnit, and
+/// Zkopírovat z roku … beside it, both 28 points tall as the buttons inside a card are. The cells are texts that are
+/// saved by themselves; a cell whose text is not an amount in whole Kč has the message under its row and is not
+/// saved.
 struct AdvancePlanTable: View {
     let model: AdvancesModel
 
@@ -26,22 +29,23 @@ struct AdvancePlanTable: View {
         static let table: CGFloat = 720
     }
 
+    /// The space between the parts of the card, in points: the header, the choices, the hint, the helper and the
+    /// table, and the space between the parts of the helper.
+    private enum Spacing {
+        static let parts: CGFloat = 16
+        static let prefill: CGFloat = 12
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        Card(spacing: Spacing.parts, label: "Zálohy") {
             header
             choices
             if let hint = model.refundHint {
-                HintBox(text: hint)
+                Note(.attention, icon: .info, text: hint)
             }
             prefillBox
             table
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Zálohy")
     }
 
     // MARK: Header and choices
@@ -60,16 +64,19 @@ struct AdvancePlanTable: View {
         }
     }
 
+    /// "Zálohy na rok …" in title 2, the heading of the card.
     private var title: some View {
         Text("Zálohy na rok \(String(model.year))")
-            .font(.system(size: 17, weight: .bold))
+            .font(Typography.title2)
+            .foregroundStyle(Palette.text)
             .accessibilityAddTraits(.isHeader)
     }
 
+    /// What the advances are counted as, in callout and secondary text, at the end of the line of the title.
     private var caption: some View {
         Text("záloha se počítá jako zaplacená v měsíci, ke kterému patří · změny se ukládají hned")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text2)
     }
 
     /// The rate and the reduced base side by side where they fit, else one over the other. The note of the rate stands
@@ -100,16 +107,18 @@ struct AdvancePlanTable: View {
     private var rateNote: some View {
         if let note = ExpenseRateChoice.note(forPercent: expensePercent.wrappedValue) {
             Text(verbatim: note)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    /// The rate of the flat-rate expenses: its title in secondary text and the menu of the four rates.
     private var ratePicker: some View {
         HStack(spacing: 8) {
             Text("Sazba paušálních výdajů")
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
             Picker("Sazba paušálních výdajů", selection: expensePercent) {
                 ForEach(ExpenseRateChoice.all, id: \.percent) { rate in
                     Text(rate.label)
@@ -122,52 +131,53 @@ struct AdvancePlanTable: View {
         }
     }
 
+    /// The box of the reduced base of the social insurance, with the grey caption that it changes no figure.
     private var reducedBaseToggle: some View {
         HStack(spacing: 8) {
             Toggle("Snížený vyměřovací základ pro sociální pojištění", isOn: reducedSocialBase)
             Text("(bez vlivu na výpočet)")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
         }
     }
 
     // MARK: Prefill
 
+    /// The helper that fills the months: a panel on the inset background with the fields of the amounts, the month
+    /// they hold from, and the buttons, in a row where they fit and else the fields over the buttons; under them the
+    /// messages of a field whose text was refused, and the note of what Předvyplnit does.
     private var prefillBox: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Spacing.prefill) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .bottom, spacing: 12) {
+                HStack(alignment: .bottom, spacing: Spacing.prefill) {
                     prefillFields
                     prefillButtons
                     Spacer(minLength: 0)
                 }
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: Spacing.prefill) {
+                    HStack(alignment: .bottom, spacing: Spacing.prefill) {
                         prefillFields
                     }
-                    HStack(spacing: 12) {
+                    HStack(spacing: Spacing.prefill) {
                         prefillButtons
                     }
                 }
             }
             ForEach(prefillMessages, id: \.self) { message in
                 Text(verbatim: message)
-                    .font(.callout)
-                    .foregroundStyle(.red)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.redText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text(
                 verbatim: "Předvyplnit zapíše částky do všech měsíců od zvoleného měsíce do konce roku."
                     + " Jednotlivé měsíce pak můžete upravit níž."
             )
-            .font(.callout)
-            .foregroundStyle(Color(.simulationText))
+            .font(Typography.callout)
+            .foregroundStyle(Palette.text3)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+        .insetPanel(horizontal: 16, vertical: 12)
         // A message goes when the text it is about is changed.
         .onChange(of: prefillSocial) {
             prefillErrors.social = nil
@@ -177,14 +187,15 @@ struct AdvancePlanTable: View {
         }
     }
 
+    /// The fields of the helper: the amounts of the social and of the health insurance, and the month they hold from.
     @ViewBuilder
     private var prefillFields: some View {
         prefillField("Sociální pojištění", text: $prefillSocial)
         prefillField("Zdravotní pojištění", text: $prefillHealth)
         VStack(alignment: .leading, spacing: 4) {
             Text("Platí od")
-                .font(.callout)
-                .foregroundStyle(Color(.simulationText))
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
             Picker("Platí od", selection: $prefillFromMonth) {
                 ForEach(1...12, id: \.self) { month in
                     Text(Self.monthName(month))
@@ -197,11 +208,13 @@ struct AdvancePlanTable: View {
         }
     }
 
+    /// A field of an amount of the helper under its title in callout and secondary text. VoiceOver reads the field as
+    /// its title and "– předvyplnění", to tell it from the cells of the table that have the same names.
     private func prefillField(_ title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.callout)
-                .foregroundStyle(Color(.simulationText))
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
             TextField("", text: text)
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
@@ -212,18 +225,20 @@ struct AdvancePlanTable: View {
         }
     }
 
+    /// Předvyplnit, a capsule in the accent, and, while the year before has a plan, Zkopírovat z roku …, a capsule in
+    /// the colour of a card raised off the panel; both 28 points tall.
     @ViewBuilder
     private var prefillButtons: some View {
         Button("Předvyplnit") {
             prefillErrors = model.prefill(social: prefillSocial, health: prefillHealth, fromMonth: prefillFromMonth)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(CapsuleButtonStyle(.primary, size: .small))
         if model.hasPreviousYear {
             Button("Zkopírovat z roku \(String(model.year - 1))") {
                 prefillErrors = PrefillErrors()
                 Task { await model.copyFromPreviousYear() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(CapsuleButtonStyle(.onWindow, size: .small))
         }
     }
 
@@ -264,7 +279,7 @@ struct AdvancePlanTable: View {
                 head("Stav", width: Width.status, alignment: .leading)
             }
             ForEach(1...12, id: \.self) { month in
-                Divider()
+                Hairline()
                 row(month)
                 ForEach(messages(ofMonth: month), id: \.self) { message in
                     // Under the three columns of amounts, which it is about, as far as they go.
@@ -272,35 +287,41 @@ struct AdvancePlanTable: View {
                         Color.clear
                             .frame(height: 0)
                         Text(verbatim: message)
-                            .font(.callout)
-                            .foregroundStyle(.red)
+                            .font(Typography.callout)
+                            .foregroundStyle(Palette.redText)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                             .gridCellColumns(3)
                     }
                 }
             }
+            // The rule over the totals is the colour of text, 1,5 points thick.
             Rectangle()
-                .fill(Color.primary.opacity(0.7))
+                .fill(Palette.text)
                 .frame(height: 1.5)
             totalRow
             toDateRow
         }
     }
 
+    /// The heading of a column of the table in callout semibold and secondary text, `width` points wide, or as wide as
+    /// its column where that is nil.
     private func head(_ title: String, width: CGFloat?, alignment: Alignment) -> some View {
         Text(title)
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(Typography.calloutSemibold)
+            .foregroundStyle(Palette.text2)
             .lineLimit(1)
             .frame(width: width, alignment: alignment)
             .frame(maxWidth: width == nil ? .infinity : nil, alignment: alignment)
     }
 
+    /// The row of `month`: its name, the cells of the three amounts (the income tax only in the months it is paid), the
+    /// box of the secondary activity and the status.
     private func row(_ month: Int) -> some View {
         GridRow {
             Text(Self.monthName(month))
-                .fontWeight(.semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
                 .frame(width: Width.month, alignment: .leading)
             cellField(month, .social)
             cellField(month, .health)
@@ -334,29 +355,32 @@ struct AdvancePlanTable: View {
             }
     }
 
-    /// "započteno" for a month that counts as paid on the day shown, "plán" for one that is only planned.
+    /// "započteno" for a month that counts as paid on the day shown, in the green of text with a dot of the same green,
+    /// "plán" for one that is only planned, in the grey of captions with a dot of the stronger line.
     private func status(_ month: Int) -> some View {
         let counted = model.isCounted(month: month)
         return HStack(spacing: 6) {
             Circle()
-                .fill(counted ? Color.green : Color.secondary.opacity(0.5))
+                .fill(counted ? Palette.greenText : Palette.sepStrong)
                 .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
             Text(counted ? "započteno" : "plán")
-                .font(.callout)
-                .foregroundStyle(counted ? Color(.bannerText) : Color.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(counted ? Palette.greenText : Palette.text3)
         }
         .frame(width: Width.status, alignment: .leading)
     }
 
+    /// "Celkem za rok" with the three totals of the year, in semibold text.
     private var totalRow: some View {
         let totals = model.totals
         return GridRow {
             Text("Celkem za rok")
-                .fontWeight(.semibold)
-            amount(totals.yearSocial, weight: .semibold)
-            amount(totals.yearHealth, weight: .semibold)
-            amount(totals.yearTax, weight: .semibold)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
+            amount(totals.yearSocial, font: Typography.bodySemibold, color: Palette.text)
+            amount(totals.yearHealth, font: Typography.bodySemibold, color: Palette.text)
+            amount(totals.yearTax, font: Typography.bodySemibold, color: Palette.text)
             Color.clear
                 .frame(height: 0)
             Color.clear
@@ -364,16 +388,16 @@ struct AdvancePlanTable: View {
         }
     }
 
-    /// The totals to the day shown, in green: what counts as paid.
+    /// The totals to the day shown, in the green of text: what counts as paid.
     private var toDateRow: some View {
         let totals = model.totals
         return GridRow {
             Text(model.toDateLabel)
-                .font(.callout)
-                .foregroundStyle(Color(.bannerText))
-            amount(totals.toDateSocial, weight: .regular, color: Color(.bannerText))
-            amount(totals.toDateHealth, weight: .regular, color: Color(.bannerText))
-            amount(totals.toDateTax, weight: .regular, color: Color(.bannerText))
+                .font(Typography.callout)
+                .foregroundStyle(Palette.greenText)
+            amount(totals.toDateSocial, font: Typography.body, color: Palette.greenText)
+            amount(totals.toDateHealth, font: Typography.body, color: Palette.greenText)
+            amount(totals.toDateTax, font: Typography.body, color: Palette.greenText)
             Color.clear
                 .frame(height: 0)
             Color.clear
@@ -381,9 +405,10 @@ struct AdvancePlanTable: View {
         }
     }
 
-    private func amount(_ kc: Int64, weight: Font.Weight, color: Color = .primary) -> some View {
+    /// A total in whole Kč, in `font` and `color`, against the right edge of its column.
+    private func amount(_ kc: Int64, font: Font, color: Color) -> some View {
         Text(CzechFormat.wholeKc(kc))
-            .fontWeight(weight)
+            .font(font)
             .monospacedDigit()
             .foregroundStyle(color)
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -440,26 +465,5 @@ struct AdvancePlanTable: View {
         case .health: "Zdravotní pojištění"
         case .tax: "Daň z příjmů"
         }
-    }
-}
-
-/// A hint in an orange box, in the semantic colour at a low opacity, so that it follows the appearance of the window.
-struct HintBox: View {
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "info.circle")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            Text(verbatim: text)
-                .foregroundStyle(Color(.simulationText))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
     }
 }

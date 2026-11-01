@@ -11,7 +11,8 @@ struct SettingsLoadingView: View {
                 .controlSize(.small)
                 .accessibilityHidden(true)
             Text("Načítám…")
-                .foregroundStyle(.secondary)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text2)
         }
         .frame(maxWidth: .infinity, minHeight: 160)
     }

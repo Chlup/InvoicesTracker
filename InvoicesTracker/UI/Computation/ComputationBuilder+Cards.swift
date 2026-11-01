@@ -1,8 +1,9 @@
 import Foundation
 
-/// The banner and the cards of Výpočet around the breakdown: what the computation counts, the equation of what is left
-/// to pay, the marginal levy, the thresholds of the year and the assumptions. As with the breakdown, every figure comes
-/// from the result; the receipts are read only for the day the cap of the expenses was reached.
+/// The result and the cards of Výpočet around the breakdown: the key figure of what is left to pay and the bar of the
+/// levies, the note about what the computation counts, the marginal levy, the thresholds of the year and the
+/// assumptions. As with the breakdown, every figure comes from the result; the receipts are read only for the day the
+/// cap of the expenses was reached.
 nonisolated extension ComputationBuilder {
     /// The whole page for `result`, the computation of `input` as of the day in it. `today` tells a year that is over
     /// from one in progress, `incomeFXMethod` how the year converts the income in other currencies, and
@@ -14,8 +15,9 @@ nonisolated extension ComputationBuilder {
         let facts = makeFacts(
             result, input: input, today: today, incomeFXMethod: incomeFXMethod, uniformSource: uniformSource)
         return ComputationPage(
-            year: result.year, banner: banner(facts), sections: sections(facts), equation: equation(facts),
-            marginal: marginal(of: result), thresholds: thresholds(facts), assumptions: assumptions(facts))
+            year: result.year, banner: banner(facts), sections: sections(facts), keyFigure: keyFigure(facts),
+            levies: levies(facts), marginal: marginal(of: result), thresholds: thresholds(facts),
+            assumptions: assumptions(facts))
     }
 
     // MARK: Banner
@@ -35,20 +37,17 @@ nonisolated extension ComputationBuilder {
             + " minimální pojistné jen za uplynulé měsíce hlavní činnosti."
     }
 
-    // MARK: Equation
+    // MARK: Key figure
+
+    /// What the sentence of the key figure ends with, in the year in progress and in the year that is over.
+    private static let onlyPositiveBalances =
+        "Sčítají se jen kladné zůstatky – přeplatek u jednoho úřadu nezaplatí dluh u jiného."
 
     /// What each authority still has to get, added up. Only what is still owed is added: an overpayment at one never
-    /// pays what is owed at another.
-    private static func equation(_ facts: Facts) -> ComputationEquation {
+    /// pays what is owed at another. The eyebrow says what is left to pay as of the day shown, or the Doplatek of a
+    /// year that is over, and the sentence under the figure says where the sum goes, or what the advances paid.
+    private static func keyFigure(_ facts: Facts) -> KeyFigureData {
         let result = facts.result
-        let shares = Authority.allCases.enumerated().map { index, authority in
-            ComputationTile(
-                sign: index == 0 ? .blank : .plus, label: shortName(of: authority),
-                value: CzechFormat.grouped(result.balance(authority).remaining), isResult: false)
-        }
-        let sum = ComputationTile(
-            sign: .equals, label: facts.isOver ? "Doplatek za rok" : "Zbývá zaplatit",
-            value: CzechFormat.wholeKc(result.remainingTotal), isResult: true)
         let split: String
         if facts.isOver {
             let returned: String
@@ -69,25 +68,43 @@ nonisolated extension ComputationBuilder {
                 + " do konce roku a \(CzechFormat.wholeKc(result.settlementTotal))"
                 + " doplatíte po podání přiznání a přehledů."
         }
-        return ComputationEquation(
-            heading: facts.isOver
+        return KeyFigureData(
+            eyebrow: facts.isOver
                 ? "Doplatek za rok \(result.year)" : "Zbývá zaplatit k " + CzechFormat.date(result.asOf),
-            caption: "sčítají se jen kladné zůstatky – přeplatek u jednoho úřadu nezaplatí dluh u jiného",
-            tiles: shares + [sum], split: split)
+            figure: CzechFormat.wholeKc(result.remainingTotal), sentence: split + " " + onlyPositiveBalances)
+    }
+
+    // MARK: Levy bar
+
+    /// The bar of the levies of the three authorities, the one Přehled shows: what the levies of the income received
+    /// through the day shown are (or the levies of the year, for a year that is over), with the advances paid and what
+    /// is left in the popover of each part. It has the total of the levies and its share of the income at the end of
+    /// its header, because the key figure beside it is what is left to pay, not the levies.
+    private static func levies(_ facts: Facts) -> LevyBarData {
+        let result = facts.result
+        let header: String
+        if facts.isOver {
+            header = "Odvody za rok \(result.year)"
+        } else {
+            header = "Odvody z příjmů do " + BuilderText.date(result.asOf, omittingYear: result.year)
+        }
+        return LevyBarBuilder.balances(
+            of: result, kind: .toDate(isOver: facts.isOver), header: header, showsTotal: true)
     }
 
     // MARK: Marginal levy
 
     /// What the three levies take of the next crown, from the levies with 100 000 Kč more income that the engine
-    /// worked out, and each authority's part of the sum for the bar. The sentence names the sum and the three parts per
-    /// hundred crowns, with the haléře, and the parts add up to the sum shown. Only the result is read, so the
-    /// Simulátor shows the same card.
+    /// worked out, and the rate of each authority for the bar: the part of the bar of each is its rate itself, 0 to 1,
+    /// so that the three fill as much of it as the sum is of a hundred crowns. The sentence names the sum and the three
+    /// parts per hundred crowns, with the haléře, and the parts add up to the sum shown. Only the result is read, so
+    /// the Simulátor shows the same card.
     static func marginal(of result: TaxResult) -> ComputationMarginal {
         // Tax, social, health: the order of `Authority.allCases`, which the text and the bar follow.
         let rates = Authority.allCases.map { result.marginal[$0] ?? 0 }
         let sum = result.marginalTotal
         let shares = zip(Authority.allCases, rates).map { authority, rate in
-            MarginalShare(authority: authority, fraction: sum > 0 ? fraction(of: max(0, rate), in: sum) : 0)
+            MarginalShare(authority: authority, fraction: NSDecimalNumber(decimal: min(1, max(0, rate))).doubleValue)
         }
         // Hundredths of a crown per hundred crowns (0,3781 is 3 781), the parts adding up to the rounded sum.
         let (parts, total) = DecimalMath.roundedKeepingSum(rates.map { $0 * 10_000 }, total: sum * 10_000)

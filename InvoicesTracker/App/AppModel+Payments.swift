@@ -246,7 +246,7 @@ extension AppModel {
         return (daily: daily, uniform: uniform)
     }
 
-    /// The day `year` is shown as of: the day of "K datu" for the year shown, and for another year the day the year
+    /// The day `year` is shown as of: the reporting cutoff for the year shown, and for another year the day the year
     /// menu would show it as of (`AsOfState.selectYear(_:today:)`).
     private func dayShown(of year: Int) -> CivilDate {
         guard year != asOf.year else { return asOf.asOf }

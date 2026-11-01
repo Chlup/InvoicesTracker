@@ -1,98 +1,110 @@
 import SwiftUI
 
-/// "Zaplatíte za rok …": the three levies together in big rounded digits, what they are a month and of the income, the
-/// bar of their parts, a line for each with what applies to it, and under a divider the net income, what the income
-/// leaves after them: its average per month in bold green, with the sum of the whole year under it. Where the levies
-/// are more than the income, the average is negative and in the orange of a warning.
+/// The sizes and gaps of the result card of the Simulátor that its parts do not set themselves, in points.
+private nonisolated enum SimulatorResultCardMetrics {
+    /// The space between the parts of the card: the key figure, the bar of the levies, and the net income and the
+    /// marginal levy under their hairlines.
+    static let partSpacing: CGFloat = 14
+
+    /// The space between a hairline and the part under it.
+    static let belowHairline: CGFloat = 12
+
+    /// The space between the dot of the net income and its words.
+    static let dotGap: CGFloat = 6
+
+    /// The space between the words of the net income and its amount where they stand on one line.
+    static let amountGap: CGFloat = 12
+
+    /// The space between the line of the net income and the line under it.
+    static let lineGap: CGFloat = 3
+
+    /// The space between the words of the net income and its amount where the amount has gone under them.
+    static let wrappedGap: CGFloat = 4
+
+    /// The size of the dot of the net income.
+    static let dotSize: CGFloat = 8
+}
+
+/// The result of the simulation, in one card of the column beside the inputs: the key figure with the levies of the
+/// year, their share of the income and what they are a month; the bar of the levies by authority, whose popover hangs
+/// out over what follows it in the card; under a hairline what the income leaves after the levies; and under another
+/// the marginal levy, in the compact form of Výpočet's card. The card is the width of its column, 360 points beside the
+/// inputs, and its parts stand one under the other, 14 points apart.
+///
+/// The popover of the bar is drawn above what follows the bar in the card (the bar is drawn above its siblings), and
+/// nothing clips it: the card is the background of its content. VoiceOver reads the card as a group under "Kolik
+/// zaplatíte".
 struct SimulatorResultCard: View {
     let summary: SimulatorSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SimulatorCardTitle(text: summary.heading)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: summary.total)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(verbatim: summary.subline)
-                    .monospacedDigit()
-                    .simulatorNote()
+        VStack(alignment: .leading, spacing: SimulatorResultCardMetrics.partSpacing) {
+            KeyFigureView(summary.keyFigure, sentenceFont: Typography.callout, spacing: .simulator)
+            // The bar draws itself above what follows it, so its popover hangs below its legend over the net income and
+            // the marginal levy.
+            LevyBarView(summary.levyBar)
+            underHairline {
+                SimulatorNetIncomeView(netIncome: summary.netIncome)
             }
-            .accessibilityElement(children: .combine)
-            AuthorityShareBar(shares: summary.shares)
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(summary.lines) { line in
-                    levyLine(line)
-                }
+            underHairline {
+                MarginalCard(marginal: summary.marginal, compact: true)
             }
-            Divider()
-            netIncome
         }
-        .padding(20)
+        .padding(DesignMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .screenCard()
+        .card()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(summary.heading)
+        .accessibilityLabel("Kolik zaplatíte")
     }
 
-    /// The dot of the authority, the levy with its note under it, and the amount.
-    private func levyLine(_ line: SimulatorLevyLine) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Circle()
-                .fill(line.authority.color)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: line.label)
-                if let note = line.note {
-                    Text(verbatim: note)
-                        .simulatorNote()
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Text(verbatim: line.amount)
-                .fontWeight(.semibold)
-                .monospacedDigit()
-                .fixedSize()
+    /// `content` under a hairline of the width of the card, 12 points below it.
+    private func underHairline<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: SimulatorResultCardMetrics.belowHairline) {
+            Hairline()
+            content()
         }
-        .accessibilityElement(children: .combine)
     }
+}
 
-    /// The net income: the dot in the green of the net income with its words, the average per month, and under them the
-    /// sum of the year with the reminder that the real expenses are not taken off. The amount stands beside its words
-    /// where they fit together, else under them. It is in the green of the text of a banner, or, where the levies are
-    /// more than the income, in the orange of a warning, while the words keep their colour. VoiceOver reads the three
-    /// as one phrase.
-    private var netIncome: some View {
-        let net = summary.netIncome
-        let words = HStack(alignment: .firstTextBaseline, spacing: 10) {
+/// What the income leaves after the levies: the green dot of the net income and the words "Čistý příjem průměrně za
+/// měsíc" in headline, the average per month in the title style at the end of their line, or under them where the two
+/// do not fit one line, and under them the sum of the year with the reminder that the real expenses are not taken off,
+/// in callout and tertiary text. The amount is in the colour of text whatever its sign: the levies being more than the
+/// income is not a warning here. VoiceOver reads the three as one phrase.
+struct SimulatorNetIncomeView: View {
+    let netIncome: SimulatorNetIncome
+
+    var body: some View {
+        let words = HStack(spacing: SimulatorResultCardMetrics.dotGap) {
             Circle()
-                .fill(Color(.netIncome))
-                .frame(width: 8, height: 8)
+                .fill(Palette.green)
+                .frame(width: SimulatorResultCardMetrics.dotSize, height: SimulatorResultCardMetrics.dotSize)
                 .accessibilityHidden(true)
-            Text(verbatim: net.label)
+            Text(verbatim: netIncome.label)
+                .font(Typography.headline)
+                .foregroundStyle(Palette.text)
         }
-        let figure = Text(verbatim: net.amount)
-            .fontWeight(.bold)
+        let amount = Text(verbatim: netIncome.amount)
+            .font(Typography.title)
             .monospacedDigit()
-            .foregroundStyle(net.isNegative ? Color(.simulationText) : Color(.bannerText))
-        return VStack(alignment: .leading, spacing: 2) {
+            .foregroundStyle(Palette.text)
+        return VStack(alignment: .leading, spacing: SimulatorResultCardMetrics.lineGap) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: SimulatorResultCardMetrics.amountGap) {
                     words
                     Spacer(minLength: 0)
-                    figure
+                    amount
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: SimulatorResultCardMetrics.wrappedGap) {
                     words
-                    figure
+                    amount
                 }
             }
-            Text(verbatim: net.sub)
+            Text(verbatim: netIncome.sub)
+                .font(Typography.callout)
                 .monospacedDigit()
-                .simulatorNote()
+                .foregroundStyle(Palette.text3)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
     }

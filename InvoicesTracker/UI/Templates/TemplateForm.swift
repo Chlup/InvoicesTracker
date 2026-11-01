@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// The sheet "Nová šablona" / "Upravit šablonu": the name, the client, the items with what their descriptions come to
-/// for the month shown, the due days, the VAT mode, the bank account that the invoices print, and the note. Nothing is
-/// written until Uložit šablonu; Zrušit throws the edit away. A template that is stored can be deleted, after the
-/// question that the sheet asks in a red box in place of its buttons. The words and the numbers are the model's
-/// (`TemplateFormModel`); the sheet only shows them.
+/// for the month a new invoice starts in (and, after the first of them, what a description may hold), the due days, the
+/// VAT mode, the bank account that the invoices print, and the note. Nothing is written until Uložit šablonu; Zrušit
+/// throws the edit away. A template that is stored can be deleted, after the question that the sheet asks in a red box
+/// in place of its buttons. The words and the numbers are the model's (`TemplateFormModel`); the sheet only shows them.
 struct TemplateForm: View {
     @Bindable var model: TemplateFormModel
 
@@ -41,6 +41,7 @@ struct TemplateForm: View {
         .padding(.bottom, 20)
         .frame(width: 620)
         .frame(maxHeight: Self.maximumHeight)
+        .dialogNamed(model.title)
         .defaultFocus($nameFocused, model.isNew)
         .task {
             await model.load()
@@ -65,13 +66,13 @@ struct TemplateForm: View {
         }
     }
 
-    /// "Odběratel": a pill for every client, the one chosen dark.
+    /// "Odběratel": a filter chip for every client, the one chosen in the accent.
     private var clientChoice: some View {
         LabeledField("Odběratel") {
             VStack(alignment: .leading, spacing: 6) {
                 FlowLayout(spacing: 6) {
                     ForEach(model.clients) { client in
-                        ClientChip(name: client.name, isOn: client.id == model.clientID) {
+                        FilterChip(client.name, isSelected: client.id == model.clientID) {
                             model.pickClient(client.id)
                         }
                     }
@@ -80,8 +81,8 @@ struct TemplateForm: View {
                 .accessibilityLabel("Odběratel šablony")
                 if model.clients.isEmpty {
                     Text(verbatim: model.loadFailed ? "Odběratele se nepodařilo načíst." : EditorText.noClients)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
                 }
             }
         }
@@ -89,35 +90,31 @@ struct TemplateForm: View {
 
     // MARK: The items
 
+    /// The items, a hairline between two of them, and under them Přidat položku, with the line that says the most a
+    /// template can have once it has that many.
     private var itemRows: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                 if index > 0 {
-                    Divider()
+                    Hairline()
                 }
                 itemRow(binding(for: item), index: index)
             }
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: TemplateFormModel.placeholderHint)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    if !model.canAddItem {
-                        Text("Nejvýše \(EditorLimits.items) položek.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
+                if !model.canAddItem {
+                    Text("Nejvýše \(EditorLimits.items) položek.")
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Button {
                     model.addItem()
                 } label: {
                     Label("Přidat položku", systemImage: "plus")
+                        .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
+                .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
                 .disabled(!model.canAddItem)
             }
         }
@@ -135,18 +132,22 @@ struct TemplateForm: View {
             })
     }
 
+    /// An item: its number and the button that removes it where there is more than one, its description with the line
+    /// of its preview under it (`TemplateFormModel.previewLine(ofItem:)`), its quantity, unit and price, and what is
+    /// wrong with the quantity and the price.
     private func itemRow(_ item: Binding<EditableItem>, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if model.items.count > 1 {
                 HStack {
                     Text("Položka \(index + 1)")
-                        .fontWeight(.semibold)
+                        .font(Typography.bodySemibold)
+                        .foregroundStyle(Palette.text)
                     Spacer()
                     Button {
                         model.removeItem(at: index)
                     } label: {
                         Image(systemName: "minus.circle")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.text2)
                     }
                     .buttonStyle(.plain)
                     .help("Odebrat položku")
@@ -156,9 +157,9 @@ struct TemplateForm: View {
             LabeledField("Popis položky") {
                 FormTextField("Popis položky \(index + 1)", text: item.description)
             }
-            Text("Náhled: \(model.preview(ofItem: index, duzp: model.previewDay))")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            Text(verbatim: model.previewLine(ofItem: index))
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text3)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(alignment: .top, spacing: 12) {
                 LabeledField("Počet") {
@@ -174,8 +175,8 @@ struct TemplateForm: View {
             ForEach([item.wrappedValue.quantityError, item.wrappedValue.priceError].compactMap { $0 }, id: \.self) {
                 message in
                 Text(verbatim: message)
-                    .font(.callout)
-                    .foregroundStyle(.red)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.redText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -211,31 +212,36 @@ struct TemplateForm: View {
     private var accountRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Bankovní účet")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(Typography.callout)
+                .foregroundStyle(Palette.text2)
             Text(verbatim: model.accountLine.text)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
             if let hint = model.accountLine.sourceHint {
                 Text(verbatim: hint)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// "Poznámka na faktuře": the text of the note, on the background of a card with the stronger line of a field
+    /// around it, and its prompt while it is empty.
     private var noteField: some View {
         LabeledField("Poznámka na faktuře") {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $model.note)
-                    .font(.body)
+                    .font(Typography.body)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .accessibilityLabel("Poznámka na faktuře")
                 if model.note.isEmpty {
                     Text("Např. platební instrukce – vytiskne se dole na faktuře")
-                        .foregroundStyle(.tertiary)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text3)
                         .padding(.horizontal, 11)
                         .padding(.vertical, 6)
                         .allowsHitTesting(false)
@@ -243,33 +249,34 @@ struct TemplateForm: View {
                 }
             }
             .frame(height: 72)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
+            .background(Palette.bgCard, in: RoundedRectangle(cornerRadius: DesignMetrics.controlRadius))
+            .overlay(RoundedRectangle(cornerRadius: DesignMetrics.controlRadius).strokeBorder(Palette.sepStrong))
         }
     }
 
     // MARK: The buttons
 
+    /// The buttons of the sheet, the capsules of a dialog, 32 points high: Smazat šablonu on the pale red at the
+    /// leading end, for a stored template, which asks first; Zrušit, which Esc presses, and Uložit šablonu in the
+    /// accent, which Return presses, at the trailing end.
     private var footer: some View {
         HStack(spacing: 8) {
             if !model.isNew {
                 Button("Smazat šablonu", role: .destructive) {
                     model.askToDelete()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.destructive))
                 .disabled(model.isWorking)
             }
             Spacer()
             Button("Zrušit", action: cancel)
-                .buttonStyle(.bordered)
+                .buttonStyle(CapsuleButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
             Button("Uložit šablonu", action: save)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(CapsuleButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.isWorking)
         }
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
     }
 
     /// "Smazat šablonu „…“?" and what deleting the template does, with Zrušit, which Esc is too, and the red Smazat
@@ -317,7 +324,7 @@ private struct UnitField: View {
                 }
             } label: {
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption)
+                    .font(Typography.subheadline)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)

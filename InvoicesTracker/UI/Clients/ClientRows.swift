@@ -1,58 +1,62 @@
 import Foundation
 
-/// A row of Odběratelé: what the table says of one client, as text.
-nonisolated struct ClientRow: Identifiable, Equatable, Sendable {
+/// A row of the table of Odběratelé: what it says of one client, as text, on one line. The address, the numbers, the
+/// contacts, the terms and the invoices of the client are not in the row; they belong to the detail of the client.
+nonisolated struct ClientRow: Identifiable, Hashable, Sendable {
     var id: Int64
     var name: String
 
-    /// "Příbram · IČO 12345678": the city, the country unless it is Česko, and the IČO, as far as the client has them.
-    /// "—" where it has none of them.
-    var detailLine: String
-
-    /// "CZK".
+    /// "CZK": the code of the currency of the invoices of the client, in the chip of Měna a DPH.
     var currency: String
 
     /// The VAT mode in a few words: "DPH 21 %", "mimo tuzemsko", "přenesená povinnost" or "bez DPH".
     var vatShort: String
 
-    /// The language of its invoices: "česky" or "anglicky".
-    var language: String
+    /// How many templates of invoices the client has: "1 šablona", "2 šablony", "5 šablon", or "žádná".
+    var templates: String
 
-    /// What the client paid in the year, up to the day shown: "přijato 106 720,00 Kč", or "nic nepřijato".
+    /// The money received from the client in the year, up to the day it is counted to, without VAT, in whole Kč:
+    /// "1 105 464 Kč", or "—" where nothing came.
     var received: String
 
-    /// How many invoices of the client were issued in the year up to the day shown, and the day of the last of them:
-    /// "3 faktury · poslední 15. 10.", or "žádná faktura".
-    var countLine: String
+    /// Whether the client has a template, so that `templates` counts them and is not "žádná".
+    var hasTemplates: Bool {
+        templates != ClientRowBuilder.noTemplates
+    }
 
-    /// Whether `received` says that some money came, not "nic nepřijato".
+    /// Whether some money came from the client in the year, so that `received` is an amount and not the dash.
     var hasReceived: Bool {
         received != ClientRowBuilder.nothingReceived
     }
 }
 
-/// Turns the clients and what they did in the year into the rows of Odběratelé.
+/// Turns the clients, how many templates each has and what each did in the year into the rows of Odběratelé.
 nonisolated enum ClientRowBuilder {
-    /// What `detailLine` says of a client with no city, no country to name and no IČO.
-    static let noDetail = "—"
+    /// What `templates` says of a client without a template.
+    static let noTemplates = "žádná"
 
-    /// What `received` says of a client that was paid nothing.
-    static let nothingReceived = "nic nepřijato"
+    /// What `received` says of a client that paid nothing in the year.
+    static let nothingReceived = "—"
 
-    /// What `countLine` says of a client that was issued no invoice.
-    static let noInvoice = "žádná faktura"
-
-    /// The rows of `clients`, in the order of their names in Czech (where "Č" comes after "C" and "Ch" after "H", which
-    /// the order of the database does not know), for the year the `figures` are of. A client without figures has done
-    /// nothing in it.
-    static func rows(clients: [Client], figures: [Int64: ClientFigures]) -> [ClientRow] {
-        let nothing = ClientFigures(invoiceCount: 0, receivedHalere: 0, lastIssueDate: nil)
-        return sortedByName(clients).map { row(for: $0, figures: figures[$0.id] ?? nothing) }
+    /// The rows of `clients`, in the order of their names in Czech, with the number of templates of each
+    /// (`templateCounts`, by the id of the client) and their figures for the year (`figures`, by the id of the client).
+    /// A client with no count has no template, and one without figures has done nothing in the year.
+    static func rows(
+        clients: [Client], templateCounts: [Int64: Int], figures: [Int64: ClientFigures]
+    ) -> [ClientRow] {
+        sortedByName(clients).map { client in
+            ClientRow(
+                id: client.id, name: client.name, currency: client.currency.code,
+                vatShort: vatShort(of: client.vatMode),
+                templates: templatesText(count: templateCounts[client.id] ?? 0),
+                received: receivedText(halere: figures[client.id]?.receivedHalere ?? 0))
+        }
     }
 
     private static let czech = Locale(identifier: "cs_CZ")
 
-    /// `clients` by their names in Czech, then by their ids.
+    /// `clients` by their names in Czech (where "Č" comes after "C" and "Ch" after "H", which the order of the
+    /// database does not know), then by their ids.
     private static func sortedByName(_ clients: [Client]) -> [Client] {
         clients.sorted { first, second in
             switch first.name.compare(second.name, locale: czech) {
@@ -63,30 +67,7 @@ nonisolated enum ClientRowBuilder {
         }
     }
 
-    private static func row(for client: Client, figures: ClientFigures) -> ClientRow {
-        ClientRow(
-            id: client.id, name: client.name, detailLine: detailLine(of: client), currency: client.currency.code,
-            vatShort: vatShort(of: client.vatMode), language: client.language == .en ? "anglicky" : "česky",
-            received: figures.receivedHalere == 0
-                ? nothingReceived : "přijato " + CzechFormat.halere(figures.receivedHalere),
-            countLine: countLine(of: figures))
-    }
-
-    /// The city, the country by its name in Czech unless it is Česko, and "IČO" with the registration number, as far as
-    /// the client has them, apart by a dot.
-    private static func detailLine(of client: Client) -> String {
-        let country = isCzechia(client.country) ? "" : Countries.name(client.country, language: .cs)
-        let ico = FormInput.trimmed(client.ico)
-        let parts = [FormInput.trimmed(client.city), country, ico.isEmpty ? "" : "IČO " + ico]
-        let said = parts.filter { !$0.isEmpty }
-        return said.isEmpty ? noDetail : said.joined(separator: " · ")
-    }
-
-    /// Whether `country` is Česko: its code, or a name the import takes for it (Česko, Česká republika).
-    private static func isCzechia(_ country: String) -> Bool {
-        ImportPlanner.countryCode(of: FormInput.trimmed(country)) == "CZ"
-    }
-
+    /// The VAT mode in the few words of the column Měna a DPH.
     private static func vatShort(of mode: VatMode) -> String {
         switch mode {
         case .domestic21, .domestic12: "DPH \(mode.ratePercent) %"
@@ -96,32 +77,29 @@ nonisolated enum ClientRowBuilder {
         }
     }
 
-    private static func countLine(of figures: ClientFigures) -> String {
-        guard figures.invoiceCount > 0 else { return noInvoice }
-        let count = WelcomeTexts.invoiceCount(figures.invoiceCount)
-        guard let last = figures.lastIssueDate else { return count }
-        return count + " · poslední " + CzechFormat.dayMonth(last)
+    /// "1 šablona", "2 šablony", "5 šablon" with a no-break space, as the summary row counts them, or "žádná" for none.
+    private static func templatesText(count: Int) -> String {
+        guard count > 0 else { return noTemplates }
+        return CzechCount.counted(
+            count, one: "šablona", few: "šablony", many: "šablon", separator: CzechFormat.noBreakSpace)
+    }
+
+    /// The money received in whole Kč, rounded half up, or the dash where nothing came.
+    private static func receivedText(halere: Int64) -> String {
+        halere == 0 ? nothingReceived : PredictionBuilder.kc(ofHalere: halere)
     }
 }
 
 nonisolated extension ClientRow {
-    /// What VoiceOver reads for the row in the table of `year`: the name of the client, the line under it, and each
-    /// other column with its name, the year with what the client did in it. The line under the name is left out where
-    /// it is only a dash, and the dots that part the lines are read as pauses.
-    func spokenText(year: Int) -> String {
-        var parts = [name]
-        if detailLine != ClientRowBuilder.noDetail {
-            parts.append(Self.paused(detailLine))
+    /// What VoiceOver reads for the row in a table whose last column is named `receivedHeader`, "Přijato 2026": the
+    /// name of the client, then each other column with its name. The money received is left out where nothing came,
+    /// as a dash in a column says nothing to a listener, and as a column that is empty for an invoice is left out of
+    /// the rows of Faktury.
+    func spokenText(receivedHeader: String) -> String {
+        var parts = [name, "Měna a DPH \(currency)", vatShort, "Šablony \(templates)"]
+        if hasReceived {
+            parts.append("\(receivedHeader) \(received)")
         }
-        parts.append("Měna a DPH \(currency)")
-        parts.append(vatShort)
-        parts.append("Jazyk faktury \(language)")
-        parts.append("Rok \(year): \(received)")
-        parts.append(Self.paused(countLine))
         return parts.joined(separator: ", ")
-    }
-
-    private static func paused(_ line: String) -> String {
-        line.replacingOccurrences(of: " · ", with: ", ")
     }
 }

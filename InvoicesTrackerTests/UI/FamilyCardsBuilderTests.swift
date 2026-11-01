@@ -193,6 +193,7 @@ struct FamilyCardsBuilderTests {
         #expect(
             ChildrenCardContent.noChildren
                 == "Zatím žádné dítě. Přidejte děti, které s vámi žijí ve společné domácnosti.")
+        #expect(cards.children.emptyText == ChildrenCardContent.noChildren)
     }
 
     /// The box under the rows says what the benefit leaves after its credit: paid as a bonus, not paid because it is
@@ -263,6 +264,42 @@ struct FamilyCardsBuilderTests {
         #expect(cards.children.rows.map(\.amount) == ["—", "22\u{00A0}320\u{00A0}Kč"])
     }
 
+    /// The cards of the family speak the words of the screen they are on, each as that screen's own design says them
+    /// (`FamilyCardsMode`). The Simulátor has no "Sazba podle pořadí v domácnosti:" in the sentence of the rates, says
+    /// "Bez dětí. Přidejte je, nebo převezměte rodinu ze Záloh a odpočtů." for a year without a child, and its cards
+    /// are read as "… v simulaci"; Zálohy a odpočty has the longer sentence, "Zatím žádné dítě. …" and the plain names.
+    @Test func eachScreenSpeaksItsOwnWordsOnTheCardsOfTheFamily() throws {
+        let stored = try Self.content([Self.anna(), Self.tomas()])
+        let simulated = try Self.content([Self.anna(), Self.tomas()], mode: .simulation)
+        let emptyStored = try Self.content([], spouse: nil)
+        let emptySimulated = try Self.content([], spouse: nil, mode: .simulation)
+
+        #expect(
+            stored.children.rates
+                == "Za každý měsíc, na jehož začátku s vámi dítě žilo a bylo vyživované, a za měsíc narození. Sazba"
+                + " podle pořadí v domácnosti: 1. dítě 15\u{00A0}204\u{00A0}Kč, 2. dítě 22\u{00A0}320\u{00A0}Kč, 3. a"
+                + " další 27\u{00A0}840\u{00A0}Kč za rok, se ZTP/P dvojnásobek.")
+        #expect(
+            simulated.children.rates
+                == "Za každý měsíc, na jehož začátku s vámi dítě žilo a bylo vyživované, a za měsíc narození. 1. dítě"
+                + " 15\u{00A0}204\u{00A0}Kč, 2. dítě 22\u{00A0}320\u{00A0}Kč, 3. a další 27\u{00A0}840\u{00A0}Kč za"
+                + " rok, se ZTP/P dvojnásobek.")
+        #expect(
+            ChildrenCardContent.noChildrenInSimulation
+                == "Bez dětí. Přidejte je, nebo převezměte rodinu ze Záloh a odpočtů.")
+        #expect(emptyStored.children.emptyText == ChildrenCardContent.noChildren)
+        #expect(emptySimulated.children.emptyText == ChildrenCardContent.noChildrenInSimulation)
+        #expect(stored.children.label == "Děti")
+        #expect(simulated.children.label == "Děti v simulaci")
+        #expect(stored.spouse.label == "Manžel nebo manželka")
+        #expect(simulated.spouse.label == "Manžel nebo manželka v simulaci")
+        // A spouse who is not claimed has the same label as one who is.
+        let unclaimed = try Self.content([Self.anna()], spouse: Self.spouse(claim: false), mode: .simulation)
+        #expect(unclaimed.spouse.label == "Manžel nebo manželka v simulaci")
+        // What both screens say alike is not touched: the note of what counts in the income stays the app's.
+        #expect(stored.spouse.claimLine == simulated.spouse.claimLine)
+    }
+
     /// The Simulátor says beside Přidat dítě that nothing of its family is stored, with children or without; Zálohy
     /// a odpočty, which stores the family, says nothing there.
     @Test func theSimulationSaysBesideTheButtonThatNothingIsStored() throws {
@@ -292,8 +329,8 @@ struct FamilyCardsBuilderTests {
         #expect(
             cards.spouse.youngChild
                 == YoungChildNote(
-                    text: "Dítě do 3 let ve společné domácnosti: Tomáš (12\u{00A0}měsíců). Od roku 2024 se sleva počítá"
-                        + " jen za tyto měsíce.",
+                    text: "Dítě do 3 let ve společné domácnosti: Tomáš (celý rok). Od roku 2024 se sleva počítá jen za"
+                        + " tyto měsíce.",
                     isMet: true))
         #expect(cards.spouse.result == "Sleva za 12\u{00A0}měsíců: 24\u{00A0}840\u{00A0}Kč")
         #expect(
@@ -334,13 +371,14 @@ struct FamilyCardsBuilderTests {
     }
 
     /// Every child under three is named with its own months, which the engine counts for it: Ema, born 15. 6. 2026,
-    /// is under three from July. A child without a name is "dítě".
+    /// is under three from July. A child under three all twelve months has "celý rok" in place of its months, as the
+    /// design says it. A child without a name is "dítě".
     @Test func theBoxNamesEveryChildUnderThreeWithItsMonths() throws {
         let cards = try Self.content([Self.anna(), Self.tomas(), Self.ema(order: 3)])
         #expect(
             cards.spouse.youngChild?.text
-                == "Dítě do 3 let ve společné domácnosti: Tomáš (12\u{00A0}měsíců), Ema (6\u{00A0}měsíců). Od roku 2024"
-                + " se sleva počítá jen za tyto měsíce.")
+                == "Dítě do 3 let ve společné domácnosti: Tomáš (celý rok), Ema (6\u{00A0}měsíců). Od roku 2024 se"
+                + " sleva počítá jen za tyto měsíce.")
 
         let unnamed = try Self.content([Self.member("", born: "2026-06-15", id: 3, order: 1)])
         #expect(

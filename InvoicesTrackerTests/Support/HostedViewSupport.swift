@@ -7,22 +7,39 @@ import Testing
 /// never a tab of another window, so it keeps its size while the windows of other tests change theirs. A field of
 /// `view` can take the focus as the window shows it, as the field of a recovery code does, and with the focus the field
 /// editor that the fields of all windows share. So the window is shown and closed in the turn of the test to type into
-/// a window (`whileTypingAlone(_:)`).
+/// a window (`whileTypingAlone(_:)`). With `ignoringTheRealPointer` the window is closed to the pointer of the person
+/// who runs the tests, as the window of the app is (`withAppWindow(of:size:ignoringTheRealPointer:_:)`), and a test can
+/// move the pointer over the view by hand (`movePointer(to:in:)`).
 @MainActor
 func withHostedView<Content: View>(
-    _ view: Content, size: CGSize = CGSize(width: 900, height: 700), _ body: (NSWindow) async throws -> Void
+    _ view: Content, size: CGSize = CGSize(width: 900, height: 700), ignoringTheRealPointer: Bool = false,
+    _ body: (NSWindow) async throws -> Void
 ) async throws {
     try await whileTypingAlone {
         let controller = NSHostingController(rootView: view)
-        let window = NSWindow(contentViewController: controller)
+        let window = TestWindow(contentViewController: controller)
+        if ignoringTheRealPointer {
+            window.closeToTheRealPointer()
+        }
         window.styleMask = [.titled, .closable, .resizable]
         window.tabbingMode = .disallowed
         window.setContentSize(size)
         window.makeKeyAndOrderFront(nil)
         defer { window.close() }
         try await layOut(window)
+        if ignoringTheRealPointer {
+            try await window.makeTheAreasOfThePointerAnew()
+        }
         try await body(window)
     }
+}
+
+/// What a sheet shown alone in a window (`withHostedView`) was told to do: how many times it asked its owner to close
+/// it. The sheets that only close, such as the text of a licence and the restore of a backup, take
+/// `{ calls.closed += 1 }` as the way to close.
+@MainActor
+final class SheetCalls {
+    var closed = 0
 }
 
 /// The keys a test presses, with what the key types and the code of the key.

@@ -9,10 +9,12 @@ import Observation
 /// (`AppModel.didWrite()`) so that the screens load again. Smazat šablonu is offered for a template that is stored: the
 /// form asks first, in a box of its own (`askToDelete()`), and the answer deletes it (`delete()`).
 ///
-/// - A new template starts with the first client (its VAT mode and due days apply), one item "Vývoj – {měsíc} {rok}" of
-///   one hour without a price. Choosing another client applies its VAT mode and due days.
+/// - A new template starts with the first client (its VAT mode and due days apply), or with the client it is made for
+///   (`init(app:preselectedClient:)`), and one item "Vývoj – {měsíc} {rok}" of one hour without a price. Choosing
+///   another client applies its VAT mode and due days.
 /// - The descriptions of the items may hold `{měsíc}`, `{rok}`, `{month}` and `{year}`, which an invoice made from the
-///   template fills in from its DUZP (`TemplateText`); the form shows what they come to (`preview(duzp:)`).
+///   template fills in from its DUZP (`TemplateText`); the form shows what they come to (`preview(duzp:)`), and after
+///   the preview of the first item it says what they may hold (`previewLine(ofItem:)`).
 /// - The form shows which bank account the invoices made from the template print (`accountLine`): the account in the
 ///   currency of the client chosen: one of Nastavení › Moje údaje, or, in a currency it has no boxes for, an imported
 ///   one. The template stores no account; an invoice made from it prints the account that the data has for its
@@ -28,9 +30,8 @@ final class TemplateFormModel {
     nonisolated static let saveFailed = "Šablonu se nepodařilo uložit."
     nonisolated static let deleteFailed = "Šablonu se nepodařilo smazat."
 
-    /// What a description may hold, over the cards of Šablony faktur and under the items of the form.
-    nonisolated static let placeholderHint =
-        "V popisu lze použít {měsíc}, {rok}, {month} a {year} – doplní se podle DUZP."
+    /// What a description may hold, after the preview of the first item of the form.
+    nonisolated static let previewHint = "{měsíc}, {rok}, {month} a {year} se doplní podle DUZP"
 
     /// The description of the first item of a new template.
     nonisolated static let newDescription = "Vývoj – {měsíc} {rok}"
@@ -103,6 +104,16 @@ final class TemplateFormModel {
             dueDaysText = "14"
             note = ""
         }
+    }
+
+    /// The form of a new template for `client`, which starts with that client and its VAT mode and due days, as
+    /// choosing the client in the form would set them: Nová šablona in the detail of the client. The client stays
+    /// chosen once the form has loaded the clients (`load()` takes the first client only for a form without one).
+    convenience init(app: AppModel, preselectedClient client: Client) {
+        self.init(app: app, template: nil)
+        clientID = client.id
+        vatMode = client.vatMode
+        dueDaysText = String(client.dueDays)
     }
 
     /// The first item of a new template: one hour of "Vývoj – {měsíc} {rok}", without a price.
@@ -220,6 +231,14 @@ final class TemplateFormModel {
     /// The descriptions of all the items as an invoice with the DUZP `duzp` would have them, one line each.
     func preview(duzp: CivilDate) -> String {
         items.indices.map { preview(ofItem: $0, duzp: duzp) }.joined(separator: "\n")
+    }
+
+    /// The line under the description of the item at `index`: its preview for the DUZP a new invoice starts with
+    /// (`previewDay`), "Náhled: Vývoj – říjen 2026", and for the first item after it what the descriptions may hold
+    /// (`previewHint`), which the form says once for all of them.
+    func previewLine(ofItem index: Int) -> String {
+        let line = "Náhled: " + preview(ofItem: index, duzp: previewDay)
+        return index == 0 ? line + " · " + Self.previewHint : line
     }
 
     // MARK: Checking

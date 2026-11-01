@@ -1,16 +1,27 @@
 import SwiftUI
 
+/// The sizes of the page of the Simulátor that its parts do not set themselves, in points.
+private nonisolated enum SimulatorScreenMetrics {
+    /// The width of the column of the result beside the inputs.
+    static let resultWidth: CGFloat = 360
+
+    /// The least width of the column of the inputs beside the result. The detail of the smallest window is 828 points
+    /// wide inside the padding of the page, and 440, the space of 16 and the 360 of the result are 816 of them.
+    static let inputsMinimumWidth: CGFloat = 440
+}
+
 /// Simulátor: what the income tax, the social insurance and the health insurance come to for a year and an income the
 /// person chooses, with the flat-rate expenses, the activity, the deductions and the family, and what the income leaves
 /// after them. Under the note that nothing entered here is stored, with Začít znovu to start again, the inputs stand
-/// on the left and what the year costs and the marginal levy beside them, in the smallest window too (only a sidebar
-/// widened there puts them under the inputs); the card of what the year costs ends with the net income. The breakdown
-/// of the three levies and of the net income runs under both, the tax on the left and the two insurances with the net
-/// income under them on the right where the window has room for two columns, and all four under each other where it
-/// has not. The cards of the children and of the spouse come after the deductions, and the dialog of a child is the
-/// sheet of Zálohy a odpočty in the mode of the simulation, with the lock after inactivity over it. The title and the
-/// line under it are the shell's. A computation that refuses the inputs, which the fields do not let happen, leaves
-/// the results out rather than show a number of its own.
+/// on the left and the result in a column of 360 points beside them, in the smallest window too (only a sidebar
+/// widened there puts the result under the inputs). The result is one card: the levies of the year as the key figure,
+/// the bar of the levies by authority, the net income and the marginal levy. The breakdown of the three levies and of
+/// the net income runs under both, the tax on the left and the two insurances with the net income under them on the
+/// right where the window has room for two columns, and all four under each other where it has not. The cards of the
+/// children and of the spouse come after the deductions, and the dialog of a child is the sheet of Zálohy a odpočty in
+/// the mode of the simulation, with the lock after inactivity over it. The title and the line under it are the shell's.
+/// A computation that refuses the inputs, which the fields do not let happen, leaves the results out rather than show a
+/// number of its own.
 ///
 /// The model is the app's (`AppModel.simulatorModel`), so what was entered stays while other screens are shown, and
 /// other data gets a new one: the screen reads it through the app whenever it is drawn, and has the model read the
@@ -30,16 +41,19 @@ struct SimulatorScreen: View {
     var body: some View {
         let model = app.simulatorModel
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
                 if let errorText = model.errorText {
                     SettingsFailureLine(text: errorText)
                 }
                 ComputationBanner(
                     text: Self.bannerText,
                     button: (title: "Začít znovu", action: { Task { await model.reset() } }))
-                // The results fit beside the inputs in the detail of the smallest window, about 820 points wide.
-                SidePanelLayout(sideWidth: 300, mainMinimumWidth: 480, spacing: 16) {
-                    VStack(spacing: 16) {
+                // The result fits beside the inputs in the detail of the smallest window, 828 points wide.
+                SidePanelLayout(
+                    sideWidth: SimulatorScreenMetrics.resultWidth,
+                    mainMinimumWidth: SimulatorScreenMetrics.inputsMinimumWidth, spacing: DesignMetrics.cardSpacing
+                ) {
+                    VStack(spacing: DesignMetrics.cardSpacing) {
                         SimulatorYearAndIncomeCard(model: model)
                         SimulatorDeductionsHeading(model: model)
                         SimulatorMortgageCard(model: model)
@@ -50,19 +64,18 @@ struct SimulatorScreen: View {
                                 editing: model, year: model.year, child: member, mode: .simulation)
                         }
                     }
-                    VStack(spacing: 16) {
+                    VStack(spacing: DesignMetrics.cardSpacing) {
                         if let page = model.page {
                             SimulatorResultCard(summary: page.summary)
-                            MarginalCard(marginal: page.marginal)
                         }
                     }
+                    .accessibilityAside(named: "Výsledek simulace")
                 }
                 if let page = model.page {
                     breakdown(page.sections)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .pagePadding()
         }
         // The reload key also has the screen drawn again when other data is opened, whose model it then reads.
         .task(id: LoadKey(model: ObjectIdentifier(model), data: app.reloadKey)) {
@@ -81,18 +94,15 @@ struct SimulatorScreen: View {
         }
         .sheet(item: $childDialog) { dialog in
             ChildDialog(model: dialog, close: { childDialog = nil })
-                .idleLockCover()
+                .sheetChrome()
         }
     }
 
     /// "Rozpis výpočtu": the cards of the tax on the left, and of the social insurance and the health insurance on the
     /// right with the net income under them, told apart by `ComputationSection.standsRight`.
     private func breakdown(_ sections: [ComputationSection]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Rozpis výpočtu")
-                .font(.system(size: 15, weight: .semibold))
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 4)
+        VStack(alignment: .leading, spacing: DesignMetrics.innerSpacing) {
+            SectionHeading(text: "Rozpis výpočtu")
             TwoColumnStack {
                 ForEach(sections.filter { !$0.standsRight }) { section in
                     card(of: section)
@@ -103,6 +113,8 @@ struct SimulatorScreen: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Rozpis výpočtu simulace")
     }
 
     /// A card of the breakdown, which VoiceOver reads under the title of its section.

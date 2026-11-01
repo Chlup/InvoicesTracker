@@ -80,9 +80,9 @@ struct InvoiceListBuilderTests {
         InvoiceListBuilder.build(input)
     }
 
-    /// The tile at the uniform rate of 2025 on 1. 4. 2026, when the app no longer looks for the rates of 2025, for one
-    /// unpaid invoice in each of `currencies`, issued on 30. 9. 2025, in a year that has no uniform rate at all.
-    private func uniformTileOf2025AfterTheSearch(for currencies: [CurrencyCode]) -> UniformTile {
+    /// The figure at the uniform rate of 2025 on 1. 4. 2026, when the app no longer looks for the rates of 2025, for
+    /// one unpaid invoice in each of `currencies`, issued on 30. 9. 2025, in a year that has no uniform rate at all.
+    private func uniformOf2025AfterTheSearch(for currencies: [CurrencyCode]) -> UniformSummary {
         let invoices = currencies.enumerated().map { index, currency in
             var invoice = dollarInvoice(
                 id: Int64(index + 1), number: "2025090\(index + 1)", issued: "2025-09-30", dueDate: "2025-10-30",
@@ -90,10 +90,10 @@ struct InvoiceListBuilderTests {
             invoice.currency = currency
             return invoice
         }
-        return build(input(year: 2025, asOf: "2025-12-31", statusDay: "2026-04-01", invoices: invoices)).uniformTile
+        return build(input(year: 2025, asOf: "2025-12-31", statusDay: "2026-04-01", invoices: invoices)).uniform
     }
 
-    /// A crown invoice, a paid dollar invoice and an unpaid one: the sample of the tiles.
+    /// A crown invoice, a paid dollar invoice and an unpaid one: the sample of the summary row.
     private var threeInvoices: [Invoice] {
         [
             crownInvoice(id: 1, number: "20260902"),
@@ -105,17 +105,43 @@ struct InvoiceListBuilderTests {
     private let notPublished2026 =
         "Jednotný kurz USD za rok 2026 ještě není vyhlášený – GFŘ ho zveřejní v lednu 2027."
 
-    // MARK: The tile in crowns
+    /// The figure at the uniform rate of the prototype while the rate of the year is not out: a muted word, with the
+    /// text that says why in its tooltip.
+    private func notAnnounced(_ help: String) -> UniformSummary {
+        .missing(text: "zatím nevyhlášen", help: help)
+    }
 
-    @Test func theTileInCrownsCountsCrownsAtTheirNetPaidInvoicesAtTheRateOfTheDayAndUnpaidOnesAtTheRateOfTheIssueDay() {
+    /// The figure at the uniform rate once the app no longer looks for a rate it lacks: a muted word, with the text
+    /// that says where to enter the rate in its tooltip.
+    private func notInTheApp(_ help: String) -> UniformSummary {
+        .missing(text: "v aplikaci není", help: help)
+    }
+
+    // MARK: The total in crowns
+
+    @Test func theTotalCountsCrownsAtTheirNetPaidInvoicesAtTheRateOfTheDayAndUnpaidOnesAtTheRateOfTheIssueDay() {
         let data = build(
             input(
                 invoices: threeInvoices, paymentDayRates: [2: usd("21.305")], issueDayRates: [3: usd("21.622")]))
 
         // 4 500,00 + 305 726,75 + 260 328,88
         #expect(data.czkTotalHalere == 57_055_563)
-        #expect(data.czkTile.value == "570\u{00A0}555,63\u{00A0}Kč")
-        #expect(data.czkTile.subtitle == "přijaté kurzem ČNB ke dni přijetí, nezaplacené ke dni vystavení")
+        // In whole Kč, as every summary is: 570 555,63 Kč.
+        #expect(data.totalText == "570\u{00A0}556\u{00A0}Kč")
+    }
+
+    @Test func theTotalIsRoundedOnceFromTheSumInHalere() {
+        // Two invoices of 0,50 Kč: 1 Kč together, where each rounded on its own would make 2 Kč.
+        let half = [InvoiceItem(description: "Drobnost", quantity: decimal("1"), unit: "ks", unitPriceMinor: 50)]
+        var first = crownInvoice(id: 1, number: "20260901")
+        first.items = half
+        var second = crownInvoice(id: 2, number: "20260902")
+        second.items = half
+
+        let data = build(input(invoices: [first, second]))
+
+        #expect(data.czkTotalHalere == 100)
+        #expect(data.totalText == "1\u{00A0}Kč")
     }
 
     @Test func aPaidInvoiceIsCountedAtTheRateOfTheDayEvenWhenTheYearConvertsByTheUniformRate() {
@@ -134,16 +160,17 @@ struct InvoiceListBuilderTests {
 
         // 3 640,00 USD at 21,305 is 77 550,20 Kč; at 21,84 it is 79 497,60 Kč.
         #expect(data.czkTotalHalere == 7_755_020)
-        #expect(data.czkTile.value == "77\u{00A0}550,20\u{00A0}Kč")
+        #expect(data.totalText == "77\u{00A0}550\u{00A0}Kč")
         #expect(data.uniformTotalHalere == 7_949_760)
+        #expect(data.uniformLabel == "Jednotným kurzem 2025")
         #expect(
-            data.uniformTile
+            data.uniform
                 == .value(
-                    "79\u{00A0}497,60\u{00A0}Kč",
-                    subtitle: "jednotný kurz 2025: 1\u{00A0}USD = 21,84\u{00A0}Kč · pokyn GFŘ-D-75"))
+                    text: "79\u{00A0}498\u{00A0}Kč",
+                    help: "Jednotný kurz 2025: 1\u{00A0}USD = 21,84\u{00A0}Kč · pokyn GFŘ-D-75"))
     }
 
-    @Test func anAmountFromTheBankCountsAsEnteredInBothTiles() {
+    @Test func anAmountFromTheBankCountsAsEnteredInBothTotals() {
         let fromTheBank = Payment.fixture(
             on: "2026-10-02", conversion: .bankCZK, net: 30_600_000, vat: 0, bankCZKTotalHalere: 30_600_000)
         let invoice = dollarInvoice(id: 1, payment: fromTheBank)
@@ -156,12 +183,12 @@ struct InvoiceListBuilderTests {
         // Not 14 350,00 USD at 21,305 (305 726,75 Kč) and not at the uniform rate.
         #expect(data.czkTotalHalere == 30_600_000)
         #expect(data.uniformTotalHalere == 30_600_000)
-        #expect(data.czkTile.value == "306\u{00A0}000,00\u{00A0}Kč")
+        #expect(data.totalText == "306\u{00A0}000\u{00A0}Kč")
         #expect(
-            data.uniformTile
+            data.uniform
                 == .value(
-                    "306\u{00A0}000,00\u{00A0}Kč",
-                    subtitle: "jednotný kurz 2026: 1\u{00A0}USD = 21,84\u{00A0}Kč · zadáno ručně"))
+                    text: "306\u{00A0}000\u{00A0}Kč",
+                    help: "Jednotný kurz 2026: 1\u{00A0}USD = 21,84\u{00A0}Kč · zadáno ručně"))
     }
 
     @Test func anAmountFromTheBankNeedsNoUniformRate() {
@@ -171,10 +198,11 @@ struct InvoiceListBuilderTests {
         let data = build(input(invoices: [dollarInvoice(id: 1, payment: fromTheBank)]))
 
         #expect(data.uniformTotalHalere == 30_600_000)
+        // The app's own text: a rate of 0,00 Kč would say nothing true.
         #expect(
-            data.uniformTile
+            data.uniform
                 == .value(
-                    "306\u{00A0}000,00\u{00A0}Kč", subtitle: "částky v Kč podle banky – jednotný kurz se nepoužije"))
+                    text: "306\u{00A0}000\u{00A0}Kč", help: "Částky v Kč podle banky – jednotný kurz se nepoužije"))
     }
 
     @Test func anUnpaidInvoiceUsesTheRateOfItsIssueDayNotOfItsTaxableSupply() {
@@ -188,7 +216,7 @@ struct InvoiceListBuilderTests {
         // 12 040,00 USD at 21,622
         #expect(data.czkTotalHalere == 26_032_888)
         #expect(data.rows[0].czk == "≈ 260\u{00A0}328,88\u{00A0}Kč")
-        #expect(data.rows[0].czkNote == "ČNB k vystavení 21,622")
+        #expect(data.rows[0].czkHelp == "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD")
     }
 
     @Test func aPaymentAfterTheChosenDayIsNotReceivedYetSoTheInvoiceIsAnEstimateEvenWhenItIsPaidByToday() {
@@ -203,7 +231,8 @@ struct InvoiceListBuilderTests {
         // 14 350,00 USD at the rate of the issue day, 21,359
         #expect(data.czkTotalHalere == 30_650_165)
         #expect(data.rows[0].czk == "≈ 306\u{00A0}501,65\u{00A0}Kč")
-        #expect(data.rows[0].czkNote == "ČNB k vystavení 21,359")
+        #expect(data.rows[0].czkKind == .estimate)
+        #expect(data.rows[0].czkHelp == "Odhad kurzem ČNB ke dni vystavení: 21,359\u{00A0}Kč/USD")
         // The status is as of today, so the invoice is paid. The money is as of the day shown, so it has not been
         // received and the column in crowns does not look paid.
         #expect(data.rows[0].status == .paid(civilDate("2026-10-20")))
@@ -216,6 +245,7 @@ struct InvoiceListBuilderTests {
         let data = build(input(invoices: [invoice], paymentDayRates: [1: usd("21.305")]))
 
         #expect(data.rows[0].czk == "305\u{00A0}726,75\u{00A0}Kč")
+        #expect(data.rows[0].czkKind == .actual)
         #expect(data.rows[0].status == .paid(civilDate("2026-10-02")))
         #expect(data.rows[0].hasReceivedPayment)
     }
@@ -233,15 +263,18 @@ struct InvoiceListBuilderTests {
         #expect(data.czkTotalHalere == 30_572_675)
     }
 
-    @Test func anUnpaidForeignInvoiceWithoutAnyRateIsWorthNothingYet() {
+    @Test func anUnpaidForeignInvoiceWithoutAnyRateIsWorthNothingYet() throws {
         let data = build(input(invoices: [crownInvoice(id: 1), dollarInvoice(id: 2, hours: "172")]))
 
         #expect(data.czkTotalHalere == 450_000)
-        #expect(data.rows.first { $0.id == 2 }?.czk == "—")
-        #expect(data.rows.first { $0.id == 2 }?.czkNote == "")
+        let row = try #require(data.rows.first { $0.id == 2 })
+        // A dash in the faintest grey, with nothing to say about a rate that is not known.
+        #expect(row.czk == "—")
+        #expect(row.czkKind == .unknown)
+        #expect(row.czkHelp == nil)
     }
 
-    @Test func anInvoiceInReviewIsLeftOutOfTheTileInCrownsButStaysInTheCategory() {
+    @Test func anInvoiceInReviewIsLeftOutOfTheTotalInCrownsButStaysInTheCategory() {
         // An invoice in review is not counted until it is resolved: neither a crown invoice nor a paid dollar invoice
         // adds to the total.
         let invoices = [
@@ -255,11 +288,14 @@ struct InvoiceListBuilderTests {
         let data = build(input(invoices: invoices, paymentDayRates: [3: usd("21.305")]))
 
         #expect(data.czkTotalHalere == 450_000)
-        // The only invoice that is counted is in crowns, so the line under the total says there is none in another.
-        #expect(data.czkTile == Tile(value: "4\u{00A0}500,00\u{00A0}Kč", subtitle: "bez faktur v cizí měně"))
+        #expect(data.totalText == "4\u{00A0}500\u{00A0}Kč")
+        // The only invoice that is counted is in crowns, so there is no total at the uniform rate, and the row says
+        // why the invoices in another currency are not in it.
+        #expect(data.uniform == .hidden)
+        #expect(data.reviewHint == " · mimo součet: 2\u{00A0}faktury ke kontrole")
         // They stay in the category: in the rows, in the count and in the chips.
         #expect(data.rows.map(\.id) == [3, 2, 1])
-        #expect(data.countTile.value == "3")
+        #expect(data.countText == "3\u{00A0}faktury")
         #expect(data.chipCounts[.all] == 3)
         #expect(data.chipCounts[.review] == 2)
     }
@@ -273,18 +309,23 @@ struct InvoiceListBuilderTests {
         let data = build(input(filter: .review, invoices: invoices))
 
         #expect(data.rows.map(\.id) == [2])
-        #expect(data.countTile.value == "1")
+        #expect(data.countText == "1\u{00A0}faktura")
         #expect(data.czkTotalHalere == 0)
+        #expect(data.totalText == "0\u{00A0}Kč")
         #expect(data.uniformTotalHalere == 0)
+        #expect(data.uniform == .hidden)
+        // No invoice in a foreign currency is left out, so there is nothing to explain.
+        #expect(data.reviewHint == nil)
     }
 
-    // MARK: The tile with the uniform rate
+    // MARK: The total at the uniform rate
 
-    @Test func whileTheUniformRateOfTheYearIsNotPublishedTheTileSaysSo() {
+    @Test func whileTheUniformRateOfTheYearIsNotPublishedTheSummarySaysSo() {
         let data = build(
             input(invoices: threeInvoices, paymentDayRates: [2: usd("21.305")], issueDayRates: [3: usd("21.622")]))
 
-        #expect(data.uniformTile == .notPublished(notPublished2026))
+        #expect(data.uniformLabel == "Jednotným kurzem 2026")
+        #expect(data.uniform == notAnnounced(notPublished2026))
         #expect(data.uniformTotalHalere == nil)
     }
 
@@ -295,12 +336,12 @@ struct InvoiceListBuilderTests {
         let data = build(input(invoices: [dollarInvoice(id: 1), euro]))
 
         #expect(
-            data.uniformTile
-                == .notPublished(
+            data.uniform
+                == notAnnounced(
                     "Jednotný kurz EUR, USD za rok 2026 ještě není vyhlášený – GFŘ ho zveřejní v lednu 2027."))
     }
 
-    @Test func anInvoiceInReviewIsLeftOutOfTheTileAtTheUniformRateAndNeverMakesItUnpublished() {
+    @Test func anInvoiceInReviewIsLeftOutOfTheUniformTotalAndNeverMakesItUnpublished() {
         // The euro invoice in review has no rate, which would make the tile "not published" if it counted.
         var euro = dollarInvoice(id: 4, number: "20260904", hours: "10", review: ReviewFlag(reason: "měna bez kurzu"))
         euro.currency = .eur
@@ -322,78 +363,81 @@ struct InvoiceListBuilderTests {
         let expected: Int64 = 450_000 + 31_340_400
         #expect(data.uniformTotalHalere == expected)
         #expect(
-            data.uniformTile
+            data.uniform
                 == .value(
-                    "317\u{00A0}904,00\u{00A0}Kč",
-                    subtitle: "jednotný kurz 2026: 1\u{00A0}USD = 21,84\u{00A0}Kč · pokyn GFŘ-D-75"))
+                    text: "317\u{00A0}904\u{00A0}Kč",
+                    help: "Jednotný kurz 2026: 1\u{00A0}USD = 21,84\u{00A0}Kč · pokyn GFŘ-D-75"))
         // The count still has all four invoices.
-        #expect(data.countTile.value == "4")
+        #expect(data.countText == "4\u{00A0}faktury")
+        // A foreign invoice is counted, so the total at the uniform rate is there and needs no hint.
+        #expect(data.reviewHint == nil)
     }
 
     @Test func aRateOfAnotherYearIsNoRateForThisOne() {
         let data = build(input(invoices: [dollarInvoice(id: 1)], uniformRates: [uniformRate(year: 2025)]))
 
-        #expect(data.uniformTile == .notPublished(notPublished2026))
+        #expect(data.uniform == notAnnounced(notPublished2026))
         #expect(data.uniformTotalHalere == nil)
     }
 
-    /// What the tile says of a rate that is missing follows the search of the app for it on the day: the January in
-    /// which the GFŘ publishes it until the search starts on 2 January, then that the app looks for it until 31 March,
-    /// and from 1 April that the app does not have it.
+    /// What the summary says of a rate that is missing follows the search of the app for it on the day: not out yet,
+    /// with the January in which the GFŘ publishes it, until the search starts on 2 January; not out yet, with the app
+    /// looking for it, until 31 March; and from 1 April that the app does not have it, which the words of the
+    /// prototype, "zatím nevyhlášen", would no longer say truly.
     @Test func aMissingRateFollowsTheSearchOfTheAppForIt() {
-        func tile(on day: String) -> UniformTile {
+        func uniform(on day: String) -> UniformSummary {
             build(
                 input(
                     year: 2025, asOf: "2025-12-31", statusDay: day,
                     invoices: [dollarInvoice(id: 1, issued: "2025-09-30", dueDate: "2025-10-30")])
-            ).uniformTile
+            ).uniform
         }
         let waiting = "Jednotný kurz USD za rok 2025 ještě není vyhlášený – GFŘ ho zveřejní v lednu 2026."
         let looking = "Jednotný kurz USD za rok 2025 ještě není vyhlášený – aplikace ho jednou denně hledá."
 
-        #expect(tile(on: "2025-12-31") == .notPublished(waiting))
-        #expect(tile(on: "2026-01-01") == .notPublished(waiting))
-        #expect(tile(on: "2026-01-02") == .notPublished(looking))
-        #expect(tile(on: "2026-03-31") == .notPublished(looking))
+        #expect(uniform(on: "2025-12-31") == notAnnounced(waiting))
+        #expect(uniform(on: "2026-01-01") == notAnnounced(waiting))
+        #expect(uniform(on: "2026-01-02") == notAnnounced(looking))
+        #expect(uniform(on: "2026-03-31") == notAnnounced(looking))
         #expect(
-            tile(on: "2026-04-01")
-                == .notPublished("Jednotný kurz USD za rok 2025 v aplikaci není – zadáte ho v Nastavení › Rok 2025."))
+            uniform(on: "2026-04-01")
+                == notInTheApp("Jednotný kurz USD za rok 2025 v aplikaci není – zadáte ho v Nastavení › Rok 2025."))
     }
 
     /// Nastavení › Rok takes the rates of dollars and euros only, so once the app no longer looks for a rate of any
-    /// other currency, the tile does not send the person there to type it.
+    /// other currency, the summary does not send the person there to type it.
     @Test func afterTheSearchAMissingRateOfAnotherCurrencyCannotBeTyped() throws {
         let pounds = try #require(CurrencyCode("GBP"))
 
         #expect(
-            uniformTileOf2025AfterTheSearch(for: [pounds])
-                == .notPublished("Jednotný kurz GBP za rok 2025 v aplikaci není – ručně ho zadat nelze."))
+            uniformOf2025AfterTheSearch(for: [pounds])
+                == notInTheApp("Jednotný kurz GBP za rok 2025 v aplikaci není – ručně ho zadat nelze."))
     }
 
-    /// The tile names every currency without a rate in the order of their codes, and then says which of them are typed
-    /// in Nastavení › Rok and which cannot be, each group in the order of its codes.
-    @Test func afterTheSearchTheTileSaysWhichMissingRatesCanBeTypedAndWhichCannot() throws {
+    /// The summary names every currency without a rate in the order of their codes, and then says which of them are
+    /// typed in Nastavení › Rok and which cannot be, each group in the order of its codes.
+    @Test func afterTheSearchTheSummarySaysWhichMissingRatesCanBeTypedAndWhichCannot() throws {
         let pounds = try #require(CurrencyCode("GBP"))
         let canadianDollars = try #require(CurrencyCode("CAD"))
 
         #expect(
-            uniformTileOf2025AfterTheSearch(for: [pounds, .eur])
-                == .notPublished(
+            uniformOf2025AfterTheSearch(for: [pounds, .eur])
+                == notInTheApp(
                     "Jednotný kurz EUR, GBP za rok 2025 v aplikaci není –"
                         + " kurz EUR zadáte v Nastavení › Rok 2025, kurz GBP ručně zadat nelze."))
         #expect(
-            uniformTileOf2025AfterTheSearch(for: [pounds, .eur, .usd])
-                == .notPublished(
+            uniformOf2025AfterTheSearch(for: [pounds, .eur, .usd])
+                == notInTheApp(
                     "Jednotný kurz EUR, GBP, USD za rok 2025 v aplikaci není –"
                         + " kurz EUR, USD zadáte v Nastavení › Rok 2025, kurz GBP ručně zadat nelze."))
         #expect(
-            uniformTileOf2025AfterTheSearch(for: [pounds, canadianDollars, .eur])
-                == .notPublished(
+            uniformOf2025AfterTheSearch(for: [pounds, canadianDollars, .eur])
+                == notInTheApp(
                     "Jednotný kurz CAD, EUR, GBP za rok 2025 v aplikaci není –"
                         + " kurz EUR zadáte v Nastavení › Rok 2025, kurz CAD, GBP ručně zadat nelze."))
         #expect(
-            uniformTileOf2025AfterTheSearch(for: [.eur])
-                == .notPublished("Jednotný kurz EUR za rok 2025 v aplikaci není – zadáte ho v Nastavení › Rok 2025."))
+            uniformOf2025AfterTheSearch(for: [.eur])
+                == notInTheApp("Jednotný kurz EUR za rok 2025 v aplikaci není – zadáte ho v Nastavení › Rok 2025."))
     }
 
     @Test func aCurrencyWithARateIsNotNamedAsMissing() {
@@ -403,11 +447,11 @@ struct InvoiceListBuilderTests {
         let data = build(input(invoices: [dollarInvoice(id: 1), euro], uniformRates: [uniformRate(year: 2026)]))
 
         #expect(
-            data.uniformTile
-                == .notPublished("Jednotný kurz EUR za rok 2026 ještě není vyhlášený – GFŘ ho zveřejní v lednu 2027."))
+            data.uniform
+                == notAnnounced("Jednotný kurz EUR za rok 2026 ještě není vyhlášený – GFŘ ho zveřejní v lednu 2027."))
     }
 
-    @Test func theTileWithTheUniformRateConvertsEveryInvoiceOfTheCategoryAtTheRateOfTheYear() {
+    @Test func theUniformTotalConvertsEveryInvoiceOfTheCategoryAtTheRateOfTheYear() {
         let eurRate = uniformRate("EUR", "24.66", year: 2026)
         var euro = dollarInvoice(id: 4, number: "20260904", hours: "10")
         euro.currency = .eur
@@ -422,10 +466,10 @@ struct InvoiceListBuilderTests {
         let expectedTotal: Int64 = 450_000 + 57_635_760 + 1_726_200
         #expect(data.uniformTotalHalere == expectedTotal)
         #expect(
-            data.uniformTile
+            data.uniform
                 == .value(
-                    "598\u{00A0}119,60\u{00A0}Kč",
-                    subtitle: "jednotný kurz 2026: 1\u{00A0}EUR = 24,66\u{00A0}Kč, 1\u{00A0}USD = 21,84\u{00A0}Kč"
+                    text: "598\u{00A0}120\u{00A0}Kč",
+                    help: "Jednotný kurz 2026: 1\u{00A0}EUR = 24,66\u{00A0}Kč, 1\u{00A0}USD = 21,84\u{00A0}Kč"
                         + " · pokyn GFŘ-D-75"))
     }
 
@@ -438,33 +482,28 @@ struct InvoiceListBuilderTests {
         // 700,00 JPY at 14,59 Kč per 100
         #expect(data.uniformTotalHalere == 10_213)
         #expect(
-            data.uniformTile
+            data.uniform
                 == .value(
-                    "102,13\u{00A0}Kč",
-                    subtitle: "jednotný kurz 2026: 100\u{00A0}JPY = 14,59\u{00A0}Kč · pokyn GFŘ-D-75"))
+                    text: "102\u{00A0}Kč",
+                    help: "Jednotný kurz 2026: 100\u{00A0}JPY = 14,59\u{00A0}Kč · pokyn GFŘ-D-75"))
     }
 
-    @Test func aCategoryWithoutForeignInvoicesShowsThePlainTotalInBothTiles() {
+    @Test func aCategoryWithoutForeignInvoicesHasNoTotalAtTheUniformRate() {
         let data = build(input(invoices: [crownInvoice(id: 1)]))
 
         #expect(data.czkTotalHalere == 450_000)
-        #expect(data.czkTile == Tile(value: "4\u{00A0}500,00\u{00A0}Kč", subtitle: "bez faktur v cizí měně"))
+        #expect(data.totalText == "4\u{00A0}500\u{00A0}Kč")
         #expect(data.uniformTotalHalere == 450_000)
-        #expect(
-            data.uniformTile
-                == .noForeign(
-                    "4\u{00A0}500,00\u{00A0}Kč", subtitle: "bez faktur v cizí měně – jednotný kurz se nepoužije"))
+        #expect(data.uniform == .hidden)
+        #expect(data.reviewHint == nil)
     }
 
-    @Test func aFilterThatLeavesOnlyCrownInvoicesShowsThePlainTotal() {
+    @Test func aFilterThatLeavesOnlyCrownInvoicesHasNoTotalAtTheUniformRate() {
         // Only the crown invoice is overdue (due 14. 10.); the dollar invoices are due on 30. 10.
         let data = build(input(filter: .overdue, invoices: threeInvoices))
 
         #expect(data.rows.map(\.id) == [1])
-        #expect(
-            data.uniformTile
-                == .noForeign(
-                    "4\u{00A0}500,00\u{00A0}Kč", subtitle: "bez faktur v cizí měně – jednotný kurz se nepoužije"))
+        #expect(data.uniform == .hidden)
     }
 
     @Test func anEmptyCategoryShowsZeroCrownsAndNoForeignCurrency() {
@@ -472,26 +511,39 @@ struct InvoiceListBuilderTests {
 
         #expect(data.rows.isEmpty)
         #expect(data.czkTotalHalere == 0)
-        #expect(data.countTile.value == "0")
-        #expect(
-            data.uniformTile
-                == .noForeign("0,00\u{00A0}Kč", subtitle: "bez faktur v cizí měně – jednotný kurz se nepoužije"))
+        #expect(data.countText == "0\u{00A0}faktur")
+        #expect(data.totalText == "0\u{00A0}Kč")
+        #expect(data.uniform == .hidden)
     }
 
-    // MARK: The tile with the count
+    // MARK: The count
 
-    @Test func theCountTileCountsTheRowsOfTheCategoryAndNamesIt() {
+    @Test func theCountCountsTheRowsOfTheCategoryAndNamesIt() {
         let all = build(input(invoices: threeInvoices))
         let overdue = build(input(filter: .overdue, invoices: threeInvoices))
         let paid = build(
             input(scope: .paid, filter: .paid, invoices: threeInvoices, paymentDayRates: [2: usd("21.305")]))
 
-        #expect(all.countTile.value == "3")
-        #expect(all.countTile.subtitle == "vystavené v roce 2026 · všechny stavy")
-        #expect(overdue.countTile.value == "1")
-        #expect(overdue.countTile.subtitle == "vystavené v roce 2026 · po splatnosti")
-        #expect(paid.countTile.value == "1")
-        #expect(paid.countTile.subtitle == "zaplacené v roce 2026 · uhrazené")
+        // The scope is the segment's to say: the line names the category alone.
+        #expect(all.countText == "3\u{00A0}faktury")
+        #expect(all.categoryText == " · všechny stavy")
+        #expect(overdue.countText == "1\u{00A0}faktura")
+        #expect(overdue.categoryText == " · po splatnosti")
+        #expect(paid.countText == "1\u{00A0}faktura")
+        #expect(paid.categoryText == " · uhrazené")
+    }
+
+    /// The count is the number of rows with the noun in the form Czech asks for that number, a no-break space between
+    /// them, as the prototype writes it.
+    @Test(arguments: [
+        (0, "0\u{00A0}faktur"), (1, "1\u{00A0}faktura"), (2, "2\u{00A0}faktury"), (4, "4\u{00A0}faktury"),
+        (5, "5\u{00A0}faktur"), (12, "12\u{00A0}faktur"),
+    ])
+    func theCountSaysTheInvoicesInTheFormOfCzechTheirNumberAsks(count: Int, text: String) {
+        let data = build(input(invoices: Array(twelveInvoices.prefix(count))))
+
+        #expect(data.rows.count == count)
+        #expect(data.countText == text)
     }
 
     @Test func everyFilterNamesItsCategoryInLowerCase() {
@@ -501,9 +553,124 @@ struct InvoiceListBuilderTests {
         ]
 
         for filter in InvoiceStatusFilter.allCases {
-            let subtitle = build(input(filter: filter, invoices: [])).countTile.subtitle
-            #expect(subtitle == "vystavené v roce 2026 · " + (names[filter] ?? "?"))
+            let category = build(input(filter: filter, invoices: [])).categoryText
+            #expect(category == " · " + (names[filter] ?? "?"))
         }
+    }
+
+    // MARK: The summary of one invoice and the hint about invoices to check
+
+    @Test func theSummaryOfOneInvoiceInCrownsIsTheCountAndTheTotal() {
+        let data = build(input(invoices: [crownInvoice(id: 1, number: "20260902")]))
+
+        #expect(data.countText == "1\u{00A0}faktura")
+        #expect(data.categoryText == " · všechny stavy")
+        #expect(data.totalText == "4\u{00A0}500\u{00A0}Kč")
+        #expect(data.uniform == .hidden)
+        #expect(data.reviewHint == nil)
+    }
+
+    @Test func aCurrencyWithoutAUniformRateSaysItIsNotOutYetAndWhenItComes() {
+        let invoice = dollarInvoice(id: 2, number: "20261001", hours: "205")
+
+        let data = build(input(invoices: [invoice], issueDayRates: [2: usd("21.622")]))
+
+        // 14 350,00 USD at 21,622: 310 275,70 Kč.
+        #expect(data.totalText == "310\u{00A0}276\u{00A0}Kč")
+        #expect(data.uniform == notAnnounced(notPublished2026))
+    }
+
+    @Test func aKnownUniformRateIsNamedWithItsSource() {
+        let data = build(
+            input(
+                invoices: [dollarInvoice(id: 2, number: "20261001", hours: "205")], issueDayRates: [2: usd("21.622")],
+                uniformRates: [uniformRate(year: 2026)]))
+
+        #expect(
+            data.uniform
+                == .value(
+                    text: "313\u{00A0}404\u{00A0}Kč",
+                    help: "Jednotný kurz 2026: 1\u{00A0}USD = 21,84\u{00A0}Kč · pokyn GFŘ-D-75"))
+    }
+
+    private let toCheck = ReviewFlag(reason: "chybí kurz faktury")
+
+    @Test func whenOnlyInvoicesToCheckAreInForeignCurrencyTheSummarySaysTheyAreLeftOut() {
+        // The dollar invoice is held for review, so neither total counts it, and the row would show no total at the
+        // uniform rate while the table lists an invoice in dollars.
+        let data = build(
+            input(invoices: [crownInvoice(id: 1, number: "20260902"), dollarInvoice(id: 2, review: toCheck)]))
+
+        #expect(data.chipCounts[.review] == 1)
+        #expect(data.uniform == .hidden)
+        #expect(data.reviewHint == " · mimo součet: 1\u{00A0}faktura ke kontrole")
+        // The count counts what the table lists.
+        #expect(data.countText == "2\u{00A0}faktury")
+        #expect(data.categoryText == " · všechny stavy")
+    }
+
+    @Test func theHintCountsEveryInvoiceToCheckOfTheCategoryWithTheRightWord() {
+        let invoices = [
+            dollarInvoice(id: 1, number: "20261001", review: toCheck),
+            dollarInvoice(id: 2, number: "20261002", review: toCheck),
+            dollarInvoice(id: 3, number: "20261003", review: toCheck),
+            crownInvoice(id: 4, number: "20261004", review: toCheck),
+            crownInvoice(id: 5, number: "20261005", review: toCheck),
+        ]
+
+        #expect(build(input(invoices: invoices)).reviewHint == " · mimo součet: 5\u{00A0}faktur ke kontrole")
+        #expect(
+            build(input(invoices: Array(invoices.prefix(2)))).reviewHint
+                == " · mimo součet: 2\u{00A0}faktury ke kontrole")
+    }
+
+    /// A count of a thousand and more is grouped like every other number the app shows, and stays on the line of its
+    /// noun: "1 234 faktur" in the summary row and in the hint.
+    @Test func theCountsOfTheSummaryRowAreGroupedInThousandsLikeAnyNumber() {
+        let invoices = (1...1_234).map { index in
+            dollarInvoice(id: Int64(index), number: "2026\(index)", review: toCheck)
+        }
+
+        let data = build(input(invoices: invoices))
+
+        #expect(data.countText == "1\u{00A0}234\u{00A0}faktur")
+        #expect(data.reviewHint == " · mimo součet: 1\u{00A0}234\u{00A0}faktur ke kontrole")
+    }
+
+    @Test func noHintWhenTheTableListsNoForeignInvoiceToCheck() {
+        // A crown invoice to check changes nothing the row says: no invoice in a foreign currency is hidden.
+        let invoices = [
+            crownInvoice(id: 1, number: "20260902"), crownInvoice(id: 2, number: "20260903", review: toCheck),
+        ]
+
+        let data = build(input(invoices: invoices))
+
+        #expect(data.uniform == .hidden)
+        #expect(data.reviewHint == nil)
+    }
+
+    @Test func noHintWhenAnotherForeignInvoiceIsCounted() {
+        let invoices = [
+            dollarInvoice(id: 1, number: "20261001"), dollarInvoice(id: 2, number: "20261002", review: toCheck),
+        ]
+
+        let data = build(input(invoices: invoices, issueDayRates: [1: usd("21.622")]))
+
+        #expect(data.uniform == notAnnounced(notPublished2026))
+        #expect(data.reviewHint == nil)
+    }
+
+    @Test func theChipOfTheInvoicesToCheckListsOnlyThemAndStillHintsAtTheTotal() {
+        let invoices = [
+            crownInvoice(id: 1, number: "20260902"), dollarInvoice(id: 2, number: "20261001", review: toCheck),
+        ]
+
+        let data = build(input(filter: .review, invoices: invoices))
+
+        #expect(data.countText == "1\u{00A0}faktura")
+        #expect(data.categoryText == " · ke kontrole")
+        #expect(data.totalText == "0\u{00A0}Kč")
+        #expect(data.reviewHint == " · mimo součet: 1\u{00A0}faktura ke kontrole")
     }
 
     // MARK: The chips
@@ -626,31 +793,91 @@ struct InvoiceListBuilderTests {
         #expect(row.number == "20260902")
         #expect(row.client == "Cetus Data s.r.o.")
         #expect(row.issued == "30.\u{00A0}9.")
-        #expect(row.paid == "15.\u{00A0}10.")
+        #expect(row.paidDate == "15.\u{00A0}10.")
+        #expect(row.paidTone == .received)
         #expect(row.net == "4\u{00A0}500,00\u{00A0}Kč")
-        #expect(row.czk == "")
-        #expect(row.czkNote == "")
+        // V Kč bez DPH shows an invoice in crowns too: its amount without VAT, which is its net.
+        #expect(row.czk == "4\u{00A0}500,00\u{00A0}Kč")
+        #expect(row.czk == row.net)
+        #expect(row.czkKind == .actual)
+        #expect(row.czkHelp == nil)
         #expect(row.status == .paid(civilDate("2026-10-15")))
+        // The pill of the list has no date: the date has a column of its own.
+        #expect(row.listStatus == "Uhrazená")
+        #expect(row.pillTone == .paid)
         #expect(row.excerpt == nil)
     }
 
-    @Test func anInvoiceWithoutAPaymentHasNoPaymentDateInTheTable() throws {
+    @Test func anInvoiceWithoutAPaymentHasADashForItsPaymentDate() throws {
         let row = try #require(build(input(invoices: [crownInvoice(id: 1, status: .draft)])).rows.first)
 
-        #expect(row.paid == nil)
+        #expect(row.paidDate == "—")
+        #expect(row.paidTone == PaidTone.none)
         #expect(row.status == .draft)
+        #expect(row.listStatus == "Koncept")
+        #expect(row.pillTone == .draft)
     }
 
-    @Test func aPaidForeignInvoiceShowsWhatWasPaidAndTheRateAndDayOfThePayment() throws {
+    /// The pill of a row names the status without a date, in the tone of the status: a draft in grey, an invoice that
+    /// waits for its payment in blue, one past its due date in red, a paid one in green and one to check in the
+    /// orange of attention.
+    @Test func everyStatusHasItsShortTextAndToneInTheList() throws {
+        let data = build(input(invoices: oneOfEachStatus))
+        func row(_ id: Int64) throws -> InvoiceRow {
+            try #require(data.rows.first { $0.id == id })
+        }
+
+        #expect(try row(1).listStatus == "Koncept")
+        #expect(try row(1).pillTone == .draft)
+        #expect(try row(2).listStatus == "Čeká na platbu")
+        #expect(try row(2).pillTone == .waiting)
+        #expect(try row(3).listStatus == "Po splatnosti")
+        #expect(try row(3).pillTone == .overdue)
+        #expect(try row(4).listStatus == "Uhrazená")
+        #expect(try row(4).pillTone == .paid)
+        #expect(try row(5).listStatus == "Ke kontrole")
+        #expect(try row(5).pillTone == .review)
+    }
+
+    @Test func aPaymentDatedAfterTodayIsALaterOne() throws {
+        // A payment on 20. 10. while today is the 17th, as an import or a clock that was set back can leave one.
+        let later = crownInvoice(id: 1, number: "20260901", payment: .fixture(on: "2026-10-20"))
+        let today = crownInvoice(id: 2, number: "20260902", payment: .fixture(on: "2026-10-17"))
+
+        let data = build(input(asOf: "2026-10-17", statusDay: "2026-10-17", invoices: [later, today]))
+
+        let first = try #require(data.rows.first { $0.id == 1 })
+        #expect(first.paidDate == "20.\u{00A0}10.")
+        #expect(first.paidTone == .later)
+        let second = try #require(data.rows.first { $0.id == 2 })
+        #expect(second.paidDate == "17.\u{00A0}10.")
+        #expect(second.paidTone == .received)
+    }
+
+    @Test func aPaymentOfJanuaryInTheListOfTheYearBeforeIsNoLaterOneOnceTodayHasPassedIt() throws {
+        // The list of 2025 is shown as of 31. 12. 2025, and today is 20. 10. 2026: the payment of 2. 1. 2026 is after
+        // the day shown but not after today, so it is not grey.
+        let invoice = crownInvoice(
+            id: 1, number: "20251201", issued: "2025-12-30", dueDate: "2026-01-13", payment: .fixture(on: "2026-01-02"))
+
+        let data = build(input(year: 2025, asOf: "2025-12-31", statusDay: "2026-10-20", invoices: [invoice]))
+
+        let row = try #require(data.rows.first)
+        #expect(row.paidDate == "2.\u{00A0}1.\u{00A0}2026")
+        #expect(row.paidTone == .received)
+    }
+
+    @Test func aPaidForeignInvoiceShowsWhatWasPaid() throws {
         let invoice = dollarInvoice(id: 1, payment: paidAtTheRateOfTheDay())
 
         let row = try #require(build(input(invoices: [invoice], paymentDayRates: [1: usd("21.305")])).rows.first)
 
         #expect(row.czk == "305\u{00A0}726,75\u{00A0}Kč")
-        #expect(row.czkNote == "ČNB 21,305 · 2.\u{00A0}10.")
+        #expect(row.czkKind == .actual)
+        #expect(row.czkHelp == nil)
     }
 
-    @Test func aPaymentAtTheUniformRateOrFromTheBankSaysSo() throws {
+    @Test func aPaymentAtTheUniformRateOrFromTheBankShowsTheCrownsItBrought() throws {
         let uniform = Payment.fixture(
             on: "2026-10-02", conversion: .uniform, net: 31_340_400, vat: 0,
             rate: storedRate("USD", "21.84", declaredOn: "2026-12-31"))
@@ -664,8 +891,9 @@ struct InvoiceListBuilderTests {
 
         let rows = build(input(invoices: invoices)).rows
 
-        #expect(rows.first { $0.id == 1 }?.czkNote == "jednotný kurz 21,840 · 2.\u{00A0}10.")
-        #expect(rows.first { $0.id == 2 }?.czkNote == "podle banky")
+        #expect(rows.first { $0.id == 1 }?.czk == "313\u{00A0}404,00\u{00A0}Kč")
+        #expect(rows.first { $0.id == 2 }?.czk == "306\u{00A0}000,00\u{00A0}Kč")
+        #expect(rows.allSatisfy { $0.czkKind == .actual && $0.czkHelp == nil })
     }
 
     @Test func aProvisionalPaymentIsMarkedAsAnEstimate() throws {
@@ -675,7 +903,9 @@ struct InvoiceListBuilderTests {
 
         let row = try #require(build(input(invoices: [dollarInvoice(id: 1, payment: provisional)])).rows.first)
 
+        // The money came, so the value is what was received, in the colour of text, but its rate is not final yet.
         #expect(row.czk == "≈ 310\u{00A0}275,70\u{00A0}Kč")
+        #expect(row.czkKind == .actual)
     }
 
     @Test func anUnpaidForeignInvoiceIsAnEstimateAtTheRateOfItsIssueDay() throws {
@@ -683,18 +913,19 @@ struct InvoiceListBuilderTests {
 
         let row = try #require(build(input(invoices: [invoice], issueDayRates: [3: usd("21.622")])).rows.first)
 
-        // The sign for an estimate is on the amount; the line under it only names the rate, with three decimals.
+        // The sign for an estimate is on the amount, which is grey; the tooltip names the conversion, with the rate in
+        // three decimals.
         #expect(row.czk == "≈ 260\u{00A0}328,88\u{00A0}Kč")
-        #expect(row.czkNote == "ČNB k vystavení 21,622")
-        #expect(!row.czkNote.contains("≈"))
+        #expect(row.czkKind == .estimate)
+        #expect(row.czkHelp == "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD")
     }
 
-    @Test func theRateUnderAnEstimateHasThreeDecimalsAsTheCNBQuotesIt() throws {
+    @Test func theRateOfAnEstimateHasThreeDecimalsAsTheCNBQuotesIt() throws {
         let invoice = dollarInvoice(id: 3, number: "20261001", hours: "172")
 
         let row = try #require(build(input(invoices: [invoice], issueDayRates: [3: usd("21.6")])).rows.first)
 
-        #expect(row.czkNote == "ČNB k vystavení 21,600")
+        #expect(row.czkHelp == "Odhad kurzem ČNB ke dni vystavení: 21,600\u{00A0}Kč/USD")
     }
 
     @Test func aDateOfAnotherYearThanTheChosenDayShowsItsYear() throws {
@@ -702,11 +933,39 @@ struct InvoiceListBuilderTests {
         let invoice = crownInvoice(
             id: 1, number: "20251201", issued: "2025-12-30", dueDate: "2026-01-13", payment: .fixture(on: "2026-01-02"))
 
-        let row = try #require(build(input(scope: .paid, invoices: [invoice])).rows.first)
+        let data = build(input(scope: .paid, invoices: [invoice]))
 
+        let row = try #require(data.rows.first)
         #expect(row.issued == "30.\u{00A0}12.\u{00A0}2025")
-        #expect(row.paid == "2.\u{00A0}1.")
-        #expect(row.status.label(asOf: civilDate("2026-10-17")) == "Uhrazená 2.\u{00A0}1.")
+        #expect(row.paidDate == "2.\u{00A0}1.")
+        #expect(row.listStatus == "Uhrazená")
+        // The column of the day of issue has a date with its year, so it is widened to hold it; that of the payment
+        // has none.
+        #expect(data.issueDatesShowYear)
+        #expect(!data.paymentDatesShowYear)
+    }
+
+    @Test func theDateColumnsHoldAYearOnlyWhileARowTheTableShowsPrintsOne() {
+        // In the list of 2025 the payment of January 2026 prints its year; the chip of the overdue invoices shows
+        // nothing paid, and no date of another year.
+        let paidInJanuary = crownInvoice(
+            id: 1, number: "20251201", issued: "2025-12-30", dueDate: "2026-01-13", payment: .fixture(on: "2026-01-02"))
+        let overdue = crownInvoice(id: 2, number: "20251001", issued: "2025-10-01", dueDate: "2025-10-15")
+
+        func list(of filter: InvoiceStatusFilter) -> InvoiceListData {
+            build(
+                input(
+                    year: 2025, asOf: "2025-12-31", statusDay: "2026-10-20", filter: filter,
+                    invoices: [paidInJanuary, overdue]))
+        }
+        let all = list(of: .all)
+        let onlyOverdue = list(of: .overdue)
+
+        #expect(all.paymentDatesShowYear)
+        #expect(!all.issueDatesShowYear)
+        #expect(onlyOverdue.rows.map(\.id) == [2])
+        #expect(!onlyOverdue.paymentDatesShowYear)
+        #expect(!onlyOverdue.issueDatesShowYear)
     }
 
     // MARK: The net income
@@ -729,8 +988,8 @@ struct InvoiceListBuilderTests {
     }
 
     /// The eleven payments of the sample and its draft as of 17. 10. 2026. What each payment left is the net of the
-    /// golden table, which a separate implementation worked out, in whole Kč rounded half up; the line under it is the
-    /// share of the payment the levies took, with one decimal.
+    /// golden table, which a separate implementation worked out, in whole Kč rounded half up. The cell has one line:
+    /// what the levies took of the payment is told in the detail.
     @Test func theNetIncomeOfTheSampleYearIsWhatEachPaymentLeavesAfterTheLevies() throws {
         let invoices = (1...12).map { sample(Int64($0)) }
 
@@ -739,18 +998,14 @@ struct InvoiceListBuilderTests {
         // The first payment brought a tax bonus, so the levies fell.
         let first = try rowOfInvoice(1, in: data)
         #expect(first.netIncome == "253\u{00A0}401\u{00A0}Kč")
-        #expect(first.netIncomeNote == "odvody snížila")
         #expect(first.netIncomeKind == .paid)
         let tenth = try rowOfInvoice(10, in: data)
         #expect(tenth.netIncome == "217\u{00A0}013\u{00A0}Kč")
-        #expect(tenth.netIncomeNote == "odvody 29,0\u{00A0}%")
         let eleventh = try rowOfInvoice(11, in: data)
         #expect(eleventh.netIncome == "2\u{00A0}798\u{00A0}Kč")
-        #expect(eleventh.netIncomeNote == "odvody 37,8\u{00A0}%")
         // The draft is not paid: what its payment is expected to leave, on its due date, with the sign of an estimate.
         let draft = try rowOfInvoice(12, in: data)
         #expect(draft.netIncome == "≈\u{00A0}159\u{00A0}636\u{00A0}Kč")
-        #expect(draft.netIncomeNote == "odhad")
         #expect(draft.netIncomeKind == .estimate)
 
         let byID = data.rows.sorted { $0.id < $1.id }
@@ -761,12 +1016,6 @@ struct InvoiceListBuilderTests {
             "217\u{00A0}013\u{00A0}Kč", "2\u{00A0}798\u{00A0}Kč", "≈\u{00A0}159\u{00A0}636\u{00A0}Kč",
         ]
         #expect(byID.map(\.netIncome) == net)
-        let notes = [
-            "odvody snížila", "odvody 6,6\u{00A0}%", "odvody 8,1\u{00A0}%", "odvody 9,1\u{00A0}%",
-            "odvody 9,1\u{00A0}%", "odvody 9,3\u{00A0}%", "odvody 15,1\u{00A0}%", "odvody 15,1\u{00A0}%",
-            "odvody 15,1\u{00A0}%", "odvody 29,0\u{00A0}%", "odvody 37,8\u{00A0}%", "odhad",
-        ]
-        #expect(byID.map(\.netIncomeNote) == notes)
         #expect(byID.map(\.netIncomeKind) == [NetIncomeKind](repeating: .paid, count: 11) + [.estimate])
     }
 
@@ -774,7 +1023,6 @@ struct InvoiceListBuilderTests {
         let row = try #require(build(input(invoices: [crownInvoice(id: 1)])).rows.first)
 
         #expect(row.netIncome == "—")
-        #expect(row.netIncomeNote == "")
         #expect(row.netIncomeKind == .none)
     }
 
@@ -787,7 +1035,6 @@ struct InvoiceListBuilderTests {
 
         let row = try rowOfInvoice(10, in: data)
         #expect(row.netIncome == "≈\u{00A0}217\u{00A0}013\u{00A0}Kč")
-        #expect(row.netIncomeNote == "odvody 29,0\u{00A0}%")
         #expect(row.netIncomeKind == .paid)
     }
 
@@ -806,8 +1053,7 @@ struct InvoiceListBuilderTests {
         #expect(row.netIncomeKind == .paid)
     }
 
-    @Test func aPaymentOfNothingSaysItsLeviesAreNothing() throws {
-        // A share of nothing is no number, so the line says 0 %.
+    @Test func aPaymentOfNothingLeavesNothing() throws {
         let receipt = Receipt(day: civilDate("2026-10-15"), czkNetHalere: 0, czkVatHalere: 0, source: .invoice(1))
         let effect = ReceiptEffect(receipt: receipt, tax: 0, social: 0, health: 0, total: 0)
         let net = InvoiceNetIncome(effect: effect, isEstimate: false, isProvisional: false)
@@ -817,7 +1063,6 @@ struct InvoiceListBuilderTests {
 
         let row = try rowOfInvoice(1, in: data)
         #expect(row.netIncome == "0\u{00A0}Kč")
-        #expect(row.netIncomeNote == "odvody 0\u{00A0}%")
         #expect(row.netIncomeKind == .paid)
     }
 
@@ -851,14 +1096,15 @@ struct InvoiceListBuilderTests {
         // Not the one paid after the day, nor the one paid in 2025, nor the unpaid one.
         #expect(data.rows.map(\.id) == [1, 3])
         #expect(data.chipCounts[.all] == 2)
-        #expect(data.countTile.subtitle == "zaplacené v roce 2026 · všechny stavy")
+        #expect(data.countText == "2\u{00A0}faktury")
+        #expect(data.categoryText == " · všechny stavy")
     }
 
     // MARK: The sample year
 
     /// The twelve invoices of the sample year as of 17. 10. 2026. The numbers and the texts of the rows were worked
     /// out for the same data by a separate implementation.
-    @Test func theSampleYearGivesTheRowsAndTilesThatWereWorkedOutSeparately() {
+    @Test func theSampleYearGivesTheRowsAndTheSummaryThatWereWorkedOutSeparately() {
         let day = civilDate("2026-10-17")
 
         let data = build(
@@ -876,11 +1122,12 @@ struct InvoiceListBuilderTests {
             "30.\u{00A0}6.", "29.\u{00A0}5.", "30.\u{00A0}4.", "31.\u{00A0}3.", "28.\u{00A0}2.", "31.\u{00A0}1.",
         ]
         #expect(data.rows.map(\.issued) == issued)
-        let paid: [String?] = [
-            nil, "15.\u{00A0}10.", "2.\u{00A0}10.", "9.\u{00A0}9.", "26.\u{00A0}8.", "7.\u{00A0}8.",
+        let paid = [
+            "—", "15.\u{00A0}10.", "2.\u{00A0}10.", "9.\u{00A0}9.", "26.\u{00A0}8.", "7.\u{00A0}8.",
             "7.\u{00A0}7.", "5.\u{00A0}5.", "10.\u{00A0}4.", "7.\u{00A0}4.", "3.\u{00A0}3.", "3.\u{00A0}2.",
         ]
-        #expect(data.rows.map(\.paid) == paid)
+        #expect(data.rows.map(\.paidDate) == paid)
+        #expect(data.rows.map(\.paidTone) == [PaidTone.none] + [PaidTone](repeating: .received, count: 11))
         let net = [
             "12\u{00A0}040,00\u{00A0}USD", "4\u{00A0}500,00\u{00A0}Kč", "14\u{00A0}350,00\u{00A0}USD",
             "13\u{00A0}300,00\u{00A0}USD", "4\u{00A0}500,00\u{00A0}Kč", "12\u{00A0}880,00\u{00A0}USD",
@@ -888,30 +1135,40 @@ struct InvoiceListBuilderTests {
             "210\u{00A0}000,00\u{00A0}Kč", "190\u{00A0}000,00\u{00A0}Kč", "220\u{00A0}000,00\u{00A0}Kč",
         ]
         #expect(data.rows.map(\.net) == net)
+        // V Kč bez DPH: the estimate of the draft at the rate of its issue day, what each payment in dollars brought,
+        // and the amount of each invoice in crowns.
         let czk = [
-            "≈ 260\u{00A0}328,88\u{00A0}Kč", "", "305\u{00A0}726,75\u{00A0}Kč", "279\u{00A0}433,00\u{00A0}Kč", "",
-            "268\u{00A0}805,60\u{00A0}Kč", "288\u{00A0}806,00\u{00A0}Kč", "", "", "", "", "",
+            "≈ 260\u{00A0}328,88\u{00A0}Kč", "4\u{00A0}500,00\u{00A0}Kč", "305\u{00A0}726,75\u{00A0}Kč",
+            "279\u{00A0}433,00\u{00A0}Kč", "4\u{00A0}500,00\u{00A0}Kč", "268\u{00A0}805,60\u{00A0}Kč",
+            "288\u{00A0}806,00\u{00A0}Kč", "210\u{00A0}000,00\u{00A0}Kč", "210\u{00A0}000,00\u{00A0}Kč",
+            "210\u{00A0}000,00\u{00A0}Kč", "190\u{00A0}000,00\u{00A0}Kč", "220\u{00A0}000,00\u{00A0}Kč",
         ]
         #expect(data.rows.map(\.czk) == czk)
+        #expect(data.rows.map(\.czkKind) == [CrownsKind.estimate] + [CrownsKind](repeating: .actual, count: 11))
+        // The tooltip of the estimate names the rate of the day of issue; nothing else has one.
+        #expect(
+            data.rows.map(\.czkHelp)
+                == ["Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD"] + [String?](repeating: nil, count: 11))
+        // The pill of the list: the status without the date of the payment, which has its own column.
+        #expect(data.rows.map(\.listStatus) == ["Koncept"] + [String](repeating: "Uhrazená", count: 11))
+        #expect(data.rows.map(\.pillTone) == [PillTone.draft] + [PillTone](repeating: .paid, count: 11))
+        // The status itself keeps the day of the payment, which the detail shows in its pill.
         let statuses = [
             "Koncept", "Uhrazená 15.\u{00A0}10.", "Uhrazená 2.\u{00A0}10.", "Uhrazená 9.\u{00A0}9.",
             "Uhrazená 26.\u{00A0}8.", "Uhrazená 7.\u{00A0}8.", "Uhrazená 7.\u{00A0}7.", "Uhrazená 5.\u{00A0}5.",
             "Uhrazená 10.\u{00A0}4.", "Uhrazená 7.\u{00A0}4.", "Uhrazená 3.\u{00A0}3.", "Uhrazená 3.\u{00A0}2.",
         ]
         #expect(data.rows.map { $0.status.label(asOf: day) } == statuses)
+        #expect(!data.issueDatesShowYear)
+        #expect(!data.paymentDatesShowYear)
 
-        // The line under the amount in crowns: the rate and the day of a payment, and for the draft, which is not paid,
-        // the rate of the day it was issued. An invoice in crowns has none.
-        let notes = [
-            "ČNB k vystavení 21,622", "", "ČNB 21,305 · 2.\u{00A0}10.", "ČNB 21,010 · 9.\u{00A0}9.", "",
-            "ČNB 20,870 · 7.\u{00A0}8.", "ČNB 21,050 · 7.\u{00A0}7.", "", "", "", "", "",
-        ]
-        #expect(data.rows.map(\.czkNote) == notes)
-
-        #expect(data.countTile == Tile(value: "12", subtitle: "vystavené v roce 2026 · všechny stavy"))
-        #expect(data.czkTile.value == "2\u{00A0}452\u{00A0}100,23\u{00A0}Kč")
-        #expect(data.czkTile.subtitle == "přijaté kurzem ČNB ke dni přijetí, nezaplacené ke dni vystavení")
-        #expect(data.uniformTile == .notPublished(notPublished2026))
+        #expect(data.countText == "12\u{00A0}faktur")
+        #expect(data.categoryText == " · všechny stavy")
+        // 2 452 100,23 Kč in whole Kč.
+        #expect(data.czkTotalHalere == 245_210_023)
+        #expect(data.totalText == "2\u{00A0}452\u{00A0}100\u{00A0}Kč")
+        #expect(data.uniform == notAnnounced(notPublished2026))
+        #expect(data.reviewHint == nil)
         #expect(data.chipCounts[.all] == 12)
         #expect(data.chipCounts[.drafts] == 1)
         #expect(data.chipCounts[.awaiting] == 0)
@@ -954,12 +1211,17 @@ struct InvoiceListBuilderTests {
 
         let row = try #require(data.rows.first)
         #expect(row.status == .paid(civilDate("2026-01-02")))
-        // The payment is of another year than the day shown, so the pill says its year.
+        // The payment is of another year than the day shown, so the detail's pill says its year, and so does the date
+        // in the column of the payment; the pill of the list has no date.
         #expect(row.status.label(asOf: civilDate("2025-12-31")) == "Uhrazená 2.\u{00A0}1.\u{00A0}2026")
+        #expect(row.listStatus == "Uhrazená")
+        #expect(row.paidDate == "2.\u{00A0}1.\u{00A0}2026")
+        #expect(data.paymentDatesShowYear)
         // The money is as of the day shown: it has not arrived, so V Kč is the estimate at the rate of the issue day.
         #expect(row.hasReceivedPayment == false)
         #expect(row.czk == "≈ 306\u{00A0}501,65\u{00A0}Kč")
-        #expect(row.czkNote == "ČNB k vystavení 21,359")
+        #expect(row.czkKind == .estimate)
+        #expect(row.czkHelp == "Odhad kurzem ČNB ke dni vystavení: 21,359\u{00A0}Kč/USD")
         #expect(data.czkTotalHalere == 30_650_165)
         #expect(data.chipCounts[.paid] == 1)
         #expect(data.chipCounts[.awaiting] == 0)
@@ -1022,7 +1284,7 @@ struct InvoiceListBuilderTests {
         }
     }
 
-    @Test func aSearchLeavesTheMatchingInvoicesInTheChipsTheRowsAndTheTiles() {
+    @Test func aSearchLeavesTheMatchingInvoicesInTheChipsTheRowsAndTheSummary() {
         let data = build(
             input(
                 invoices: twelveInvoices, searchText: "cetus", matchingIDs: [3, 9],
@@ -1031,9 +1293,10 @@ struct InvoiceListBuilderTests {
         #expect(data.rows.map(\.id) == [9, 3])
         #expect(data.chipCounts[.all] == 2)
         #expect(data.chipCounts[.awaiting] == 2)
-        #expect(data.countTile.value == "2")
-        #expect(data.countTile.subtitle == "vystavené v roce 2026 · všechny stavy · podle hledání")
+        #expect(data.countText == "2\u{00A0}faktury")
+        #expect(data.categoryText == " · všechny stavy · podle hledání")
         #expect(data.czkTotalHalere == 900_000)
+        #expect(data.totalText == "9\u{00A0}000\u{00A0}Kč")
         #expect(data.uniformTotalHalere == 900_000)
     }
 
@@ -1130,7 +1393,7 @@ struct InvoiceListBuilderTests {
 
         #expect(data.searchLine == nil)
         #expect(data.rows.count == 1)
-        #expect(data.countTile.subtitle == "vystavené v roce 2026 · všechny stavy")
+        #expect(data.categoryText == " · všechny stavy")
     }
 
     @Test func aRowFoundInAFieldTheTableDoesNotShowExplainsWhy() throws {

@@ -224,7 +224,7 @@ struct RestoreSheetModelTests {
                 app.showSettings(.security)
                 let security = SecurityTabModel(app: app)
                 security.load()
-                let calls = Calls()
+                let calls = SheetCalls()
                 let sheet = RestoreSheet(app: app, security: security) { calls.closed += 1 }
 
                 try await withHostedView(sheet, size: CGSize(width: 600, height: 760)) { window in
@@ -258,11 +258,6 @@ struct RestoreSheetModelTests {
     }
 
     // MARK: The sheet in a window
-
-    /// What the sheet was told to do.
-    private final class Calls {
-        var closed = 0
-    }
 
     /// Chooses the newest local backup in the sheet in `window`, as a click on it chooses it, and presses Obnovit once
     /// it can be pressed.

@@ -18,9 +18,9 @@ nonisolated enum RefreshTrigger: String, Sendable {
 
     case timer
 
-    /// Something the refresh depends on changed in the app: "K datu" follows today again (which makes midnight a
-    /// wake), or uniform rates were stored or removed (which changes the line of the uniform rate, and whether it is
-    /// looked for). An ordinary run.
+    /// Something the refresh depends on changed in the app: the reporting cutoff follows the real month again (which
+    /// makes midnight a wake), or uniform rates were stored or removed (which changes the line of the uniform rate, and
+    /// whether it is looked for). An ordinary run.
     case settingsChanged
 
     /// The person asked for a check ("Zkontrolovat teď"). It does not wait out a back-off after failed requests, and
@@ -42,8 +42,9 @@ nonisolated extension RefreshTrigger {
     }
 }
 
-/// Keeps the app current while it runs, also with the window closed or the app in the background: "today" for
-/// "K datu", the ČNB rates and, from 2 January to 31 March, the uniform rate of the finished year. Nothing polls.
+/// Keeps the app current while it runs, also with the window closed or the app in the background: "today" and the
+/// reporting cutoff that follows it, the ČNB rates and, from 2 January to 31 March, the uniform rate of the finished
+/// year. Nothing polls.
 ///
 /// Every trigger (launch, wake from sleep, a new day, a change of the clock or of the time zone, the app becoming
 /// active, the network coming back, the one timer, a change of the settings, a manual check) runs the same idempotent
@@ -142,7 +143,8 @@ final class RefreshCoordinator {
     ///
     /// - Parameters:
     ///   - currentYear: The current year of the app: the year of today in the time zone of the Mac.
-    ///   - followsToday: Whether "K datu" follows today, which makes the next midnight a wake.
+    ///   - followsToday: Whether the reporting cutoff follows today (`AsOfState.followsToday`), which makes the next
+    ///     midnight a wake.
     ///   - timeZone: The time zone of the Mac, in which "today" and its midnight are counted. The ČNB is always counted
     ///     in Prague time.
     init(

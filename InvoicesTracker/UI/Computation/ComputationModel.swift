@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// The model of Výpočet: loads the selected year as of the day of "K datu", computes it with the validated
+/// The model of Výpočet: loads the selected year as of the reporting cutoff (`asOf`), computes it with the validated
 /// computation and turns the result into the page of the screen (`ComputationBuilder`): the cards between the result
 /// and the banner, the banner and the sections of the breakdown.
 ///

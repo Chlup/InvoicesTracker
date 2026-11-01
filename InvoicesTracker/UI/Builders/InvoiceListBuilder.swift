@@ -7,13 +7,14 @@ import Foundation
 nonisolated struct InvoiceListInput: Sendable {
     var year: Int
 
-    /// The day the screen is shown as of ("K datu"). It decides which payments have been received, and so the money:
-    /// the list of what was paid in the year, the column in crowns and the tiles.
+    /// The day the screen is shown as of, the reporting cutoff. It decides which payments have been received, and so
+    /// the money: the list of what was paid in the year, the column in crowns and the totals of the summary row.
     var asOf: CivilDate
 
     /// The day the status of an invoice is worked out for: today, whatever year or day the screen is shown as of. It
     /// decides the status of a row and everything that follows from it: the pill, the chips with their counts and the
-    /// chosen chip. What the tile of the uniform rate says of a rate the year lacks follows it too.
+    /// chosen chip. What the summary row says of a uniform rate the year lacks follows it too, and so does whether the
+    /// date of a payment is a later one, after today.
     var statusDay: CivilDate
 
     var scope: InvoiceScope
@@ -51,23 +52,18 @@ nonisolated struct InvoiceListInput: Sendable {
 
 // MARK: - Output
 
-/// One of the small tiles above the table: a number with a line that says what it is.
-nonisolated struct Tile: Sendable, Hashable {
-    var value: String
-    var subtitle: String
-}
+/// The figure of the summary row with the total at the uniform rate of the year, "Jednotným kurzem 2026".
+nonisolated enum UniformSummary: Hashable, Sendable {
+    /// The shown invoices have no invoice in a foreign currency that counts, so the total at the uniform rate is the
+    /// total in crowns, and the row does not show it.
+    case hidden
 
-/// The tile with the total at the uniform rate of the year.
-nonisolated enum UniformTile: Hashable, Sendable {
-    /// The total, and which rate it was worked out with.
-    case value(String, subtitle: String)
+    /// The total in whole Kč, `text`, and its tooltip, `help`, which says which rates it was worked out with.
+    case value(text: String, help: String)
 
-    /// A currency of the category has no known rate. The tile shows "—" and this text, which names the currencies and
-    /// says where the search of the app for the rate stands (`UniformRateSearch`).
-    case notPublished(String)
-
-    /// The category has no invoice in a foreign currency, so the total is the plain one.
-    case noForeign(String, subtitle: String)
+    /// A currency of the shown invoices has no known rate, so there is no total: `text` says so in a word, muted, and
+    /// the tooltip, `help`, names the currencies and says where the search of the app for the rate stands.
+    case missing(text: String, help: String)
 }
 
 /// The matches of the search in another year: a link that switches to it.
@@ -83,7 +79,8 @@ nonisolated struct OtherYearMatches: Sendable, Hashable {
     /// What VoiceOver says of the link, with the matches in the form of Czech that their number asks: "Zobrazit rok
     /// 2025, 1 shoda", "… 2 shody", "… 5 shod".
     var accessibilityLabel: String {
-        "Zobrazit rok \(String(year)), " + ComputationBuilder.counted(count, "shoda", "shody", "shod")
+        "Zobrazit rok \(String(year)), "
+            + CzechCount.counted(count, one: "shoda", few: "shody", many: "shod", separator: CzechFormat.noBreakSpace)
     }
 }
 
@@ -109,12 +106,39 @@ nonisolated enum NetIncomeKind: Sendable, Hashable {
     /// grey.
     case estimate
 
-    /// The invoice has no net income, and the cell shows a dash. The cell is grey.
+    /// The invoice has no net income, and the cell shows a dash in the faintest grey.
     case none
 }
 
-/// A row of the table: Číslo, Odběratel, Vystaveno, Zaplaceno, Bez DPH, V Kč, Čistý příjem and Stav, with the line
-/// that says why the search found the invoice.
+/// When the payment of an invoice came, which is how the cell of Zaplaceno looks.
+nonisolated enum PaidTone: Sendable, Hashable {
+    /// The invoice has no payment: the cell shows a dash in the faintest grey.
+    case none
+
+    /// The payment is dated today or earlier: the date is in the colour of text.
+    case received
+
+    /// The payment is dated after today, as an import or a clock that was set back can leave one: the date is in the
+    /// grey of notes, as the payment does not count until that day.
+    case later
+}
+
+/// What kind of value in crowns a row shows in V Kč bez DPH, which is how its cell looks.
+nonisolated enum CrownsKind: Sendable, Hashable {
+    /// What was received by the day shown, or the amount of an invoice in crowns: in the colour of text. A payment
+    /// that waits for its rate has the sign of an estimate in front, and is in the colour of text all the same.
+    case actual
+
+    /// An invoice in a foreign currency whose money has not been received by the day shown, at the ČNB rate of the day
+    /// it was issued, with the sign of an estimate in front: in secondary grey.
+    case estimate
+
+    /// An estimate that cannot be made while the rate of the day of issue is not known: a dash in the faintest grey.
+    case unknown
+}
+
+/// A row of the table: Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, Čistý příjem and Stav, each
+/// one line, with the excerpt that says why the search found the invoice.
 nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
     var id: Int64
     var number: String
@@ -123,44 +147,51 @@ nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
     /// The day of issue, "30. 9.", with the year when it is not the year of the chosen day.
     var issued: String
 
-    /// The day the money arrived, "2. 10.", with the year when it is not the year of the chosen day, or nil for an
+    /// The day the money arrived, "2. 10.", with the year when it is not the year of the chosen day, or "—" for an
     /// invoice without a payment.
-    var paid: String?
+    var paidDate: String
+
+    /// Whether the invoice has a payment, and whether it is dated after today (`InvoiceListInput.statusDay`).
+    var paidTone: PaidTone
 
     /// The amount without VAT in the currency of the invoice.
     var net: String
 
-    /// The value in crowns of an invoice in a foreign currency: what was paid, or for an invoice that is not paid an
-    /// estimate. "≈" stands before an estimate and before a payment that waits for its rate, and "—" stands for an
-    /// estimate that cannot be made while the rate of the day of issue is not known. Empty for an invoice in crowns,
-    /// which needs no conversion.
+    /// The amount without VAT in crowns. For an invoice in crowns its net, the same as `net`; for one in a foreign
+    /// currency what was paid, or for an invoice whose money has not been received an estimate at the rate of the day
+    /// of issue. "≈" stands before an estimate and before a payment that waits for its rate, and "—" stands for an
+    /// estimate that cannot be made while the rate of the day of issue is not known.
     var czk: String
 
-    /// The line under `czk`: how a payment was converted, "ČNB 21,305 · 2. 10.", "jednotný kurz 21,840 · 2. 10." or
-    /// "podle banky"; for an estimate the rate of the day of issue it is worked out with, "ČNB k vystavení 21,622".
-    /// Empty for an invoice in crowns.
-    var czkNote: String
+    /// Whether `czk` is what was received, an estimate or a dash.
+    var czkKind: CrownsKind
 
-    /// Whether the payment of the invoice has been received by the chosen day ("K datu"): `czk` is then what was paid,
-    /// and otherwise an estimate. The status cannot tell, as it does not depend on the chosen day.
+    /// The tooltip of `czk` for an estimate, which names the conversion: "Odhad kurzem ČNB ke dni vystavení: 21,622
+    /// Kč/USD". Nil for every other value.
+    var czkHelp: String?
+
+    /// Whether the payment of the invoice has been received by the reporting cutoff: `czk` is then what was paid, and
+    /// otherwise an estimate. The status cannot tell, as it does not depend on the cutoff.
     var hasReceivedPayment: Bool
 
     /// What the invoice leaves after the levies its payment adds, or would add, in whole Kč: for a payment,
     /// "253 401 Kč", with "≈" before it while the payment waits for its rate; for an invoice that is not paid, an
     /// estimate of the payment expected, "≈ 159 636 Kč"; and "—" for an invoice with no net income
-    /// (`InvoiceListInput.netIncomes`).
+    /// (`InvoiceListInput.netIncomes`). What the levies took of it is told in the detail.
     var netIncome: String
-
-    /// The line under `netIncome`: for a payment, what the levies took of it, "odvody 29,0 %", or "odvody snížila" when
-    /// the payment lowered them, as a tax bonus does; "odhad" under an estimate. Empty when there is no net income.
-    var netIncomeNote: String
 
     /// Whether `netIncome` is a payment, an estimate or nothing.
     var netIncomeKind: NetIncomeKind
 
-    /// The status on `InvoiceListInput.statusDay`. `status.label(asOf:)` is what the pill says, with the year of a
-    /// payment from another year than the chosen day.
+    /// The status on `InvoiceListInput.statusDay`. The detail says it with the day of a payment
+    /// (`InvoiceDisplayStatus.label(asOf:)`).
     var status: InvoiceDisplayStatus
+
+    /// What the pill of the row says: the status without a date, "Uhrazená" (`InvoiceDisplayStatus.listLabel`).
+    var listStatus: String
+
+    /// The tone of the pill of the row (`InvoiceDisplayStatus.pillTone`).
+    var pillTone: PillTone
 
     /// Why the search found the invoice, when no column of the table shows it.
     var excerpt: SearchExcerptResult?
@@ -178,18 +209,46 @@ nonisolated struct InvoiceListData: Sendable, Hashable {
     /// it is the chosen one, so that the list never has a chosen filter without a chip.
     var visibleChips: [InvoiceStatusFilter]
 
-    /// "Počet faktur".
-    var countTile: Tile
+    /// How many rows the table shows, with the noun in the form Czech asks for the number and a no-break space between
+    /// them, which keeps them on one line where the summary row wraps: "12 faktur", "1 234 faktur".
+    var countText: String
 
-    /// "Celkem bez DPH v Kč". Invoices in review are not counted in it until they are resolved.
-    var czkTile: Tile
+    /// Which rows they are, after the count, with its own leading separator: " · všechny stavy", and
+    /// " · všechny stavy · podle hledání" while a search is on. The scope is the segment's to say.
+    var categoryText: String
+
+    /// After the category, " · mimo součet: 1 faktura ke kontrole" when the table lists an invoice in a foreign
+    /// currency that is to be checked and so left out of both totals, and no other foreign invoice is counted: the
+    /// row would otherwise show no total at the uniform rate while the table lists one. The number and the noun stand
+    /// with a no-break space between them, as in the count. Nil otherwise.
+    var reviewHint: String?
+
+    /// "Celkem v Kč bez DPH": the total of `czkTotalHalere` in whole Kč, rounded once from the sum in haléře.
+    var totalText: String
+
+    /// The total without VAT in crowns of the rows, in haléře: invoices in crowns at their net, money received at the
+    /// ČNB rate of the day it arrived (or as the bank credited it), and invoices not paid yet at the rate of the day
+    /// they were issued. Invoices in review are not counted until they are resolved.
     var czkTotalHalere: Int64
 
-    /// "Celkem bez DPH jednotným kurzem". Invoices in review are not counted in it either.
-    var uniformTile: UniformTile
+    /// The label of the total at the uniform rate: "Jednotným kurzem 2026".
+    var uniformLabel: String
 
-    /// The total of that tile in haléře, or nil while a rate is not published.
+    /// The figure of the total at the uniform rate, with its tooltip, or nothing for a category without invoices in a
+    /// foreign currency.
+    var uniform: UniformSummary
+
+    /// The total at the uniform rate in haléře, or nil while a rate is not known. Invoices in review are not counted
+    /// in it either.
     var uniformTotalHalere: Int64?
+
+    /// Whether a row of the table prints a day of issue of another year than the one shown, "30. 12. 2025", which the
+    /// column of Vystaveno is widened for.
+    var issueDatesShowYear: Bool
+
+    /// Whether a row of the table prints a day of payment of another year than the one shown, which the column of
+    /// Zaplaceno is widened for.
+    var paymentDatesShowYear: Bool
 
     /// The line about the search; nil when nothing is searched for.
     var searchLine: SearchLine?
@@ -203,13 +262,15 @@ nonisolated struct InvoiceListData: Sendable, Hashable {
 
 // MARK: - Builder
 
-/// Turns the invoices of a year into the table, the chips and the tiles of Faktury.
+/// Turns the invoices of a year into the table, the chips and the summary row of Faktury.
 nonisolated enum InvoiceListBuilder {
     /// A click on an invoice opens its detail, and a click on the invoice that is open closes it.
     static func toggleDetail(open: Int64?, clicked: Int64) -> Int64? {
         open == clicked ? nil : clicked
     }
 
+    /// The list of `input`: the invoices of the scope that the search found, counted in the chips; the rows of the
+    /// chosen chip, the newest number first; the summary row of those rows; and the line about the search.
     static func build(_ input: InvoiceListInput) -> InvoiceListData {
         let query = input.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let words = SearchFolding.words(query)
@@ -235,11 +296,12 @@ nonisolated enum InvoiceListBuilder {
             }
             .map(\.element)
 
-        let summary = tiles(for: shown, input: input, isSearching: isSearching)
+        let summary = summaryRow(of: shown, input: input, isSearching: isSearching)
         let otherYears = input.otherYearCounts
             .filter { $0.key != input.year && $0.value > 0 }
             .sorted { $0.key > $1.key }
             .map { OtherYearMatches(year: $0.key, count: $0.value) }
+        let year = input.asOf.year
 
         return InvoiceListData(
             rows: shown.map { row(for: $0, input: input, words: isSearching ? words : []) },
@@ -247,8 +309,12 @@ nonisolated enum InvoiceListBuilder {
             visibleChips: InvoiceStatusFilter.allCases.filter {
                 $0 != .review || counts[.review, default: 0] > 0 || input.filter == .review
             },
-            countTile: summary.count, czkTile: summary.czk, czkTotalHalere: summary.czkTotal,
-            uniformTile: summary.uniform, uniformTotalHalere: summary.uniformTotal,
+            countText: summary.count, categoryText: summary.category, reviewHint: summary.reviewHint,
+            totalText: PredictionBuilder.kc(ofHalere: summary.czkTotal), czkTotalHalere: summary.czkTotal,
+            uniformLabel: "Jednotným kurzem \(input.year)", uniform: summary.uniform,
+            uniformTotalHalere: summary.uniformTotal,
+            issueDatesShowYear: shown.contains { $0.invoice.issueDate.year != year },
+            paymentDatesShowYear: shown.contains { $0.invoice.payment.map { $0.date.year != year } ?? false },
             searchLine: isSearching
                 ? searchLine(
                     query: query, found: entries.count, inScope: inScope.count, otherYears: otherYears,
@@ -299,82 +365,81 @@ nonisolated enum InvoiceListBuilder {
 
     // MARK: Rows
 
+    /// The row of `entry`: its texts, each one line, and the tones of its cells. The dates leave out the year of the
+    /// day shown; a payment dated after today is a later one.
     private static func row(for entry: Entry, input: InvoiceListInput, words: [String]) -> InvoiceRow {
         let invoice = entry.invoice
         let day = { (date: CivilDate) in BuilderText.date(date, omittingYear: input.asOf.year) }
         let money = { (minor: Int64) in CzechFormat.money(Money(minor: minor, currency: invoice.currency)) }
-        let (czk, note) = crowns(of: entry, input: input, day: day)
+        let crowns = crowns(of: entry, input: input)
         let afterLevies = netIncome(of: invoice, input: input)
+        let paidTone: PaidTone = invoice.payment.map { $0.date > input.statusDay ? .later : .received } ?? .none
         return InvoiceRow(
             id: invoice.id, number: invoice.number, client: invoice.client.name, issued: day(invoice.issueDate),
-            paid: invoice.payment.map { day($0.date) }, net: money(entry.net), czk: czk, czkNote: note,
+            paidDate: invoice.payment.map { day($0.date) } ?? "—", paidTone: paidTone, net: money(entry.net),
+            czk: crowns.value, czkKind: crowns.kind, czkHelp: crowns.help,
             hasReceivedPayment: entry.receivedPayment != nil, netIncome: afterLevies.value,
-            netIncomeNote: afterLevies.note, netIncomeKind: afterLevies.kind, status: entry.status,
+            netIncomeKind: afterLevies.kind, status: entry.status, listStatus: entry.status.listLabel,
+            pillTone: entry.status.pillTone,
             excerpt: words.isEmpty ? nil : SearchExcerpt.excerpt(for: invoice, words: words)
         )
     }
 
-    /// The column "V Kč" of an invoice in a foreign currency and the line under it. The sign of an estimate is on the
-    /// amount, not on the line.
+    /// The column "V Kč bez DPH" of an invoice: an invoice in crowns at its net; money received by the day shown as it
+    /// was converted when it came, with the sign of an estimate while its rate is provisional; an invoice whose money
+    /// has not been received at the rate of the day it was issued, with the sign of an estimate and a tooltip that
+    /// names the conversion; and a dash while that rate is not known.
     private static func crowns(
-        of entry: Entry, input: InvoiceListInput, day: (CivilDate) -> String
-    ) -> (value: String, note: String) {
+        of entry: Entry, input: InvoiceListInput
+    ) -> (value: String, kind: CrownsKind, help: String?) {
         let invoice = entry.invoice
-        guard !invoice.currency.isCZK else { return ("", "") }
+        if invoice.currency.isCZK {
+            return (CzechFormat.halere(entry.net), .actual, nil)
+        }
         if let payment = entry.receivedPayment {
             let value = (payment.provisional ? "≈ " : "") + CzechFormat.halere(payment.czkNetHalere)
-            return (value, paymentNote(payment, day: day))
+            return (value, .actual, nil)
         }
-        guard let rate = input.issueDayRates[invoice.id] else { return ("—", "") }
+        guard let rate = input.issueDayRates[invoice.id] else { return ("—", .unknown, nil) }
         let estimate = rate.czkHalere(fromMinor: entry.net)
-        return ("≈ " + CzechFormat.halere(estimate), "ČNB k vystavení " + CzechFormat.rate(rate.rate))
+        return (
+            "≈ " + CzechFormat.halere(estimate), .estimate,
+            "Odhad kurzem ČNB ke dni vystavení: " + CzechFormat.rateLabel(rate)
+        )
     }
 
-    /// How a payment was converted: "ČNB 21,305 · 2. 10.", "jednotný kurz 21,840 · 2. 10." or "podle banky".
-    private static func paymentNote(_ payment: Payment, day: (CivilDate) -> String) -> String {
-        let rate = payment.rate.map { " " + CzechFormat.rate($0.rate.rate) } ?? ""
-        switch payment.conversion {
-        case .bankCZK: return "podle banky"
-        case .uniform: return "jednotný kurz" + rate + " · " + day(payment.date)
-        case .cnbDaily, .czk: return "ČNB" + rate + " · " + day(payment.date)
-        }
-    }
-
-    /// The column "Čistý příjem" of an invoice and the line under it, from its net in `input.netIncomes`.
-    ///
-    /// A payment shows what it left after the levies it added, with the sign of an estimate in front while it waits for
-    /// its rate, and what the levies took of it: their share of the income ("odvody 29,0 %"), or "odvody snížila" when
-    /// the payment lowered them, where a share would be negative. A payment of nothing took 0 %. An invoice that is not
-    /// paid shows an estimate of what its payment would leave, with the line "odhad". An invoice with no net shows "—"
-    /// and no line.
+    /// The column "Čistý příjem" of an invoice, from its net in `input.netIncomes`: what a payment left after the
+    /// levies it added, with the sign of an estimate in front while it waits for its rate; for an invoice that is not
+    /// paid an estimate of what its payment would leave; and "—" for an invoice with no net.
     private static func netIncome(
         of invoice: Invoice, input: InvoiceListInput
-    ) -> (value: String, note: String, kind: NetIncomeKind) {
-        guard let worked = input.netIncomes[invoice.id] else { return ("—", "", .none) }
+    ) -> (value: String, kind: NetIncomeKind) {
+        guard let worked = input.netIncomes[invoice.id] else { return ("—", .none) }
         let amount = PredictionBuilder.kc(ofHalere: worked.netHalere)
         if worked.isEstimate {
-            return (PredictionBuilder.estimateSign + amount, "odhad", .estimate)
+            return (PredictionBuilder.estimateSign + amount, .estimate)
         }
-        let sign = worked.isProvisional ? PredictionBuilder.estimateSign : ""
-        let share = InvoiceDetailBuilder.share(of: worked.effect, income: worked.incomeHalere) ?? "0\u{00A0}%"
-        return (sign + amount, worked.effect.total < 0 ? "odvody snížila" : "odvody " + share, .paid)
+        return ((worked.isProvisional ? PredictionBuilder.estimateSign : "") + amount, .paid)
     }
 
-    // MARK: Tiles
+    // MARK: The summary row
 
-    private nonisolated struct Tiles {
-        var count: Tile
-        var czk: Tile
+    /// What the summary row says of the rows and the totals behind it.
+    private nonisolated struct Summary {
+        var count: String
+        var category: String
+        var reviewHint: String?
         var czkTotal: Int64
-        var uniform: UniformTile
+        var uniform: UniformSummary
         var uniformTotal: Int64?
     }
 
-    /// The three tiles of the category. Invoices in a foreign currency are worked out once at the ČNB rates (what was
-    /// paid, or an estimate at the rate of the issue day) and once at the uniform rate of the year. The count is of
-    /// all rows of the category, but an invoice in review is not counted until it is resolved, so the two tiles in
-    /// crowns leave it out: it adds nothing to them and a rate it lacks does not stop the second one.
-    private static func tiles(for shown: [Entry], input: InvoiceListInput, isSearching: Bool) -> Tiles {
+    /// The summary row of the rows `shown`: their count and category, and their totals without VAT in crowns.
+    /// Invoices in a foreign currency are worked out once at the ČNB rates (what was paid, or an estimate at the rate
+    /// of the issue day) and once at the uniform rate of the year. The count is of all rows, but an invoice in review
+    /// is not counted until it is resolved, so the two totals leave it out: it adds nothing to them, and a rate it
+    /// lacks does not stop the second one. Each total is rounded to whole Kč once, from its sum in haléře.
+    private static func summaryRow(of shown: [Entry], input: InvoiceListInput, isSearching: Bool) -> Summary {
         var czkTotal: Int64 = 0
         var uniformTotal: Int64 = 0
         var foreign: Set<CurrencyCode> = []
@@ -391,18 +456,27 @@ nonisolated enum InvoiceListBuilder {
                 foreign.insert(currency)
             }
         }
-        let count = Tile(
-            value: String(shown.count),
-            subtitle: (input.scope == .paid ? "zaplacené" : "vystavené") + " v roce \(input.year) · "
-                + categoryName(input.filter) + (isSearching ? " · podle hledání" : ""))
-        let czkSubtitle = foreign.isEmpty
-            ? "bez faktur v cizí měně" : "přijaté kurzem ČNB ke dni přijetí, nezaplacené ke dni vystavení"
-        let czk = Tile(value: CzechFormat.halere(czkTotal), subtitle: czkSubtitle)
-        return Tiles(
-            count: count, czk: czk, czkTotal: czkTotal,
-            uniform: uniformTile(total: uniformTotal, foreign: foreign, missing: missing, input: input),
+        let uniform = uniformSummary(total: uniformTotal, foreign: foreign, missing: missing, input: input)
+        return Summary(
+            count: CzechCount.counted(
+                shown.count, one: "faktura", few: "faktury", many: "faktur", separator: CzechFormat.noBreakSpace),
+            category: " · " + categoryName(input.filter) + (isSearching ? " · podle hledání" : ""),
+            reviewHint: hintAboutInvoicesToCheck(in: shown, uniform: uniform), czkTotal: czkTotal, uniform: uniform,
             uniformTotal: missing.isEmpty ? uniformTotal : nil
         )
+    }
+
+    /// " · mimo součet: 2 faktury ke kontrole" when the summary row shows no total at the uniform rate though the rows
+    /// hold an invoice in a foreign currency, because every such invoice is one to check, which neither total counts.
+    /// The hint counts every invoice to check among the rows, in crowns too, as both totals leave them out. The number
+    /// and its noun stand with a no-break space between them, like the count in the summary row beside it, which
+    /// wraps. Nil otherwise.
+    private static func hintAboutInvoicesToCheck(in shown: [Entry], uniform: UniformSummary) -> String? {
+        let toCheck = shown.filter { $0.invoice.review != nil }
+        guard uniform == .hidden, toCheck.contains(where: { !$0.invoice.currency.isCZK }) else { return nil }
+        let invoices = CzechCount.counted(
+            toCheck.count, one: "faktura", few: "faktury", many: "faktur", separator: CzechFormat.noBreakSpace)
+        return " · mimo součet: " + invoices + " ke kontrole"
     }
 
     /// The invoice in haléře at the ČNB rates: crowns as they are; money received at the amount the bank credited when
@@ -436,6 +510,8 @@ nonisolated enum InvoiceListBuilder {
         return knownUniformRate(invoice.currency, input)?.exchangeRate.czkHalere(fromMinor: entry.net)
     }
 
+    /// The uniform rate of `currency` for the year of `input`, or nil when the year has none that can be used: none is
+    /// known, it is of another year or currency, or it is not a positive rate of a positive amount.
     private static func knownUniformRate(_ currency: CurrencyCode, _ input: InvoiceListInput) -> UniformRate? {
         guard let rate = input.uniformRates[currency], rate.currency == currency, rate.year == input.year else {
             return nil
@@ -443,60 +519,69 @@ nonisolated enum InvoiceListBuilder {
         return rate.rate > 0 && rate.amount > 0 ? rate : nil
     }
 
-    /// The tile with the total at the uniform rate of the year. While a currency of the category has no known rate, it
-    /// names the currencies in the order of their codes and says where the search of the app for the rate stands
-    /// (`UniformRateSearch`): that the GFŘ publishes it in January, that the app looks for it once a day, or, once it
-    /// no longer does, that the app does not have it and which of the missing rates are typed in Nastavení › Rok and
-    /// which cannot be typed by hand, those of the currencies it does not take
-    /// (`UniformRate.currenciesEnteredByHand`), and tells the two apart when it names both.
-    private static func uniformTile(
+    /// The figure with the total at the uniform rate of the year, `total` in haléře. A category without invoices in a
+    /// foreign currency has none. While a currency of the category has no known rate, the figure says so in a word and
+    /// its tooltip names the currencies in the order of their codes and says where the search of the app for the rate
+    /// stands (`UniformRateSearch`): "zatím nevyhlášen" while the rate is not out, with the January in which the GFŘ
+    /// publishes it, and then that the app looks for it once a day; "v aplikaci není" once it no longer does, when the
+    /// rate is out but not in the app, with which of the missing rates are typed in Nastavení › Rok and which cannot be
+    /// typed by hand, those of the currencies it does not take (`UniformRate.currenciesEnteredByHand`). Otherwise the
+    /// figure is the total in whole Kč, and its tooltip names the rates and where they are from; or, when every
+    /// foreign invoice was paid in crowns by the bank, says that no rate was needed.
+    private static func uniformSummary(
         total: Int64, foreign: Set<CurrencyCode>, missing: Set<CurrencyCode>, input: InvoiceListInput
-    ) -> UniformTile {
-        let value = CzechFormat.halere(total)
+    ) -> UniformSummary {
         if foreign.isEmpty {
-            return .noForeign(value, subtitle: "bez faktur v cizí měně – jednotný kurz se nepoužije")
+            return .hidden
         }
         if !missing.isEmpty {
             let codes = missing.sorted()
             let rate = "Jednotný kurz " + codes.map(\.code).joined(separator: ", ") + " za rok \(input.year)"
-            // What is said of the rate follows the search of the app for it today, so that the tile never promises a
+            let notOut = "zatím nevyhlášen"
+            // What is said of the rate follows the search of the app for it today, so that the row never promises a
             // January that has passed.
             switch UniformRateSearch(year: input.year, today: input.statusDay) {
             case .notStarted:
-                return .notPublished(rate + " ještě není vyhlášený – GFŘ ho zveřejní v lednu \(input.year + 1).")
+                return .missing(
+                    text: notOut, help: rate + " ještě není vyhlášený – GFŘ ho zveřejní v lednu \(input.year + 1).")
             case .looking:
-                return .notPublished(rate + " ještě není vyhlášený – aplikace ho jednou denně hledá.")
+                return .missing(text: notOut, help: rate + " ještě není vyhlášený – aplikace ho jednou denně hledá.")
             case .over:
-                // Nastavení › Rok takes the rates of some currencies only: the tile says which of the missing ones are
-                // typed there and that the others cannot be.
-                let enterable = codes.filter { UniformRate.currenciesEnteredByHand.contains($0) }
-                let others = codes.filter { !UniformRate.currenciesEnteredByHand.contains($0) }
-                if others.isEmpty {
-                    return .notPublished(rate + " v aplikaci není – zadáte ho v Nastavení › Rok \(input.year).")
-                }
-                if enterable.isEmpty {
-                    return .notPublished(rate + " v aplikaci není – ručně ho zadat nelze.")
-                }
-                let enterableNames = enterable.map(\.code).joined(separator: ", ")
-                let otherNames = others.map(\.code).joined(separator: ", ")
-                return .notPublished(
-                    rate + " v aplikaci není – kurz \(enterableNames) zadáte v Nastavení › Rok \(input.year),"
-                        + " kurz \(otherNames) ručně zadat nelze.")
+                return .missing(
+                    text: "v aplikaci není", help: rate + " v aplikaci není – " + whereToEnter(codes, input))
             }
         }
+        let value = PredictionBuilder.kc(ofHalere: total)
         let rates = foreign.sorted().compactMap { knownUniformRate($0, input) }
         guard !rates.isEmpty else {
             // Every foreign invoice of the category was paid in crowns by the bank, so no rate was needed.
-            return .value(value, subtitle: "částky v Kč podle banky – jednotný kurz se nepoužije")
+            return .value(text: value, help: "Částky v Kč podle banky – jednotný kurz se nepoužije")
         }
-        var subtitle = "jednotný kurz \(input.year): " + rates.map(BuilderText.uniformRate).joined(separator: ", ")
+        var help = "Jednotný kurz \(input.year): " + rates.map(BuilderText.uniformRate).joined(separator: ", ")
         if let source = BuilderText.uniformSource(of: rates) {
-            subtitle += " · " + source
+            help += " · " + source
         }
-        return .value(value, subtitle: subtitle)
+        return .value(text: value, help: help)
     }
 
-    /// The name of a category in the line under the count: "čekají na platbu".
+    /// Where the missing uniform rates of `codes` are entered, once the app no longer looks for them: Nastavení › Rok
+    /// takes the rates of some currencies only, so the text says which of them are typed there and that the others
+    /// cannot be, and tells the two apart when it names both.
+    private static func whereToEnter(_ codes: [CurrencyCode], _ input: InvoiceListInput) -> String {
+        let enterable = codes.filter { UniformRate.currenciesEnteredByHand.contains($0) }
+        let others = codes.filter { !UniformRate.currenciesEnteredByHand.contains($0) }
+        if others.isEmpty {
+            return "zadáte ho v Nastavení › Rok \(input.year)."
+        }
+        if enterable.isEmpty {
+            return "ručně ho zadat nelze."
+        }
+        let enterableNames = enterable.map(\.code).joined(separator: ", ")
+        let otherNames = others.map(\.code).joined(separator: ", ")
+        return "kurz \(enterableNames) zadáte v Nastavení › Rok \(input.year), kurz \(otherNames) ručně zadat nelze."
+    }
+
+    /// The name of a category in the summary row, after the count: "čekají na platbu".
     private static func categoryName(_ filter: InvoiceStatusFilter) -> String {
         switch filter {
         case .all: "všechny stavy"
@@ -510,6 +595,8 @@ nonisolated enum InvoiceListBuilder {
 
     // MARK: Search
 
+    /// The line about a search for `query`, which found `found` of the `inScope` invoices of the scope in `year`, with
+    /// the links to `otherYears`, and what the list says when it found nothing.
     private static func searchLine(
         query: String, found: Int, inScope: Int, otherYears: [OtherYearMatches], year: Int
     ) -> SearchLine {

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The banner at the top of Přehled when the day moved into a new year: it says which year began and which is closed,
-/// and offers to show the closed one. VoiceOver is told of it once, by the model, when the new year begins
-/// (`AppModel.newYearBanner`), not each time Přehled shows it.
+/// The banner at the top of Přehled when the day moved into a new year: a note of the information tone that says which
+/// year began and which is closed, and offers to show the closed one or to close the note. VoiceOver is told of it
+/// once, by the model, when the new year begins (`AppModel.newYearBanner`), not each time Přehled shows it, and reads
+/// the sentence and reaches each button on its own.
 struct NewYearBanner: View {
     /// The year that is over.
     let finishedYear: Int
@@ -24,24 +25,13 @@ struct NewYearBanner: View {
     }
 
     var body: some View {
-        let text = Self.text(finishedYear: finishedYear)
-        HStack(spacing: 12) {
-            Image(systemName: "calendar.badge.checkmark")
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text(text)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button(Self.showTitle(finishedYear: finishedYear), action: showFinishedYear)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            Button("Zavřít", action: close)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+        Note(.info, icon: .info, title: Self.text(finishedYear: finishedYear), text: "") {
+            HStack(spacing: 8) {
+                Button(Self.showTitle(finishedYear: finishedYear), action: showFinishedYear)
+                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+                Button("Zavřít", action: close)
+                    .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .contain)
     }
 }

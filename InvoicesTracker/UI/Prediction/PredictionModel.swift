@@ -4,7 +4,7 @@ import Observation
 /// The model of Odhad odvodů: loads the prediction of the selected year and turns it into the page of the screen
 /// (`PredictionBuilder`), and writes the person's choices of the months an invoice is expected in.
 ///
-/// The prediction is made from today's data, whatever "K datu" shows: the model follows the year of the toolbar and
+/// The prediction is made from today's data, whatever the reporting cutoff is: the model follows the selected year and
 /// nothing else of it (`AppModel.predictionOutcome(year:)`). The screen loads again whenever what the data depends on
 /// changes (`AppModel.reloadKey`). The model keeps the page of the last load until the next one has finished, so that
 /// the screen does not flash empty; a load that fails shows a line in its place.
@@ -76,7 +76,7 @@ final class PredictionModel {
             guard let database = app.database else { throw VaultError.locked }
             let outcome = try await app.predictionOutcome(year: year)
             // The payments the page counts as received are those up to the day it is made as of, not those up to the
-            // day of "K datu".
+            // reporting cutoff.
             let isProvisional = try await database.hasProvisionalReceipt(year: year, through: outcome.prediction.now)
             guard thisLoad == loadsStarted, !Task.isCancelled else { return }
             prediction = outcome.prediction

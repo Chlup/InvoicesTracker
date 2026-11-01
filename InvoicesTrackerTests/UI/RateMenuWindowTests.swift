@@ -21,8 +21,8 @@ struct RateMenuWindowTests {
     }
 
     /// 2025, paid in dollars and euros, goes to its uniform rate and back through the menu. The menu shows the levies
-    /// of each conversion and closes once the choice is made. Výpočet follows each choice: its sum, which with nothing
-    /// paid in advances is the levies of the year, is the figure the menu named for the method chosen.
+    /// of each conversion and closes once the choice is made. Výpočet follows each choice: its key figure, which with
+    /// nothing paid in advances is the levies of the year, is the figure the menu named for the method chosen.
     @Test func theRateCapsuleSwitchesTheYearShownBetweenTheDailyAndTheUniformRates() async throws {
         try await EditorFixture.with { f in
             try await storeForeignIncomeOf2025(in: f.app)
@@ -35,23 +35,23 @@ struct RateMenuWindowTests {
                     let daily = "Přepočet cizích měn v roce 2025: denní kurz ČNB"
                     let uniform = "Přepočet cizích měn v roce 2025: jednotný kurz"
                     try await waitUntil { accessibilityButton(labelled: daily, in: window) != nil }
-                    try await waitUntil { sumOfVýpočet(in: window)?.contains(dailyLevies) == true }
+                    try await waitUntil { keyFigure(in: window, says: dailyLevies) }
 
                     let menu = try await openRateMenu(labelled: daily, in: window)
                     // The levies of each conversion are read when the menu opens.
                     try await waitUntil {
                         accessibilityValue(ofButtonLabelled: "Jednotný kurz 2025", in: menu)?
-                            .contains("daň a pojistné \(uniformLevies)") == true
+                            .contains("odvody \(uniformLevies)") == true
                     }
                     #expect(
                         accessibilityValue(ofButtonLabelled: "Denní kurz ČNB", in: menu)?
-                            .contains("daň a pojistné \(dailyLevies)") == true)
+                            .contains("odvody \(dailyLevies)") == true)
                     _ = try #require(accessibilityButton(labelled: "Jednotný kurz 2025", in: menu))
                         .accessibilityPerformPress?()
                     try await waitUntil { accessibilityButton(labelled: uniform, in: window) != nil }
                     try await waitUntil { !menu.isVisible }
                     #expect(try await f.database.yearSettings(2025).incomeFXMethod == .uniform)
-                    try await waitUntil { sumOfVýpočet(in: window)?.contains(uniformLevies) == true }
+                    try await waitUntil { keyFigure(in: window, says: uniformLevies) }
 
                     let again = try await openRateMenu(labelled: uniform, in: window)
                     _ = try #require(accessibilityButton(labelled: "Denní kurz ČNB", in: again))
@@ -59,7 +59,7 @@ struct RateMenuWindowTests {
                     try await waitUntil { accessibilityButton(labelled: daily, in: window) != nil }
                     try await waitUntil { !again.isVisible }
                     #expect(try await f.database.yearSettings(2025).incomeFXMethod == .cnbDaily)
-                    try await waitUntil { sumOfVýpočet(in: window)?.contains(dailyLevies) == true }
+                    try await waitUntil { keyFigure(in: window, says: dailyLevies) }
                 }
             }
         }
@@ -116,12 +116,18 @@ struct RateMenuWindowTests {
         return words(of: button)
     }
 
-    /// What VoiceOver reads of the sum of the equation of Výpočet in `window`, a box that reads its label and its
-    /// amount as one, such as "Doplatek za rok, 252 900 Kč" (the heading of the equation, "Doplatek za rok 2025", is
-    /// not it). Nil while the window shows no such box.
-    private func sumOfVýpočet(in window: NSWindow) -> String? {
+    /// What VoiceOver reads of the key figure of Výpočet of 2025 in `window`, a text that reads its eyebrow, its figure
+    /// and its sentence as one phrase, such as "Doplatek za rok 2025, 252 900 Kč, Zálohami se za rok zaplatilo 0 Kč.
+    /// Sčítají se jen kladné zůstatky …". Nil while the window shows no such text.
+    private func keyFigureOfVýpočet(in window: NSWindow) -> String? {
         guard let content = window.contentView else { return nil }
-        return firstReading(among: content.accessibilityChildren() ?? []) { $0.hasPrefix("Doplatek za rok, ") }
+        return firstReading(among: content.accessibilityChildren() ?? []) { $0.hasPrefix("Doplatek za rok 2025, ") }
+    }
+
+    /// Whether the key figure of Výpočet of 2025 in `window` has the figure `figure`: its phrase starts with the
+    /// eyebrow, the figure and the comma that parts it from the sentence.
+    private func keyFigure(in window: NSWindow, says figure: String) -> Bool {
+        keyFigureOfVýpočet(in: window)?.hasPrefix("Doplatek za rok 2025, \(figure),") == true
     }
 
     /// The first thing VoiceOver reads among `elements` and their children, in the order of the tree, as their label
