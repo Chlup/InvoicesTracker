@@ -236,6 +236,27 @@ struct InvoiceDetailCardTests {
         }
     }
 
+    /// The reason a draft could not be issued is said only while the detail can still be issued. A second press of
+    /// "Vystavit" can fail with "Faktura se mezitím změnila" after the first has issued the draft, and then the
+    /// invoice is no draft any more: its detail says nothing of an issue that is over, in any state but the draft.
+    @Test(arguments: [State.unpaid, .paid, .paidAfterToday, .unpaidToCheck, .paidToCheck])
+    func aDetailThatCannotBeIssuedSaysNothingOfWhyADraftCouldNotBe(state: State) async throws {
+        let detail = detail(of: invoice(in: state))
+        let problem = InvoicesModel.changedMeanwhileText
+        #expect(!detail.canIssue, "\(state) can be issued")
+
+        try await withHostedView(
+            card(of: detail, issueProblem: problem), size: CGSize(width: 400, height: 1_000)
+        ) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Zobrazit PDF", in: window) != nil }
+                try await layOut(window)
+
+                #expect(!showsText(problem, in: window), "\(state) says: \(problem)")
+            }
+        }
+    }
+
     /// While the draft is being issued, "Vystavit" is off, and a press of it does nothing, so that it starts no other
     /// issue; "Upravit" and "Zobrazit PDF" stay on.
     @Test func vystavitIsOffWhileTheDraftIsBeingIssued() async throws {

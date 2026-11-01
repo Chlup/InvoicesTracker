@@ -15,7 +15,8 @@ struct InvoiceDetailCard: View {
     let detail: InvoiceDetail
 
     /// Why the draft could not be issued in one click, the reason the editor gives, or nil: a red note right under the
-    /// buttons says it.
+    /// buttons says it, for as long as the invoice can still be issued. An invoice that a first press has issued is no
+    /// draft any more, and a second press that fails after it leaves nothing to say.
     var issueProblem: String?
 
     /// Whether the draft is being issued in one click: "Vystavit" is off meanwhile.
@@ -46,7 +47,7 @@ struct InvoiceDetailCard: View {
         ) {
             actions
         } content: {
-            if let issueProblem {
+            if detail.canIssue, let issueProblem {
                 Note(.error, icon: .info, text: issueProblem)
             }
             figure
