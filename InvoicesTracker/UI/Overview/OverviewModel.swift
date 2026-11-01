@@ -24,11 +24,11 @@ import Observation
 /// before today, and otherwise from the year as the chart by years has it. Nothing is read for it where the levies of
 /// the current year are not worked out as of today, and no second calculation is made where no invoice counts. The
 /// screen loads again whenever what the data depends on changes (`AppModel.reloadKey`), and when the day changes, which
-/// the estimate follows. The model keeps the data of the last load until the next one has finished, so that the screen
-/// does not flash empty; a load that fails shows a line instead. An estimate that fails does not: its card is left out
-/// and the rest of the page loads. Nor does a year of the chart whose levies cannot be worked out: it has no net income
-/// in the chart. Nor do the invoices due: when they cannot be read or counted, the average is the one of the money
-/// received.
+/// the estimate follows, and so does the average that counts the invoices due (`DueNetIncome`, worked out as of today).
+/// The model keeps the data of the last load until the next one has finished, so that the screen does not flash empty;
+/// a load that fails shows a line instead. An estimate that fails does not: its card is left out and the rest of the
+/// page loads. Nor does a year of the chart whose levies cannot be worked out: it has no net income in the chart. Nor
+/// do the invoices due: when they cannot be read or counted, the average is the one of the money received.
 @MainActor
 @Observable
 final class OverviewModel {

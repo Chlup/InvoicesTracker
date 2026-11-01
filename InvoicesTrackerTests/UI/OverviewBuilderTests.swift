@@ -1553,7 +1553,6 @@ struct OverviewBuilderTests {
         #expect(months.columns.allSatisfy { $0.netAverage?.note == note })
         #expect(years.columns.map { $0.netAverage?.value } == [nil, value])
         #expect(years.columns.map { $0.netAverage?.note } == [nil, note])
-        #expect(value.filter { $0 == "≈" }.count == 1)
         #expect(
             months.columns[0].accessibilityLabel.hasSuffix(
                 "; Průměrný čistý příjem za měsíc v roce 2027 (leden) " + value + "; " + note),

@@ -51,8 +51,8 @@ struct OverviewScreen: View {
 
     /// What the data of the screen depends on: what every screen loads for, the years to choose from, which the chart
     /// by years shows and which a write changes only after it has changed the key, and today, because the estimate
-    /// counts the invoices up to today: when midnight passes while the reporting cutoff stays where it is, nothing else
-    /// changes and the estimate is out of date.
+    /// counts the invoices up to today and the average that counts the invoices due is worked out as of today: when
+    /// midnight passes while the reporting cutoff stays where it is, nothing else changes and both are out of date.
     private struct LoadTrigger: Hashable {
         var key: ReloadKey
         var years: [Int]

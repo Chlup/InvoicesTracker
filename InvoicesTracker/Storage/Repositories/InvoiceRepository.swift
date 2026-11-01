@@ -26,8 +26,9 @@ nonisolated struct InvoiceChartRow: Sendable, Hashable {
     var netMinor: Int64
     var vatMinor: Int64
 
-    /// The day the money arrived. The payment is a point of the line of the chart in the year and the month of it,
-    /// whatever the year of issue.
+    /// The day of the payment: the day the money arrived or, when it has not come yet, a day after today. A row of
+    /// `dueUnpaidRows` that has a payment always has the latter. The payment is a point of the line of the chart in the
+    /// year and the month of it, whatever the year of issue.
     var paymentDate: CivilDate?
 
     /// The net and the VAT of the payment, converted to crowns, in haléře.

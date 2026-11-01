@@ -22,11 +22,13 @@ nonisolated enum DueInvoices {
     }
 
     /// The receipts that make the engine count the unpaid invoices in `rows` as paid on `day`, today: one for each
-    /// invoice worth more than nothing, in the order of the rows. An invoice is worth what the charts count for it with
-    /// the money received through `day` (`OverviewBuilder.issuedValue(of:receivedThrough:)`): its amounts as they are
-    /// in crowns, otherwise its amounts at the ČNB rate of its day of issue. The receipt has the amount without VAT as
-    /// the income and the VAT apart, as a payment has. An invoice worth nothing (one in another currency that has no
-    /// rate, or one of no amount) brings none, so that there is nothing to count and nothing to mark as an estimate.
+    /// invoice worth more than nothing, in the order of the rows. The rows are the unpaid invoices as
+    /// `Database.dueUnpaidRows(issuedFrom:dueThrough:today:)` reads them: drafts and invoices held for review are
+    /// already left out there. An invoice is worth what the charts count for it with the money received through `day`
+    /// (`OverviewBuilder.issuedValue(of:receivedThrough:)`): its amounts as they are in crowns, otherwise its amounts
+    /// at the ČNB rate of its day of issue. The receipt has the amount without VAT as the income and the VAT apart, as
+    /// a payment has. An invoice worth nothing (one in another currency that has no rate, or one of no amount) brings
+    /// none, so that there is nothing to count and nothing to mark as an estimate.
     static func receipts(of rows: [InvoiceChartRow], on day: CivilDate) -> [Receipt] {
         rows.compactMap { row in
             let value = OverviewBuilder.issuedValue(of: row, receivedThrough: day)
