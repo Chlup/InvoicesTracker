@@ -4,8 +4,8 @@ import Foundation
 
 /// Everything Přehled needs, already loaded: the computed year, the advance plan, the newest receipts with what they
 /// add to the levies, what every payment of an invoice of the year adds to them, the invoices of the chart, the facts
-/// about VAT and the uniform rate, and the estimate of the whole year with the payments it expects and what each of
-/// them adds to the levies.
+/// about VAT and the uniform rate, the estimate of the whole year with the payments it expects and what each of them
+/// adds to the levies, and, for the current year, the net income with the unpaid invoices due this month counted.
 nonisolated struct OverviewInput: Sendable {
     var year: Int
 
@@ -76,6 +76,14 @@ nonisolated struct OverviewInput: Sendable {
     /// month for the received and net parts of its estimate. Empty where there is no estimate.
     var expectedPayments: [ExpectedPayment] = []
 
+    /// The levies of the current year as of today with the unpaid invoices due by the end of its month counted as paid,
+    /// or nil where there is no such figure: the screen leaves it out unless the year is the current one and there is
+    /// an invoice to count. The builder takes the average per month from it, with the sign of an estimate and a note,
+    /// for the year it is of and for no other: in the strip above the chart when that year is the one shown, in the
+    /// tooltip of every month of the chart by months of that year, and in the tooltip of the column of that year in the
+    /// chart by years, whichever year is shown. Nothing else of the page is worked out from it.
+    var dueNetIncome: DueNetIncome? = nil
+
     /// How `year` converts its income in other currencies.
     var incomeFXMethod: IncomeFXMethod {
         yearsAtUniformRate.contains(year) ? .uniform : .cnbDaily
@@ -88,11 +96,23 @@ nonisolated struct OverviewInput: Sendable {
     }
 }
 
+/// The net income of the current year as of today with the unpaid invoices due by the end of its month counted as
+/// paid, for its average per month on Přehled.
+nonisolated struct DueNetIncome: Sendable {
+    /// The levies of the current year as of today with the due invoices added as receipts.
+    var result: TaxResult
+
+    /// The last day of the current month: the invoices due by it are counted.
+    var dueThrough: CivilDate
+}
+
 // MARK: - Output
 
 /// The strip above the chart of the card "Příjmy": what the income of the year so far leaves after the tax and the
 /// insurance, and the average of that per month, each with the words that say what the figure is. The figures are in
-/// whole Kč.
+/// whole Kč. The average of the current year can count the unpaid invoices due this month as paid
+/// (`OverviewInput.dueNetIncome`); then it is an estimate and says which invoices it counts, while the first figure
+/// stays what has been received.
 nonisolated struct OverviewNetIncome: Sendable, Hashable {
     /// What the first figure is: "Čistý příjem za rok 2025" for a year shown as of its last day, otherwise "Čistý
     /// příjem od 1. 1. do 17. 10.".
@@ -108,29 +128,37 @@ nonisolated struct OverviewNetIncome: Sendable, Hashable {
     /// What the second figure is: "Čistý příjem průměrně za měsíc".
     var monthLabel: String
 
-    /// The net income over the months so far, per month: "193 347 Kč".
+    /// The net income over the months so far, per month: "193 347 Kč". Where the unpaid invoices due this month count
+    /// in it (`OverviewInput.dueNetIncome`) it is the average with them, with the sign of an estimate in front of it:
+    /// "≈ 199 566 Kč".
     var monthValue: String
 
-    /// The months the average is over: "průměr za celý rok", "průměr za leden" or "průměr za leden–říjen".
+    /// The months the average is over: "průměr za celý rok", "průměr za leden" or "průměr za leden–říjen". Where the
+    /// unpaid invoices due this month count in the average, the words that say so follow after a comma, with the last
+    /// day they are counted to: "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31. 10.".
     var monthSub: String
 }
 
 /// The average net income per month of a year as the footer of the tooltip of a column of the chart tells it: the words
 /// that say which year and which months it is over, and the figure. When the engine worked the year out with the rules
-/// of another year (`TaxResult.rulesAreEstimate`) the figure is an estimate: the sign "≈" stands before it, and the
-/// sentence that says why goes with it, under the footer.
+/// of another year (`TaxResult.rulesAreEstimate`), or the current year's average counts the unpaid invoices due this
+/// month as paid (`OverviewInput.dueNetIncome`), the figure is an estimate: the sign "≈" stands before it, once, and
+/// the sentence that says why goes with it, under the footer.
 nonisolated struct ChartNetAverage: Sendable, Hashable {
     /// "Průměrný čistý příjem za měsíc v roce 2025" for a year counted as a whole, and for a year in progress the
-    /// months the average is over after it, "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen)".
+    /// months the average is over after it, "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen)". The unpaid
+    /// invoices due this month do not change it.
     var label: String
 
     /// The average in whole Kč: "199 441 Kč", and with the sign of an estimate in front of it, "≈ 199 441 Kč", for a
-    /// year computed with the rules of another year.
+    /// year computed with the rules of another year and for the average of the current year that counts the unpaid
+    /// invoices due this month. A year that is both has the one sign.
     var value: String
 
-    /// The sentence that the year is computed with the rules of another year (`RulesWarning.message(year:rulesYear:)`),
-    /// which the tooltip shows under the footer and VoiceOver reads after the average, or nil for a year with rules of
-    /// its own.
+    /// The sentences under the footer, which the tooltip shows and VoiceOver reads after the average, or nil for a year
+    /// with rules of its own that counts no unpaid invoice. In this order and one space apart: that the average counts
+    /// the unpaid invoices due this month, "Včetně nezaplacených faktur splatných do 31. 10.", and that the year is
+    /// computed with the rules of another year (`RulesWarning.message(year:rulesYear:)`).
     var note: String? = nil
 }
 
@@ -179,7 +207,9 @@ nonisolated struct ChartColumn: Sendable, Hashable {
 
     /// The average net income per month that the tooltip tells under its rows, or nil where the year is not known:
     /// every month has the average of the selected year, and a year of the years chart that has been worked out its
-    /// own.
+    /// own. The average of the current year counts the unpaid invoices due this month as paid where the input has that
+    /// figure (`OverviewInput.dueNetIncome`), in every month of the chart by months of that year and in its column of
+    /// the chart by years.
     var netAverage: ChartNetAverage? = nil
 
     /// The net income as the row of the tooltip and VoiceOver tell it: `netIncomeHalere` in whole Kč, "1 933 471 Kč"
@@ -196,8 +226,8 @@ nonisolated struct ChartColumn: Sendable, Hashable {
 
     /// What VoiceOver reads for the column, and what the tooltip says but for the words under its net income row
     /// (`netIncomeNote`): the amounts issued and received in whole Kč, then the net income and its average per month
-    /// where the column has them, and after the average the sentence that the year is computed with the rules of
-    /// another year where it is.
+    /// where the column has them, and after the average its note where it has one: that the average counts the unpaid
+    /// invoices due this month, and that the year is computed with the rules of another year.
     var accessibilityLabel: String {
         let issued = issuedNetText + " bez DPH, " + issuedGrossText + " s DPH"
         let received = receivedNetText + " bez DPH, " + receivedGrossText + " s DPH"
@@ -483,6 +513,13 @@ nonisolated enum OverviewBuilder {
     /// day is the span from the first of January through it, and the average is over the months so far. The part of the
     /// income that the net income is comes from `shares`; with none, the strip only says what the figure is. It is a
     /// figure of the levies, not of the chart, so the chart's grouping and VAT do not change it.
+    ///
+    /// Where the input has the figure with the unpaid invoices due by the end of the month counted
+    /// (`OverviewInput.dueNetIncome`) for the year shown, the average is that one and the first figure is still what
+    /// has been received. The average has the sign of an estimate in front of it, and the line under it goes on after
+    /// the months, which are those of the day both were worked out for, with the words that say which invoices it
+    /// counts: "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31. 10.". For any other year the strip
+    /// is as it is.
     private static func netIncome(_ input: OverviewInput, shares: IncomeShares?) -> OverviewNetIncome {
         let net = NetIncome(input.result)
         let yearLabel =
@@ -492,11 +529,39 @@ nonisolated enum OverviewBuilder {
         let yearSub =
             shares.map { BuilderText.share(tenths: $0.netTenths) + " příjmů bez DPH po odvodech" }
             ?? "příjmy bez DPH po odvodech"
+        var monthValue = CzechFormat.wholeKc(net.monthlyKc)
+        var monthSub = "průměr za " + BuilderText.months(of: net)
+        if let due = dueNetIncome(input, matching: input.result) {
+            monthValue = dueAverage(due)
+            monthSub += ", " + includingDueInvoices(due)
+        }
         return OverviewNetIncome(
             yearLabel: yearLabel, yearValue: CzechFormat.wholeKc(net.yearKc), yearSub: yearSub,
-            monthLabel: "Čistý příjem průměrně za měsíc", monthValue: CzechFormat.wholeKc(net.monthlyKc),
-            monthSub: "průměr za " + BuilderText.months(of: net)
+            monthLabel: "Čistý příjem průměrně za měsíc", monthValue: monthValue, monthSub: monthSub
         )
+    }
+
+    /// The figure with the unpaid invoices due by the end of the month counted (`OverviewInput.dueNetIncome`) when it
+    /// is of the year of `result`, the result an average is worked out from, and nil otherwise: the average of any
+    /// other year is as it is.
+    private static func dueNetIncome(_ input: OverviewInput, matching result: TaxResult) -> DueNetIncome? {
+        guard let due = input.dueNetIncome, due.result.year == result.year else { return nil }
+        return due
+    }
+
+    /// The average net income per month with the unpaid invoices due by the end of the month counted
+    /// (`DueNetIncome`), in whole Kč. It is an estimate, so the sign stands before it, once, whatever the rules of the
+    /// year are: "≈ 199 566 Kč".
+    private static func dueAverage(_ due: DueNetIncome) -> String {
+        PredictionBuilder.estimateSign + CzechFormat.wholeKc(NetIncome(due.result).monthlyKc)
+    }
+
+    /// The words that say an average counts the unpaid invoices due by the end of the month, with the last day they are
+    /// counted to, written without the year as the figure is of the current one: "včetně nezaplacených faktur
+    /// splatných do 31. 10.". The strip goes on with them after the months, and the tooltip makes a sentence of them
+    /// by a capital letter: the day ends with its dot, which is the full stop.
+    private static func includingDueInvoices(_ due: DueNetIncome) -> String {
+        "včetně nezaplacených faktur splatných do " + BuilderText.date(due.dueThrough, omittingYear: due.result.year)
     }
 
     // MARK: The chart
@@ -575,14 +640,29 @@ nonisolated enum OverviewBuilder {
     /// income is over (`ChartNetAverage.label`). When the engine worked the year out with the rules of another year
     /// (`TaxResult.rulesAreEstimate`) the figure is marked as an estimate and the note is the sentence of the warning
     /// of the screens (`RulesWarning.message(year:rulesYear:)`); a year with rules of its own has neither.
-    private static func netAverage(of result: TaxResult) -> ChartNetAverage {
+    ///
+    /// With `due`, the figure of that year with the unpaid invoices due by the end of the month counted
+    /// (`dueNetIncome(_:matching:)`), the average is the one with them and the label is the same, as the months are
+    /// those of the day both were worked out for. That average is an estimate whatever the rules of the year are, so it
+    /// has the sign once, and the note is the sentence that says which invoices it counts, "Včetně nezaplacených faktur
+    /// splatných do 31. 10.", followed after one space by the sentence of the warning when the rules are another
+    /// year's.
+    private static func netAverage(of result: TaxResult, counting due: DueNetIncome?) -> ChartNetAverage {
         let net = NetIncome(result)
         let months = net.isWholeYear ? "" : " (" + BuilderText.months(of: net) + ")"
-        return ChartNetAverage(
-            label: "Průměrný čistý příjem za měsíc v roce \(result.year)" + months,
-            value: estimate(CzechFormat.wholeKc(net.monthlyKc), of: result),
-            note: result.rulesAreEstimate ? RulesWarning.message(year: result.year, rulesYear: result.rules.year) : nil
-        )
+        let label = "Průměrný čistý příjem za měsíc v roce \(result.year)" + months
+        guard let due else {
+            return ChartNetAverage(
+                label: label, value: estimate(CzechFormat.wholeKc(net.monthlyKc), of: result),
+                note: result.rulesAreEstimate
+                    ? RulesWarning.message(year: result.year, rulesYear: result.rules.year) : nil
+            )
+        }
+        var note = BuilderText.capitalized(includingDueInvoices(due))
+        if due.result.rulesAreEstimate {
+            note += " " + RulesWarning.message(year: due.result.year, rulesYear: due.result.rules.year)
+        }
+        return ChartNetAverage(label: label, value: dueAverage(due), note: note)
     }
 
     /// The columns of the chart: the twelve months of the year, or the years of the list.
@@ -604,6 +684,12 @@ nonisolated enum OverviewBuilder {
     /// the newest) has them marked as estimates, with the sentence that says why: so has every month of such a
     /// selected year, in its net income and its average. A year with rules of its own is not marked. Each net income
     /// is followed by the words that say what it covers (`ChartColumn.netIncomeNote`).
+    ///
+    /// The average of the year that the input has the figure with the unpaid invoices due this month for
+    /// (`OverviewInput.dueNetIncome`) is the one with them, in every month of the selected year and in the column of
+    /// that year in the years chart, whichever year is selected there: it has the sign of an estimate, and a note under
+    /// the footer says which invoices it counts. Nothing else of a column changes, and the average of any other year is
+    /// as it is.
     private static func columns(_ input: OverviewInput, isOver: Bool) -> [ChartColumn] {
         let cut = chartCut(asOf: input.asOf, today: input.today, mode: input.chartMode)
         // Money received stops at today, whatever the cut is.
@@ -639,7 +725,8 @@ nonisolated enum OverviewBuilder {
 
         // The month of the chosen day is the current one, and later months are in the future, unless the year is over.
         let currentMonth = input.asOf.month - 1
-        let selectedYearAverage = netAverage(of: input.result)
+        let selectedYearAverage = netAverage(
+            of: input.result, counting: dueNetIncome(input, matching: input.result))
         let monthNets = netIncomeByMonth(input, cut: receivedCut)
         return sums.enumerated().map { index, sum in
             switch input.chartMode {
@@ -666,7 +753,8 @@ nonisolated enum OverviewBuilder {
                     issuedIsApproximate: sum.issuedIsApproximate,
                     isFuture: false, isCurrent: year == input.year, hasLinePoint: true,
                     netIncomeHalere: result.map { NetIncome($0).yearKc * 100 },
-                    netAverage: result.map { netAverage(of: $0) }, netIncomeText: result.map { netIncomeText(of: $0) },
+                    netAverage: result.map { netAverage(of: $0, counting: dueNetIncome(input, matching: $0)) },
+                    netIncomeText: result.map { netIncomeText(of: $0) },
                     netIncomeNote: result.map { netIncomeNote(of: $0) }
                 )
             }

@@ -67,7 +67,8 @@ struct OverviewBuilderTests {
         chartWithVAT: Bool = false, chartRows: [InvoiceChartRow] = [], chartYears: [Int] = [2024, 2025, 2026],
         vatByMonth: [Int64]? = nil, vatToCheckMonths: Set<Int> = [], foreignCurrencies: [CurrencyCode] = [],
         uniformRates: [UniformRate] = [], yearsAtUniformRate: Set<Int> = [], prediction: PredictionOutcome? = nil,
-        netIncomeResults: [Int: TaxResult] = [:], invoicePaymentEffects: [ReceiptEffect] = []
+        netIncomeResults: [Int: TaxResult] = [:], invoicePaymentEffects: [ReceiptEffect] = [],
+        dueNetIncome: DueNetIncome? = nil
     ) -> OverviewInput {
         let isSampleYear = year == 2026
         let computed: TaxResult
@@ -84,8 +85,20 @@ struct OverviewBuilderTests {
             latestReceipts: latestReceipts, chartMode: chartMode, chartWithVAT: chartWithVAT, chartRows: chartRows,
             chartYears: chartYears, vatByMonth: vatByMonth ?? sampleVAT, vatToCheckMonths: vatToCheckMonths,
             foreignCurrencies: foreignCurrencies, uniformRates: uniformRates, yearsAtUniformRate: yearsAtUniformRate,
-            prediction: prediction, netIncomeResults: netIncomeResults, invoicePaymentEffects: invoicePaymentEffects
+            prediction: prediction, netIncomeResults: netIncomeResults, invoicePaymentEffects: invoicePaymentEffects,
+            dueNetIncome: dueNetIncome
         )
+    }
+
+    /// The levies of `year` as of `day` (`YYYY-MM-DD`) with the unpaid invoices due by `dueThrough` counted as paid on
+    /// that day, the way the screen makes them for the average of the current year: one made-up payment of
+    /// 100 000,00 Kč without VAT is added to the receipts of the year.
+    private func dueNetIncome(of year: YearInput, asOf day: String, through dueThrough: String) -> DueNetIncome {
+        var counted = year
+        counted.receipts.append(
+            Receipt(day: civilDate(day), czkNetHalere: 10_000_000, czkVatHalere: 0, source: .synthetic))
+        return DueNetIncome(
+            result: TaxEngine.compute(counted, asOf: civilDate(day)), dueThrough: civilDate(dueThrough))
     }
 
     /// What each payment of an invoice of the prediction sample's 2026 adds to the levies of the year on its own day:
@@ -803,6 +816,64 @@ struct OverviewBuilderTests {
         #expect(years == months)
     }
 
+    /// The sample year of the prediction as of 17. 10. 2026 with 100 000 Kč of unpaid invoices due by 31. 10. counted
+    /// as paid on 17. 10.: the flat-rate expenses of 60 % are at their cap of 1 200 000 Kč already, so all of it is
+    /// profit. It adds 15 000 Kč of tax (15 % of it), 16 060 Kč of social insurance (29,2 % of the 55 % of it that is
+    /// the base) and 6 750 Kč of health insurance (13,5 % of the 50 % of it that is the base), together 37 810 Kč of
+    /// levies, so the year so far leaves 62 190 Kč more: 1 995 661 Kč, which over the ten months from January through
+    /// October is 199 566 Kč a month. That average has the sign of an estimate and says which invoices it counts. The
+    /// first figure is what has been received, so it stays as it was.
+    @Test func theAverageCountsTheInvoicesDueThisMonthAsPaid() {
+        let year = PredictionSample.yearInput(year: 2026)
+        let result = TaxEngine.compute(year, asOf: civilDate("2026-10-17"))
+        let due = dueNetIncome(of: year, asOf: "2026-10-17", through: "2026-10-31")
+
+        let received = build(input(result: result)).netIncome
+        let strip = build(input(result: result, dueNetIncome: due)).netIncome
+
+        #expect(strip.monthLabel == "Čistý příjem průměrně za měsíc")
+        #expect(strip.monthValue == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
+        #expect(strip.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(received.monthValue == "193\u{00A0}347\u{00A0}Kč")
+        #expect(strip.yearLabel == received.yearLabel)
+        #expect(strip.yearValue == received.yearValue)
+        #expect(strip.yearSub == received.yearSub)
+    }
+
+    /// The figure with the invoices due this month is of 2026. The strip of 2025, shown as of its last day, is the
+    /// average of its own twelve months, as it was, without the sign and the words about the invoices.
+    @Test func aDueFigureOfAnotherYearLeavesTheStripAsItIs() {
+        let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
+        let due2026 = dueNetIncome(
+            of: PredictionSample.yearInput(year: 2026), asOf: "2026-10-17", through: "2026-10-31")
+
+        let plain = build(input(year: 2025, asOf: "2025-12-31", result: whole2025)).netIncome
+        let strip = build(input(year: 2025, asOf: "2025-12-31", result: whole2025, dueNetIncome: due2026)).netIncome
+
+        #expect(strip == plain)
+        #expect(strip.monthValue == "199\u{00A0}441\u{00A0}Kč")
+        #expect(strip.monthSub == "průměr za celý rok")
+    }
+
+    /// The strip names the months through the month of the day it is worked out for, so the words about the invoices
+    /// follow it: through the 30th of December it reads "leden–prosinec", on the 31st "celý rok". The invoices are
+    /// counted up to 31. 12. on both days.
+    @Test func inDecemberTheNoteFollowsTheMonthsOfTheStrip() {
+        let year = PredictionSample.yearInput(year: 2026)
+
+        for (day, months) in [("2026-12-30", "leden–prosinec"), ("2026-12-31", "celý rok")] {
+            let result = TaxEngine.compute(year, asOf: civilDate(day))
+            let due = dueNetIncome(of: year, asOf: day, through: "2026-12-31")
+
+            let strip = build(input(asOf: day, today: day, result: result, dueNetIncome: due)).netIncome
+
+            #expect(
+                strip.monthSub == "průměr za \(months), včetně nezaplacených faktur splatných do 31.\u{00A0}12.",
+                "\(day): \(strip.monthSub)")
+            #expect(strip.monthValue.hasPrefix("≈\u{00A0}"), "\(day): \(strip.monthValue)")
+        }
+    }
+
     // MARK: The chart by months
 
     @Test func theMonthsChartHasOneColumnPerMonthAndTheDraftCountsNowhere() {
@@ -1361,6 +1432,160 @@ struct OverviewBuilderTests {
                 $0.accessibilityLabel.hasSuffix(
                     "; Průměrný čistý příjem za měsíc v roce 2021 ≈\u{00A0}73\u{00A0}410\u{00A0}Kč; " + sentenceOf2021)
             })
+    }
+
+    /// The sample year of the prediction as of 17. 10. 2026 with the invoices due by 31. 10. counted, whose average is
+    /// 199 566 Kč a month (`theAverageCountsTheInvoicesDueThisMonthAsPaid`): the hover box of every month tells the
+    /// average of the strip, with the sign of an estimate, and under the footer the sentence that says which invoices
+    /// it counts, which VoiceOver reads after the average. The words of the footer and the net income of the months are
+    /// as they were.
+    @Test func inTheMonthsChartEveryColumnHasTheDueAverage() {
+        let due = dueNetIncome(
+            of: PredictionSample.yearInput(year: 2026), asOf: "2026-10-17", through: "2026-10-31")
+        let plain = build(sampleMonthsInput())
+        var counted = sampleMonthsInput()
+        counted.dueNetIncome = due
+
+        let data = build(counted)
+
+        let note = "Včetně nezaplacených faktur splatných do 31.\u{00A0}10."
+        #expect(data.columns.count == 12)
+        #expect(data.netIncome.monthValue == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
+        #expect(data.columns.allSatisfy { $0.netAverage?.value == data.netIncome.monthValue })
+        #expect(data.columns.allSatisfy { $0.netAverage?.note == note })
+        #expect(data.columns.map { $0.netAverage?.label } == plain.columns.map { $0.netAverage?.label })
+        #expect(data.columns.map(\.netIncomeText) == plain.columns.map(\.netIncomeText))
+        #expect(data.columns.map(\.netIncomeNote) == plain.columns.map(\.netIncomeNote))
+        #expect(
+            data.columns.allSatisfy {
+                $0.accessibilityLabel.hasSuffix(
+                    "; Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) ≈\u{00A0}199\u{00A0}566\u{00A0}Kč; "
+                        + note)
+            })
+    }
+
+    /// The figure with the invoices due this month is of 2026, so the chart by months of 2025 is the average of its own
+    /// twelve months in every column, as it was.
+    @Test func aDueFigureOfAnotherYearLeavesTheMonthsChartAsItIs() {
+        let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
+        let due2026 = dueNetIncome(
+            of: PredictionSample.yearInput(year: 2026), asOf: "2026-10-17", through: "2026-10-31")
+
+        let plain = build(input(year: 2025, asOf: "2025-12-31", result: whole2025)).columns
+        let columns = build(input(year: 2025, asOf: "2025-12-31", result: whole2025, dueNetIncome: due2026)).columns
+
+        #expect(columns == plain)
+        let average = ChartNetAverage(
+            label: "Průměrný čistý příjem za měsíc v roce 2025", value: "199\u{00A0}441\u{00A0}Kč")
+        #expect(columns.map(\.netAverage) == [ChartNetAverage?](repeating: average, count: 12))
+    }
+
+    /// The years chart from 17. 10. 2026: the column of 2026 has the average that counts the invoices due by 31. 10.,
+    /// also when another year is selected, so the average of 2026 never reads two ways. The average of 2025 and the net
+    /// income of every year are as they were, and a year without a result has neither.
+    @Test func inTheYearsChartTheCurrentYearHasTheDueAverageWhicheverYearIsSelected() {
+        let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
+        let year2026 = PredictionSample.yearInput(year: 2026)
+        let soFar2026 = TaxEngine.compute(year2026, asOf: civilDate("2026-10-17"))
+        let due = dueNetIncome(of: year2026, asOf: "2026-10-17", through: "2026-10-31")
+        let results = [2025: whole2025, 2026: soFar2026]
+        let average2025 = ChartNetAverage(
+            label: "Průměrný čistý příjem za měsíc v roce 2025", value: "199\u{00A0}441\u{00A0}Kč")
+        let average2026 = ChartNetAverage(
+            label: "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen)",
+            value: "≈\u{00A0}199\u{00A0}566\u{00A0}Kč",
+            note: "Včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+
+        // 2025 is selected and shown as of its last day, then 2026 as of the end of its month.
+        let selected2025 = input(
+            year: 2025, asOf: "2025-12-31", result: whole2025, chartMode: .years, netIncomeResults: results)
+        let selected2026 = input(asOf: "2026-10-31", result: soFar2026, chartMode: .years, netIncomeResults: results)
+        for withoutDue in [selected2025, selected2026] {
+            var withDue = withoutDue
+            withDue.dueNetIncome = due
+
+            let columns = build(withDue).columns
+
+            let plain = build(withoutDue).columns
+            let shown = "selected \(withoutDue.year)"
+            #expect(columns.map(\.netAverage) == [nil, average2025, average2026], "\(shown)")
+            #expect(columns.map(\.netIncomeHalere) == plain.map(\.netIncomeHalere), "\(shown)")
+            #expect(columns.map(\.netIncomeText) == plain.map(\.netIncomeText), "\(shown)")
+            #expect(columns.map(\.netIncomeNote) == plain.map(\.netIncomeNote), "\(shown)")
+            #expect(
+                columns[2].accessibilityLabel.hasSuffix(
+                    "; Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) ≈\u{00A0}199\u{00A0}566\u{00A0}Kč; "
+                        + "Včetně nezaplacených faktur splatných do 31.\u{00A0}10."),
+                "\(shown): \(columns[2].accessibilityLabel)")
+        }
+    }
+
+    /// 2027 is after the newest year the app has rules for, so the engine works it out with the rules of 2026. In
+    /// January 2027, 200 000 Kč received on 10. 1. and 100 000 Kč of unpaid invoices due by 31. 1. counted as paid on
+    /// 15. 1. make the profit of 120 000 Kč (the expenses are 60 %): the 15 % tax of 18 000 Kč is below the taxpayer
+    /// credit, the social insurance is 19 272 Kč (29,2 % of the 55 % of the profit) and the health insurance 8 100 Kč
+    /// (13,5 % of the 50 %), together 27 372 Kč, so the 300 000 Kč leave 272 628 Kč, the average of the one month. The
+    /// year is an estimate already, so the average has one sign, not two, and its note tells both: which invoices it
+    /// counts, and after one space that the rules are another year's. The strip adds no sentence about the rules: the
+    /// warning above the page says it.
+    @Test func aDueAverageWithTheRulesOfAnotherYearHasOneSignAndBothNotes() {
+        let received = Receipt(
+            day: civilDate("2027-01-10"), czkNetHalere: 20_000_000, czkVatHalere: 0, source: .synthetic)
+        let year2027 = yearInput(year: 2027, receipts: [received], advances: .empty)
+        let soFar = TaxEngine.compute(year2027, asOf: civilDate("2027-01-15"))
+        let due = dueNetIncome(of: year2027, asOf: "2027-01-15", through: "2027-01-31")
+        #expect(due.result.rulesAreEstimate)
+        #expect(due.result.rules.year == 2026)
+
+        let months = build(input(year: 2027, asOf: "2027-01-31", today: "2027-01-15", result: soFar, dueNetIncome: due))
+        let years = build(
+            input(
+                year: 2027, asOf: "2027-01-31", today: "2027-01-15", result: soFar, chartMode: .years,
+                chartYears: [2026, 2027], netIncomeResults: [2027: soFar], dueNetIncome: due))
+
+        let value = "≈\u{00A0}272\u{00A0}628\u{00A0}Kč"
+        let note =
+            "Včetně nezaplacených faktur splatných do 31.\u{00A0}1. "
+            + RulesWarning.message(year: 2027, rulesYear: 2026)
+        #expect(months.netIncome.monthValue == value)
+        #expect(months.netIncome.monthSub == "průměr za leden, včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
+        #expect(months.columns.allSatisfy { $0.netAverage?.value == value })
+        #expect(months.columns.allSatisfy { $0.netAverage?.note == note })
+        #expect(years.columns.map { $0.netAverage?.value } == [nil, value])
+        #expect(years.columns.map { $0.netAverage?.note } == [nil, note])
+        #expect(value.filter { $0 == "≈" }.count == 1)
+        #expect(
+            months.columns[0].accessibilityLabel.hasSuffix(
+                "; Průměrný čistý příjem za měsíc v roce 2027 (leden) " + value + "; " + note),
+            "\(months.columns[0].accessibilityLabel)")
+    }
+
+    /// The unpaid invoices due this month are in the average and its note alone: the key figure, the bar of the levies,
+    /// the tiles, the net income so far, the amounts and the net income of the chart and everything else of the page
+    /// are as they are without them, whichever way the chart is grouped.
+    @Test func nothingButTheAverageAndItsNoteChangesWithTheDueInvoices() {
+        let due = dueNetIncome(
+            of: PredictionSample.yearInput(year: 2026), asOf: "2026-10-17", through: "2026-10-31")
+
+        for mode in [ChartMode.months, ChartMode.years] {
+            var overview = sampleMonthsInput()
+            overview.chartMode = mode
+            overview.netIncomeResults = [2026: overview.result]
+            let plain = build(overview)
+            overview.dueNetIncome = due
+
+            let counted = build(overview)
+
+            var expected = plain
+            expected.netIncome.monthValue = counted.netIncome.monthValue
+            expected.netIncome.monthSub = counted.netIncome.monthSub
+            for index in expected.columns.indices {
+                expected.columns[index].netAverage = counted.columns[index].netAverage
+            }
+            #expect(counted == expected, "\(mode)")
+            #expect(counted.netIncome != plain.netIncome, "\(mode)")
+            #expect(counted.columns != plain.columns, "\(mode)")
+        }
     }
 
     /// The scale holds the net income that the chart draws: a net income above the other amounts raises it, and one
