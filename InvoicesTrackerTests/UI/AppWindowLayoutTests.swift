@@ -119,6 +119,9 @@ struct AppWindowLayoutTests {
                     #expect(f.app.asOf.asOf == civilDate("2026-10-31"))
                     #expect(f.app.asOf.followsToday)
                     let frame = try #require(window.contentView?.superview)
+                    // The form of a new income adjustment is made a moment after the text of the tab, so the picker
+                    // is waited for before it is read.
+                    try await waitUntil { !datePickers(in: frame).isEmpty }
                     let timeZone = f.app.dependencies.timeZone()
                     let shown = datePickers(in: frame).map { CivilDate.today(now: $0.dateValue, timeZone: timeZone) }
                     #expect(!shown.isEmpty, "the Datum of a new income adjustment")
@@ -126,14 +129,6 @@ struct AppWindowLayoutTests {
                 }
             }
         }
-    }
-
-    /// The date pickers under `view`.
-    private func datePickers(in view: NSView) -> [NSDatePicker] {
-        if let picker = view as? NSDatePicker {
-            return [picker]
-        }
-        return view.subviews.flatMap { datePickers(in: $0) }
     }
 
     // MARK: The toolbar at the least room

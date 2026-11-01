@@ -26,6 +26,10 @@ nonisolated extension PredictionBuilder {
 
     // MARK: Income and profit
 
+    /// The card "Příjmy a zisk" of the estimate: the payments received so far, the invoices that wait for their
+    /// payment and those that are expected, the income of the year that follows from them, the income the engine
+    /// counts, and under it the expenses and the profit. The card is tagged "odhad" while the year is open and "celý
+    /// rok" once it is over.
     private static func incomeSection(_ outcome: PredictionOutcome) -> ComputationSection {
         let prediction = outcome.prediction
         let result = outcome.result

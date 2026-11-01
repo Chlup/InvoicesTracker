@@ -132,6 +132,34 @@ struct WindowDialogTests {
         }
     }
 
+    /// What deleting the invoice does is said in the red note of the dialog as paragraphs of the prototype's column,
+    /// one under the other 6 points apart and 6 points under the title of the note (`Note(_:icon:title:paragraphs:)`),
+    /// and not as one block of text, whose lines would stand together and 4 points under the title. The dialog is
+    /// shown alone, in a window, with sentences some of which are long enough to wrap.
+    @Test func theNoteOfTheDeletionDialogIsMadeOfParagraphsSixPointsApart() async throws {
+        let lines = [
+            "Faktura 20260901 (Bravo Labs, Inc., 13\u{00A0}720,00\u{00A0}USD) zmizí ze seznamu faktur, z přehledů"
+                + " i z výpočtu odvodů.",
+            "Platba z 9.\u{00A0}9.\u{00A0}2026 přestane být příjmem.",
+            "Pokud jste fakturu poslali odběrateli, zůstane tam – opravte to i tam.",
+        ]
+        let summary = InvoiceDeletionSummary(
+            title: Self.title, subtitle: "Bravo Labs, Inc. · 13\u{00A0}720,00\u{00A0}USD", number: "20260901",
+            lines: lines)
+        let dialog = DeleteInvoiceDialog(summary: summary, delete: { _ in false }, cancel: {}, deleted: {})
+
+        try await withHostedView(dialog.padding(24), size: CGSize(width: 520, height: 560)) { window in
+            try await withAccessibilityElements {
+                let title = "Smazání nejde vrátit zpět."
+                try await waitUntil { frameOfText(startingWith: title, in: window) != nil }
+                try await layOut(window)
+                let note = try #require(frameOfText(startingWith: title, in: window))
+
+                expectNoteOfParagraphsSixPointsApart(height: note.height, width: note.width, title: title, lines: lines)
+            }
+        }
+    }
+
     /// What the dialog dims is dimmed with the scrim of the palette (`Palette.scrim`): over a page of the colour of the
     /// window, the page shows as that colour under the scrim, the same 32 % of the same grey in a light and in a dark
     /// window, as the prototype draws it.

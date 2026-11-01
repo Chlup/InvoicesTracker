@@ -112,6 +112,15 @@ func frameInWindow(_ view: NSView) -> CGRect {
     view.convert(view.bounds, to: nil)
 }
 
+/// The date pickers under `view`, and `view` itself where it is one, in the order of the view tree.
+@MainActor
+func datePickers(in view: NSView) -> [NSDatePicker] {
+    if let picker = view as? NSDatePicker {
+        return [picker]
+    }
+    return view.subviews.flatMap { datePickers(in: $0) }
+}
+
 /// Runs `body` alone among the tests that type into a window: SwiftUI's text fields share one field editor across
 /// the windows of the app. So a test that types into its window takes the editor, and with it the focus, from a field
 /// that another test is typing into at the same time. Every test that types into a window, or tells whether a field

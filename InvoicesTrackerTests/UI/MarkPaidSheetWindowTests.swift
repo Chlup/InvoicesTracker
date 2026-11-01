@@ -225,6 +225,59 @@ struct MarkPaidSheetWindowTests {
         }
     }
 
+    /// What removing the payment does is said in the red note of the step as paragraphs of the prototype's column, as
+    /// the dialog that deletes an invoice says it: one under the other 6 points apart and 6 points under the title of
+    /// the note (`Note(_:icon:title:paragraphs:)`), and not as one block of text.
+    @Test func theNoteOfTheRemovalStepIsMadeOfParagraphsSixPointsApart() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        let model = PaymentSheetModel(app: app, invoice: try #require(try await database.invoice(id: Self.invoiceID)))
+
+        try await withHostedView(sheet(of: model, in: app, calls: Calls()), size: Self.size) { window in
+            try await withAccessibilityElements {
+                _ = try await openTheRemovalStep(in: window)
+                try await layOut(window)
+                let lines = try #require(model.removal).lines
+                let title = "Jen pro opravu omylu."
+                let note = try #require(frameOfText(startingWith: title, in: window))
+
+                #expect(lines.count > 1, "The step says \(lines)")
+                expectNoteOfParagraphsSixPointsApart(height: note.height, width: note.width, title: title, lines: lines)
+            }
+        }
+    }
+
+    /// VoiceOver reads the sheet under its title (`dialogNamed(_:)`), which in the removal step is the title of that
+    /// step and not the one of the payment: "Odebrat platbu faktury 20260902?" while the step shows, and "Upravit
+    /// platbu" before it and after it.
+    @Test func theSheetIsNamedAfterTheTitleOfTheStepThatShows() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        let model = PaymentSheetModel(app: app, invoice: try #require(try await database.invoice(id: Self.invoiceID)))
+
+        try await withHostedView(sheet(of: model, in: app, calls: Calls()), size: Self.size) { window in
+            try await withAccessibilityElements {
+                try await expectContainers(["Upravit platbu"], in: window, "The payment step")
+                #expect(!containerLabels(in: window).contains(Self.removalTitle))
+
+                _ = try await openTheRemovalStep(in: window)
+
+                try await expectContainers([Self.removalTitle], in: window, "The removal step")
+                #expect(!containerLabels(in: window).contains("Upravit platbu"))
+
+                // Esc is Zpět in the removal step.
+                try pressEscape(in: window)
+
+                try await expectContainers(["Upravit platbu"], in: window, "The payment step again")
+                #expect(!containerLabels(in: window).contains(Self.removalTitle))
+            }
+        }
+    }
+
     /// The sheet that records the first payment of an invoice has no way into removing one.
     @Test func odebratPlatbuIsOfferedOnlyForAPaymentTheInvoiceHas() async throws {
         let directory = try makeTemporaryDirectory()

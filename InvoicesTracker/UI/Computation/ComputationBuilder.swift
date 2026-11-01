@@ -179,6 +179,8 @@ nonisolated enum ComputationBuilder {
         CzechFormat.percent(share, fractionDigits: fractionDigits)
     }
 
+    /// A number of payments with the noun in the form Czech wants and a no-break space between them:
+    /// "1 platba", "2 platby", "5 plateb".
     private static func payments(_ count: Int) -> String {
         CzechCount.counted(count, one: "platba", few: "platby", many: "plateb", separator: CzechFormat.noBreakSpace)
     }

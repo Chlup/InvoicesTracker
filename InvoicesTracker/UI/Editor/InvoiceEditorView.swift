@@ -582,6 +582,9 @@ private struct FormRow<Content: View>: View {
     let labelHeight: CGFloat?
     let content: Content
 
+    /// A row that reads `label` in secondary text and puts the view `content` makes beside it. The label and the
+    /// content stand level at the middle of the row unless `alignment` says otherwise, and `labelHeight` makes the
+    /// label as high as the first line of a content that is a control taller than a line of text.
     init(
         _ label: String, alignment: VerticalAlignment = .center, labelHeight: CGFloat? = nil,
         @ViewBuilder content: () -> Content
@@ -612,6 +615,7 @@ private struct RowsCard<Content: View>: View {
     let label: String
     private let content: Content
 
+    /// A card that VoiceOver reads under `label` and that holds the rows the view `content` makes, one under the other.
     init(label: String, @ViewBuilder content: () -> Content) {
         self.label = label
         self.content = content()

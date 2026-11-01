@@ -256,6 +256,9 @@ final class YearTabModel {
         Self.activityText(from: settings?.activityFrom ?? 1, to: settings?.activityTo ?? 12)
     }
 
+    /// What the months `from` to `to` of activity are called: "celý rok" for the twelve of them, otherwise their count
+    /// in the form Czech wants with a note that the other months count for no minimum, such as "5 měsíců činnosti ·
+    /// ostatní měsíce se do minim nepočítají".
     nonisolated static func activityText(from: Int, to: Int) -> String {
         // A range that runs backwards, which only damaged data can hold, has no month.
         let count = max(0, to - from + 1)

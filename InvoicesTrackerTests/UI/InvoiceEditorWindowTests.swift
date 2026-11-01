@@ -323,6 +323,68 @@ struct InvoiceEditorWindowTests {
         }
     }
 
+    // MARK: The two dates
+
+    /// The owner asked for two separate date fields in the editor, "Datum vystavení" and "DUZP", and the line of the
+    /// prototype, "vystaví se ke stejnému dni", is not used. The editor of a new invoice shows both rows by their
+    /// labels, one under the other, each with a date field of its own on its line that shows its own day (a new
+    /// invoice is issued today and supplied on the last day of the month), and nothing VoiceOver reads says that the
+    /// two are one day.
+    @Test func theEditorOfANewInvoiceHasADateFieldForTheDayOfIssueAndAnotherForTheDUZP() async throws {
+        try await EditorFixture.with { f in
+            try await withEditor(f, template: f.crownTemplate) { window, editor in
+                try await expectTwoDateRows(of: editor, in: window, timeZone: f.app.dependencies.timeZone())
+            }
+        }
+    }
+
+    /// The same for the editor of an invoice that is edited. The sample invoice was supplied on the day it was issued,
+    /// so its day of issue is moved first: the two fields must show two days, each its own.
+    @Test func theEditorOfAnEditedInvoiceHasADateFieldForTheDayOfIssueAndAnotherForTheDUZP() async throws {
+        try await EditorFixture.with { f in
+            try await withEditorOfInvoice(10, on: f) { window, editor in
+                editor.issueDate = editor.duzp.adding(days: 2)
+                try await expectTwoDateRows(of: editor, in: window, timeZone: f.app.dependencies.timeZone())
+            }
+        }
+    }
+
+    /// Expects the editor `editor` in `window` to have the rows "Datum vystavení" and "DUZP", one under the other, each
+    /// with a date field of its own at the level of its label that shows the day `editor` has for it, and expects
+    /// nothing that VoiceOver reads in `window` to say that the two dates are one ("vystaví se ke stejnému dni").
+    private func expectTwoDateRows(
+        of editor: InvoiceEditorModel, in window: NSWindow, timeZone: TimeZone
+    ) async throws {
+        let content = try #require(window.contentView)
+        try await waitUntil { !datePickers(in: content).isEmpty }
+        try await layOut(window)
+        // From the top: the origin of a window is at its bottom left.
+        let fields = datePickers(in: content).sorted { frameInWindow($0).minY > frameInWindow($1).minY }
+        try #require(fields.count == 2, "The editor has \(fields.count) of the two date fields")
+
+        var levels: [CGFloat] = []
+        for (label, field) in zip(["Datum vystavení", "DUZP"], fields) {
+            let row = try #require(frameOfText(startingWith: label, in: window), "No row \(label)")
+            let fieldFrame = window.convertToScreen(frameInWindow(field))
+            levels.append(row.midY)
+            #expect(abs(fieldFrame.midY - row.midY) < 3, "The date field \(fieldFrame) is not level with \(row)")
+            #expect(fieldFrame.minX > row.minX, "The date field \(fieldFrame) is not beside \(row)")
+        }
+        #expect(levels[0] > levels[1], "The rows are not one under the other: \(levels)")
+
+        func day(of field: NSDatePicker) -> CivilDate {
+            CivilDate.today(now: field.dateValue, timeZone: timeZone)
+        }
+        #expect(editor.issueDate != editor.duzp, "The editor has the one day \(editor.issueDate) for both")
+        try await waitUntil { day(of: fields[0]) == editor.issueDate && day(of: fields[1]) == editor.duzp }
+        #expect(day(of: fields[0]) == editor.issueDate, "Datum vystavení shows \(day(of: fields[0]))")
+        #expect(day(of: fields[1]) == editor.duzp, "DUZP shows \(day(of: fields[1]))")
+
+        let readings = accessibilityReadings(in: window)
+        #expect(readings.contains("DUZP"), "The editor reads \(readings)")
+        #expect(!readings.contains { $0.contains("stejnému dni") }, "The editor says that the two dates are one")
+    }
+
     // MARK: The items, the note and what stops the invoice
 
     /// The total of the invoice stands under a rule of the stronger colour of a line, as the total of a bill does.
@@ -485,8 +547,9 @@ struct InvoiceEditorWindowTests {
 
     /// The preview stands beside the form from 1 107 points of room for the editor, the 590 points that the rows of the
     /// items need, the gap of 16, the aside of 461 and the margins of the page, 24 and 16. The window of the tests has
-    /// the sidebar of 232 points, so 1 339 points of window give the editor 1 107: 1 330 is under, and 1 340 over.
-    @Test(arguments: [(1_330, false), (1_340, true)])
+    /// the sidebar of 232 points, so 1 339 points of window give the editor 1 107: 1 330 is 9 points under, and 1 350
+    /// 11 points over, so that neither case depends on the width of the sidebar to the point.
+    @Test(arguments: [(1_330, false), (1_350, true)])
     func thePreviewStandsBesideTheFormOnlyWhereTheFormKeepsItsLeastWidth(width: Int, beside: Bool) async throws {
         try await EditorFixture.with { f in
             let size = CGSize(width: CGFloat(width), height: 1_000)

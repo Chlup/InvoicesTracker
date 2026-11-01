@@ -66,3 +66,24 @@ extension OffscreenPicture {
             sourceLocation: sourceLocation)
     }
 }
+
+/// Expects a note that is `height` points tall and `width` points wide, in the tone of an error with the warning icon
+/// and `title` over the sentences `lines`, to be made of paragraphs (`Note(_:icon:title:paragraphs:)`): one under the
+/// other, 6 points apart and 6 points under the title. The same words as one block of text (`Note(_:icon:title:text:)`)
+/// stand together and 4 points under the title, so the note is taller than that by 2 points and by 6 for each sentence
+/// after the first. A note made of one block, or with other gaps, is another height by more than a point. The height
+/// that a window lays a note out at can differ from the measure of the view alone (`fittingHeight(of:width:)`) by
+/// a half point, so a difference of a point is allowed.
+@MainActor
+func expectNoteOfParagraphsSixPointsApart(
+    height: CGFloat, width: CGFloat, title: String, lines: [String], sourceLocation: SourceLocation = #_sourceLocation
+) {
+    let block = fittingHeight(
+        of: Note(.error, icon: .warning, title: title, text: lines.joined(separator: "\n")), width: width)
+    let paragraphs = block + 2 + 6 * CGFloat(lines.count - 1)
+
+    #expect(
+        abs(height - paragraphs) <= 1,
+        "The note is \(height) points tall: \(paragraphs) as \(lines.count) paragraphs, \(block) as one block",
+        sourceLocation: sourceLocation)
+}
