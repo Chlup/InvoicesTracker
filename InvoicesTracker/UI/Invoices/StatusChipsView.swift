@@ -16,9 +16,10 @@ struct ScopePicker: View {
     }
 }
 
-/// The status chips with the number of invoices each has: "Vše 12", "Koncepty 1", … The chosen one is filled with the
-/// accent (`FilterChip`). The chips stand in a line, 6 points apart, and wrap where the room is narrower than they are.
-/// The chip for the invoices to check is among them only while it has an invoice or is the chosen one
+/// The status chips with the number of invoices each has: "Vše 12", "Koncepty 1", … The number is grouped in thousands
+/// like every count the app shows (`CzechFormat.grouped`): "Vše 1 234". The chosen one is filled with the accent
+/// (`FilterChip`). The chips stand in a line, 6 points apart, and wrap where the room is narrower than they are. The
+/// chip for the invoices to check is among them only while it has an invoice or is the chosen one
 /// (`InvoiceListData`).
 struct StatusChipsView: View {
     let chips: [InvoiceStatusFilter]
@@ -28,7 +29,8 @@ struct StatusChipsView: View {
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(chips, id: \.self) { chip in
-                FilterChip("\(chip.title) \(counts[chip, default: 0])", isSelected: chip == selection) {
+                let count = CzechFormat.grouped(Int64(counts[chip, default: 0]))
+                FilterChip("\(chip.title) \(count)", isSelected: chip == selection) {
                     selection = chip
                 }
             }
