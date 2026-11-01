@@ -253,6 +253,7 @@ struct AssumptionsFootnote: View {
                 .padding(.leading, FootnoteMetrics.indent)
             Button("Pravidla v Nastavení", action: showSettings)
                 .buttonStyle(TextLinkButtonStyle())
+                .accessibilityAddTraits(.isLink)
         }
         .font(Typography.callout)
         .foregroundStyle(Palette.text2)

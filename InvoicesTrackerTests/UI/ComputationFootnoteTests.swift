@@ -73,14 +73,14 @@ struct ComputationFootnoteTests {
             }
             #expect(readings.contains("Pravidla v Nastavení"), "read as \(readings)")
             #expect(!readings.contains { $0.contains("•") }, "read as \(readings)")
-            #expect(accessibilityButton(labelled: "Pravidla v Nastavení", in: window) != nil)
+            #expect(accessibilityElement(role: .link, labelled: "Pravidla v Nastavení", in: window) != nil)
         }
     }
 
     @Test func theLinkOpensTheRulesInNastaveni() async throws {
         let presses = Presses()
         try await withFootnote(width: 900, presses: presses) { window, _ in
-            let link = try #require(accessibilityButton(labelled: "Pravidla v Nastavení", in: window))
+            let link = try #require(accessibilityElement(role: .link, labelled: "Pravidla v Nastavení", in: window))
             #expect(presses.count == 0)
 
             _ = link.accessibilityPerformPress?()

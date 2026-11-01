@@ -177,6 +177,11 @@ extension LinkTone {
 ///     Button("Odebrat dítě", action: remove)
 ///         .buttonStyle(TextLinkButtonStyle(.destructive))
 ///
+/// The style only draws; what VoiceOver reads is the button's own. A control that leads somewhere else, to another
+/// screen, a tab or a file, is read as a link, as the system's link style made it, so it adds the trait of a link
+/// (`.accessibilityAddTraits(.isLink)`), which `calloutLink(_:isLink:)` does by itself. A control that does something
+/// where it stands, such as the red entry points Odebrat dítě and Odebrat platbu…, stays a button.
+///
 /// SwiftUI has a `LinkButtonStyle` of its own (`.buttonStyle(.link)`), so this style has another name: a type of the
 /// same name in the app would shadow SwiftUI's in the app, and in a test, which imports both modules, a bare
 /// `LinkButtonStyle()` would silently be SwiftUI's.
@@ -197,9 +202,14 @@ extension View {
     /// The look of a link in a card or in a heading, such as Zobrazit licenci: the text of a button in callout, in the
     /// blue of a link, or in the red of text where it leads to something that cannot be undone, such as Odstranit….
     /// The buttons below the view take the look from it (`TextLinkButtonStyle`).
-    func calloutLink(_ tone: LinkTone = .accent) -> some View {
+    ///
+    /// VoiceOver reads them as links (`.accessibilityAddTraits(.isLink)`), as the system's link style made it. Pass
+    /// `isLink: false` for a text button that does something where it stands and leads nowhere, such as Vrátit odhad
+    /// aplikace, which was always read as a button.
+    func calloutLink(_ tone: LinkTone = .accent, isLink: Bool = true) -> some View {
         buttonStyle(TextLinkButtonStyle(tone))
             .font(Typography.callout)
+            .accessibilityAddTraits(isLink ? .isLink : [])
     }
 }
 

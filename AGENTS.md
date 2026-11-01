@@ -186,7 +186,9 @@ user before building.
   - filter chip: the accent when selected, bg-card otherwise, 28 tall (`FilterChip`);
   - buttons: 32 for page and toolbar actions, 28 inside cards, segments and filters. A link is text in
     accent-text (`TextLinkButtonStyle`, `calloutLink()` in the callout size), and a destructive entry point is a
-    red-text link ("Odebrat platbu…", "Odebrat dítě").
+    red-text link ("Odebrat platbu…", "Odebrat dítě");
+  - link role: a link is read as a link (`.accessibilityAddTraits(.isLink)`, which `calloutLink()` adds by itself and a
+    bare `TextLinkButtonStyle` needs by hand), while "Odebrat platbu…" and "Odebrat dítě" stay buttons.
 
   Selection always uses the accent.
 - **Words.** Use these terms: Odvody (daň + sociální + zdravotní), Zálohy, Zbývá zaplatit, Doplatek / Přeplatek,

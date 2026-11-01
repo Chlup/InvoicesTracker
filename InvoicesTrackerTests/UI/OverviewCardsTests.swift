@@ -246,11 +246,11 @@ struct OverviewCardsTests {
         let hosted = list.frame(width: 500).padding(24)
         try await withHostedView(hosted, size: CGSize(width: 548, height: 600)) { window in
             try await withAccessibilityElements {
-                try await waitUntil { accessibilityButton(labelled: link, in: window) != nil }
+                try await waitUntil { accessibilityElement(role: .link, labelled: link, in: window) != nil }
                 let content = contentRect(of: window)
                 let title = try #require(frameOfHeading(heading, in: window))
-                let button = try #require(accessibilityButton(labelled: link, in: window))
-                let linkFrame = try #require(button.accessibilityFrame?())
+                let linkElement = try #require(accessibilityElement(role: .link, labelled: link, in: window))
+                let linkFrame = try #require(linkElement.accessibilityFrame?())
                 #expect(abs(title.minX - content.minX - 44) < 1, "The heading is at \(title)")
                 #expect(abs(content.maxX - 44 - linkFrame.maxX) < 1, "The link is at \(linkFrame)")
                 #expect(abs(linkFrame.midY - title.midY) < 6, "The link and the heading are not on a line")

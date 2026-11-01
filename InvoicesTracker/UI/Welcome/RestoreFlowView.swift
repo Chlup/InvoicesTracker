@@ -205,7 +205,6 @@ struct BackupFileCard: View {
             }
             Button("Vybrat jiný soubor", action: chooseAnother)
                 .calloutLink()
-                .accessibilityAddTraits(.isLink)
                 .padding(.top, 4)
         }
     }

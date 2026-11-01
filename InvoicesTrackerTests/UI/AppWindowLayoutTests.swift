@@ -3529,11 +3529,11 @@ struct AppWindowLayoutTests {
                 f.app.screen = .computation
                 try await waitUntil { window.title == "Výpočet" }
                 try await withAccessibilityElements {
-                    try await waitUntil { accessibilityButton(labelled: "Pravidla v Nastavení", in: window) != nil }
+                    let link = { accessibilityElement(role: .link, labelled: "Pravidla v Nastavení", in: window) }
+                    try await waitUntil { link() != nil }
                     #expect(f.app.settingsTab != .year)
 
-                    _ = try #require(accessibilityButton(labelled: "Pravidla v Nastavení", in: window))
-                        .accessibilityPerformPress?()
+                    _ = try #require(link()).accessibilityPerformPress?()
 
                     try await waitUntil { window.title == "Nastavení" }
                     #expect(f.app.screen == .settings)

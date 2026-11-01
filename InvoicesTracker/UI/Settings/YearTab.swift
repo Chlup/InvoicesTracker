@@ -63,6 +63,7 @@ private struct ProfileCard: View {
                 SettingsRow(label: "Výdaje") {
                     Button(model.expenseText, action: showAdvances)
                         .buttonStyle(TextLinkButtonStyle(.accent))
+                        .accessibilityAddTraits(.isLink)
                 }
                 SettingsRow(label: "DPH") {
                     Text("plátce · měsíčně")

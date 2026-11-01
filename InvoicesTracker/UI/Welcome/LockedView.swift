@@ -54,8 +54,6 @@ struct LockedView: View {
                         model.useRecoveryCode()
                     }
                     .calloutLink()
-                    // The way to another screen is a link to VoiceOver, as the system's link style made it.
-                    .accessibilityAddTraits(.isLink)
                     .disabled(runner.isWorking)
                 }
             }
