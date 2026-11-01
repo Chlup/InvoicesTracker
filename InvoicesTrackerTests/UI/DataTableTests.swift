@@ -134,6 +134,8 @@ struct DataTableTests {
         // tertiary one, so no pixel of a muted value is lighter than the tertiary text, and its strokes are that
         // colour, where those of a figure are the colour of text.
         let tertiary = try OffscreenPicture.bytes(of: Palette.text3, in: .dark)
+        /// The picture of the figure of a summary, whose value is `muted` or not, in a dark window: the label is empty,
+        /// so only the value is drawn.
         func picture(muted: Bool) throws -> OffscreenPicture {
             let figure = SummaryFigure(label: "", value: "Celkem", valueIsMuted: muted)
                 .padding(10)

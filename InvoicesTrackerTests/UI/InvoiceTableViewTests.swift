@@ -204,8 +204,9 @@ struct InvoiceTableViewTests {
             }
             return found
         }
-        /// What is wrong with the text in `region`, which `token` is the colour of: it is not set in it, with `least`
-        /// pixels of it as the real window gives (`expectText`), or a pixel is darker than it.
+        /// Expects the text in `region` to be set in `token`, with `least` pixels of it as the real window gives
+        /// (`expectText`), and no pixel of it to be darker than `token` by more than 16 levels. `name` says what the
+        /// text is, for a failed expectation.
         func expectCell(_ region: CGRect, in token: Color, atLeast least: Int, _ name: String) throws {
             try picture.expectText(in: region, setIn: token, atLeast: least, scheme: .light, name)
             let colour = try OffscreenPicture.bytes(of: token, in: .light)

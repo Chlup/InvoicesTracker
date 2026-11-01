@@ -99,7 +99,7 @@ extension OffscreenPicture {
     ///
     /// Choose `least` from the real window: count the pixels within 3 levels of `token` that the right text gives, in
     /// a light and in a dark appearance, and take about a third of the smaller count. The same text in the grey beside
-    /// it leaves a small fraction of that in the band (a twentieth or less where this was measured), so the floor is
+    /// it leaves a small fraction of that in the band (5.5 % at the most where this was measured), so the floor is
     /// far below what the right colour gives and far above what a wrong one does.
     func expectText(
         in region: CGRect, setIn token: Color, atLeast least: Int, alongside others: [Color] = [],
@@ -115,11 +115,16 @@ extension OffscreenPicture {
         let own = counts.filter(\.isExpected).map(\.pixels).first ?? count(near: expected, in: region, by: 3)
         let found = counts.map { "\($0.name) \($0.pixels)" }.joined(separator: ", ")
         let compared = counts.filter { !$0.isExpected && !$0.isNamed }
+        // The colours it is compared with are named, as `alongside` leaves some out.
+        let against = compared.map(\.name).joined(separator: ", ")
+        let needs =
+            compared.isEmpty
+            ? "it needs \(least) of its colour"
+            : "it needs \(least) of its colour and more than three times as many as of \(against)"
 
         #expect(
             own >= least && compared.allSatisfy { own > 3 * $0.pixels },
-            "\(what): pixels within 3 levels of \(found); it needs \(least) of its colour and three times the others",
-            sourceLocation: sourceLocation)
+            "\(what): pixels within 3 levels of \(found); \(needs)", sourceLocation: sourceLocation)
     }
 }
 

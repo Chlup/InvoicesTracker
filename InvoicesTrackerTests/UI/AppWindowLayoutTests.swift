@@ -2952,14 +2952,14 @@ struct AppWindowLayoutTests {
 
     /// The figure of a client that has paid nothing in the year, "0 Kč" for Alfa, is muted, in tertiary text, with no
     /// pixel of it in the colour of text, and that of a client that has paid, 305 727 Kč for Bravo, is in the colour
-    /// of text. The window is light, whatever the Mac's appearance is.
-    @Test func theFigureOfAClientThatPaidNothingIsInTertiaryText() async throws {
+    /// of text. The window is light or dark, whatever the Mac's appearance is.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theFigureOfAClientThatPaidNothingIsInTertiaryText(scheme: ColorScheme) async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
-                window.appearance = NSAppearance(named: .aqua)
+                window.appearance = appearance(of: scheme)
                 f.app.screen = .clients
-                let text = try OffscreenPicture.bytes(of: Palette.text, in: .light)
-                let tertiary = try OffscreenPicture.bytes(of: Palette.text3, in: .light)
+                let text = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
                 try await withAccessibilityElements {
                     try await waitUntil { clientRows(in: window).count == 3 }
                     let figures = [
@@ -2979,10 +2979,15 @@ struct AppWindowLayoutTests {
                         let picture = try OffscreenPicture(of: window)
 
                         if muted {
-                            #expect(picture.count(near: text, in: region, by: 8) == 0, "\(figure) is not muted")
-                            #expect(picture.count(near: tertiary, in: region, by: 2) > 20, "\(figure) is not tertiary")
+                            #expect(
+                                picture.count(near: text, in: region, by: 8) == 0, "\(scheme): \(figure) is not muted")
+                            try picture.expectText(
+                                in: region, setIn: Palette.text3, atLeast: 560, scheme: scheme,
+                                "\(scheme): \(figure) is not tertiary")
                         } else {
-                            #expect(picture.count(near: text, in: region, by: 2) > 20, "\(figure) is muted")
+                            try picture.expectText(
+                                in: region, setIn: Palette.text, atLeast: 1_330, scheme: scheme,
+                                "\(scheme): \(figure) is muted")
                         }
                     }
                 }
