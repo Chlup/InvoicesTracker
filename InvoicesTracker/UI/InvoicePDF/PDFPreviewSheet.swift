@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 /// the invoice does not fit the page whole, a line under the page says so.
 ///
 /// The sheet is 676 points tall, so that it hangs inside the smallest window (720 points) with both buttons on screen,
-/// and the page is shown as large as the height left for it allows, on a soft shadow.
+/// and the page is shown as large as the height left for it allows, on a soft shadow and in a ring of the grey fill.
 struct PDFPreviewSheet: View {
     let document: InvoiceDocument
 
@@ -60,14 +60,15 @@ struct PDFPreviewSheet: View {
     }
 
     /// The page, in the middle of the height that the rest of the sheet leaves, as large as fits it, as paper on the
-    /// ground of the sheet.
+    /// ground of the sheet, with a ring of the grey fill around it: the sheet is the colour of a card, as white as the
+    /// page in a light window, and the prototype rings the page with the fill there.
     private var page: some View {
         GeometryReader { geometry in
             let scale = Self.previewScale(fitting: geometry.size)
             InvoiceDocumentView(document: document)
                 .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: PageSize.a4.width * scale, height: PageSize.a4.height * scale, alignment: .topLeading)
-                .paperPage(on: Palette.bgCard)
+                .paperPage(on: Palette.bgCard, edge: Palette.fill)
                 .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }

@@ -132,6 +132,29 @@ struct PDFPreviewSheetTests {
         #expect(deficit >= 4, "\(scheme): \(faraway) further down and \(under) under the page")
     }
 
+    /// The page has a ring of the grey fill a point wide around its edge, as the prototype draws the page of this sheet
+    /// (`0 0 0 1px` of the fill): the sheet is the colour of a card, white in a light window like the page, and the
+    /// soft shadow hardly reaches above the top edge of the page. Just outside the edge, above and beside the page,
+    /// the sheet is the fill, in a light and in a dark window. The page is found on a sheet drawn on the fill, where
+    /// its white stands out, and the edge is read on a sheet drawn on the colour of a card, as the app shows it.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func thePageHasARingOfTheFillAroundIt(scheme: ColorScheme) throws {
+        let document = InvoicePageFixtures.document(InvoicePageFixtures.crownInvoice())
+        let onFill = try OffscreenPicture(of: PDFPreviewSheet(document: document).background(Palette.fill), in: scheme)
+        let page = try #require(
+            onFill.extent(near: [255, 255, 255], in: CGRect(x: 0, y: 70, width: 560, height: 550), by: 2),
+            "\(scheme): the page is not drawn")
+        let onCard = try OffscreenPicture(
+            of: PDFPreviewSheet(document: document).background(Palette.bgCard), in: scheme)
+        let fill = try OffscreenPicture.bytes(of: Palette.fill, in: scheme)
+
+        // Three quarters of a point outside the rows and columns that are wholly the page, which is the pixel half a
+        // point further out: the edge of the page lies within half a point of them, so that pixel is inside the ring.
+        expectColour(fill, at: CGPoint(x: page.midX, y: page.minY - 0.75), in: onCard, "\(scheme): above the page")
+        expectColour(fill, at: CGPoint(x: page.minX - 0.75, y: page.midY), in: onCard, "\(scheme): left of the page")
+        expectColour(fill, at: CGPoint(x: page.maxX + 0.75, y: page.midY), in: onCard, "\(scheme): right of the page")
+    }
+
     /// What the sheet says under the page, when the invoice does not fit it, is in the orange of attention.
     @Test(arguments: [ColorScheme.light, .dark])
     func theWarningUnderThePageIsInTheOrangeOfAttention(scheme: ColorScheme) async throws {
