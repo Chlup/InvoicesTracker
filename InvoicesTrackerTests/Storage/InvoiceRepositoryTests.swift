@@ -59,6 +59,18 @@ struct InvoiceRepositoryTests {
         IncomeAdjustment(date: civilDate(day), amountHalere: amount, description: description)
     }
 
+    /// An invoice with one item worth `net` without VAT, issued on `issued` and due on `due` (`YYYY-MM-DD`). Unless a
+    /// test says otherwise it is issued, unpaid, without a review flag and in crowns with 21 % VAT.
+    private static func dueInvoice(
+        _ number: String, issued: String, due: String, net: Int64 = 100_000, currency: CurrencyCode = .czk,
+        vatMode: VatMode = .domestic21, status: InvoiceStatus = .issued, review: ReviewFlag? = nil,
+        payment: Payment? = nil
+    ) -> Invoice {
+        Invoice.fixture(
+            number: number, currency: currency, issued: issued, duzp: issued, dueDate: due,
+            items: [.fixture("1", at: net)], vatMode: vatMode, status: status, review: review, payment: payment)
+    }
+
     // MARK: Helpers
 
     /// `invoice` as it is after saving: with the id the database gave it.
@@ -985,6 +997,155 @@ struct InvoiceRepositoryTests {
         #expect(Set(rows.map(\.id)).count == rows.count)
     }
 
+    // MARK: Invoices due by the end of a month
+
+    /// The unpaid invoices due by the end of November 2026 that were issued since the start of 2025, as read on Sunday
+    /// 1 November 2026.
+    private func dueUnpaidRows(in database: Database) async throws -> [InvoiceChartRow] {
+        try await database.dueUnpaidRows(
+            issuedFrom: civilDate("2025-01-01"), dueThrough: civilDate("2026-11-30"), today: civilDate("2026-11-01"))
+    }
+
+    @Test func onlyTheIssuedUnpaidInvoicesDueByTheLastDayOfTheMonthAreRead() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        // None of these is read.
+        for invoice in [
+            // Due the day after the last day of the month.
+            Self.dueInvoice("20261005", issued: "2026-10-31", due: "2026-12-01"),
+            // A draft, and an invoice held for review, are not income.
+            Self.dueInvoice("20261006", issued: "2026-10-28", due: "2026-11-10", status: .draft),
+            Self.dueInvoice("20261007", issued: "2026-10-28", due: "2026-11-10", review: ReviewFlag(reason: "?")),
+            // The money has come: it was paid before today, and it was paid today.
+            Self.dueInvoice("20261008", issued: "2026-10-01", due: "2026-10-15", payment: .fixture(on: "2026-10-30")),
+            Self.dueInvoice("20261009", issued: "2026-10-01", due: "2026-10-15", payment: .fixture(on: "2026-11-01")),
+            // Issued the day before the first day of last year.
+            Self.dueInvoice("20241201", issued: "2024-12-31", due: "2025-01-10"),
+        ] {
+            try await save(invoice, in: database)
+        }
+        // All of these are read. They are saved in an order other than the days they are due, so that the ids do not
+        // come in the order of the days.
+        let lastDay = try await save(
+            Self.dueInvoice("20261004", issued: "2026-10-31", due: "2026-11-30", net: 500_000), in: database)
+        let midMonth = try await save(
+            Self.dueInvoice("20261002", issued: "2026-10-20", due: "2026-11-14", net: 300_000), in: database)
+        let lastDecember = try await save(
+            Self.dueInvoice("20251201", issued: "2025-12-20", due: "2026-01-05", net: 100_000), in: database)
+        // A payment dated after today has not come yet.
+        let paidLater = try await save(
+            Self.dueInvoice(
+                "20261003", issued: "2026-10-25", due: "2026-11-20", net: 400_000,
+                payment: .fixture(on: "2026-11-25", net: 400_000, vat: 84_000)),
+            in: database)
+        let overdue = try await save(
+            Self.dueInvoice("20261001", issued: "2026-10-01", due: "2026-10-15", net: 200_000), in: database)
+
+        let rows = try await dueUnpaidRows(in: database)
+
+        #expect(rows.map(\.id) == [lastDecember, overdue, midMonth, paidLater, lastDay].map(\.id))
+        #expect(rows.map(\.netMinor) == [100_000, 200_000, 300_000, 400_000, 500_000])
+        #expect(rows.map(\.vatMinor) == [21_000, 42_000, 63_000, 84_000, 105_000])
+        // A row is a chart row: what was issued and what was paid, as the rows of the chart have it.
+        #expect(
+            rows.first { $0.id == lastDecember.id }
+                == InvoiceChartRow(
+                    id: lastDecember.id, issueDate: civilDate("2025-12-20"), isDraft: false, inReview: false,
+                    currency: .czk, netMinor: 100_000, vatMinor: 21_000, paymentDate: nil, paymentNetHalere: nil,
+                    paymentVatHalere: nil, issueDayRate: nil))
+        #expect(
+            rows.first { $0.id == paidLater.id }
+                == InvoiceChartRow(
+                    id: paidLater.id, issueDate: civilDate("2026-10-25"), isDraft: false, inReview: false,
+                    currency: .czk, netMinor: 400_000, vatMinor: 84_000, paymentDate: civilDate("2026-11-25"),
+                    paymentNetHalere: 400_000, paymentVatHalere: 84_000, issueDayRate: nil))
+    }
+
+    @Test func anInvoiceIssuedOnTheFirstDayOfLastYearIsRead() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let first = try await save(Self.dueInvoice("20250101", issued: "2025-01-01", due: "2025-01-15"), in: database)
+
+        let rows = try await dueUnpaidRows(in: database)
+
+        #expect(rows.map(\.id) == [first.id])
+    }
+
+    @Test func invoicesComeByTheDayTheyAreDueThenByIdWhateverTheDayOfIssue() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        // The first two are due on one day, and the one with the lower id was issued later. The third is due earlier
+        // and was issued last. The days of issue alone would put the second first and the third last.
+        let first = try await save(Self.dueInvoice("20261001", issued: "2026-10-25", due: "2026-11-20"), in: database)
+        let second = try await save(Self.dueInvoice("20261002", issued: "2026-10-20", due: "2026-11-20"), in: database)
+        let earlier = try await save(Self.dueInvoice("20261003", issued: "2026-10-30", due: "2026-11-05"), in: database)
+
+        let rows = try await dueUnpaidRows(in: database)
+
+        #expect(rows.map(\.id) == [earlier.id, first.id, second.id])
+    }
+
+    @Test func aForeignInvoiceDueThisMonthHasTheRateOfItsDayOfIssue() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        // Friday 16 October is the newest declaration, so the rates of the days after it are not stored yet.
+        try await database.insertCNBRates([
+            CNBRateRow(declaredOn: civilDate("2026-10-15"), currency: .usd, amount: 1, rate: decimal("21")),
+            CNBRateRow(declaredOn: civilDate("2026-10-16"), currency: .usd, amount: 1, rate: decimal("22")),
+        ])
+        let declared = try await save(
+            Self.dueInvoice(
+                "20261001", issued: "2026-10-15", due: "2026-11-14", currency: .usd, vatMode: .outsideCountry),
+            in: database)
+        let notDeclared = try await save(
+            Self.dueInvoice(
+                "20261002", issued: "2026-10-28", due: "2026-11-27", currency: .usd, vatMode: .outsideCountry),
+            in: database)
+        // The rates stored are the dollar's only, so the euro has no rate. Crowns need none.
+        let unquoted = try await save(
+            Self.dueInvoice(
+                "20261003", issued: "2026-10-15", due: "2026-11-20", currency: .eur, vatMode: .outsideCountry),
+            in: database)
+        let crowns = try await save(Self.dueInvoice("20261004", issued: "2026-10-15", due: "2026-11-21"), in: database)
+
+        let rows = try await dueUnpaidRows(in: database)
+
+        #expect(rows.map(\.id) == [declared, unquoted, crowns, notDeclared].map(\.id))
+        let declaredRow = try #require(rows.first { $0.id == declared.id })
+        #expect(declaredRow.issueDayRate == ExchangeRate(currency: .usd, amount: 1, rate: decimal("21")))
+        #expect(!declaredRow.issueDayRateIsProvisional)
+        // 1 000,00 dollars at 21 crowns.
+        #expect(declaredRow.issueDayRate?.czkHalere(fromMinor: declaredRow.netMinor) == 2_100_000)
+        // The day is after the newest declaration, so the latest rate before it stands in until it is declared.
+        let notDeclaredRow = try #require(rows.first { $0.id == notDeclared.id })
+        #expect(notDeclaredRow.issueDayRate == ExchangeRate(currency: .usd, amount: 1, rate: decimal("22")))
+        #expect(notDeclaredRow.issueDayRateIsProvisional)
+        for id in [unquoted.id, crowns.id] {
+            let row = try #require(rows.first { $0.id == id })
+            #expect(row.issueDayRate == nil && !row.issueDayRateIsProvisional)
+        }
+    }
+
+    @Test func aForeignInvoiceIssuedAfterTodayHasTheLatestRateDeclaredByTodayEvenWhenLaterOnesAreStored() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        // Monday 2 November is declared in this database already, but today is Sunday 1 November.
+        try await database.insertCNBRates([
+            CNBRateRow(declaredOn: civilDate("2026-10-16"), currency: .usd, amount: 1, rate: decimal("22")),
+            CNBRateRow(declaredOn: civilDate("2026-11-02"), currency: .usd, amount: 1, rate: decimal("30")),
+        ])
+        let later = try await save(
+            Self.dueInvoice(
+                "20261101", issued: "2026-11-20", due: "2026-11-30", currency: .usd, vatMode: .outsideCountry),
+            in: database)
+
+        let rows = try await dueUnpaidRows(in: database)
+
+        #expect(rows.map(\.id) == [later.id])
+        #expect(rows.first?.issueDayRate == ExchangeRate(currency: .usd, amount: 1, rate: decimal("22")))
+        #expect(rows.first?.issueDayRateIsProvisional == true)
+    }
+
     // MARK: Payments to work out again
 
     @Test func provisionalPaymentsAreThoseMarkedProvisionalInEveryYear() async throws {
@@ -1238,6 +1399,10 @@ struct InvoiceRepositoryTests {
             ("receipts", InvoiceQueries.receipts, year + year),
             ("provisional receipts", InvoiceQueries.provisionalReceipt, year),
             ("chart rows", InvoiceQueries.chartRows, year + year + year),
+            (
+                "due unpaid rows", InvoiceQueries.dueUnpaidRows,
+                [.day(civilDate("2025-01-01")), .day(civilDate("2026-11-30")), .day(civilDate("2026-11-01"))]
+            ),
             ("VAT by DUZP", InvoiceQueries.vatByDUZP, year),
             ("VAT to check by DUZP", InvoiceQueries.vatToCheckByDUZP, year),
             ("foreign currencies", InvoiceQueries.foreignCurrencies, year + year),
