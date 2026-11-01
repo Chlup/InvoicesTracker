@@ -624,6 +624,19 @@ struct InvoiceListBuilderTests {
                 == " · mimo součet: 2\u{00A0}faktury ke kontrole")
     }
 
+    /// A count of a thousand and more is grouped like every other number the app shows, and stays on the line of its
+    /// noun: "1 234 faktur" in the summary row and in the hint.
+    @Test func theCountsOfTheSummaryRowAreGroupedInThousandsLikeAnyNumber() {
+        let invoices = (1...1_234).map { index in
+            dollarInvoice(id: Int64(index), number: "2026\(index)", review: toCheck)
+        }
+
+        let data = build(input(invoices: invoices))
+
+        #expect(data.countText == "1\u{00A0}234\u{00A0}faktur")
+        #expect(data.reviewHint == " · mimo součet: 1\u{00A0}234\u{00A0}faktur ke kontrole")
+    }
+
     @Test func noHintWhenTheTableListsNoForeignInvoiceToCheck() {
         // A crown invoice to check changes nothing the row says: no invoice in a foreign currency is hidden.
         let invoices = [

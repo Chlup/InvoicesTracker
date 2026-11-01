@@ -260,8 +260,7 @@ final class YearTabModel {
         // A range that runs backwards, which only damaged data can hold, has no month.
         let count = max(0, to - from + 1)
         guard count != 12 else { return "celý rok" }
-        return ComputationBuilder.counted(count, "měsíc", "měsíce", "měsíců")
-            + " činnosti · ostatní měsíce se do minim nepočítají"
+        return ComputationBuilder.months(count) + " činnosti · ostatní měsíce se do minim nepočítají"
     }
 
     /// Whether the activity was carried on in `month` by `settings`. A range that runs backwards has no month; it is

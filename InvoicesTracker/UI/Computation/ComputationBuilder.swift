@@ -180,17 +180,13 @@ nonisolated enum ComputationBuilder {
     }
 
     private static func payments(_ count: Int) -> String {
-        counted(count, "platba", "platby", "plateb")
+        CzechCount.counted(count, one: "platba", few: "platby", many: "plateb", separator: CzechFormat.noBreakSpace)
     }
 
+    /// A number of months with the noun in the form Czech wants and a no-break space between them:
+    /// "1 měsíc", "2 měsíce", "5 měsíců".
     static func months(_ count: Int) -> String {
-        counted(count, "měsíc", "měsíce", "měsíců")
-    }
-
-    /// `count` with the noun in the form Czech wants and a no-break space between them: "1 měsíc", "2 měsíce",
-    /// "5 měsíců".
-    static func counted(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
-        "\(count)\u{00A0}" + CzechCount.noun(for: count, one: one, few: few, many: many)
+        CzechCount.counted(count, one: "měsíc", few: "měsíce", many: "měsíců", separator: CzechFormat.noBreakSpace)
     }
 
     /// The name of an authority in a column or a tile, its short name (`Authority.shortTitle`): "Daň", "Sociální",

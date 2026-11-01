@@ -29,7 +29,8 @@ nonisolated extension PredictionBuilder {
     private static func incomeSection(_ outcome: PredictionOutcome) -> ComputationSection {
         let prediction = outcome.prediction
         let result = outcome.result
-        let payments = ComputationBuilder.counted(prediction.receivedCount, "platba", "platby", "plateb")
+        let payments = CzechCount.counted(
+            prediction.receivedCount, one: "platba", few: "platby", many: "plateb", separator: CzechFormat.noBreakSpace)
         var rows = [
             ComputationRow(
                 label: "Přijaté platby", value: CzechFormat.amount(prediction.receivedHalere),
@@ -213,7 +214,9 @@ nonisolated extension PredictionBuilder {
     /// or the overview, written as Výpočet writes it (`ComputationBuilder.leftValue(_:)`).
     private static func advanceRows(of authority: Authority, _ outcome: PredictionOutcome) -> [ComputationRow] {
         let balance = outcome.result.balance(authority)
-        let payments = ComputationBuilder.counted(outcome.plannedCount(authority), "platba", "platby", "plateb")
+        let payments = CzechCount.counted(
+            outcome.plannedCount(authority), one: "platba", few: "platby", many: "plateb",
+            separator: CzechFormat.noBreakSpace)
         return [
             ComputationRow(
                 label: "Zálohy za rok", value: CzechFormat.grouped(-balance.advancesPaid),

@@ -91,6 +91,6 @@ nonisolated struct DeductionHints: Sendable, Hashable {
 
     /// A number of months with the noun in the form Czech wants: "1 měsíc", "2 měsíce", "5 měsíců".
     static func months(_ count: Int) -> String {
-        "\(count) " + CzechCount.noun(for: count, one: "měsíc", few: "měsíce", many: "měsíců")
+        CzechCount.counted(count, one: "měsíc", few: "měsíce", many: "měsíců")
     }
 }

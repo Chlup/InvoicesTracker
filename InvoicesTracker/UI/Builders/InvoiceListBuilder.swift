@@ -79,7 +79,8 @@ nonisolated struct OtherYearMatches: Sendable, Hashable {
     /// What VoiceOver says of the link, with the matches in the form of Czech that their number asks: "Zobrazit rok
     /// 2025, 1 shoda", "… 2 shody", "… 5 shod".
     var accessibilityLabel: String {
-        "Zobrazit rok \(String(year)), " + ComputationBuilder.counted(count, "shoda", "shody", "shod")
+        "Zobrazit rok \(String(year)), "
+            + CzechCount.counted(count, one: "shoda", few: "shody", many: "shod", separator: CzechFormat.noBreakSpace)
     }
 }
 
@@ -208,7 +209,8 @@ nonisolated struct InvoiceListData: Sendable, Hashable {
     /// it is the chosen one, so that the list never has a chosen filter without a chip.
     var visibleChips: [InvoiceStatusFilter]
 
-    /// How many rows the table shows, with the noun in the form Czech asks for the number: "12 faktur".
+    /// How many rows the table shows, with the noun in the form Czech asks for the number and a no-break space between
+    /// them, which keeps them on one line where the summary row wraps: "12 faktur", "1 234 faktur".
     var countText: String
 
     /// Which rows they are, after the count, with its own leading separator: " · všechny stavy", and
@@ -217,7 +219,8 @@ nonisolated struct InvoiceListData: Sendable, Hashable {
 
     /// After the category, " · mimo součet: 1 faktura ke kontrole" when the table lists an invoice in a foreign
     /// currency that is to be checked and so left out of both totals, and no other foreign invoice is counted: the
-    /// row would otherwise show no total at the uniform rate while the table lists one. Nil otherwise.
+    /// row would otherwise show no total at the uniform rate while the table lists one. The number and the noun stand
+    /// with a no-break space between them, as in the count. Nil otherwise.
     var reviewHint: String?
 
     /// "Celkem v Kč bez DPH": the total of `czkTotalHalere` in whole Kč, rounded once from the sum in haléře.
@@ -455,7 +458,8 @@ nonisolated enum InvoiceListBuilder {
         }
         let uniform = uniformSummary(total: uniformTotal, foreign: foreign, missing: missing, input: input)
         return Summary(
-            count: ComputationBuilder.counted(shown.count, "faktura", "faktury", "faktur"),
+            count: CzechCount.counted(
+                shown.count, one: "faktura", few: "faktury", many: "faktur", separator: CzechFormat.noBreakSpace),
             category: " · " + categoryName(input.filter) + (isSearching ? " · podle hledání" : ""),
             reviewHint: hintAboutInvoicesToCheck(in: shown, uniform: uniform), czkTotal: czkTotal, uniform: uniform,
             uniformTotal: missing.isEmpty ? uniformTotal : nil
@@ -464,13 +468,15 @@ nonisolated enum InvoiceListBuilder {
 
     /// " · mimo součet: 2 faktury ke kontrole" when the summary row shows no total at the uniform rate though the rows
     /// hold an invoice in a foreign currency, because every such invoice is one to check, which neither total counts.
-    /// The hint counts every invoice to check among the rows, in crowns too, as both totals leave them out. Nil
-    /// otherwise.
+    /// The hint counts every invoice to check among the rows, in crowns too, as both totals leave them out. The number
+    /// and its noun stand with a no-break space between them, like the count in the summary row beside it, which
+    /// wraps. Nil otherwise.
     private static func hintAboutInvoicesToCheck(in shown: [Entry], uniform: UniformSummary) -> String? {
         let toCheck = shown.filter { $0.invoice.review != nil }
         guard uniform == .hidden, toCheck.contains(where: { !$0.invoice.currency.isCZK }) else { return nil }
-        return " · mimo součet: " + ComputationBuilder.counted(toCheck.count, "faktura", "faktury", "faktur")
-            + " ke kontrole"
+        let invoices = CzechCount.counted(
+            toCheck.count, one: "faktura", few: "faktury", many: "faktur", separator: CzechFormat.noBreakSpace)
+        return " · mimo součet: " + invoices + " ke kontrole"
     }
 
     /// The invoice in haléře at the ČNB rates: crowns as they are; money received at the amount the bank credited when

@@ -81,7 +81,7 @@ nonisolated enum ClientRowBuilder {
     private static func templatesText(count: Int) -> String {
         guard count > 0 else { return noTemplates }
         return CzechCount.counted(
-            count, one: "šablona", few: "šablony", many: "šablon", separator: ClientsBuilder.noBreakSpace)
+            count, one: "šablona", few: "šablony", many: "šablon", separator: CzechFormat.noBreakSpace)
     }
 
     /// The money received in whole Kč, rounded half up, or the dash where nothing came.

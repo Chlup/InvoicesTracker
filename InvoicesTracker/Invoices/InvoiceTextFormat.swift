@@ -49,7 +49,6 @@ nonisolated struct InvoiceLabels: Sendable, Hashable {
 /// English with a point for the decimals and commas between thousands. Numbers and dates are built by hand rather than
 /// with `NumberFormatter` or `DateFormatter`, so they read the same on every Mac, whatever its settings.
 nonisolated enum InvoiceTextFormat {
-    private static let noBreakSpace = "\u{00A0}"
     private static let minus = "\u{2212}"
 
     private static let englishMonths = [
@@ -65,7 +64,8 @@ nonisolated enum InvoiceTextFormat {
     /// `Sep 30, 2026` in English.
     static func date(_ d: CivilDate, language: InvoiceLanguage) -> String {
         switch language {
-        case .cs: "\(twoDigits(d.day)).\(noBreakSpace)\(twoDigits(d.month)).\(noBreakSpace)\(d.year)"
+        case .cs:
+            "\(twoDigits(d.day)).\(CzechFormat.noBreakSpace)\(twoDigits(d.month)).\(CzechFormat.noBreakSpace)\(d.year)"
         case .en: "\(englishMonths[d.month - 1]) \(d.day), \(d.year)"
         }
     }
@@ -84,9 +84,9 @@ nonisolated enum InvoiceTextFormat {
             let number = englishNumber(minor.magnitude)
             let sign = minor < 0 ? "-" : ""
             guard let symbol = englishSymbols[currency.code] else {
-                return sign + number + noBreakSpace + currency.code
+                return sign + number + CzechFormat.noBreakSpace + currency.code
             }
-            return sign + symbol + noBreakSpace + number
+            return sign + symbol + CzechFormat.noBreakSpace + number
         }
     }
 
@@ -108,7 +108,7 @@ nonisolated enum InvoiceTextFormat {
 
     /// A VAT rate in whole percent: `21 %`, with a no-break space before the sign.
     static func vatRate(_ percent: Int) -> String {
-        "\(percent)\(noBreakSpace)%"
+        "\(percent)\(CzechFormat.noBreakSpace)%"
     }
 
     /// The reference to pay with: the variable symbol, which is the digits of the number, on a Czech invoice, and the

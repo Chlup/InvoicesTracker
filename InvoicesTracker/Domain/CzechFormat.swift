@@ -4,7 +4,9 @@ import Foundation
 /// result is the same on every Mac whatever its locale: a no-break space (U+00A0) between thousands and after each
 /// dot of a date, a decimal comma, and the minus sign U+2212.
 nonisolated enum CzechFormat {
-    private static let noBreakSpace = "\u{00A0}"
+    /// The no-break space (U+00A0) of the app: between the thousands of a number, before the unit of an amount, after
+    /// the dots of a date, and between a count and its noun where they must stay on one line.
+    static let noBreakSpace = "\u{00A0}"
     private static let minus = "\u{2212}"
 
     /// A whole number with its thousands separated: `1 234 567`.

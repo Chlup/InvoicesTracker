@@ -155,7 +155,6 @@ nonisolated enum SearchDocumentBuilder {
 private nonisolated struct FieldList {
     private(set) var fields: [SearchField] = []
 
-    private static let noBreakSpace = "\u{00A0}"
     private static let minus = "\u{2212}"
 
     /// A field, unless its text is empty.
@@ -181,7 +180,7 @@ private nonisolated struct FieldList {
     /// (`14350,00`) and with a decimal point (`14350.00`). Without spaces the minus sign is the one on the keyboard.
     mutating func addAmount(_ label: String, minor: Int64, currency: CurrencyCode, shownInTable: Bool = false) {
         let typed = CzechFormat.amount(minor)
-            .replacingOccurrences(of: Self.noBreakSpace, with: "")
+            .replacingOccurrences(of: CzechFormat.noBreakSpace, with: "")
             .replacingOccurrences(of: Self.minus, with: "-")
         add(
             label,

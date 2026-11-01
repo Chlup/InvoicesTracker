@@ -83,7 +83,7 @@ struct ImportTextTests {
 
     @Test(arguments: [
         (0, "0\u{00A0}řádků"), (1, "1\u{00A0}řádek"), (2, "2\u{00A0}řádky"), (4, "4\u{00A0}řádky"),
-        (5, "5\u{00A0}řádků"), (13, "13\u{00A0}řádků"), (21, "21\u{00A0}řádků"),
+        (5, "5\u{00A0}řádků"), (13, "13\u{00A0}řádků"), (21, "21\u{00A0}řádků"), (1_234, "1\u{00A0}234\u{00A0}řádků"),
     ])
     func theRowsOfAFileAreCountedInTheFormOfCzechTheirNumberAsks(count: Int, text: String) {
         #expect(ImportText.rows(count) == text)

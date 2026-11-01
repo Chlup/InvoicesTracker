@@ -15,9 +15,10 @@ nonisolated enum CzechCount {
     }
 
     /// "13 faktur", "1 faktura", "1 000 faktur": `count` grouped in thousands (`CzechFormat.grouped`), `separator` and
-    /// the noun in the form for the count. The separator is a plain space, as the lines of the screens have it, or a
-    /// no-break space where the number must stay on the line of its noun, as in the summary row of Odběratelé
-    /// ("3 odběratelé", "1 šablona").
+    /// the noun in the form for the count. This is the one formatter of a count that the app has, for every count it
+    /// shows. The separator is a plain space, as the lines of the screens have it, or a no-break space
+    /// (`CzechFormat.noBreakSpace`) where the number must stay on the line of its noun, as in the summary row of
+    /// Odběratelé ("3 odběratelé", "1 šablona").
     static func counted(_ count: Int, one: String, few: String, many: String, separator: String = " ") -> String {
         CzechFormat.grouped(Int64(count)) + separator + noun(for: count, one: one, few: few, many: many)
     }
@@ -28,8 +29,9 @@ nonisolated enum CzechCount {
     }
 
     /// "1 den", "3 dny", "14 dní", "0 dní": the number and its word apart by `separator`, a plain space, or a no-break
-    /// space where the number must stay on the line of its word, as in the detail of a client ("30 dní").
+    /// space where the number must stay on the line of its word, as in the detail of a client ("30 dní"). Days are
+    /// counted like any other noun (`counted(_:one:few:many:separator:)`), so a thousand days are "1 000 dní".
     static func days(_ count: Int, separator: String = " ") -> String {
-        "\(count)\(separator)\(dayWord(count))"
+        counted(count, one: "den", few: "dny", many: "dní", separator: separator)
     }
 }

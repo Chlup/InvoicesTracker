@@ -129,11 +129,12 @@ nonisolated enum ClientsBuilder {
         let selected = selectedClientID.flatMap { id in input.clients.first { $0.id == id } }
         return ClientsData(
             countText: CzechCount.counted(
-                input.clients.count, one: "odběratel", few: "odběratelé", many: "odběratelů", separator: noBreakSpace),
+                input.clients.count, one: "odběratel", few: "odběratelé", many: "odběratelů",
+                separator: CzechFormat.noBreakSpace),
             templatesText: " · "
                 + CzechCount.counted(
-                    input.templates.count, one: "šablona", few: "šablony", many: "šablon", separator: noBreakSpace)
-                + " faktur",
+                    input.templates.count, one: "šablona", few: "šablony", many: "šablon",
+                    separator: CzechFormat.noBreakSpace) + " faktur",
             totalText: PredictionBuilder.kc(ofHalere: received),
             receivedHeader: "Přijato \(input.year)",
             rows: ClientRowBuilder.rows(
@@ -144,10 +145,6 @@ nonisolated enum ClientsBuilder {
                     templates: input.templates.filter { $0.clientID == client.id })
             })
     }
-
-    /// The space between a count and its noun in the texts of Odběratelé, which keeps them on one line where the
-    /// summary row wraps: "3 odběratelé", "1 šablona".
-    static let noBreakSpace = "\u{00A0}"
 
     // MARK: The detail
 
@@ -168,7 +165,7 @@ nonisolated enum ClientsBuilder {
     /// day the last of them was issued; "0 faktur" where there is none, as the last day is only said of the year.
     private static func context(of figures: ClientFigures) -> String {
         let count = CzechCount.counted(
-            figures.invoiceCount, one: "faktura", few: "faktury", many: "faktur", separator: noBreakSpace)
+            figures.invoiceCount, one: "faktura", few: "faktury", many: "faktur", separator: CzechFormat.noBreakSpace)
         guard figures.invoiceCount > 0, let last = figures.lastIssueDate else { return count }
         return count + " · poslední " + CzechFormat.dayMonth(last)
     }
@@ -184,7 +181,7 @@ nonisolated enum ClientsBuilder {
             DetailFact(label: "E-mail", value: FormInput.trimmed(client.email)),
             DetailFact(label: "Měna", value: client.currency.code),
             DetailFact(label: "DPH", value: client.vatMode.label),
-            DetailFact(label: "Splatnost", value: CzechCount.days(client.dueDays, separator: "\u{00A0}")),
+            DetailFact(label: "Splatnost", value: CzechCount.days(client.dueDays, separator: CzechFormat.noBreakSpace)),
             DetailFact(label: "Platba", value: FormInput.trimmed(client.paymentMethod)),
             DetailFact(label: "Jazyk faktury", value: client.language == .en ? "anglicky" : "česky"),
         ]
@@ -207,7 +204,7 @@ nonisolated enum ClientsBuilder {
                 quantity: item.quantity, unit: item.unit, unitPriceMinor: item.unitPriceMinor,
                 currency: client.currency, description: item.description)
         }
-        var options = ["splatnost " + CzechCount.days(template.dueDays, separator: "\u{00A0}")]
+        var options = ["splatnost " + CzechCount.days(template.dueDays, separator: CzechFormat.noBreakSpace)]
         if template.vatMode != client.vatMode {
             options.append(template.vatMode.label)
         }
