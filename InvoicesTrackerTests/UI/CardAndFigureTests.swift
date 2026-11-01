@@ -259,6 +259,20 @@ struct CardAndFigureTests {
         #expect(abs(figure.width - own.width) <= 0.5, "The figure is \(figure.width) wide, alone \(own.width)")
     }
 
+    /// The figure is set in the colour of text of the design, in a light and in a dark window. Text that sets no colour
+    /// of its own takes the colour of labels of the system, black or white at 85 %, which over a card is 9 levels off
+    /// the colour of text in a light window and 24 in a dark one.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theFigureOfAKeyFigureIsSetInTheColourOfText(scheme: ColorScheme) throws {
+        let picture = try OffscreenPicture(
+            of: KeyFigureView(lineData).frame(width: 400).padding(20).background(Palette.bgCard), in: scheme)
+        // The line of the figure: under the padding of 20, the eyebrow and the 8 points of the board, 44 points tall.
+        let line = CGRect(x: 20, y: 20 + heightsOfTheEyebrowAndTheSentence().eyebrow + 8, width: 400, height: 44)
+
+        try picture.expectText(
+            in: line, setIn: Palette.text, atLeast: 3_800, scheme: scheme, "\(scheme): the figure of the key figure")
+    }
+
     /// A screen gives the key figure the spaces its design has around the figure, counted from the line of 44 points:
     /// Přehled sets the sentence 12 points under the figure (the gap of 8 and the sentence's margin of 4), Výpočet and
     /// the levies of Odhad odvodů 10 (a margin of 2), what is left to settle on Odhad odvodů has 6 above and below,
@@ -475,6 +489,22 @@ struct CardAndFigureTests {
         let first = try #require(rows.first)
         let last = try #require(rows.last)
         #expect(abs((first + last + 0.5) / 2 - 27.5) <= 1, "The line is from \(first) to \(last + 0.5) points down")
+    }
+
+    /// The figure of a tile is set in the colour of text of the design, in a light and in a dark window, and not in the
+    /// colour of labels of the system, which text that sets no colour of its own takes. The label and the share are
+    /// secondary text and the note tertiary, by design, so the picture of the whole tile is looked at.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theFigureOfAFigureTileIsSetInTheColourOfText(scheme: ColorScheme) throws {
+        let tile = FigureTile(
+            FigureTileData(
+                label: "Doplatek", figure: "5\u{00A0}371\u{00A0}Kč", share: "16,7\u{00A0}%",
+                note: "s přiznáním a přehledy za rok 2026"))
+        let picture = try OffscreenPicture(of: tile.padding(20).background(Palette.bgCard), in: scheme)
+
+        try picture.expectText(
+            in: CGRect(origin: .zero, size: picture.size), setIn: Palette.text, atLeast: 380,
+            alongside: [Palette.text2, Palette.text3], scheme: scheme, "\(scheme): the figure of the tile")
     }
 
     @Test func aFigureTileStacksItsLabelItsFigureAndItsNoteWith2PointsBetween() throws {

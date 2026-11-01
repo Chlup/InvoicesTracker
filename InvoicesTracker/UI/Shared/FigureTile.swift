@@ -54,10 +54,10 @@ private nonisolated enum FigureTileMetrics {
     static let dotGap: CGFloat = 6
 }
 
-/// A figure with its label, its share and its note: the label in callout and secondary text, the figure in title 2 with
-/// the share beside it in body semibold and secondary text, and the note in callout and tertiary text. A tile about the
-/// net income has a green mark in front of its label, a dot or a line (`NetIncomeMarker`). VoiceOver reads the tile as
-/// one phrase, and not the mark.
+/// A figure with its label, its share and its note: the label in callout and secondary text, the figure in title 2 and
+/// the colour of text with the share beside it in body semibold and secondary text, and the note in callout and
+/// tertiary text. A tile about the net income has a green mark in front of its label, a dot or a line
+/// (`NetIncomeMarker`). VoiceOver reads the tile as one phrase, and not the mark.
 ///
 /// Tiles stand next to each other in a `FigureRow`; they are as wide as their texts are, and never stretched into
 /// columns.
@@ -123,6 +123,7 @@ struct FigureTile: View {
         HStack(alignment: .firstTextBaseline, spacing: FigureTileMetrics.shareGap) {
             Text(verbatim: data.figure)
                 .font(Typography.title2)
+                .foregroundStyle(Palette.text)
                 .monospacedDigit()
             if let share = data.share {
                 Text(verbatim: share)

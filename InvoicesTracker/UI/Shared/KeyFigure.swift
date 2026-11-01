@@ -110,13 +110,13 @@ private nonisolated enum KeyFigureMetrics {
     static let sentenceMaximumWidth: CGFloat = 416
 }
 
-/// The key figure of a screen: the eyebrow over it in grey capitals, the figure in the display size with its share on
-/// the same baseline, or under it where the room is too narrow for both, and the sentence under them in secondary text,
-/// at most `sentenceMaximumWidth` points wide: 416 unless the screen gives it the width its design has. The sentence is
-/// set in the body size unless the screen gives it another font, as the Simulátor sets the one line of context under
-/// its figure in callout. The figure stands in a line as tall as its size, and the spaces between that line and the
-/// eyebrow and the sentence are those the screen gives it (`KeyFigureSpacing`), 8 points each unless it gives others.
-/// VoiceOver reads the lot as one phrase.
+/// The key figure of a screen: the eyebrow over it in grey capitals, the figure in the display size and the colour of
+/// text with its share on the same baseline, or under it where the room is too narrow for both, and the sentence under
+/// them in secondary text, at most `sentenceMaximumWidth` points wide: 416 unless the screen gives it the width its
+/// design has. The sentence is set in the body size unless the screen gives it another font, as the Simulátor sets the
+/// one line of context under its figure in callout. The figure stands in a line as tall as its size, and the spaces
+/// between that line and the eyebrow and the sentence are those the screen gives it (`KeyFigureSpacing`), 8 points
+/// each unless it gives others. VoiceOver reads the lot as one phrase.
 struct KeyFigureView: View {
     let data: KeyFigureData
 
@@ -189,6 +189,7 @@ struct KeyFigureView: View {
     private var figure: some View {
         Text(verbatim: data.figure)
             .font(Typography.display)
+            .foregroundStyle(Palette.text)
             .monospacedDigit()
             .tracking(KeyFigureMetrics.figureTracking)
             .lineLimit(1)
