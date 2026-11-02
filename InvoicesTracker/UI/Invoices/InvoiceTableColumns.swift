@@ -1,18 +1,19 @@
 import CoreGraphics
 
 /// The columns of the table of Faktury, and how wide each of them is in a table of a given width: the grid of the
-/// design board, `84px minmax(72px, 1.4fr) 64px 64px minmax(108px, 1.1fr) minmax(96px, 1fr) minmax(90px, 0.9fr) 96px`,
-/// with `DataTableMetrics.gap` between two columns and `DataTableMetrics.margin` at either end. Číslo, Vystaveno,
-/// Zaplaceno and Stav have widths of their own, and the other four share what the table has left in the proportions
-/// of their fractions, as a CSS grid shares it: a column whose share is less than its least width keeps that width,
-/// and the others share the rest. They have no greatest width.
+/// design board, `84px minmax(72px, 1.4fr) 64px 64px minmax(108px, 1.1fr) minmax(96px, 1fr) minmax(96px, 0.8fr)
+/// minmax(90px, 0.9fr) 112px`, with `DataTableMetrics.gap` between two columns and `DataTableMetrics.margin` at either
+/// end. Číslo, Vystaveno, Zaplaceno and Stav have widths of their own, and the other five share what the table has
+/// left in the proportions of their fractions, as a CSS grid shares it: a column whose share is less than its least
+/// width keeps that width, and the others share the rest. They have no greatest width.
 ///
-/// The widths of the board are raised where the cells need more: Bez DPH holds 999 999,99 in any currency in use
-/// (`InvoiceAmountText`), Stav the widest pill of the list ("Čeká na platbu"), and a date column holds a date with its
-/// year, "28. 12. 2026" (`InvoiceDateText`), while a row of the table prints one, which is a date of another year than
-/// the one shown. The least width of the table is the least widths of its columns with the room between and around
-/// them, which is a little more than the board's 764 points. Below it the table keeps it and scrolls sideways
-/// (`InvoiceTableView`).
+/// The widths of the board are raised where the cells need more: Bez DPH and DPH hold 999 999,99 in any currency in
+/// use (`InvoiceAmountText`), which takes 104 points, not 96; Stav holds the widest pill of the list ("Čeká na
+/// platbu"), 98 points, not 96, after the inset of 16 points before its pills (`statusInset`), so its column is 114
+/// points where the board's is 112; and a date column holds a date with its year, "28. 12. 2026"
+/// (`InvoiceDateText`), while a row of the table prints one, which is a date of another year than the one shown. The
+/// least width of the table is the least widths of its columns with the room between and around them, which is a
+/// little more than the board's 884 points. Below it the table keeps it and scrolls sideways (`InvoiceTableView`).
 nonisolated struct InvoiceTableColumns: Sendable, Equatable {
     /// How a column takes its width.
     enum Width: Sendable, Equatable {
@@ -41,7 +42,11 @@ nonisolated struct InvoiceTableColumns: Sendable, Equatable {
     }
 
     /// The least width of the table on the board, which the least widths of the columns raised for their cells exceed.
-    static let boardMinimumWidth: CGFloat = 764
+    static let boardMinimumWidth: CGFloat = 884
+
+    /// The room before the name and the pills of Stav inside their column, in points. The 8 points of the gap before
+    /// the column and this inset put 24 points between Čistý příjem and Stav.
+    static let statusInset: CGFloat = 16
 
     /// The width of a date column whose rows print dates of the year shown, "31. 12.", and its name whole.
     static let dateWidth: CGFloat = 64
@@ -49,9 +54,10 @@ nonisolated struct InvoiceTableColumns: Sendable, Equatable {
     /// The width of a date column with a date of another year among its rows, "28. 12. 2026".
     static let dateWithYearWidth: CGFloat = 80
 
-    /// Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, Čistý příjem and Stav, in their order. Bez DPH
-    /// has 104 points at least, not the board's 96, to hold "999 999,99 USD" and the other currencies with their
-    /// widest codes; Stav has 98, not 96, to hold the pill "Čeká na platbu".
+    /// Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, DPH, Čistý příjem and Stav, in their order.
+    /// Bez DPH and DPH have 104 points at least, not the board's 96, to hold "999 999,99 USD" and the other
+    /// currencies with their widest codes; Stav has 98, not 96, to hold the pill "Čeká na platbu", and the inset
+    /// before it (`statusInset`) on top of that.
     let widths: [Width]
 
     /// The columns of a table whose rows print a date of issue of another year (`issueDatesShowYear`), a date of
@@ -61,7 +67,8 @@ nonisolated struct InvoiceTableColumns: Sendable, Equatable {
         widths = [
             .fixed(84), .flexible(minimum: 72, fraction: 1.4), date(issueDatesShowYear), date(paymentDatesShowYear),
             .flexible(minimum: 108, fraction: 1.1), .flexible(minimum: 104, fraction: 1),
-            .flexible(minimum: 90, fraction: 0.9), .fixed(98),
+            .flexible(minimum: 104, fraction: 0.8), .flexible(minimum: 90, fraction: 0.9),
+            .fixed(98 + Self.statusInset),
         ]
     }
 

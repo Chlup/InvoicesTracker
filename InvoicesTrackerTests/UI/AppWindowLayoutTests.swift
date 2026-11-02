@@ -470,7 +470,7 @@ struct AppWindowLayoutTests {
 
     /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
     /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
-    /// the least window, while the detail is closed, the card (938 points) holds the table, whose least width is 772.
+    /// the least window, while the detail is closed, the card (938 points) holds the table, whose least width is 900.
     @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -498,10 +498,42 @@ struct AppWindowLayoutTests {
         }
     }
 
+    /// The widest table that Faktury can show, 916 points where the day of a payment prints its year (the days of
+    /// issue of the invoices of the year shown print none), fills the card of the least window, which is 938 points
+    /// wide while the detail is closed, with nothing to scroll sideways.
+    @Test func theWidestTableThatCanOccurFillsItsCardInTheLeastWindow() async throws {
+        try await EditorFixture.with { f in
+            // Issued in the year shown and paid in the next, on a day after that of the fixture.
+            var invoice = Invoice.fixture(
+                number: "20261003", issued: "2026-10-05", duzp: "2026-10-05", dueDate: "2026-10-25",
+                payment: .fixture(on: "2027-01-12"))
+            invoice.clientID = f.cetusID
+            invoice.client = ClientSnapshot(client: EditorFixture.cetus)
+            try await f.database.saveInvoice(invoice)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    // The eleven invoices of 2026 and the new one, the row of which says the year of its payment.
+                    try await waitUntil { invoiceRows(in: window).count == 12 }
+                    let labels = invoiceRows(in: window).compactMap { $0.accessibilityLabel?() }
+                    let paidWithItsYear = "Zaplaceno 12.\u{00A0}1.\u{00A0}2027,"
+                    #expect(labels.contains { $0.hasPrefix("20261003,") && $0.contains(paidWithItsYear) })
+
+                    let widest = InvoiceTableColumns(issueDatesShowYear: false, paymentDatesShowYear: true)
+                    #expect(widest.minimumWidth == 916)
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
+                    }
+                }
+            }
+        }
+    }
+
     /// Below its least width the table keeps that width and scrolls sideways in its card, with the detail beside the
-    /// card. In the least window with the detail open it is that wide, the least widths of its columns (684 points)
-    /// with 8 points between each two and 16 at either end, 772 points, which is more than its card shows, and the card
-    /// has a horizontal scroller.
+    /// card. In the least window with the detail open it is that wide, the least widths of its columns (804 points)
+    /// with 8 points between each two and 16 at either end, 900 points, which is more than its card of 582 points
+    /// shows, and the card has a horizontal scroller.
     @Test func aTableBelowItsMinimumScrollsSideways() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -512,8 +544,8 @@ struct AppWindowLayoutTests {
 
                     let scrollView = try #require(tableScrollView(in: window))
                     let table = try tableWidth(in: window)
-                    #expect(InvoiceTableColumns().minimumWidth == 772)
-                    #expect((table - 772).magnitude < 0.5)
+                    #expect(InvoiceTableColumns().minimumWidth == 900)
+                    #expect((table - 900).magnitude < 0.5)
                     #expect(table > scrollView.contentView.bounds.width + 0.5)
                     #expect(scrollView.hasHorizontalScroller)
                     #expect(scrollView.horizontalScroller?.isHidden == false)

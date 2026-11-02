@@ -85,10 +85,11 @@ struct InvoiceTableViewTests {
     // MARK: The open row
 
     @Test func theOpenRowIsTintedPaleBlueWithABlueEdgeOnItsLeadingSide() async throws {
-        // The three rows, the middle one open, in a card 20 points inside a light window of 900 × 400 points.
+        // The three rows, the middle one open, in a card 20 points inside a light window of 1 000 × 400 points. The
+        // card is 960 points wide, which holds the table, whose least width is 900.
         let table = InvoiceTableView(
             data: list(of: [crowns, dollars, try found()]), openID: dollars.id, click: { _ in }, move: { _ in })
-        try await withPictureOf(table.padding(20), size: CGSize(width: 900, height: 400)) { picture in
+        try await withPictureOf(table.padding(20), size: CGSize(width: 1_000, height: 400)) { picture in
             // Down the leading edge of the card, inside the 3 points of the edge of a row: one band of the blue of the
             // edge, as tall as a row less the hairline across its top, 39 points.
             let edge: CGFloat = 20 + 1.5
@@ -99,7 +100,7 @@ struct InvoiceTableViewTests {
 
             // The tint across the row, in the margin before the first column and in the one after the last.
             let middle = (band.lowerBound + band.upperBound) / 2
-            for x in [20 + 10, 880 - 10] as [CGFloat] {
+            for x in [20 + 10, 980 - 10] as [CGFloat] {
                 let tint = try picture.bytes(at: CGPoint(x: x, y: middle))
                 #expect(isClose(tint, to: [0xE8, 0xF1, 0xFD]), "the open row at \(x) on \(picture.screen) is \(tint)")
             }
@@ -168,8 +169,9 @@ struct InvoiceTableViewTests {
     /// the colour of text; Zaplaceno in it for a payment that came, in the grey of notes for one dated after today and
     /// as a dash in the faintest grey without one; V Kč bez DPH in the colour of text for what was received or an
     /// amount in crowns, in secondary grey for an estimate and as a faint dash where the rate is not known; Bez DPH in
-    /// secondary grey; Čistý příjem in the green of text for a payment, in secondary grey for an estimate and as a
-    /// faint dash without one; and the pill of Stav in the tint of its tone. A search match stands on the yellow of a
+    /// secondary grey; DPH in secondary grey, and as a faint dash for an invoice without VAT; Čistý příjem in the green
+    /// of text for a payment, in secondary grey for an estimate and as a faint dash without one; and the pill of Stav
+    /// in the tint of its tone, which starts after the inset of its column. A search match stands on the yellow of a
     /// highlight, after the client, in the grey of notes. The darkest pixels of a cell's text are its colour: none is
     /// darker, and some are that colour.
     @Test func everyCellTakesTheColourOfWhatItShows() throws {
@@ -217,31 +219,39 @@ struct InvoiceTableViewTests {
             #expect(darker == 0, "\(name) has \(darker) pixels darker than \(colour)")
         }
 
-        // The paid invoice in dollars: everything in the colour of text but Bez DPH, and no net income.
+        // The paid invoice in dollars: everything in the colour of text but Bez DPH, and no VAT and no net income.
         try expectCell(cell(0, ofRow: 0), in: Palette.text, atLeast: 250, "the number")
         try expectCell(cell(1, ofRow: 0), in: Palette.text, atLeast: 190, "the client")
         try expectCell(cell(2, ofRow: 0), in: Palette.text, atLeast: 65, "the day of issue")
         try expectCell(cell(3, ofRow: 0), in: Palette.text, atLeast: 55, "the day of the payment")
         try expectCell(cell(4, ofRow: 0), in: Palette.text, atLeast: 190, "what the payment brought")
         try expectCell(cell(5, ofRow: 0), in: Palette.text2, atLeast: 220, "the amount in dollars")
-        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
+        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 16, "the dash for no VAT")
+        try expectCell(cell(7, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
         // The draft: no payment, the estimates in secondary grey.
         try expectCell(cell(3, ofRow: 1), in: Palette.text4, atLeast: 6, "the dash for no payment")
         try expectCell(cell(4, ofRow: 1), in: Palette.text2, atLeast: 235, "the estimate in crowns")
-        try expectCell(cell(6, ofRow: 1), in: Palette.text2, atLeast: 270, "the estimated net income")
+        try expectCell(cell(7, ofRow: 1), in: Palette.text2, atLeast: 270, "the estimated net income")
         // A payment dated after today, and a rate that is not known.
         try expectCell(cell(3, ofRow: 2), in: Palette.text3, atLeast: 90, "the day of a later payment")
         try expectCell(cell(4, ofRow: 2), in: Palette.text4, atLeast: 6, "the dash for a rate not known")
-        // A paid invoice in crowns with its net income, in the green of text, which is not one of the colours of text.
+        // A paid invoice in crowns with its VAT and its net income, the net income in the green of text, which is not
+        // one of the colours of text.
         try expectCell(cell(4, ofRow: 3), in: Palette.text, atLeast: 220, "the amount in crowns")
-        let net = problems(of: cell(6, ofRow: 3), in: green, "the net income of a payment")
+        try expectCell(cell(6, ofRow: 3), in: Palette.text2, atLeast: 480, "the VAT")
+        let net = problems(of: cell(7, ofRow: 3), in: green, "the net income of a payment")
         #expect(net.isEmpty, "\(net)")
 
-        // The pills: green for paid, grey for a draft, red for overdue.
+        // The pills: green for paid, grey for a draft, red for overdue. Each stands after the inset of its column: none
+        // of its tint lies in the first points of the cell.
         let pills: [(row: Int, tint: Color)] = [(0, Palette.greenTint), (1, Palette.fill), (2, Palette.redTint)]
         for pill in pills {
             let tint = try OffscreenPicture.bytes(of: pill.tint, in: .light)
-            #expect(picture.count(near: tint, in: cell(7, ofRow: pill.row), by: 2) > 100, "the pill of row \(pill.row)")
+            let region = cell(8, ofRow: pill.row)
+            #expect(picture.count(near: tint, in: region, by: 2) > 100, "the pill of row \(pill.row)")
+            let inset = CGRect(
+                x: region.minX, y: region.minY, width: InvoiceTableColumns.statusInset, height: region.height)
+            #expect(picture.count(near: tint, in: inset, by: 2) == 0, "the inset before the pill of row \(pill.row)")
         }
         // The match of the search, on the yellow of a highlight, in the cell of the client after the name.
         let highlight = try OffscreenPicture.bytes(of: Palette.highlight, in: .light)
@@ -252,11 +262,12 @@ struct InvoiceTableViewTests {
     // MARK: The least widths of the columns
 
     /// Číslo holds both forms of the numbers in use, and the columns of amounts hold 999 999,99 with its currency: in
-    /// crowns and as an estimate in crowns in V Kč bez DPH, in crowns and in the currencies in use in Bez DPH. Čistý
-    /// příjem holds 999 999 Kč with the sign of an estimate, set as each kind of net income is. Vystaveno and Zaplaceno
-    /// hold a date of the year shown, and a date of another year once they are widened for it. Stav holds the widest
-    /// pill of the list. Every column holds its name. Each is measured as the table shows it, so that the table at its
-    /// least width, as in the least window, shows none of them cut short.
+    /// crowns and as an estimate in crowns in V Kč bez DPH, in crowns and in the currencies in use in Bez DPH and in
+    /// DPH. Čistý příjem holds 999 999 Kč with the sign of an estimate, set as each kind of net income is. Vystaveno
+    /// and Zaplaceno hold a date of the year shown, and a date of another year once they are widened for it. Stav holds
+    /// the widest pill of the list after the inset before the pills. Every column holds its name, and that of Stav
+    /// holds it after the inset too. Each is measured as the table shows it, so that the table at its least width, as
+    /// in the least window, shows none of them cut short.
     @Test func theLeastWidthOfAColumnHoldsTheWidestNumberAmountDateOrPillOfItsCellsWhole() {
         let columns = InvoiceTableColumns()
         let least = columns.widths.map(\.minimum)
@@ -276,11 +287,13 @@ struct InvoiceTableViewTests {
         }
         let currencies = [CurrencyCode.czk, .usd, .eur] + ["GBP", "CHF", "AUD", "NOK"].compactMap { CurrencyCode($0) }
         for currency in currencies {
-            check(width(of: InvoiceAmountText(amount: largest(currency))), largest(currency), column: 5)
+            for column in [5, 6] {
+                check(width(of: InvoiceAmountText(amount: largest(currency))), largest(currency), column: column)
+            }
         }
         let netIncome = "≈\u{00A0}999\u{00A0}999\u{00A0}Kč"
         for kind in [NetIncomeKind.paid, .estimate, .none] {
-            check(width(of: InvoiceNetIncomeText(text: netIncome, kind: kind)), "\(netIncome) as \(kind)", column: 6)
+            check(width(of: InvoiceNetIncomeText(text: netIncome, kind: kind)), "\(netIncome) as \(kind)", column: 7)
         }
         for column in [2, 3] {
             check(width(of: InvoiceDateText(text: "31.\u{00A0}12.")), "31. 12.", column: column)
@@ -293,14 +306,17 @@ struct InvoiceTableViewTests {
         let statuses: [InvoiceDisplayStatus] = [
             .draft, .awaitingPayment, .overdue, .paid(civilDate("2026-12-15")), .needsReview("Zrušeno"),
         ]
+        let inset = InvoiceTableColumns.statusInset
         for status in statuses {
-            check(width(of: Pill(status.listLabel, tone: status.pillTone)), status.listLabel, column: 7)
+            check(width(of: Pill(status.listLabel, tone: status.pillTone)) + inset, status.listLabel, column: 8)
         }
         let names = [
-            "Číslo", "Odběratel", "Vystaveno", "Zaplaceno", "V Kč bez DPH", "Bez DPH", "Čistý příjem", "Stav",
+            "Číslo", "Odběratel", "Vystaveno", "Zaplaceno", "V Kč bez DPH", "Bez DPH", "DPH", "Čistý příjem", "Stav",
         ]
         for (column, name) in names.enumerated() {
-            check(width(of: InvoiceColumnTitle(title: LocalizedStringKey(name))), name, column: column)
+            // The name of Stav stands after the inset of its column, as the pills do.
+            let before = column == names.count - 1 ? inset : 0
+            check(width(of: InvoiceColumnTitle(title: LocalizedStringKey(name))) + before, name, column: column)
         }
         #expect(found.isEmpty, "\(found)")
     }
@@ -313,15 +329,16 @@ struct InvoiceTableViewTests {
     // MARK: What VoiceOver reads
 
     @Test func aRowIsReadWithTheNamesOfItsColumns() {
-        // V Kč bez DPH of an invoice in crowns repeats Bez DPH, so it is read once.
+        // V Kč bez DPH of an invoice in crowns repeats Bez DPH, so it is read once; DPH is read after it.
         let expected =
             "20261001, Cetus Data s.r.o., Vystaveno 1.\u{00A0}10.,"
-            + " Bez DPH 4\u{00A0}500,00\u{00A0}Kč, Stav: Čeká na platbu"
+            + " Bez DPH 4\u{00A0}500,00\u{00A0}Kč, DPH 945,00\u{00A0}Kč, Stav: Čeká na platbu"
         #expect(crowns.spokenText == expected)
     }
 
     @Test func aColumnThatIsEmptyForTheInvoiceIsNotRead() {
-        // No net income, so no Čistý příjem; the value in crowns before the amount in dollars, as the columns stand.
+        // No VAT, so no DPH, and no net income, so no Čistý příjem; the value in crowns before the amount in dollars,
+        // as the columns stand.
         let expected =
             "20260901, Bravo Labs, Inc., Vystaveno 30.\u{00A0}9., Zaplaceno 2.\u{00A0}10.,"
             + " V Kč bez DPH 305\u{00A0}726,75\u{00A0}Kč, Bez DPH 14\u{00A0}350,00\u{00A0}USD, Stav: Uhrazená"
@@ -336,10 +353,11 @@ struct InvoiceTableViewTests {
     }
 
     @Test func aRowIsReadWithItsNetIncome() {
-        // A payment: the net income, after the amounts.
+        // A payment: the net income, after the amounts and the VAT.
         let paid =
             "2026-01-01, Sierra, SE, Vystaveno 31.\u{00A0}1., Zaplaceno 3.\u{00A0}2.,"
-            + " Bez DPH 220\u{00A0}000,00\u{00A0}Kč, Čistý příjem 253\u{00A0}401\u{00A0}Kč, Stav: Uhrazená"
+            + " Bez DPH 220\u{00A0}000,00\u{00A0}Kč, DPH 46\u{00A0}200,00\u{00A0}Kč,"
+            + " Čistý příjem 253\u{00A0}401\u{00A0}Kč, Stav: Uhrazená"
         #expect(withNetIncome.spokenText == paid)
 
         // An estimate is read with its sign.
