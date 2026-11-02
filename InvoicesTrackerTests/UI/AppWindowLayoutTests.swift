@@ -500,7 +500,10 @@ struct AppWindowLayoutTests {
 
     /// The widest table that Faktury can show, 916 points where the day of a payment prints its year (the days of
     /// issue of the invoices of the year shown print none), fills the card of the least window, which is 938 points
-    /// wide while the detail is closed, with nothing to scroll sideways.
+    /// wide while the detail is closed, with nothing to scroll sideways. A table of 900 points would fill that card
+    /// too, so the width of the table on the screen is read with the detail of that invoice open: the card of 582
+    /// points is narrower than any table, and the table keeps its least width, 916 points with the widened column of
+    /// Zaplaceno.
     @Test func theWidestTableThatCanOccurFillsItsCardInTheLeastWindow() async throws {
         try await EditorFixture.with { f in
             // Issued in the year shown and paid in the next, on a day after that of the fixture.
@@ -509,7 +512,7 @@ struct AppWindowLayoutTests {
                 payment: .fixture(on: "2027-01-12"))
             invoice.clientID = f.cetusID
             invoice.client = ClientSnapshot(client: EditorFixture.cetus)
-            try await f.database.saveInvoice(invoice)
+            let id = try await f.database.saveInvoice(invoice)
             await f.app.didWrite()
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .invoices
@@ -525,6 +528,13 @@ struct AppWindowLayoutTests {
                     try await expectSettled(window) {
                         problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
                     }
+
+                    // The detail of that invoice open: the card of 582 points is narrower than the table, which keeps
+                    // its least width, as the table of 900 points does in `aTableBelowItsMinimumScrollsSideways`.
+                    f.app.openInvoice(id)
+                    try await waitUntil { detailCardFrame(in: window) != nil }
+                    try await expectSettled(window) { problems(of: window, detailOpen: true) }
+                    #expect((try tableWidth(in: window) - 916).magnitude < 0.5)
                 }
             }
         }
