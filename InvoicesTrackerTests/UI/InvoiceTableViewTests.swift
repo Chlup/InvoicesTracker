@@ -4,11 +4,12 @@ import Testing
 @testable import InvoicesTracker
 
 /// The table of Faktury on its own: in a light window the row of the open invoice is tinted pale blue, with a blue edge
-/// 3 points wide on its leading side, as the design draws it, and the rows around it are not; each cell takes the
-/// colour of what it shows; what VoiceOver reads for a row names its columns and leaves out a column that is empty for
-/// the invoice or repeats another; and the least width of a column holds the widest number, amount, date or pill of
-/// its cells whole. (The window tests find the rows by what VoiceOver reads and press them; these tests make no
-/// accessibility elements.)
+/// 3 points wide on its leading side, as the design draws it, and the rows around it are not, and the name of Stav in
+/// the header stands after the inset of its column, as the pills of the rows do; each cell takes the colour of what it
+/// shows; what VoiceOver reads for a row names its columns and leaves out a column that is empty for the invoice or
+/// repeats another; and the least width of a column holds the widest number, amount, date or pill of its cells whole.
+/// (The window tests find the rows by what VoiceOver reads and press them; these tests make no accessibility
+/// elements.)
 @MainActor
 struct InvoiceTableViewTests {
     /// The cells are measured in the font they are set in, so the fonts are registered before any test, as the app
@@ -84,6 +85,11 @@ struct InvoiceTableViewTests {
 
     // MARK: The open row
 
+    /// In a light window the row of the open invoice is tinted pale blue, with a blue edge on its leading side, and the
+    /// rows around it are not. The picture shows the header too, which the window tests cannot read, as VoiceOver
+    /// skips it: the name of Stav stands after the inset of its column (`InvoiceTableColumns.statusInset`), as the
+    /// pills of the rows do, so none of the colour of the name lies in the first points of the column, and some lies
+    /// after them.
     @Test func theOpenRowIsTintedPaleBlueWithABlueEdgeOnItsLeadingSide() async throws {
         // The three rows, the middle one open, in a card 20 points inside a light window of 1 000 × 400 points. The
         // card is 960 points wide, which holds the table, whose least width is 900.
@@ -114,6 +120,28 @@ struct InvoiceTableViewTests {
                         "a row not open, at \(x), \(y) on \(picture.screen), is \(white)")
                 }
             }
+
+            // The header stands over the first row, which is one row above the open one (the band starts under the
+            // hairline across the top of its row). The name of Stav is in the middle of the 32 points of the header,
+            // so the 4 points at either end are left out, and it stands 16 points inside its column, which starts
+            // after the other eight columns and their gaps. The first 16 points of the column hold no pixel within
+            // 12 levels of the secondary grey of the name, a band that takes in the soft edge of its letters; the
+            // rest of the column holds the stems of the letters, pixels of that grey within 3 levels, at least 80 of
+            // them: a third of the 248 that the window gives.
+            let widths = InvoiceTableColumns().columnWidths(inTableOf: 960)
+            let column = 20 + DataTableMetrics.margin + widths[..<8].reduce(0, +) + 8 * DataTableMetrics.gap
+            let headerBottom = band.lowerBound - 1 - DataTableMetrics.rowHeight
+            let headerTop = headerBottom - DataTableMetrics.headerHeight
+            let grey = try OffscreenPicture.bytes(of: Palette.text2, in: .light)
+            let inset = CGRect(
+                x: column, y: headerTop + 4, width: InvoiceTableColumns.statusInset,
+                height: DataTableMetrics.headerHeight - 8)
+            let name = CGRect(
+                x: inset.maxX, y: inset.minY, width: widths[8] - InvoiceTableColumns.statusInset, height: inset.height)
+            let inked = picture.count(near: grey, in: inset, by: 12)
+            #expect(inked == 0, "the inset before the name of Stav has \(inked) pixels of \(grey) on \(picture.screen)")
+            let stems = picture.count(near: grey, in: name, by: 3)
+            #expect(stems >= 80, "the name of Stav has \(stems) pixels of \(grey) on \(picture.screen)")
         }
     }
 
@@ -418,6 +446,21 @@ private struct Picture {
         let drawn = NSColor(colorSpace: bitmap.colorSpace, components: &components, count: components.count)
         guard let color = drawn.usingColorSpace(.sRGB) else { return nil }
         return [color.redComponent, color.greenComponent, color.blueComponent].map { Int(($0 * 255).rounded()) }
+    }
+
+    /// How many pixels of `region`, in points from the top left of the content of the window, are within `margin`
+    /// levels of `colour` in every channel, both as sRGB bytes.
+    func count(near colour: [Int], in region: CGRect, by margin: Int) -> Int {
+        var found = 0
+        for row in Int(region.minY * scale)..<Int(region.maxY * scale) {
+            for column in Int(region.minX * scale)..<Int(region.maxX * scale) {
+                let point = CGPoint(x: CGFloat(column) / scale, y: CGFloat(row) / scale)
+                if let pixel = bytesIfAny(at: point), zip(colour, pixel).allSatisfy({ abs($0 - $1) <= margin }) {
+                    found += 1
+                }
+            }
+        }
+        return found
     }
 
     /// The bands down the column `x`, between `top` and `bottom`, whose colour `matches`: each from its first point
