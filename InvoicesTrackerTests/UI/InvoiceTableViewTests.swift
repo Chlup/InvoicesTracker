@@ -20,39 +20,42 @@ struct InvoiceTableViewTests {
     /// An invoice in crowns that waits for its payment and has no net income.
     private let crowns = InvoiceRow(
         id: 1, number: "20261001", client: "Cetus Data s.r.o.", issued: "1.\u{00A0}10.", paidDate: "—",
-        paidTone: .none, net: "4\u{00A0}500,00\u{00A0}Kč", czk: "4\u{00A0}500,00\u{00A0}Kč", czkKind: .actual,
-        czkHelp: nil, hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .awaitingPayment,
-        listStatus: "Čeká na platbu", pillTone: .waiting, excerpt: nil)
+        paidTone: .none, net: "4\u{00A0}500,00\u{00A0}Kč", vat: "945,00\u{00A0}Kč", hasVat: true,
+        czk: "4\u{00A0}500,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: false,
+        netIncome: "—", netIncomeKind: .none, status: .awaitingPayment, listStatus: "Čeká na platbu",
+        pillTone: .waiting, excerpt: nil)
 
     /// An invoice in dollars that is paid, with its value in crowns and no net income.
     private let dollars = InvoiceRow(
         id: 2, number: "20260901", client: "Bravo Labs, Inc.", issued: "30.\u{00A0}9.", paidDate: "2.\u{00A0}10.",
-        paidTone: .received, net: "14\u{00A0}350,00\u{00A0}USD", czk: "305\u{00A0}726,75\u{00A0}Kč",
-        czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "—", netIncomeKind: .none,
-        status: .paid(civilDate("2026-10-02")), listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
+        paidTone: .received, net: "14\u{00A0}350,00\u{00A0}USD", vat: "—", hasVat: false,
+        czk: "305\u{00A0}726,75\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "—",
+        netIncomeKind: .none, status: .paid(civilDate("2026-10-02")), listStatus: "Uhrazená", pillTone: .paid,
+        excerpt: nil)
 
     /// An invoice in crowns that is paid and whose payment reduced the levies, with its net income.
     private let withNetIncome = InvoiceRow(
         id: 4, number: "2026-01-01", client: "Sierra, SE", issued: "31.\u{00A0}1.", paidDate: "3.\u{00A0}2.",
-        paidTone: .received, net: "220\u{00A0}000,00\u{00A0}Kč", czk: "220\u{00A0}000,00\u{00A0}Kč",
-        czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "253\u{00A0}401\u{00A0}Kč",
-        netIncomeKind: .paid, status: .paid(civilDate("2026-02-03")), listStatus: "Uhrazená", pillTone: .paid,
-        excerpt: nil)
+        paidTone: .received, net: "220\u{00A0}000,00\u{00A0}Kč", vat: "46\u{00A0}200,00\u{00A0}Kč", hasVat: true,
+        czk: "220\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
+        netIncome: "253\u{00A0}401\u{00A0}Kč", netIncomeKind: .paid, status: .paid(civilDate("2026-02-03")),
+        listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
 
     /// A draft in dollars with the estimate of its net income and of its value in crowns.
     private let estimated = InvoiceRow(
         id: 5, number: "20261001", client: "Bravo Labs, Inc.", issued: "31.\u{00A0}10.", paidDate: "—",
-        paidTone: .none, net: "12\u{00A0}040,00\u{00A0}USD", czk: "≈ 260\u{00A0}328,88\u{00A0}Kč",
-        czkKind: .estimate, czkHelp: "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD",
-        hasReceivedPayment: false, netIncome: "≈\u{00A0}159\u{00A0}636\u{00A0}Kč", netIncomeKind: .estimate,
-        status: .draft, listStatus: "Koncept", pillTone: .draft, excerpt: nil)
+        paidTone: .none, net: "12\u{00A0}040,00\u{00A0}USD", vat: "—", hasVat: false,
+        czk: "≈ 260\u{00A0}328,88\u{00A0}Kč", czkKind: .estimate,
+        czkHelp: "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD", hasReceivedPayment: false,
+        netIncome: "≈\u{00A0}159\u{00A0}636\u{00A0}Kč", netIncomeKind: .estimate, status: .draft,
+        listStatus: "Koncept", pillTone: .draft, excerpt: nil)
 
     /// An invoice in dollars that is paid by a payment dated after today, which has not come yet, and whose rate of the
     /// day of issue is not known.
     private let later = InvoiceRow(
         id: 6, number: "20260801", client: "Bravo Labs, Inc.", issued: "31.\u{00A0}8.", paidDate: "20.\u{00A0}10.",
-        paidTone: .later, net: "13\u{00A0}300,00\u{00A0}USD", czk: "—", czkKind: .unknown, czkHelp: nil,
-        hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .overdue,
+        paidTone: .later, net: "13\u{00A0}300,00\u{00A0}USD", vat: "—", hasVat: false, czk: "—", czkKind: .unknown,
+        czkHelp: nil, hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .overdue,
         listStatus: "Po splatnosti", pillTone: .overdue, excerpt: nil)
 
     /// An invoice in crowns that the search found by its note.
@@ -60,7 +63,7 @@ struct InvoiceTableViewTests {
         let note = "…Routing number…"
         return InvoiceRow(
             id: 3, number: "2026-03-01", client: "Alfa Systems s.r.o.", issued: "31.\u{00A0}3.",
-            paidDate: "7.\u{00A0}4.", paidTone: .received, net: "210\u{00A0}000,00\u{00A0}Kč",
+            paidDate: "7.\u{00A0}4.", paidTone: .received, net: "210\u{00A0}000,00\u{00A0}Kč", vat: "—", hasVat: false,
             czk: "210\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
             netIncome: "—", netIncomeKind: .none, status: .paid(civilDate("2026-04-07")), listStatus: "Uhrazená",
             pillTone: .paid,

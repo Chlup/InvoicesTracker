@@ -137,8 +137,8 @@ nonisolated enum CrownsKind: Sendable, Hashable {
     case unknown
 }
 
-/// A row of the table: Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, Čistý příjem and Stav, each
-/// one line, with the excerpt that says why the search found the invoice.
+/// A row of the table: Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, DPH, Čistý příjem and Stav,
+/// each one line, with the excerpt that says why the search found the invoice.
 nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
     var id: Int64
     var number: String
@@ -156,6 +156,12 @@ nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
 
     /// The amount without VAT in the currency of the invoice.
     var net: String
+
+    /// The VAT of the invoice in its currency, with haléře: "945,00 Kč", or "—" for an invoice without VAT.
+    var vat: String
+
+    /// Whether the invoice has VAT, so that `vat` is an amount and not a dash.
+    var hasVat: Bool
 
     /// The amount without VAT in crowns. For an invoice in crowns its net, the same as `net`; for one in a foreign
     /// currency what was paid, or for an invoice whose money has not been received an estimate at the rate of the day
@@ -371,12 +377,14 @@ nonisolated enum InvoiceListBuilder {
         let invoice = entry.invoice
         let day = { (date: CivilDate) in BuilderText.date(date, omittingYear: input.asOf.year) }
         let money = { (minor: Int64) in CzechFormat.money(Money(minor: minor, currency: invoice.currency)) }
+        let vatMinor = invoice.vatMinor
         let crowns = crowns(of: entry, input: input)
         let afterLevies = netIncome(of: invoice, input: input)
         let paidTone: PaidTone = invoice.payment.map { $0.date > input.statusDay ? .later : .received } ?? .none
         return InvoiceRow(
             id: invoice.id, number: invoice.number, client: invoice.client.name, issued: day(invoice.issueDate),
             paidDate: invoice.payment.map { day($0.date) } ?? "—", paidTone: paidTone, net: money(entry.net),
+            vat: vatMinor == 0 ? "—" : money(vatMinor), hasVat: vatMinor != 0,
             czk: crowns.value, czkKind: crowns.kind, czkHelp: crowns.help,
             hasReceivedPayment: entry.receivedPayment != nil, netIncome: afterLevies.value,
             netIncomeKind: afterLevies.kind, status: entry.status, listStatus: entry.status.listLabel,
