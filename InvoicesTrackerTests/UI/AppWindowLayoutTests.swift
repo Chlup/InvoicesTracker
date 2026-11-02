@@ -1747,7 +1747,8 @@ struct AppWindowLayoutTests {
     /// another, and under the figures the chart of the year, whose months VoiceOver reads within the card. At the
     /// least room (938 points of page) and in a large window all four stand side by side in one row; with the sidebar
     /// as wide as it goes (850 points of page) the figures stand in two rows, the first three side by side and the net
-    /// income under the income. No sign of an estimate is read anywhere in the card.
+    /// income under the income, and in a large window with that sidebar they stand in one row again. No sign of an
+    /// estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -1769,6 +1770,14 @@ struct AppWindowLayoutTests {
                     try await expectSettled(window) {
                         problems(ofPageIn: window)
                             + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 1])
+                    }
+
+                    // A large window again, the sidebar still as wide as it goes: the figures, two rows in the least
+                    // window, stand in one row again.
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) {
+                        problems(ofPageIn: window)
+                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [4])
                     }
                 }
             }
@@ -2729,8 +2738,10 @@ struct AppWindowLayoutTests {
     /// detail open (340 points) the card of the least window is 582 points wide and still holds the table, and so does
     /// the card beside the detail in a large window. With the sidebar as wide as it goes the card of the least window
     /// beside the detail is 494 points wide, narrower than the table: the detail stays beside the card, and the table
-    /// keeps its least width and scrolls sideways in the card under the summary row, as the table of Faktury does.
-    @Test func theClientTableFillsItsCardAndScrollsSidewaysBesideTheDetailInTheLeastWindow() async throws {
+    /// keeps its least width and scrolls sideways in the card under the summary row, as the table of Faktury does. In a
+    /// large window again, with the sidebar still as wide as it goes, the card beside the detail is 884 points wide
+    /// and holds the table again.
+    @Test func theClientTableFillsItsCardAndScrollsSidewaysBesideTheDetailWithTheWidestSidebar() async throws {
         try await EditorFixture.with { f in
             try await f.database.saveClient(Client(name: "Bez údajů", country: ""))
             let longName = String(repeating: "Obchodní společnost s velmi dlouhým názvem ", count: 4)
@@ -2794,6 +2805,17 @@ struct AppWindowLayoutTests {
                     }
                     let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
                     #expect((narrow - 494).magnitude <= 1)
+
+                    // A large window again, the sidebar still as wide as it goes: the card beside the detail, 884
+                    // points (1 600 less the sidebar of 320, the margins of the page of 40, and the detail of 340 with
+                    // the 16 before it), holds the table again, which stops scrolling.
+                    window.setContentSize(AppWindowSize.large)
+                    try await expectSettled(window) {
+                        problems(ofTheClientRowsIn: window, count: 5)
+                            + problems(ofTheClientTableFillingItsCardIn: window)
+                            + problems(ofOdberateleIn: window, detailOpen: true)
+                    }
+                    #expect((try clientTableWidth(in: window) - 884).magnitude <= 1)
                 }
             }
         }
