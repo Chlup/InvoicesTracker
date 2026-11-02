@@ -12,7 +12,8 @@ import SwiftUI
 /// The page is laid out as Faktury is: it fills the room the window gives it and asks for no minimum size of its own,
 /// the card of the table reaches down to the bottom of the page and its rows scroll in it, and the detail stands beside
 /// the card at the top, as high as its content and no higher than the card. Where the card is narrower than the table,
-/// as in the least window with the detail open, the table scrolls sideways in its card.
+/// as in the least window with the detail open and the sidebar as wide as it goes, the table scrolls sideways in its
+/// card.
 struct ClientsScreen: View {
     let app: AppModel
     @State private var model: ClientsModel

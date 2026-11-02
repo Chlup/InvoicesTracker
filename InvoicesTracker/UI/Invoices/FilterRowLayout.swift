@@ -5,7 +5,7 @@ import SwiftUI
 /// but the last is placed at the size it asks for, on to the next line where the width is used up. The last one, the
 /// search, is flexible: it takes the room that is left on its line, between its least and its greatest width, and
 /// stands at the end of the line, flush with the trailing edge. Where its least width does not fit the line it goes on
-/// to a line of its own, again at the end, as in the least window.
+/// to a line of its own, again at the end, as in the least window with the sidebar as wide as it goes.
 ///
 /// The subviews are laid out in place rather than chosen between by a `ViewThatFits` of the possible rows, because the
 /// search is a text field that must stay the same view through every wrap: a field made anew when the row wraps (the
