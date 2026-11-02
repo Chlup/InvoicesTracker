@@ -156,9 +156,12 @@ struct InvoiceTableColumnsTests {
         #expect(isClose(both.columnWidths(inTableOf: 932), to: [84, 72, 80, 80, 108, 104, 104, 90, 114]))
     }
 
-    /// The widest table there is, with a year in both date columns (932 points), is no wider than the card of the
-    /// least window: the page of the least window is 938 points wide, the window of 1 210 less the sidebar of 232 and
-    /// the margins of the page, 24 and 16, so the card holds the table without a scroller.
+    /// The widest table the columns can make, with a year in both date columns (932 points), is no wider than the card
+    /// of the least window: the page of the least window is 938 points wide, the window of 1 210 less the sidebar of
+    /// 232 and the margins of the page, 24 and 16, so the card holds the table without a scroller. No view shows that
+    /// table: the days of issue of the invoices issued in the year shown print no year, nor do the days of payment of
+    /// the invoices paid in it, so a list widens one date column at the most and Faktury is 916 points wide at the
+    /// most.
     @Test func theWidestTableFitsTheCardOfTheLeastWindow() {
         let widest = InvoiceTableColumns(issueDatesShowYear: true, paymentDatesShowYear: true)
 
