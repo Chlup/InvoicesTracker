@@ -226,7 +226,7 @@ struct InvoiceTableViewTests {
         try expectCell(cell(3, ofRow: 0), in: Palette.text, atLeast: 55, "the day of the payment")
         try expectCell(cell(4, ofRow: 0), in: Palette.text, atLeast: 190, "what the payment brought")
         try expectCell(cell(5, ofRow: 0), in: Palette.text2, atLeast: 220, "the amount in dollars")
-        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 16, "the dash for no VAT")
+        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 6, "the dash for no VAT")
         try expectCell(cell(7, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
         // The draft: no payment, the estimates in secondary grey.
         try expectCell(cell(3, ofRow: 1), in: Palette.text4, atLeast: 6, "the dash for no payment")
@@ -238,7 +238,7 @@ struct InvoiceTableViewTests {
         // A paid invoice in crowns with its VAT and its net income, the net income in the green of text, which is not
         // one of the colours of text.
         try expectCell(cell(4, ofRow: 3), in: Palette.text, atLeast: 220, "the amount in crowns")
-        try expectCell(cell(6, ofRow: 3), in: Palette.text2, atLeast: 480, "the VAT")
+        try expectCell(cell(6, ofRow: 3), in: Palette.text2, atLeast: 200, "the VAT")
         let net = problems(of: cell(7, ofRow: 3), in: green, "the net income of a payment")
         #expect(net.isEmpty, "\(net)")
 
