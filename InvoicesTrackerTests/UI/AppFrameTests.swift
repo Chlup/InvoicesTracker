@@ -100,12 +100,6 @@ struct AppFrameTests {
             controllers.flatMap(\.splitViewItems).first { $0.behavior == .sidebar }?.viewController.view)
         return sidebar.convert(sidebar.bounds, to: nil)
     }
-
-    /// The split views in `view` and below it, from the top.
-    private func splitViews(in view: NSView) -> [NSSplitView] {
-        let own = (view as? NSSplitView).map { [$0] } ?? []
-        return own + view.subviews.flatMap { splitViews(in: $0) }
-    }
 }
 
 private extension Array where Element == Int {
