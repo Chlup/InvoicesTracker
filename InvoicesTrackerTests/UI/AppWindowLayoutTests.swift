@@ -801,13 +801,6 @@ struct AppWindowLayoutTests {
             .flatMap { $0.splitViewItems.map(\.behavior) }
     }
 
-    private func splitViews(in view: NSView) -> [NSSplitView] {
-        if let splitView = view as? NSSplitView {
-            return [splitView] + view.subviews.flatMap { splitViews(in: $0) }
-        }
-        return view.subviews.flatMap { splitViews(in: $0) }
-    }
-
     /// Presses `element` as VoiceOver presses a button, which is what a click on it does.
     private func press(_ element: AnyObject) {
         #expect(element.accessibilityPerformPress?() == true)
@@ -3491,16 +3484,6 @@ struct AppWindowLayoutTests {
             problems.append("The card of the table shows no horizontal scroller")
         }
         return problems
-    }
-
-    /// Widens the sidebar of `window` to the widest it goes, 320 points, as dragging its edge does.
-    private func widenSidebar(of window: NSWindow) {
-        guard let frameView = window.contentView?.superview,
-            let splitView = splitViews(in: frameView).first(where: { $0.delegate is NSSplitViewController })
-        else {
-            return
-        }
-        splitView.setPosition(320, ofDividerAt: 0)
     }
 
     // MARK: Výpočet
