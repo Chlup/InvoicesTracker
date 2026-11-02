@@ -35,7 +35,7 @@ struct TaxesTrackerApp: App {
                     }
             } else {
                 DataFolderProblemView()
-                    .frame(minWidth: 1100, minHeight: 720)
+                    .frame(minWidth: RootView.minimumSize.width, minHeight: RootView.minimumSize.height)
             }
         }
         .windowResizability(.contentMinSize)

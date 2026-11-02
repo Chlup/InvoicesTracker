@@ -9,7 +9,8 @@ import SwiftUI
 ///
 /// The texts stand on one line each, in a cell that is only 64 points wide where the grid has just room for its columns
 /// (twelve in a row from 834 points, six from 414), so that they shrink as far as `minimumTextScale` before they would
-/// be cut. In the cells of the least window, which has six columns, they need not shrink.
+/// be cut. The least window has the twelve in a row, in cells of 69 points, where a long figure shrinks a little; in
+/// the six columns it has with the sidebar as wide as it goes they need not shrink.
 struct PredictionMonthCell: View {
     /// How far the texts of a cell shrink to stay on one line.
     static let minimumTextScale: CGFloat = 0.6

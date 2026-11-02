@@ -45,13 +45,13 @@ struct AdvancesWindowTests {
     }
 
     /// The life insurance pauses in the middle of "13 340", in a window whose fields of the savings stand in two
-    /// columns (1 200 points wide) and in one whose fields stand in a row of four (1 600 points), which the test
-    /// asserts before it types: the arrangement is what the test is for. With the impact panel of 340 points beside the
-    /// cards, one column stands from 1 150 points, two columns from 1 170 and the row from 1 570. The text so far is
-    /// refused, and its message, which is longer than the title of the field, comes under the field. The fields of the
-    /// savings stay where they are, so the field keeps the focus. The rest of the amount is typed into it and saved,
-    /// and the message goes without the focus going.
-    @Test(arguments: [(CGFloat(1_200), 2), (CGFloat(1_600), 4)])
+    /// columns (the least window, 1 210 points wide) and in one whose fields stand in a row of four (1 600 points),
+    /// which the test asserts before it types: the arrangement is what the test is for. With the impact panel of 340
+    /// points beside the cards and the sidebar of 232, one column stands from 1 150 points, two columns from 1 170 and
+    /// the row from 1 570. The text so far is refused, and its message, which is longer than the title of the field,
+    /// comes under the field. The fields of the savings stay where they are, so the field keeps the focus. The rest of
+    /// the amount is typed into it and saved, and the message goes without the focus going.
+    @Test(arguments: [(AppWindowSize.minimum.width, 2), (CGFloat(1_600), 4)])
     func aRefusedSavingsAmountKeepsItsFieldFocused(windowWidth: CGFloat, columns: Int) async throws {
         try await whileTypingAlone {
             try await EditorFixture.with { f in
@@ -287,18 +287,23 @@ struct AdvancesWindowTests {
 
     /// The impact panel stands beside the cards, 340 points wide, as the detail panels of Faktury and Odběratelé are,
     /// as soon as the cards keep their 520 points beside it, and under them, as wide as they are, where they would
-    /// not. At the least window it comes under the cards; in the least window that has it beside them, where the
-    /// cards are at their narrowest (`AdvancesWindowSize.impactPanelBeside`), and at a large size it stands beside
-    /// them.
+    /// not. In the least window, whose page has 938 points, and at a large size it stands beside them. With the
+    /// sidebar as wide as it goes (`widestSidebar`) it comes under the cards in the least window, whose page then has
+    /// 850 points, and stands beside them again in the least window that has it beside them then, where the cards are
+    /// at their narrowest (`AdvancesWindowSize.impactPanelBeside`).
     @Test(arguments: [
-        (AppWindowSize.minimum, false), (AdvancesWindowSize.impactPanelBeside, true), (AppWindowSize.large, true),
+        (AppWindowSize.minimum, false, true), (AppWindowSize.large, false, true),
+        (AppWindowSize.minimum, true, false), (AdvancesWindowSize.impactPanelBeside, true, true),
     ])
     func theImpactPanelStandsBesideTheCardsAt340AndUnderThemWhereTheyWouldBeNarrower(
-        size: CGSize, isBeside: Bool
+        size: CGSize, widestSidebar: Bool, isBeside: Bool
     ) async throws {
         #expect(Self.impactPanelWidth == 340)
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: size) { window in
+                if widestSidebar {
+                    widenSidebar(of: window)
+                }
                 try await showAdvances(of: f.app, in: window)
                 try await withAccessibilityElements {
                     try await waitUntil { frameOfCard(labelled: "Manžel nebo manželka", in: window) != nil }

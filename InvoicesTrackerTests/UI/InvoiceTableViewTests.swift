@@ -4,11 +4,12 @@ import Testing
 @testable import InvoicesTracker
 
 /// The table of Faktury on its own: in a light window the row of the open invoice is tinted pale blue, with a blue edge
-/// 3 points wide on its leading side, as the design draws it, and the rows around it are not; each cell takes the
-/// colour of what it shows; what VoiceOver reads for a row names its columns and leaves out a column that is empty for
-/// the invoice or repeats another; and the least width of a column holds the widest number, amount, date or pill of
-/// its cells whole. (The window tests find the rows by what VoiceOver reads and press them; these tests make no
-/// accessibility elements.)
+/// 3 points wide on its leading side, as the design draws it, and the rows around it are not, and the name of Stav in
+/// the header stands after the inset of its column, as the pills of the rows do; each cell takes the colour of what it
+/// shows; what VoiceOver reads for a row names its columns and leaves out a column that is empty for the invoice or
+/// repeats another; and the least width of a column holds the widest number, amount, date or pill of its cells whole.
+/// (The window tests find the rows by what VoiceOver reads and press them; these tests make no accessibility
+/// elements.)
 @MainActor
 struct InvoiceTableViewTests {
     /// The cells are measured in the font they are set in, so the fonts are registered before any test, as the app
@@ -20,39 +21,42 @@ struct InvoiceTableViewTests {
     /// An invoice in crowns that waits for its payment and has no net income.
     private let crowns = InvoiceRow(
         id: 1, number: "20261001", client: "Cetus Data s.r.o.", issued: "1.\u{00A0}10.", paidDate: "—",
-        paidTone: .none, net: "4\u{00A0}500,00\u{00A0}Kč", czk: "4\u{00A0}500,00\u{00A0}Kč", czkKind: .actual,
-        czkHelp: nil, hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .awaitingPayment,
-        listStatus: "Čeká na platbu", pillTone: .waiting, excerpt: nil)
+        paidTone: .none, net: "4\u{00A0}500,00\u{00A0}Kč", vat: "945,00\u{00A0}Kč", hasVat: true,
+        czk: "4\u{00A0}500,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: false,
+        netIncome: "—", netIncomeKind: .none, status: .awaitingPayment, listStatus: "Čeká na platbu",
+        pillTone: .waiting, excerpt: nil)
 
     /// An invoice in dollars that is paid, with its value in crowns and no net income.
     private let dollars = InvoiceRow(
         id: 2, number: "20260901", client: "Bravo Labs, Inc.", issued: "30.\u{00A0}9.", paidDate: "2.\u{00A0}10.",
-        paidTone: .received, net: "14\u{00A0}350,00\u{00A0}USD", czk: "305\u{00A0}726,75\u{00A0}Kč",
-        czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "—", netIncomeKind: .none,
-        status: .paid(civilDate("2026-10-02")), listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
+        paidTone: .received, net: "14\u{00A0}350,00\u{00A0}USD", vat: "—", hasVat: false,
+        czk: "305\u{00A0}726,75\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "—",
+        netIncomeKind: .none, status: .paid(civilDate("2026-10-02")), listStatus: "Uhrazená", pillTone: .paid,
+        excerpt: nil)
 
     /// An invoice in crowns that is paid and whose payment reduced the levies, with its net income.
     private let withNetIncome = InvoiceRow(
         id: 4, number: "2026-01-01", client: "Sierra, SE", issued: "31.\u{00A0}1.", paidDate: "3.\u{00A0}2.",
-        paidTone: .received, net: "220\u{00A0}000,00\u{00A0}Kč", czk: "220\u{00A0}000,00\u{00A0}Kč",
-        czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "253\u{00A0}401\u{00A0}Kč",
-        netIncomeKind: .paid, status: .paid(civilDate("2026-02-03")), listStatus: "Uhrazená", pillTone: .paid,
-        excerpt: nil)
+        paidTone: .received, net: "220\u{00A0}000,00\u{00A0}Kč", vat: "46\u{00A0}200,00\u{00A0}Kč", hasVat: true,
+        czk: "220\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
+        netIncome: "253\u{00A0}401\u{00A0}Kč", netIncomeKind: .paid, status: .paid(civilDate("2026-02-03")),
+        listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
 
     /// A draft in dollars with the estimate of its net income and of its value in crowns.
     private let estimated = InvoiceRow(
         id: 5, number: "20261001", client: "Bravo Labs, Inc.", issued: "31.\u{00A0}10.", paidDate: "—",
-        paidTone: .none, net: "12\u{00A0}040,00\u{00A0}USD", czk: "≈ 260\u{00A0}328,88\u{00A0}Kč",
-        czkKind: .estimate, czkHelp: "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD",
-        hasReceivedPayment: false, netIncome: "≈\u{00A0}159\u{00A0}636\u{00A0}Kč", netIncomeKind: .estimate,
-        status: .draft, listStatus: "Koncept", pillTone: .draft, excerpt: nil)
+        paidTone: .none, net: "12\u{00A0}040,00\u{00A0}USD", vat: "—", hasVat: false,
+        czk: "≈ 260\u{00A0}328,88\u{00A0}Kč", czkKind: .estimate,
+        czkHelp: "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD", hasReceivedPayment: false,
+        netIncome: "≈\u{00A0}159\u{00A0}636\u{00A0}Kč", netIncomeKind: .estimate, status: .draft,
+        listStatus: "Koncept", pillTone: .draft, excerpt: nil)
 
     /// An invoice in dollars that is paid by a payment dated after today, which has not come yet, and whose rate of the
     /// day of issue is not known.
     private let later = InvoiceRow(
         id: 6, number: "20260801", client: "Bravo Labs, Inc.", issued: "31.\u{00A0}8.", paidDate: "20.\u{00A0}10.",
-        paidTone: .later, net: "13\u{00A0}300,00\u{00A0}USD", czk: "—", czkKind: .unknown, czkHelp: nil,
-        hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .overdue,
+        paidTone: .later, net: "13\u{00A0}300,00\u{00A0}USD", vat: "—", hasVat: false, czk: "—", czkKind: .unknown,
+        czkHelp: nil, hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .overdue,
         listStatus: "Po splatnosti", pillTone: .overdue, excerpt: nil)
 
     /// An invoice in crowns that the search found by its note.
@@ -60,7 +64,7 @@ struct InvoiceTableViewTests {
         let note = "…Routing number…"
         return InvoiceRow(
             id: 3, number: "2026-03-01", client: "Alfa Systems s.r.o.", issued: "31.\u{00A0}3.",
-            paidDate: "7.\u{00A0}4.", paidTone: .received, net: "210\u{00A0}000,00\u{00A0}Kč",
+            paidDate: "7.\u{00A0}4.", paidTone: .received, net: "210\u{00A0}000,00\u{00A0}Kč", vat: "—", hasVat: false,
             czk: "210\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
             netIncome: "—", netIncomeKind: .none, status: .paid(civilDate("2026-04-07")), listStatus: "Uhrazená",
             pillTone: .paid,
@@ -81,11 +85,17 @@ struct InvoiceTableViewTests {
 
     // MARK: The open row
 
+    /// In a light window the row of the open invoice is tinted pale blue, with a blue edge on its leading side, and the
+    /// rows around it are not. The picture shows the header too, which the window tests cannot read, as VoiceOver
+    /// skips it: the name of Stav stands after the inset of its column (`InvoiceTableColumns.statusInset`), as the
+    /// pills of the rows do, so none of the colour of the name lies in the first points of the column, and some lies
+    /// after them.
     @Test func theOpenRowIsTintedPaleBlueWithABlueEdgeOnItsLeadingSide() async throws {
-        // The three rows, the middle one open, in a card 20 points inside a light window of 900 × 400 points.
+        // The three rows, the middle one open, in a card 20 points inside a light window of 1 000 × 400 points. The
+        // card is 960 points wide, which holds the table, whose least width is 900.
         let table = InvoiceTableView(
             data: list(of: [crowns, dollars, try found()]), openID: dollars.id, click: { _ in }, move: { _ in })
-        try await withPictureOf(table.padding(20), size: CGSize(width: 900, height: 400)) { picture in
+        try await withPictureOf(table.padding(20), size: CGSize(width: 1_000, height: 400)) { picture in
             // Down the leading edge of the card, inside the 3 points of the edge of a row: one band of the blue of the
             // edge, as tall as a row less the hairline across its top, 39 points.
             let edge: CGFloat = 20 + 1.5
@@ -96,7 +106,7 @@ struct InvoiceTableViewTests {
 
             // The tint across the row, in the margin before the first column and in the one after the last.
             let middle = (band.lowerBound + band.upperBound) / 2
-            for x in [20 + 10, 880 - 10] as [CGFloat] {
+            for x in [20 + 10, 980 - 10] as [CGFloat] {
                 let tint = try picture.bytes(at: CGPoint(x: x, y: middle))
                 #expect(isClose(tint, to: [0xE8, 0xF1, 0xFD]), "the open row at \(x) on \(picture.screen) is \(tint)")
             }
@@ -110,6 +120,28 @@ struct InvoiceTableViewTests {
                         "a row not open, at \(x), \(y) on \(picture.screen), is \(white)")
                 }
             }
+
+            // The header stands over the first row, which is one row above the open one (the band starts under the
+            // hairline across the top of its row). The name of Stav is in the middle of the 32 points of the header,
+            // so the 4 points at either end are left out, and it stands 16 points inside its column, which starts
+            // after the other eight columns and their gaps. The first 16 points of the column hold no pixel within
+            // 12 levels of the secondary grey of the name, a band that takes in the soft edge of its letters; the
+            // rest of the column holds the stems of the letters, pixels of that grey within 3 levels, at least 80 of
+            // them: a third of the 248 that the window gives.
+            let widths = InvoiceTableColumns().columnWidths(inTableOf: 960)
+            let column = 20 + DataTableMetrics.margin + widths[..<8].reduce(0, +) + 8 * DataTableMetrics.gap
+            let headerBottom = band.lowerBound - 1 - DataTableMetrics.rowHeight
+            let headerTop = headerBottom - DataTableMetrics.headerHeight
+            let grey = try OffscreenPicture.bytes(of: Palette.text2, in: .light)
+            let inset = CGRect(
+                x: column, y: headerTop + 4, width: InvoiceTableColumns.statusInset,
+                height: DataTableMetrics.headerHeight - 8)
+            let name = CGRect(
+                x: inset.maxX, y: inset.minY, width: widths[8] - InvoiceTableColumns.statusInset, height: inset.height)
+            let inked = picture.count(near: grey, in: inset, by: 12)
+            #expect(inked == 0, "the inset before the name of Stav has \(inked) pixels of \(grey) on \(picture.screen)")
+            let stems = picture.count(near: grey, in: name, by: 3)
+            #expect(stems >= 80, "the name of Stav has \(stems) pixels of \(grey) on \(picture.screen)")
         }
     }
 
@@ -165,8 +197,9 @@ struct InvoiceTableViewTests {
     /// the colour of text; Zaplaceno in it for a payment that came, in the grey of notes for one dated after today and
     /// as a dash in the faintest grey without one; V Kč bez DPH in the colour of text for what was received or an
     /// amount in crowns, in secondary grey for an estimate and as a faint dash where the rate is not known; Bez DPH in
-    /// secondary grey; Čistý příjem in the green of text for a payment, in secondary grey for an estimate and as a
-    /// faint dash without one; and the pill of Stav in the tint of its tone. A search match stands on the yellow of a
+    /// secondary grey; DPH in secondary grey, and as a faint dash for an invoice without VAT; Čistý příjem in the green
+    /// of text for a payment, in secondary grey for an estimate and as a faint dash without one; and the pill of Stav
+    /// in the tint of its tone, which starts after the inset of its column. A search match stands on the yellow of a
     /// highlight, after the client, in the grey of notes. The darkest pixels of a cell's text are its colour: none is
     /// darker, and some are that colour.
     @Test func everyCellTakesTheColourOfWhatItShows() throws {
@@ -214,31 +247,39 @@ struct InvoiceTableViewTests {
             #expect(darker == 0, "\(name) has \(darker) pixels darker than \(colour)")
         }
 
-        // The paid invoice in dollars: everything in the colour of text but Bez DPH, and no net income.
+        // The paid invoice in dollars: everything in the colour of text but Bez DPH, and no VAT and no net income.
         try expectCell(cell(0, ofRow: 0), in: Palette.text, atLeast: 250, "the number")
         try expectCell(cell(1, ofRow: 0), in: Palette.text, atLeast: 190, "the client")
         try expectCell(cell(2, ofRow: 0), in: Palette.text, atLeast: 65, "the day of issue")
         try expectCell(cell(3, ofRow: 0), in: Palette.text, atLeast: 55, "the day of the payment")
         try expectCell(cell(4, ofRow: 0), in: Palette.text, atLeast: 190, "what the payment brought")
         try expectCell(cell(5, ofRow: 0), in: Palette.text2, atLeast: 220, "the amount in dollars")
-        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
+        try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 6, "the dash for no VAT")
+        try expectCell(cell(7, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
         // The draft: no payment, the estimates in secondary grey.
         try expectCell(cell(3, ofRow: 1), in: Palette.text4, atLeast: 6, "the dash for no payment")
         try expectCell(cell(4, ofRow: 1), in: Palette.text2, atLeast: 235, "the estimate in crowns")
-        try expectCell(cell(6, ofRow: 1), in: Palette.text2, atLeast: 270, "the estimated net income")
+        try expectCell(cell(7, ofRow: 1), in: Palette.text2, atLeast: 270, "the estimated net income")
         // A payment dated after today, and a rate that is not known.
         try expectCell(cell(3, ofRow: 2), in: Palette.text3, atLeast: 90, "the day of a later payment")
         try expectCell(cell(4, ofRow: 2), in: Palette.text4, atLeast: 6, "the dash for a rate not known")
-        // A paid invoice in crowns with its net income, in the green of text, which is not one of the colours of text.
+        // A paid invoice in crowns with its VAT and its net income, the net income in the green of text, which is not
+        // one of the colours of text.
         try expectCell(cell(4, ofRow: 3), in: Palette.text, atLeast: 220, "the amount in crowns")
-        let net = problems(of: cell(6, ofRow: 3), in: green, "the net income of a payment")
+        try expectCell(cell(6, ofRow: 3), in: Palette.text2, atLeast: 200, "the VAT")
+        let net = problems(of: cell(7, ofRow: 3), in: green, "the net income of a payment")
         #expect(net.isEmpty, "\(net)")
 
-        // The pills: green for paid, grey for a draft, red for overdue.
+        // The pills: green for paid, grey for a draft, red for overdue. Each stands after the inset of its column: none
+        // of its tint lies in the first points of the cell.
         let pills: [(row: Int, tint: Color)] = [(0, Palette.greenTint), (1, Palette.fill), (2, Palette.redTint)]
         for pill in pills {
             let tint = try OffscreenPicture.bytes(of: pill.tint, in: .light)
-            #expect(picture.count(near: tint, in: cell(7, ofRow: pill.row), by: 2) > 100, "the pill of row \(pill.row)")
+            let region = cell(8, ofRow: pill.row)
+            #expect(picture.count(near: tint, in: region, by: 2) > 100, "the pill of row \(pill.row)")
+            let inset = CGRect(
+                x: region.minX, y: region.minY, width: InvoiceTableColumns.statusInset, height: region.height)
+            #expect(picture.count(near: tint, in: inset, by: 2) == 0, "the inset before the pill of row \(pill.row)")
         }
         // The match of the search, on the yellow of a highlight, in the cell of the client after the name.
         let highlight = try OffscreenPicture.bytes(of: Palette.highlight, in: .light)
@@ -249,11 +290,12 @@ struct InvoiceTableViewTests {
     // MARK: The least widths of the columns
 
     /// Číslo holds both forms of the numbers in use, and the columns of amounts hold 999 999,99 with its currency: in
-    /// crowns and as an estimate in crowns in V Kč bez DPH, in crowns and in the currencies in use in Bez DPH. Čistý
-    /// příjem holds 999 999 Kč with the sign of an estimate, set as each kind of net income is. Vystaveno and Zaplaceno
-    /// hold a date of the year shown, and a date of another year once they are widened for it. Stav holds the widest
-    /// pill of the list. Every column holds its name. Each is measured as the table shows it, so that the table at its
-    /// least width, as in the least window, shows none of them cut short.
+    /// crowns and as an estimate in crowns in V Kč bez DPH, in crowns and in the currencies in use in Bez DPH and in
+    /// DPH. Čistý příjem holds 999 999 Kč with the sign of an estimate, set as each kind of net income is. Vystaveno
+    /// and Zaplaceno hold a date of the year shown, and a date of another year once they are widened for it. Stav holds
+    /// the widest pill of the list after the inset before the pills. Every column holds its name, and that of Stav
+    /// holds it after the inset too. Each is measured as the table shows it, so that the table at its least width, as
+    /// in the least window, shows none of them cut short.
     @Test func theLeastWidthOfAColumnHoldsTheWidestNumberAmountDateOrPillOfItsCellsWhole() {
         let columns = InvoiceTableColumns()
         let least = columns.widths.map(\.minimum)
@@ -273,11 +315,13 @@ struct InvoiceTableViewTests {
         }
         let currencies = [CurrencyCode.czk, .usd, .eur] + ["GBP", "CHF", "AUD", "NOK"].compactMap { CurrencyCode($0) }
         for currency in currencies {
-            check(width(of: InvoiceAmountText(amount: largest(currency))), largest(currency), column: 5)
+            for column in [5, 6] {
+                check(width(of: InvoiceAmountText(amount: largest(currency))), largest(currency), column: column)
+            }
         }
         let netIncome = "≈\u{00A0}999\u{00A0}999\u{00A0}Kč"
         for kind in [NetIncomeKind.paid, .estimate, .none] {
-            check(width(of: InvoiceNetIncomeText(text: netIncome, kind: kind)), "\(netIncome) as \(kind)", column: 6)
+            check(width(of: InvoiceNetIncomeText(text: netIncome, kind: kind)), "\(netIncome) as \(kind)", column: 7)
         }
         for column in [2, 3] {
             check(width(of: InvoiceDateText(text: "31.\u{00A0}12.")), "31. 12.", column: column)
@@ -290,14 +334,17 @@ struct InvoiceTableViewTests {
         let statuses: [InvoiceDisplayStatus] = [
             .draft, .awaitingPayment, .overdue, .paid(civilDate("2026-12-15")), .needsReview("Zrušeno"),
         ]
+        let inset = InvoiceTableColumns.statusInset
         for status in statuses {
-            check(width(of: Pill(status.listLabel, tone: status.pillTone)), status.listLabel, column: 7)
+            check(width(of: Pill(status.listLabel, tone: status.pillTone)) + inset, status.listLabel, column: 8)
         }
         let names = [
-            "Číslo", "Odběratel", "Vystaveno", "Zaplaceno", "V Kč bez DPH", "Bez DPH", "Čistý příjem", "Stav",
+            "Číslo", "Odběratel", "Vystaveno", "Zaplaceno", "V Kč bez DPH", "Bez DPH", "DPH", "Čistý příjem", "Stav",
         ]
         for (column, name) in names.enumerated() {
-            check(width(of: InvoiceColumnTitle(title: LocalizedStringKey(name))), name, column: column)
+            // The name of Stav stands after the inset of its column, as the pills do.
+            let before = column == names.count - 1 ? inset : 0
+            check(width(of: InvoiceColumnTitle(title: LocalizedStringKey(name))) + before, name, column: column)
         }
         #expect(found.isEmpty, "\(found)")
     }
@@ -310,15 +357,16 @@ struct InvoiceTableViewTests {
     // MARK: What VoiceOver reads
 
     @Test func aRowIsReadWithTheNamesOfItsColumns() {
-        // V Kč bez DPH of an invoice in crowns repeats Bez DPH, so it is read once.
+        // V Kč bez DPH of an invoice in crowns repeats Bez DPH, so it is read once; DPH is read after it.
         let expected =
             "20261001, Cetus Data s.r.o., Vystaveno 1.\u{00A0}10.,"
-            + " Bez DPH 4\u{00A0}500,00\u{00A0}Kč, Stav: Čeká na platbu"
+            + " Bez DPH 4\u{00A0}500,00\u{00A0}Kč, DPH 945,00\u{00A0}Kč, Stav: Čeká na platbu"
         #expect(crowns.spokenText == expected)
     }
 
     @Test func aColumnThatIsEmptyForTheInvoiceIsNotRead() {
-        // No net income, so no Čistý příjem; the value in crowns before the amount in dollars, as the columns stand.
+        // No VAT, so no DPH, and no net income, so no Čistý příjem; the value in crowns before the amount in dollars,
+        // as the columns stand.
         let expected =
             "20260901, Bravo Labs, Inc., Vystaveno 30.\u{00A0}9., Zaplaceno 2.\u{00A0}10.,"
             + " V Kč bez DPH 305\u{00A0}726,75\u{00A0}Kč, Bez DPH 14\u{00A0}350,00\u{00A0}USD, Stav: Uhrazená"
@@ -333,10 +381,11 @@ struct InvoiceTableViewTests {
     }
 
     @Test func aRowIsReadWithItsNetIncome() {
-        // A payment: the net income, after the amounts.
+        // A payment: the net income, after the amounts and the VAT.
         let paid =
             "2026-01-01, Sierra, SE, Vystaveno 31.\u{00A0}1., Zaplaceno 3.\u{00A0}2.,"
-            + " Bez DPH 220\u{00A0}000,00\u{00A0}Kč, Čistý příjem 253\u{00A0}401\u{00A0}Kč, Stav: Uhrazená"
+            + " Bez DPH 220\u{00A0}000,00\u{00A0}Kč, DPH 46\u{00A0}200,00\u{00A0}Kč,"
+            + " Čistý příjem 253\u{00A0}401\u{00A0}Kč, Stav: Uhrazená"
         #expect(withNetIncome.spokenText == paid)
 
         // An estimate is read with its sign.
@@ -397,6 +446,21 @@ private struct Picture {
         let drawn = NSColor(colorSpace: bitmap.colorSpace, components: &components, count: components.count)
         guard let color = drawn.usingColorSpace(.sRGB) else { return nil }
         return [color.redComponent, color.greenComponent, color.blueComponent].map { Int(($0 * 255).rounded()) }
+    }
+
+    /// How many pixels of `region`, in points from the top left of the content of the window, are within `margin`
+    /// levels of `colour` in every channel, both as sRGB bytes.
+    func count(near colour: [Int], in region: CGRect, by margin: Int) -> Int {
+        var found = 0
+        for row in Int(region.minY * scale)..<Int(region.maxY * scale) {
+            for column in Int(region.minX * scale)..<Int(region.maxX * scale) {
+                let point = CGPoint(x: CGFloat(column) / scale, y: CGFloat(row) / scale)
+                if let pixel = bytesIfAny(at: point), zip(colour, pixel).allSatisfy({ abs($0 - $1) <= margin }) {
+                    found += 1
+                }
+            }
+        }
+        return found
     }
 
     /// The bands down the column `x`, between `top` and `bottom`, whose colour `matches`: each from its first point

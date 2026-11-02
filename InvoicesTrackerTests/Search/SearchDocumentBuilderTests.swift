@@ -39,9 +39,9 @@ struct SearchDocumentBuilderTests {
                 field("Bez DPH", "4\(nb)500,00\(nb)Kč", true),
                 field("Bez DPH", "4500,00", true),
                 field("Bez DPH", "4500.00", true),
-                field("DPH", "945,00\(nb)Kč"),
-                field("DPH", "945,00"),
-                field("DPH", "945.00"),
+                field("DPH", "945,00\(nb)Kč", true),
+                field("DPH", "945,00", true),
+                field("DPH", "945.00", true),
                 field("S DPH", "5\(nb)445,00\(nb)Kč"),
                 field("S DPH", "5445,00"),
                 field("S DPH", "5445.00"),
@@ -157,8 +157,8 @@ struct SearchDocumentBuilderTests {
         #expect(texts("S DPH", of: invoice) == ["5\(nb)040,00\(nb)Kč", "5040,00", "5040.00"])
     }
 
-    /// The table has no column with the total with VAT (it shows the net income in its place), so a match on it is
-    /// explained under the client, as a match on the VAT is. The total without VAT is a column still.
+    /// The table shows the amount without VAT and the VAT, but not the total with VAT (it shows the net income in its
+    /// place), so a match on the total is explained under the client.
     @Test func theTotalWithVatIsNotInTheTable() {
         let fields = SearchDocumentBuilder.fields(for: SearchFixtures.crownInvoice())
         let withVat = fields.filter { $0.label == "S DPH" }
@@ -166,6 +166,7 @@ struct SearchDocumentBuilderTests {
         #expect(withVat.map(\.text) == ["5\(nb)445,00\(nb)Kč", "5445,00", "5445.00"])
         #expect(withVat.allSatisfy { !$0.shownInTable })
         #expect(fields.filter { $0.label == "Bez DPH" }.allSatisfy { $0.shownInTable })
+        #expect(fields.filter { $0.label == "DPH" }.allSatisfy { $0.shownInTable })
     }
 
     // MARK: The value in crowns

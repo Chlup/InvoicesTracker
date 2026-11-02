@@ -5,15 +5,15 @@ import Testing
 
 /// Odhad odvodů in the window of the app, made as the app makes it, on the prediction sample stored in a temporary
 /// database, with the app as of Saturday 17. 10. 2026 unless a test says another day, and the least room the window
-/// allows:
+/// allows unless a test widens its sidebar:
 /// - The months of the clients start folded: the heading of the section and its subtitle show, no cell does. The
 ///   heading unfolds the clients that are expected to invoice, and "Ostatní odběratelé" the others. The folds are the
 ///   app's, so they stay while other screens are shown.
 /// - A cell of a month that is open is a toggle button that reads its state; a click on it stores the person's choice,
 ///   and the client offers to take its months back to the app's choice. Cells of months that have invoices or are over
 ///   are not buttons.
-/// - The months of a client stand in full rows: January to June over July to December at the least room, all twelve
-///   in a row in a large window.
+/// - The months of a client stand in full rows: all twelve in a row in the least window and in a large one, January to
+///   June over July to December in the least window with the sidebar as wide as it goes.
 /// - The page follows today: a day that changes at midnight builds it again, with no write of the data and with "K
 ///   datu" on another internal day, which leaves the reporting cutoff alone while the reload key follows today.
 /// - The toolbar offers the working year menu and new-invoice action without date controls. Switching screens leaves
@@ -204,7 +204,10 @@ struct PredictionWindowTests {
 
     // MARK: The months in rows
 
-    @Test func theMonthsStandInTwoFullRowsOfSixAtTheLeastRoomAndInOneRowInALargeWindow() async throws {
+    /// The months of Foxtrot, Inc. stand in one row of twelve in the least window, whose card of the months gives them
+    /// 898 points (twelve cells of 64 points and their gaps need 834), and in a large window, and in two full rows of
+    /// six with the sidebar as wide as it goes, which leaves them 810 points.
+    @Test func theMonthsStandInTwoFullRowsOfSixWithTheWidestSidebarAndInOneRowInTheLeastAndALargeWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             app.predictionMonthsOpen = true
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -212,7 +215,12 @@ struct PredictionWindowTests {
                     try await showPrediction(of: app, in: window)
                     try await waitUntil { accessibilityElement(labelled: "Měsíce – Foxtrot, Inc.", in: window) != nil }
 
-                    // At the least room: January to June, and under them July to December, in the same columns.
+                    // The least window has room for all twelve in a row.
+                    try await expectSettled(window) { problems(ofTheMonthsOfFoxtrotIn: window, inRowsOf: 12) }
+
+                    // With the sidebar as wide as it goes: January to June, and under them July to December, in the
+                    // same columns.
+                    widenSidebar(of: window)
                     try await expectSettled(window) { problems(ofTheMonthsOfFoxtrotIn: window, inRowsOf: 6) }
                     let group = try #require(accessibilityElement(labelled: "Měsíce – Foxtrot, Inc.", in: window))
                     let cells = (group.accessibilityChildren?() ?? []).map { $0 as AnyObject }

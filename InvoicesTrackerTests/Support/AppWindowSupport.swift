@@ -3,9 +3,11 @@ import SwiftUI
 import Testing
 @testable import InvoicesTracker
 
-/// The room the tests give the content of the window: the least the app allows (`RootView`), and a large window.
+/// The room the tests give the content of the window: the least the app allows (`RootView.minimumSize`), and a large
+/// window. With the sidebar of 232 points the page of the least window is 938 points wide, and with the sidebar as
+/// wide as it goes, 320 points (`widenSidebar(of:)`), it is 850.
 enum AppWindowSize {
-    static let minimum = CGSize(width: 1_100, height: 720)
+    static let minimum = CGSize(width: 1_210, height: 720)
     static let large = CGSize(width: 1_600, height: 1_000)
 }
 
@@ -120,6 +122,27 @@ func datePickers(in view: NSView) -> [NSDatePicker] {
         return [picker]
     }
     return view.subviews.flatMap { datePickers(in: $0) }
+}
+
+/// Widens the sidebar of `window` to the widest it goes, 320 points, as dragging its edge does.
+@MainActor
+func widenSidebar(of window: NSWindow) {
+    guard let frameView = window.contentView?.superview,
+        let splitView = splitViews(in: frameView).first(where: { $0.delegate is NSSplitViewController })
+    else {
+        return
+    }
+    splitView.setPosition(320, ofDividerAt: 0)
+}
+
+/// The split views under `view`, and `view` itself where it is one, in the order of the view tree: the split view of
+/// the sidebar and the page of the window of the app comes first.
+@MainActor
+func splitViews(in view: NSView) -> [NSSplitView] {
+    if let splitView = view as? NSSplitView {
+        return [splitView] + view.subviews.flatMap { splitViews(in: $0) }
+    }
+    return view.subviews.flatMap { splitViews(in: $0) }
 }
 
 /// Runs `body` alone among the tests that type into a window: SwiftUI's text fields share one field editor across

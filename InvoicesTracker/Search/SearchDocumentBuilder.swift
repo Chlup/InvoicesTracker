@@ -43,7 +43,7 @@ nonisolated enum SearchDocumentBuilder {
         let vat = InvoiceMath.vat(netMinor: net, mode: invoice.vatMode)
         list.addAmount("Bez DPH", minor: net, currency: invoice.currency, shownInTable: true)
         if vat != 0 {
-            list.addAmount("DPH", minor: vat, currency: invoice.currency)
+            list.addAmount("DPH", minor: vat, currency: invoice.currency, shownInTable: true)
             // The table has no column with the total with VAT, so a match on it is explained under the client.
             list.addAmount("S DPH", minor: net + vat, currency: invoice.currency)
         }

@@ -47,8 +47,10 @@ struct ClientTableColumnsTests {
         #expect(isClose(ClientTableColumns.columnWidths(inTableOf: 540), to: atTheLeastWidth))
     }
 
+    /// Below its least width the table keeps the columns of a table of 540 points, as in the card of the least window
+    /// beside the detail with the sidebar as wide as it goes, 494 points.
     @Test func belowItsLeastWidthTheColumnsAreThoseOfTheLeastWidth() {
-        for table: CGFloat in [0, 300, 472, 534, 539] {
+        for table: CGFloat in [0, 300, 494, 534, 539] {
             let columns = ClientTableColumns.columnWidths(inTableOf: table)
             #expect(isClose(columns, to: atTheLeastWidth), "a table of \(table): \(columns)")
         }
@@ -78,11 +80,11 @@ struct ClientTableColumnsTests {
         #expect(columns[0] > least[0] && columns[1] > least[1] && columns[2] > least[2])
     }
 
-    /// In the card of the least window with the detail closed, 828 points, no column is held.
+    /// In the card of the least window with the detail closed, 938 points, no column is held.
     @Test func inTheCardOfTheLeastWindowEveryColumnHasItsShare() {
-        let unit = (828 - width(holding: [0, 0, 0, 0])) / 5.1
+        let unit = (938 - width(holding: [0, 0, 0, 0])) / 5.1
 
-        let columns = ClientTableColumns.columnWidths(inTableOf: 828)
+        let columns = ClientTableColumns.columnWidths(inTableOf: 938)
 
         #expect(isClose(columns, to: fractions.map { $0 * unit }), "\(columns)")
     }

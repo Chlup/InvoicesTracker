@@ -252,12 +252,12 @@ struct SimulatorWindowTests {
         }
     }
 
-    /// In a window 1 200 points wide, 13 months of activity are refused. The message comes under the row of the
-    /// assumptions and the field keeps the focus. Then 6 is typed in it and taken.
+    /// In the least window, 1 210 points wide, 13 months of activity are refused. The message comes under the row of
+    /// the assumptions and the field keeps the focus. Then 6 is typed in it and taken.
     @Test func aRefusedNumberOfMonthsKeepsItsFieldFocused() async throws {
         try await whileTypingAlone {
             try await EditorFixture.with { f in
-                try await withAppWindow(of: f.app, size: CGSize(width: 1_200, height: 720)) { window in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                     let model = try await showSimulator(of: f.app, in: window)
                     try await withAccessibilityElements {
                         try await waitUntil { textField(labelled: "Měsíců činnosti", in: window) != nil }

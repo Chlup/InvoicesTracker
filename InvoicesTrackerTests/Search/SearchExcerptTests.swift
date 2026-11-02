@@ -125,6 +125,12 @@ struct SearchExcerptTests {
         #expect(try #require(excerpt(invoice, "pribrami")).label == "Položka")
     }
 
+    /// The table has a column with the VAT, so a match on it needs no line under the client.
+    @Test func aMatchOnTheVatNeedsNoExcerpt() {
+        #expect(excerpt(SearchFixtures.crownInvoice(), "945") == nil)
+        #expect(excerpt(SearchFixtures.crownInvoice(), "945,00") == nil)
+    }
+
     @Test func aMatchOnlyOnTheAmountWithVATSaysWhy() throws {
         // The table has no column with the amount with VAT, so the line under the client says where it was found.
         let result = try #require(excerpt(SearchFixtures.crownInvoice(), "5445"))

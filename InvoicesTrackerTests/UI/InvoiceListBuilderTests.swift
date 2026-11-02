@@ -796,6 +796,8 @@ struct InvoiceListBuilderTests {
         #expect(row.paidDate == "15.\u{00A0}10.")
         #expect(row.paidTone == .received)
         #expect(row.net == "4\u{00A0}500,00\u{00A0}Kč")
+        #expect(row.vat == "945,00\u{00A0}Kč")
+        #expect(row.hasVat)
         // V Kč bez DPH shows an invoice in crowns too: its amount without VAT, which is its net.
         #expect(row.czk == "4\u{00A0}500,00\u{00A0}Kč")
         #expect(row.czk == row.net)
@@ -806,6 +808,43 @@ struct InvoiceListBuilderTests {
         #expect(row.listStatus == "Uhrazená")
         #expect(row.pillTone == .paid)
         #expect(row.excerpt == nil)
+    }
+
+    /// An invoice whose mode charges no VAT shows a dash for its VAT.
+    @Test(arguments: [VatMode.outsideCountry, .euReverseCharge, .none])
+    func anInvoiceWithoutVatHasADashForItsVat(mode: VatMode) throws {
+        var invoice = crownInvoice(id: 1)
+        invoice.vatMode = mode
+        let row = try #require(build(input(invoices: [invoice])).rows.first)
+        #expect(row.vat == "—")
+        #expect(!row.hasVat)
+    }
+
+    /// The VAT of an invoice in a foreign currency is shown in that currency, with its haléře.
+    @Test func theVatOfAForeignInvoiceIsInItsCurrency() throws {
+        var invoice = dollarInvoice(id: 1)
+        invoice.vatMode = .domestic21
+        let row = try #require(build(input(invoices: [invoice])).rows.first)
+        #expect(row.vat == "3\u{00A0}013,50\u{00A0}USD")
+        #expect(row.hasVat)
+    }
+
+    /// An invoice with no items has no net and so no VAT, and its row shows a dash for it.
+    @Test func anInvoiceWithoutANetHasADashForItsVat() throws {
+        var invoice = crownInvoice(id: 1)
+        invoice.items = []
+        let row = try #require(build(input(invoices: [invoice])).rows.first)
+        #expect(row.vat == "—")
+        #expect(!row.hasVat)
+    }
+
+    /// A negative VAT, from an item with a negative quantity, keeps its minus sign in the row.
+    @Test func aNegativeVatKeepsItsMinusSign() throws {
+        var invoice = crownInvoice(id: 1)
+        invoice.items = [InvoiceItem.fixture("-1", at: 450_000)]
+        let row = try #require(build(input(invoices: [invoice])).rows.first)
+        #expect(row.vat == "\u{2212}945,00\u{00A0}Kč")
+        #expect(row.hasVat)
     }
 
     @Test func anInvoiceWithoutAPaymentHasADashForItsPaymentDate() throws {

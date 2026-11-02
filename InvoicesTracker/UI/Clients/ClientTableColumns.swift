@@ -11,7 +11,7 @@ import CoreGraphics
 /// currency with the text, as the prototype draws the cell: the text is cut at its tail and the chip stays whole
 /// (`ClientCurrencyCell`). The table is at least 540 points wide, as the prototype's is, which is a little more than
 /// its columns at their least widths take; below that it keeps that width and scrolls sideways (`ClientTableView`), as
-/// it does in the least window with the detail open.
+/// it does in the least window with the detail open and the sidebar as wide as it goes.
 nonisolated enum ClientTableColumns {
     /// A column of a row.
     struct Column: Sendable, Equatable {
