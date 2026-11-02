@@ -3,12 +3,25 @@ import SwiftUI
 import Testing
 @testable import InvoicesTracker
 
-/// The frame the window puts around the screens: the window background of the design that the page stands on, in a
-/// light and in a dark window, and the green banner above the page, which keeps its place and follows the padding of
-/// the page. The windows are real ones in the test host, with the data of `EditorFixture`.
+/// The frame the window puts around the screens: the least size of the window, the window background of the design
+/// that the page stands on, in a light and in a dark window, and the green banner above the page, which keeps its place
+/// and follows the padding of the page. The windows are real ones in the test host, with the data of `EditorFixture`.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct AppFrameTests {
+    // MARK: The least size
+
+    /// The window is never narrower than 1210 points or lower than 720: asked for less, it is made that large, so that
+    /// the table of Faktury fits its card beside the sidebar while the detail is closed. The 720 points are the room
+    /// under the toolbar (`contentLayoutRect`): the content of the window runs under the toolbar too.
+    @Test func aWindowAskedSmallerThanTheLeastSizeIsMadeTheLeastSize() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: CGSize(width: 1_000, height: 600)) { window in
+                #expect(window.contentLayoutRect.size == CGSize(width: 1_210, height: 720))
+            }
+        }
+    }
+
     // MARK: The window background
 
     /// Every screen stands on the window background of the design, not on the system's, which is white in a light

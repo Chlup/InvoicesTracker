@@ -143,9 +143,13 @@ struct MonthCellGridTests {
     }
 
     @Test func theCellsAreOfOneWidthAndFillTheLineWhateverTheWidth() {
-        // The least window shows the months of a client in 776 points, and those of the clients in the group of the
-        // others, which is set in by 22, in 754. A large window has more than the twelve cells need.
-        for width in [CGFloat(1_228), 1_000, 834, 776, 754, 600, 420, 349, 300, 209, 140, 139, 70, 64] {
+        // The least window shows the months of a client in 898 points, and those of the clients in the group of the
+        // others, which is set in by 22, in 876; with the sidebar as wide as it goes, in 810 and 788. A large window
+        // has more than the twelve cells need.
+        let rooms: [CGFloat] = [
+            1_228, 1_000, 898, 876, 834, 810, 788, 776, 754, 600, 420, 349, 300, 209, 140, 139, 70, 64,
+        ]
+        for width in rooms {
             let placed = place(in: width)
             let widths = (1...12).map { placed.cell($0).width }
 
@@ -160,12 +164,13 @@ struct MonthCellGridTests {
     @Test func theColumnsAreTheLargestDivisorOfTwelveThatHoldsCellsOf64PointsWithGapsOf6() {
         // N columns of cells of 64 points with the N - 1 gaps of 6 between them need 70 N - 6 points. The columns are
         // the largest of 12, 6, 4, 3, 2 and 1 that needs no more than the width: 12 from 834, 6 from 414, 4 from 274,
-        // 3 from 204, 2 from 134. The least window shows the months of a client in 776 points, which hold eleven cells
-        // of 64 but are six columns, and those of the group of the others in 754.
+        // 3 from 204, 2 from 134. The least window shows the months of a client in 898 points and those of the group of
+        // the others in 876, twelve columns; with the sidebar as wide as it goes they have 810 and 788 points, which
+        // hold eleven cells of 64 but are six columns.
         let columnsByWidth: [(width: CGFloat, columns: Int)] = [
-            (1_600, 12), (835, 12), (834, 12), (833, 6), (776, 6), (754, 6), (694, 6), (420, 6), (414, 6), (413, 4),
-            (349, 4), (274, 4), (273, 3), (209, 3), (204, 3), (203, 2), (139, 2), (134, 2), (133, 1), (69, 1), (64, 1),
-            (40, 1),
+            (1_600, 12), (898, 12), (876, 12), (835, 12), (834, 12), (833, 6), (810, 6), (788, 6), (776, 6), (754, 6),
+            (694, 6), (420, 6), (414, 6), (413, 4), (349, 4), (274, 4), (273, 3), (209, 3), (204, 3), (203, 2),
+            (139, 2), (134, 2), (133, 1), (69, 1), (64, 1), (40, 1),
         ]
         for (width, columns) in columnsByWidth {
             #expect(place(in: width).columns == columns, "in \(width) points")

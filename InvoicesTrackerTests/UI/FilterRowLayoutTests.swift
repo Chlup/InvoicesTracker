@@ -65,15 +65,26 @@ struct FilterRowLayoutTests {
         #expect(placed.frames["search"] == CGRect(x: 742, y: 0, width: 234, height: 32))
     }
 
-    /// The page of the least window is 828 points wide, and so is the filter row, with the detail open too: the detail
-    /// stands beside the table, under the row. 730 points for the segment and the chips leave 86 for the search, which
-    /// needs 170, so it has a line of its own, at its greatest width and at the end of the line.
-    @Test func theSearchHasALineOfItsOwnInTheLeastWindow() {
-        let placed = place(in: 828)
+    /// The page of the least window is 938 points wide, and so is the filter row, with the detail open too: the detail
+    /// stands beside the table, under the row. 730 points for the segment and the chips and the gap after them leave
+    /// 196 for the search, more than the 170 it needs, so all three stand in one line, the search at the end of it.
+    @Test func allThreeStandInOneLineInTheLeastWindow() {
+        let placed = place(in: 938)
+
+        #expect(placed.lines == [["segment", "chips", "search"]])
+        #expect(placed.frames["search"] == CGRect(x: 742, y: 0, width: 196, height: 32))
+        #expect(placed.height == 32)
+    }
+
+    /// With the sidebar as wide as it goes the page of the least window is 850 points wide, and so is the filter row,
+    /// with the detail open too. 730 points for the segment and the chips and the gap after them leave 108 for the
+    /// search, which needs 170, so it has a line of its own, at its greatest width and at the end of the line.
+    @Test func theSearchHasALineOfItsOwnInTheLeastWindowWithTheWidestSidebar() {
+        let placed = place(in: 850)
 
         #expect(placed.lines == [["segment", "chips"], ["search"]])
         // The first line is as high as the segment, and the line of the search is under it with the gap between.
-        #expect(placed.frames["search"] == CGRect(x: 548, y: 42, width: 280, height: 32))
+        #expect(placed.frames["search"] == CGRect(x: 570, y: 42, width: 280, height: 32))
         #expect(placed.height == 74)
     }
 

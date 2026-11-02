@@ -24,29 +24,31 @@ import Testing
 /// the bottom margin of the page; a click on a row, anywhere on it, opens the detail of its client beside the card and
 /// not the form, and a second click closes it; the selection stays when the year changes, and a client saved in the
 /// form of Nový odběratel becomes the selected one, its row scrolled into view. With the detail open in the least
-/// window the table scrolls sideways in its card, and a wheel over the rows scrolls them up and down and the table
-/// sideways. The detail of a client is as high as its content and no higher than the card of the table, in which it
-/// scrolls what does not fit, and its figure is muted where the client has paid nothing; its Nová šablona opens the
-/// form of a template for its client, whose new template then shows in the detail, and the panel of a template opens
-/// its form and starts an invoice from it. Zálohy a odpočty fits with the note about rent (§ 9) under the menu of its
-/// rate of 30 %, whole and clear of the box of the reduced base, and with the cards of a family whose texts are the
-/// longest, every text whole, and so does the dialog of a child, a sheet with the lock after inactivity over it.
-/// Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the family as tall as its texts
-/// need and the bar of the tax whole. The Simulátor fits with the cards of the family after its deductions, empty and
-/// with the sample family copied into them, and with a secondary activity chosen and the rate of 30 % taken from the
-/// settings of the year, whose box of the health minimum and its line are whole, and so is the note of the expenses
-/// under the choices, with the sentence about rent (§ 9) after the one about the settings; in a large window the three
-/// choices of its assumptions stand in one row. Its result is one card of 360 points beside the inputs, in the least
-/// window too, with the key figure, the bar of the levies, the net income and the marginal levy one under the other,
-/// whether the levies are more than the income or not, and the popover of the bar is drawn over the net income and the
-/// marginal levy. The breakdown of Výpočet and of the Simulátor stands in two columns in a large window and in
-/// one at the least room, and the key figure and the levy bar of the result card of Výpočet stand side by side where
-/// the card has the room of two columns and one above the other where it has not, with its two cards of one height in a
-/// row under it. Odhad odvodů fits with the months of its clients folded and unfolded, its result card and its card
-/// Příjmy laid out as their widths say, its breakdown in the same two columns and the texts of its cells whole, and it
-/// runs result card, Příjmy, note, months, breakdown; the page of a year without rules of its own fits as well, which
-/// has a warning above its result card and no sign "≈" in it. One window at a time, so that what a test sees settle is
-/// its own window.
+/// window and the sidebar as wide as it goes the table scrolls sideways in its card, and a wheel over the rows scrolls
+/// them up and down and the table sideways. The detail of a client is as high as its content and no higher than the
+/// card of the table, in which it scrolls what does not fit, and its figure is muted where the client has paid nothing;
+/// its Nová šablona opens the form of a template for its client, whose new template then shows in the detail, and the
+/// panel of a template opens its form and starts an invoice from it. Zálohy a odpočty fits with the note about rent
+/// (§ 9) under the menu of its rate of 30 %, whole and clear of the box of the reduced base, and with the cards of a
+/// family whose texts are the longest, every text whole, and so does the dialog of a child, a sheet with the lock after
+/// inactivity over it. Výpočet and Přehled fit with a family whose benefit is a tax bonus, every row of the family as
+/// tall as its texts need and the bar of the tax whole. The Simulátor fits with the cards of the family after its
+/// deductions, empty and with the sample family copied into them, and with a secondary activity chosen and the rate of
+/// 30 % taken from the settings of the year, whose box of the health minimum and its line are whole, and so is the note
+/// of the expenses under the choices, with the sentence about rent (§ 9) after the one about the settings; in a large
+/// window the three choices of its assumptions stand in one row. Its result is one card of 360 points beside the
+/// inputs, in the least window too, with the key figure, the bar of the levies, the net income and the marginal levy
+/// one under the other, whether the levies are more than the income or not, and the popover of the bar is drawn over
+/// the net income and the marginal levy. The breakdown of Výpočet and of the Simulátor stands in two columns at the
+/// least room and in a large window, and in one with the sidebar as wide as it goes, and the key figure and the levy
+/// bar of the result card of Výpočet stand side by side where the card has the room of two columns and one above the
+/// other where it has not, with its two cards of one height in a row under it. Odhad odvodů fits with the months of its
+/// clients folded and unfolded, its result card and its card Příjmy laid out as their widths say, its breakdown in the
+/// same two columns and the texts of its cells whole, and it runs result card, Příjmy, note, months, breakdown; the
+/// page of a year without rules of its own fits as well, which has a warning above its result card and no sign "≈" in
+/// it. A form of a page that the least window shows only with the sidebar as wide as it goes is looked at with the
+/// sidebar widened, and one that only a narrower page shows, on the page shown alone in a window of its own. One window
+/// at a time, so that what a test sees settle is its own window.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct AppWindowLayoutTests {
@@ -468,7 +470,7 @@ struct AppWindowLayoutTests {
 
     /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
     /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
-    /// the least window, while the detail is closed, the card (828 points) holds the table, whose least width is 772.
+    /// the least window, while the detail is closed, the card (938 points) holds the table, whose least width is 772.
     @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -544,9 +546,10 @@ struct AppWindowLayoutTests {
     /// A click on a row opens its invoice (VoiceOver presses the row as a click does) and gives the table the focus of
     /// the keyboard, which the list of the sidebar had: ↓ then opens the invoice of the row under the open one and ↑
     /// the one above it, and the table scrolls to show a row that the keys open under the part of it the window shows:
-    /// the last row, which the least window with the detail open does not show whole. The rows of 40 points leave room
-    /// for the eleven invoices of the fixture there, so two invoices of January are added, numbered to be the last
-    /// rows. A click on the open row closes the detail, and so does the × of the detail.
+    /// the last row, which the least window with the detail open does not show whole while the sidebar is as wide as it
+    /// goes, as the filter row then takes two lines (a page of 850 points, less than the 912 that one line needs). The
+    /// rows of 40 points leave room for the eleven invoices of the fixture there, so two invoices of January are added,
+    /// numbered to be the last rows. A click on the open row closes the detail, and so does the × of the detail.
     @Test func aClickOnARowOpensItsInvoiceAndTheArrowKeysOpenTheRowsAroundIt() async throws {
         // The table takes the focus of the keyboard, so the test takes its turn among the tests that type.
         try await whileTypingAlone {
@@ -564,6 +567,8 @@ struct AppWindowLayoutTests {
                     f.app.screen = .invoices
                     try await withAccessibilityElements {
                         try await waitUntil { invoiceRows(in: window).count == 13 }
+                        widenSidebar(of: window)
+                        try await layOut(window)
 
                         // A person clicks in the key window, though a test of another suite may have made its own
                         // window the key one meanwhile.
@@ -578,8 +583,8 @@ struct AppWindowLayoutTests {
                         try pressArrow(.up, in: window)
                         try await waitUntil { openRowNumber(in: window) == "20260902" }
 
-                        // Down to the last row, 20260001, one row a key: it is under the rows that the least window
-                        // shows whole.
+                        // Down to the last row, 20260001, one row a key: it is under the rows that the window shows
+                        // whole.
                         let last = try #require(invoiceRows(in: window).last?.accessibilityFrame?())
                         let shown = try #require(shownRows(in: window))
                         #expect(last.minY < shown.minY - 0.5, "the last row \(last) is shown whole in \(shown)")
@@ -912,10 +917,11 @@ struct AppWindowLayoutTests {
     private static let searchGroup = InvoiceSearchField.accessibilityID
 
     /// The search of Faktury is a field on the page, not in the toolbar: it stands at the end of the filter row, after
-    /// the segment of the scope and the chips, 170 to 280 points wide and ending at the right margin of the page. Where
-    /// the row has no room for all three, it wraps, the field still at the right margin: at the least room the segment
-    /// and the chips stand in one line and the field has the line under it, at its greatest width, with the detail open
-    /// too, as the detail stands beside the table and leaves the filter row the width of the page.
+    /// the segment of the scope and the chips, 170 to 280 points wide and ending at the right margin of the page. The
+    /// three stand in one line from a page of 912 points, so at the least room too (938), with the detail open, as the
+    /// detail stands beside the table and leaves the filter row the width of the page. Where the row has no room for
+    /// all three, it wraps, the field still at the right margin: with the sidebar as wide as it goes (a page of 850)
+    /// the segment and the chips stand in one line and the field has the line under it, at its greatest width.
     @Test func theFakturySearchSitsAtTheEndOfTheFilterRow() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -935,10 +941,18 @@ struct AppWindowLayoutTests {
                     #expect(searchChild(role: .textField, labelled: Self.searchLabel, in: window) != nil)
                     #expect(searchTextField(in: window)?.placeholderString == Self.searchLabel)
 
-                    // As Přehled opens an invoice, in the least window.
+                    // As Přehled opens an invoice, in the least window: the three still stand in one line.
                     f.app.openInvoice(Self.alfaInvoiceID)
                     try await waitUntil { detailCardFrame(in: window) != nil }
                     window.setContentSize(AppWindowSize.minimum)
+                    try await expectSettled(window) {
+                        problems(of: window, detailOpen: true)
+                            + problems(ofTheFilterRowIn: window, arrangedAs: .oneLine)
+                    }
+                    #expect(searchFields(inTheToolbarOf: window) == [])
+
+                    // The sidebar as wide as it goes leaves the row too little: the field has a line of its own.
+                    widenSidebar(of: window)
                     try await expectSettled(window) {
                         problems(of: window, detailOpen: true)
                             + problems(ofTheFilterRowIn: window, arrangedAs: .searchOnItsOwnLine)
@@ -1040,10 +1054,10 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The search field that has the focus is the same field, with the focus, when the filter row wraps: a window made
-    /// narrower puts it on a line of its own, and wider again takes it back. (A field made anew by each way the row
-    /// can wrap would lose the focus in the middle of a word when the window is resized, or when the chips narrow as
-    /// the search narrows the list.)
+    /// The search field that has the focus is the same field, with the focus, when the filter row wraps: the least
+    /// window keeps it on the line of the chips, the sidebar widened as far as it goes puts it on a line of its own,
+    /// and a larger window takes it back. (A field made anew by each way the row can wrap would lose the focus in the
+    /// middle of a word when the window is resized, or when the chips narrow as the search narrows the list.)
     @Test func theSearchKeepsItsFocusWhenTheFilterRowWraps() async throws {
         // The field takes the focus, so the test takes its turn among the tests that type.
         try await whileTypingAlone {
@@ -1065,6 +1079,12 @@ struct AppWindowLayoutTests {
                         #expect(try #require(drop()).magnitude < 1)
 
                         window.setContentSize(AppWindowSize.minimum)
+                        try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                        try await waitUntil { (drop() ?? 10).magnitude < 1 }
+                        #expect(searchTextField(in: window) === field)
+                        #expect(hasFocus(field, in: window))
+
+                        widenSidebar(of: window)
                         try await expectSettled(window) { problems(of: window, detailOpen: false) }
                         try await waitUntil { (drop() ?? 0) > 10 }
                         #expect(searchTextField(in: window) === field)
@@ -1354,10 +1374,11 @@ struct AppWindowLayoutTests {
 
     /// The popover of the levy bar of Přehled hangs out of the result card, over the hairline and the tiles under the
     /// bar, over the edge of the card and the card "Příjmy" under it, and is drawn above all of them: the card is drawn
-    /// above what follows it, and nothing clips the popover. With the sidebar as wide as it goes the card stacks its
-    /// parts and the legend stands over the tiles, so that the popover reaches past the card; the pointer is moved
-    /// over the part of the tax, and then over its item of the legend, as a mouse moves it. A strip down the popover,
-    /// 6 points inside its leading edge, from 4 points under its top to 2 points under the top edge of "Příjmy", shows
+    /// above what follows it, and nothing clips the popover. On a page too narrow for the two columns of the card,
+    /// which the window of the app no longer leaves it, so the page is shown alone (`narrowPage`), the card stacks its
+    /// parts and the legend stands over the tiles, so that the popover reaches past the card; the pointer is moved over
+    /// the part of the tax, and then over its item of the legend, as a mouse moves it. A strip down the popover, 6
+    /// points inside its leading edge, from 4 points under its top to 2 points under the top edge of "Příjmy", shows
     /// nothing but the colour of the popover while it is open, where the tiles, the hairline and the edges of the two
     /// cards cross it while it is closed.
     @Test func thePopoverOfPrehledIsDrawnOverTheTilesAndTheEdgesOfTheCardsUnderTheBar() async throws {
@@ -1366,13 +1387,10 @@ struct AppWindowLayoutTests {
             let weights = Authority.allCases.map { result.balance($0).liability }
             let levyBar = LevyBarBuilder.balances(
                 of: result, kind: .toDate(isOver: false), header: "Odvody z příjmů do 17.\u{00A0}10.", showsTotal: true)
-            try await withAppWindow(of: f.app, size: AppWindowSize.minimum, ignoringTheRealPointer: true) { window in
-                f.app.screen = .overview
-                try await waitUntil { window.title == "Přehled" }
+            try await withHostedPage(OverviewScreen(app: f.app), of: f.app, ignoringTheRealPointer: true) { window in
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
-                    widenSidebar(of: window)
                     try await expectSettled(window) {
                         problems(ofTheResultCardOfPrehledIn: window, levyBar: levyBar)
                     }
@@ -1438,8 +1456,10 @@ struct AppWindowLayoutTests {
     /// left, the two buttons of 28 points under it, 12 points lower and 8 apart, the section of the levy bar beside it
     /// in a column of its own, level at the top and 28 points to the right, or under the buttons in the whole width,
     /// 20 points lower, where the card is too narrow for two columns, and under both, under the hairline, the three
-    /// tiles in one row, 48 points apart and never stretched. At a large size, at the least room (where the page has
-    /// the room the card says) and with the sidebar as wide as it goes.
+    /// tiles in one row, 48 points apart and never stretched. At a large size, at the least room (where the parts stand
+    /// as the width of the card says, side by side in its 898 points inside the padding) and on a page too narrow for
+    /// the two columns, which the window of the app no longer leaves it even with the sidebar as wide as it goes, so
+    /// the page is shown alone (`narrowPage`).
     @Test func thePartsOfTheResultCardOfPrehledStandWhereTheSharedCardSetsThem() async throws {
         try await EditorFixture.with { f in
             let result = try await f.app.computeSelectedYear()
@@ -1464,7 +1484,11 @@ struct AppWindowLayoutTests {
                     try await expectSettled(window) {
                         problems(ofThePartsOfTheResultCardOfPrehledIn: window, tiles: tiles, beside: nil)
                     }
-                    widenSidebar(of: window)
+                }
+            }
+            try await withHostedPage(OverviewScreen(app: f.app), of: f.app) { window in
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                try await withAccessibilityElements {
                     try await expectSettled(window) {
                         problems(ofThePartsOfTheResultCardOfPrehledIn: window, tiles: tiles, beside: false)
                     }
@@ -1689,9 +1713,9 @@ struct AppWindowLayoutTests {
     /// and the line under it, the button to the right of them, under them the four figures (the income, the levies,
     /// the settlement and the net income) 40 points apart and none of them more than 240 wide or beyond the card or on
     /// another, and under the figures the chart of the year, whose months VoiceOver reads within the card. At the
-    /// least room (828 points of page, 740 with the sidebar as wide as it goes) the figures stand in two rows, the
-    /// first three side by side and the net income under the income; in a large window all four stand side by side in
-    /// one row. No sign of an estimate is read anywhere in the card.
+    /// least room (938 points of page) and in a large window all four stand side by side in one row; with the sidebar
+    /// as wide as it goes (850 points of page) the figures stand in two rows, the first three side by side and the net
+    /// income under the income. No sign of an estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -1699,7 +1723,7 @@ struct AppWindowLayoutTests {
                     try await showOverviewWithTheEstimate(of: app, in: window)
 
                     for (size, figureRows) in [
-                        (AppWindowSize.minimum, [3, 1]), (AppWindowSize.large, [4]), (AppWindowSize.minimum, [3, 1]),
+                        (AppWindowSize.minimum, [4]), (AppWindowSize.large, [4]), (AppWindowSize.minimum, [4]),
                     ] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
@@ -1708,7 +1732,7 @@ struct AppWindowLayoutTests {
                         }
                     }
 
-                    // The detail of the least window with the sidebar as wide as it goes: 780 points.
+                    // The detail of the least window with the sidebar as wide as it goes: 890 points.
                     widenSidebar(of: window)
                     try await expectSettled(window) {
                         problems(ofPageIn: window)
@@ -2382,10 +2406,12 @@ struct AppWindowLayoutTests {
 
     /// Zálohy a odpočty with a family whose cards say the most: a child of mine, one of the other parent, one for each
     /// reason of counting in no month, a spouse with ZTP/P and without a child under three, and as of 31. 1. 2026, when
-    /// no income has come yet, a benefit that is not paid as a bonus. At the least room, where the impact panel is
-    /// under the cards, at the room where it first stands beside them and they are at their narrowest, at a large size
-    /// and at the least room again, every text of the cards is whole: within its card, and as tall as the text needs at
-    /// its width. So are the rows of the children, as their rows draw them, and the box of ZTP/P with its label.
+    /// no income has come yet, a benefit that is not paid as a bonus. At the least room, where the impact panel stands
+    /// beside the cards (a page of 938 points), and with the sidebar as wide as it goes: at the least room, where the
+    /// panel is under the cards (850), at the room where it first stands beside them and they are at their narrowest,
+    /// at a large size and at the least room again, every text of the cards is whole: within its card, and as tall as
+    /// the text needs at its width. So are the rows of the children, as their rows draw them, and the box of ZTP/P with
+    /// its label.
     @Test func zalohyAOdpoctyWithTheFamilyFitTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await EditorFixture.with { f in
             try await Self.storeFamilyWithTheLongestTexts(in: f.database)
@@ -2396,7 +2422,9 @@ struct AppWindowLayoutTests {
                 try await waitUntil { window.title == "Zálohy a odpočty" }
                 try await withAccessibilityElements {
                     try await waitUntil { frameOfText(startingWith: Self.familyTexts[1].prefix, in: window) != nil }
+                    try await expectSettled(window) { problems(ofPageIn: window) + problems(ofFamilyIn: window) }
 
+                    widenSidebar(of: window)
                     let sizes = [
                         AppWindowSize.minimum, AdvancesWindowSize.impactPanelBeside, AppWindowSize.large,
                         AppWindowSize.minimum,
@@ -2662,13 +2690,14 @@ struct AppWindowLayoutTests {
     // MARK: The table of Odběratelé
 
     /// The table of Odběratelé is as wide as its card, with nothing to scroll sideways, in a large window and in the
-    /// least window while the detail is closed: the card of the least window is 828 points wide, more than the least
-    /// width of the table (`ClientTableColumns`). The card starts with its summary row, above the names of the columns
-    /// (32 points), and its rows are one line each, 40 points high, whatever they say: among the clients of the fixture
-    /// stand one that says as little as can be and one whose name is far too long for its column. With the detail open
-    /// (340 points) the card of the least window is 472 points wide, narrower than the table: the detail stays beside
-    /// the card, and the table keeps its least width and scrolls sideways in the card under the summary row, as the
-    /// table of Faktury does. A large window holds the table and the detail side by side again.
+    /// least window while the detail is closed: the card of the least window is 938 points wide, more than the least
+    /// width of the table (`ClientTableColumns`, 540 points). The card starts with its summary row, above the names of
+    /// the columns (32 points), and its rows are one line each, 40 points high, whatever they say: among the clients of
+    /// the fixture stand one that says as little as can be and one whose name is far too long for its column. With the
+    /// detail open (340 points) the card of the least window is 582 points wide and still holds the table, and so does
+    /// the card beside the detail in a large window. With the sidebar as wide as it goes the card of the least window
+    /// beside the detail is 494 points wide, narrower than the table: the detail stays beside the card, and the table
+    /// keeps its least width and scrolls sideways in the card under the summary row, as the table of Faktury does.
     @Test func theClientTableFillsItsCardAndScrollsSidewaysBesideTheDetailInTheLeastWindow() async throws {
         try await EditorFixture.with { f in
             try await f.database.saveClient(Client(name: "Bez údajů", country: ""))
@@ -2690,7 +2719,7 @@ struct AppWindowLayoutTests {
                     }
                     #expect((try clientTableWidth(in: window) - 1_328).magnitude <= 1)
 
-                    // The least window: its card of 828 points holds the table, so nothing scrolls sideways.
+                    // The least window: its card of 938 points holds the table, so nothing scrolls sideways.
                     window.setContentSize(AppWindowSize.minimum)
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
@@ -2698,20 +2727,18 @@ struct AppWindowLayoutTests {
                             + problems(ofOdberateleIn: window, detailOpen: false)
                     }
                     let card = try #require(clientTableScrollView(in: window)).contentView.bounds.width
-                    #expect((card - 828).magnitude <= 1)
+                    #expect((card - 938).magnitude <= 1)
 
-                    // The detail open: the card of 472 points is narrower than the table, which keeps its least
-                    // width and scrolls sideways, under the summary row, which stays as wide as the card.
+                    // The detail open: the card of 582 points still holds the table.
                     press(try #require(clientRow(named: "Bravo Labs, Inc.", in: window)))
                     try await waitUntil { clientDetailFrame(in: window) != nil }
                     try await expectSettled(window) {
                         problems(ofTheClientRowsIn: window, count: 5)
-                            + problems(ofTheClientTableScrollingSidewaysIn: window)
+                            + problems(ofTheClientTableFillingItsCardIn: window)
                             + problems(ofOdberateleIn: window, detailOpen: true)
-                            + problems(ofTheSummaryAndTheRowsOf: clientList(in: window), rows: clientRows(in: window))
                     }
-                    let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
-                    #expect((narrow - 472).magnitude <= 1)
+                    let beside = try #require(clientTableScrollView(in: window)).contentView.bounds.width
+                    #expect((beside - 582).magnitude <= 1)
 
                     // A large window again: the card beside the detail, 972 points, holds the table.
                     window.setContentSize(AppWindowSize.large)
@@ -2721,6 +2748,20 @@ struct AppWindowLayoutTests {
                             + problems(ofOdberateleIn: window, detailOpen: true)
                     }
                     #expect((try clientTableWidth(in: window) - 972).magnitude <= 1)
+
+                    // The least window with the sidebar as wide as it goes: the card of 494 points beside the detail
+                    // is narrower than the table, which keeps its least width and scrolls sideways, under the summary
+                    // row, which stays as wide as the card.
+                    window.setContentSize(AppWindowSize.minimum)
+                    widenSidebar(of: window)
+                    try await expectSettled(window) {
+                        problems(ofTheClientRowsIn: window, count: 5)
+                            + problems(ofTheClientTableScrollingSidewaysIn: window)
+                            + problems(ofOdberateleIn: window, detailOpen: true)
+                            + problems(ofTheSummaryAndTheRowsOf: clientList(in: window), rows: clientRows(in: window))
+                    }
+                    let narrow = try #require(clientTableScrollView(in: window)).contentView.bounds.width
+                    #expect((narrow - 494).magnitude <= 1)
                 }
             }
         }
@@ -2910,9 +2951,11 @@ struct AppWindowLayoutTests {
     }
 
     /// The rows of the table of Odběratelé scroll up and down in its card, under the names of the columns, and the
-    /// table scrolls sideways where it is wider than its card, as the table of Faktury does. A wheel over the rows
-    /// moves what can move: an up-and-down one moves the rows and leaves the table where it is sideways, and a sideways
-    /// one moves the table, the names of the columns with the rows, and leaves the rows where they are up and down.
+    /// table scrolls sideways where it is wider than its card, as the table of Faktury does: in the least window with
+    /// the detail open and the sidebar as wide as it goes, whose card (494 points) is narrower than the table (540). A
+    /// wheel over the rows moves what can move: an up-and-down one moves the rows and leaves the table where it is
+    /// sideways, and a sideways one moves the table, the names of the columns with the rows, and leaves the rows where
+    /// they are up and down.
     @Test func aWheelOverTheClientTableScrollsItsRowsUpAndDownAndTheTableSideways() async throws {
         try await EditorFixture.with { f in
             // Clients enough for more rows than the card of the least window shows.
@@ -2924,7 +2967,9 @@ struct AppWindowLayoutTests {
                 f.app.screen = .clients
                 try await withAccessibilityElements {
                     try await waitUntil { clientRows(in: window).count == 23 }
-                    // The detail beside the card of the least window leaves the card narrower than the table.
+                    // The detail beside the card of the least window, with the sidebar as wide as it goes, leaves the
+                    // card narrower than the table.
+                    widenSidebar(of: window)
                     press(try #require(clientRow(named: "Alfa Systems s.r.o.", in: window)))
                     try await waitUntil { clientDetailFrame(in: window) != nil }
                 }
@@ -3546,7 +3591,7 @@ struct AppWindowLayoutTests {
     }
 
     /// The two cards under the result of Výpočet, Mezní odvod and Hranice roku, are cards of one height in one row at
-    /// the least room (2 × 380 and the gap of 16 are 776 points, and the page has 828) and in a large window.
+    /// the least room (2 × 380 and the gap of 16 are 776 points, and the page has 938) and in a large window.
     @Test func theMarginalAndTheThresholdsCardsOfVypocetAreInOneRowOfOneHeight() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
@@ -3567,8 +3612,9 @@ struct AppWindowLayoutTests {
     /// The key figure and the levy bar of the result card of Výpočet stand side by side, in two columns of one width
     /// and level at the top, where the card has the 788 points inside its padding that two columns of 380 and the gap
     /// of 28 take, such as in a large window, and the bar stands under the key figure, in the whole width, where it has
-    /// less, such as at the least room with the sidebar as wide as it goes. At the least room itself the page has 828
-    /// points, the card exactly the 788 inside its padding, and the parts stand wherever the room puts them.
+    /// less, such as on a page too narrow for the two columns, which the window of the app no longer leaves it even
+    /// with the sidebar as wide as it goes, so the page is shown alone (`narrowPage`). At the least room itself the
+    /// page has 938 points, the card 898 inside its padding, and the parts stand as the room says, side by side.
     @Test func theKeyFigureAndTheLevyBarStandSideBySideInALargeWindowAndOneAboveTheOtherInANarrowOne() async throws {
         try await EditorFixture.with { f in
             let levies = CzechFormat.wholeKc(try await f.app.computeSelectedYear().liabilityTotal)
@@ -3588,7 +3634,11 @@ struct AppWindowLayoutTests {
                     try await expectSettled(window) {
                         problems(ofTheResultOfVýpočetIn: window, levies: levies, beside: nil)
                     }
-                    widenSidebar(of: window)
+                }
+            }
+            try await withHostedPage(ComputationScreen(app: f.app), of: f.app) { window in
+                try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
+                try await withAccessibilityElements {
                     try await expectSettled(window) {
                         problems(ofTheResultOfVýpočetIn: window, levies: levies, beside: false)
                     }
@@ -3683,9 +3733,10 @@ struct AppWindowLayoutTests {
     }
 
     /// The breakdown of Výpočet has the income and the tax on the left and the social and the health insurance with the
-    /// net income under them on the right: all five in one column at the least room, where the detail has 828 points
-    /// and two columns need 856, and in two columns in a large window, whichever way the window goes.
-    @Test func theBreakdownIsOneColumnAtTheLeastRoomAndTwoInALargeWindow() async throws {
+    /// net income under them on the right: in two columns in the least window, where the page has 938 points and two
+    /// columns need 856, and in a large window, and all five in one column where the page has less, as at the least
+    /// room with the sidebar as wide as it goes (850 points), whichever way the window goes.
+    @Test func theBreakdownIsOneColumnWithTheWidestSidebarAndTwoInTheLeastAndALargeWindow() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .computation
@@ -3693,6 +3744,12 @@ struct AppWindowLayoutTests {
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
+                    try await expectSettled(window) {
+                        problems(ofTheBreakdown: Self.vypocetBreakdown, beside: true) { title in
+                            frameOfCard(headed: title, in: window)
+                        }
+                    }
+                    widenSidebar(of: window)
                     for (size, beside) in Self.breakdownSizes {
                         window.setContentSize(size)
                         try await expectSettled(window) {
@@ -3896,9 +3953,11 @@ struct AppWindowLayoutTests {
         ["Příjmy a zisk", "Daň z příjmů"], ["Sociální pojištění", "Zdravotní pojištění", "Čistý příjem"],
     ]
 
-    /// The sizes the breakdown of a screen is looked at in, and whether its two stacks stand beside each other in them:
-    /// the detail of the least window has 828 points, less than the 856 that two columns need, and a large window has
-    /// more. Back at the least room, the stacks come together again.
+    /// The sizes the breakdown of a screen is looked at in with the sidebar as wide as it goes (`widenSidebar(of:)`),
+    /// and whether its two stacks stand beside each other in them: the page of the least window has 850 points then,
+    /// less than the 856 that two columns need, and a large window has more. Back at the least room, the stacks come
+    /// together again. (With the sidebar of 232 points the page of the least window has 938, and they stand beside each
+    /// other there too.)
     private static let breakdownSizes = [
         (size: AppWindowSize.minimum, beside: false), (size: AppWindowSize.large, beside: true),
         (size: AppWindowSize.minimum, beside: false),
@@ -4153,16 +4212,18 @@ struct AppWindowLayoutTests {
     // MARK: Odhad odvodů
 
     /// Odhad odvodů on the prediction sample, for the year in progress and for 2025, which is over, with the months of
-    /// the clients folded and unfolded (and the group of the other clients with them), at the least room, at a large
-    /// size and at the least room again, and at the least room with the sidebar as wide as it goes: the page fits the
-    /// window, its breakdown stands in one column where the detail has less than the 856 points that two columns need
-    /// (828 at the least room, 740 with the wide sidebar) and in two columns in a large window (the cards of Výpočet,
-    /// with the same headings), the key figure and the bar of the result card stand as the width says and the figure of
-    /// what is left to settle under them, the net income is read as one phrase in the card Příjmy, beside the income
-    /// and above the bar, the legend and the note of the money of next year, and no text of a cell is cut or even
-    /// shrunk: the months stand in rows of six at the least room, in cells of more than 100 points. In the narrowest
-    /// window that holds all twelve in a row, in cells of 64 points, the texts shrink as far as the cell lets them and
-    /// are not cut.
+    /// the clients folded and unfolded (and the group of the other clients with them), in the least window, and with
+    /// the sidebar as wide as it goes at the least room, at a large size, at the least room again and in the narrowest
+    /// window that holds the twelve months of a client in a row: the page fits the window, its breakdown stands in one
+    /// column where the page has less than the 856 points that two columns need (850 at the least room with the wide
+    /// sidebar) and in two columns where it has more (938 in the least window, and a large window; the cards of
+    /// Výpočet, with the same headings), the key figure and the bar of the result card stand as the width says and the
+    /// figure of what is left to settle under them, the net income is read as one phrase in the card Příjmy, beside the
+    /// income and above the bar, the legend and the note of the money of next year, and no text of a cell is cut. Where
+    /// the months stand in rows of six, in cells of more than 100 points (810 points for the months at the least room
+    /// with the wide sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
+    /// in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the least window, whose
+    /// 898 points for the months give the cells 69, and in the narrowest window that holds them so, in cells of 64.
     @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -4172,6 +4233,22 @@ struct AppWindowLayoutTests {
                     // The page scrolls; with the data it is far taller than while it loads.
                     try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
+                    for year in [2026, 2025] {
+                        let page = try PredictionSample.page(year: year)
+                        app.selectYear(year)
+                        try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
+                        for isUnfolded in [false, true] {
+                            app.predictionMonthsOpen = isUnfolded
+                            app.predictionOthersOpen = isUnfolded
+                            try await expectSettled(window) {
+                                problems(
+                                    ofThePredictionFor: page, beside: true, unfolded: isUnfolded,
+                                    shrinkingTextsTo: PredictionMonthCell.minimumTextScale, in: window)
+                            }
+                        }
+                    }
+
+                    widenSidebar(of: window)
                     for year in [2026, 2025] {
                         let page = try PredictionSample.page(year: year)
                         app.selectYear(year)
@@ -4193,24 +4270,17 @@ struct AppWindowLayoutTests {
                             }
                         }
                     }
-
-                    // The detail of the least window with the sidebar as wide as it goes: 780 points.
-                    window.setContentSize(AppWindowSize.minimum)
-                    widenSidebar(of: window)
-                    let page = try PredictionSample.page(year: 2025)
-                    try await expectSettled(window) {
-                        problems(ofThePredictionFor: page, beside: false, unfolded: true, in: window)
-                    }
                 }
             }
         }
     }
 
     /// The narrowest window whose card of the months holds twelve cells of 64 points and the gaps between them, 834
-    /// points: the detail is 232 points less than the window (the sidebar), the page 40 less than that (24 and 16) and
-    /// the card 40 less again (20 and 20), 1 146, and two more for the width the cells are measured in to be more than
-    /// the least.
-    private static let narrowestRoomForTwelveMonthsInARow = CGSize(width: 1_148, height: 1_000)
+    /// points, while the sidebar is as wide as it goes (`widenSidebar(of:)`): the detail is 320 points less than the
+    /// window (the sidebar), the page 40 less than that (24 and 16) and the card 40 less again (20 and 20), 1 234, and
+    /// two more for the width the cells are measured in to be more than the least. With the sidebar of 232 points even
+    /// the least window gives the months more room, 898 points.
+    private static let narrowestRoomForTwelveMonthsInARow = CGSize(width: 1_236, height: 1_000)
 
     /// What is wrong with Odhad odvodů in `window` for `page`, in words: the problems of a page that scrolls, of the
     /// result card and of the card Příjmy, the cards of the breakdown not in the two stacks that stand `beside` each
@@ -4415,7 +4485,8 @@ struct AppWindowLayoutTests {
     /// Odhad odvodů of a year without rules of its own, 2027 as of 15. 1. 2027 on the prediction sample: the warning
     /// that the page is an estimate with the rules of 2026 stands above the result card, and none of the figures of the
     /// result card or of the net income has the sign "≈", as the card is an estimate as a whole. At the least room the
-    /// page fits the window, with the months of the clients folded and unfolded.
+    /// page fits the window, with the months of the clients folded and unfolded: its breakdown in two columns (938
+    /// points of page), and in one with the sidebar as wide as it goes (850, less than the 856 that two columns need).
     @Test func thePredictionOfAYearWithoutItsOwnRulesFitsTheLeastRoom() async throws {
         try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
             // The page the screen shows. The sample stores no settings of 2027, so the levies are those of the
@@ -4435,11 +4506,16 @@ struct AppWindowLayoutTests {
                     try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
                     #expect(showsText(RulesWarning.message(year: 2027, rulesYear: 2026), in: window))
 
-                    for isUnfolded in [false, true] {
-                        app.predictionMonthsOpen = isUnfolded
-                        app.predictionOthersOpen = isUnfolded
-                        try await expectSettled(window) {
-                            problems(ofThePredictionFor: page, beside: false, unfolded: isUnfolded, in: window)
+                    for widened in [false, true] {
+                        if widened {
+                            widenSidebar(of: window)
+                        }
+                        for isUnfolded in [false, true] {
+                            app.predictionMonthsOpen = isUnfolded
+                            app.predictionOthersOpen = isUnfolded
+                            try await expectSettled(window) {
+                                problems(ofThePredictionFor: page, beside: !widened, unfolded: isUnfolded, in: window)
+                            }
                         }
                     }
                     let card = try #require(accessibilityElement(labelled: "Výsledek", in: window))
@@ -5320,8 +5396,10 @@ struct AppWindowLayoutTests {
     /// The result card of the Simulátor holds, from the top, the key figure, the bar of the levies, the net income and
     /// the marginal levy, in a card padded 20: the parts are 14 points apart, and each of the last two stands under a
     /// hairline with 12 points under it. It is 360 points wide beside the inputs, at the least room and in a large
-    /// window, and as wide as the page under them where the sidebar is as wide as it goes. Without income the key
-    /// figure asks for it and the net income is negative; the parts stand the same.
+    /// window, and as wide as the page under them on a page narrower than the 816 points the two take side by side,
+    /// which the window of the app no longer leaves it even with the sidebar as wide as it goes, so the page is shown
+    /// alone (`narrowPage`). Without income the key figure asks for it and the net income is negative; the parts stand
+    /// the same.
     @Test(arguments: ["2 500 000", ""])
     func theResultCardOfTheSimulatorStacksTheKeyFigureTheBarTheNetIncomeAndTheMarginalLevy(
         income: String
@@ -5343,7 +5421,12 @@ struct AppWindowLayoutTests {
                             problems(ofTheResultCardOfTheSimulatorFor: summary, under: false, in: window)
                         }
                     }
-                    widenSidebar(of: window)
+                }
+            }
+            // The simulation is the app's (`AppModel.simulatorModel`), so the page shown alone shows the same one.
+            try await withHostedPage(SimulatorScreen(app: f.app), of: f.app) { window in
+                let summary = try #require(f.app.simulatorModel.page?.summary)
+                try await withAccessibilityElements {
                     try await waitUntil { (frameOfCard(labelled: "Kolik zaplatíte", in: window)?.width ?? 0) > 600 }
                     try await expectSettled(window) {
                         problems(ofTheResultCardOfTheSimulatorFor: summary, under: true, in: window)
@@ -5356,9 +5439,10 @@ struct AppWindowLayoutTests {
     /// The net income stands in the result card of the Simulátor under the bar of the levies and above the marginal
     /// levy, at the least room, at a large size and at the least room again, whether the levies are more than the
     /// income (the amount is then negative, as it is while the income is 0) or not: VoiceOver reads its words, the
-    /// average per month and the line under them as one phrase. With the sidebar as wide as it goes, the results come
-    /// under the inputs, in a card as wide as the page, and the amount stands beside its words: the net income is two
-    /// lines of text tall, not three.
+    /// average per month and the line under them as one phrase. On a page narrower than the 816 points that the inputs
+    /// and the results take side by side, which the window of the app no longer leaves it even with the sidebar as wide
+    /// as it goes, so the page is shown alone (`narrowPage`), the results come under the inputs, in a card as wide as
+    /// the page, and the amount stands beside its words: the net income is two lines of text tall, not three.
     @Test(arguments: ["0", "2 500 000"])
     func theNetIncomeStandsUnderTheBarOfTheLeviesAndAboveTheMarginalLevyWhetherOrNotTheLeviesAreMoreThanTheIncome(
         income: String
@@ -5379,7 +5463,12 @@ struct AppWindowLayoutTests {
                         window.setContentSize(size)
                         try await expectSettled(window) { problems(ofTheNetIncomeOf: summary, in: window) }
                     }
-                    widenSidebar(of: window)
+                }
+            }
+            // The simulation is the app's (`AppModel.simulatorModel`), so the page shown alone shows the same one.
+            try await withHostedPage(SimulatorScreen(app: f.app), of: f.app) { window in
+                let summary = try #require(f.app.simulatorModel.page?.summary)
+                try await withAccessibilityElements {
                     try await waitUntil { (frameOfCard(labelled: "Kolik zaplatíte", in: window)?.width ?? 0) > 600 }
                     try await expectSettled(window) { problems(ofTheNetIncomeOf: summary, in: window) }
                     let line = frameOfText(startingWith: reading(of: summary.netIncome), in: window)
@@ -5471,9 +5560,10 @@ struct AppWindowLayoutTests {
     ]
 
     /// The breakdown of the Simulátor has the tax on the left and the two insurances with the net income under them on
-    /// the right: all four in one column at the least room, where the detail has 828 points and two columns need 856,
-    /// and in two columns in a large window, whichever way the window goes.
-    @Test func theSimulatorBreakdownIsOneColumnAtTheLeastRoomAndTwoInALargeWindow() async throws {
+    /// the right: in two columns in the least window, where the page has 938 points and two columns need 856, and in a
+    /// large window, and all four in one column where the page has less, as at the least room with the sidebar as wide
+    /// as it goes (850 points), whichever way the window goes.
+    @Test func theSimulatorBreakdownIsOneColumnWithTheWidestSidebarAndTwoInTheLeastAndALargeWindow() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
                 f.app.screen = .simulator
@@ -5481,6 +5571,12 @@ struct AppWindowLayoutTests {
                 try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
 
                 try await withAccessibilityElements {
+                    try await expectSettled(window) {
+                        problems(ofTheBreakdown: Self.simulatorBreakdown, beside: true) { label in
+                            frameOfCard(labelled: label, in: window)
+                        }
+                    }
+                    widenSidebar(of: window)
                     for (size, beside) in Self.breakdownSizes {
                         window.setContentSize(size)
                         try await expectSettled(window) {
@@ -5715,6 +5811,28 @@ struct AppWindowLayoutTests {
                 #expect(f.app.pendingUniformRate != nil)
             }
         }
+    }
+
+    /// The room of a page that the window of the app no longer leaves a screen, as its page has at least 850 points
+    /// (the least window with the sidebar as wide as it goes): 780 points of window, a page of 740 inside its margins
+    /// (24 and 16), as high as the least window. There the parts of a result card stand one above the other, as they
+    /// stand side by side from 788 points inside the padding of the card (20 on either side), and the Simulátor has its
+    /// result under its inputs, as it has it beside them from a page of 816 points.
+    private static let narrowPage = CGSize(width: 780, height: 720)
+
+    /// Shows `page`, the page of a screen of `app`, alone in a window of `size` (`withHostedView`) and gives the window
+    /// to `body`: for a form of the page that the window of the app no longer shows, as it leaves the page more room.
+    /// The page has the app in its environment, as the window of the app gives it (`RootView`), and is held to `size`,
+    /// so that the window keeps that size and does not grow to the room the page would like. With
+    /// `ignoringTheRealPointer` the window is closed to the pointer of the person who runs the tests, and a test can
+    /// move the pointer over the page by hand (`movePointer(to:in:)`).
+    private func withHostedPage(
+        _ page: some View, of app: AppModel, size: CGSize = Self.narrowPage, ignoringTheRealPointer: Bool = false,
+        _ body: (NSWindow) async throws -> Void
+    ) async throws {
+        try await withHostedView(
+            page.environment(app).frame(width: size.width, height: size.height), size: size,
+            ignoringTheRealPointer: ignoringTheRealPointer, body)
     }
 
     /// What is wrong with the page of a screen that scrolls in `window`, in words: the views that stick out of the

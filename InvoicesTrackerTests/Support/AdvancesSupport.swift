@@ -9,13 +9,15 @@ let advancesWholeKcMessage = "Zadejte částku v celých korunách, například 
 /// The sizes of the window that the tests of Zálohy a odpočty try besides the least and the large window of the app
 /// (`AppWindowSize`).
 enum AdvancesWindowSize {
-    /// The least window in which the impact panel stands beside the cards instead of under them: 1 150 points wide and
-    /// as high as the least window. The page of the app is the window less 272 points (the sidebar of 232 and the
-    /// padding of the page, 24 and 16), and the panel stands beside the cards from a page of 876 points, which are the
-    /// least width of the cards, 520, the gap of 16 and the panel, 340 (`DetailPanelMetrics.width`). The first round
-    /// width that gives it is 1 150 points: a page of 878, the cards 2 points over their least. In the least window,
-    /// 1 100 points, the page is 828 and the panel stands under the cards.
-    static let impactPanelBeside = CGSize(width: 1_150, height: AppWindowSize.minimum.height)
+    /// The least window in which the impact panel stands beside the cards instead of under them while the sidebar is as
+    /// wide as it goes (`widenSidebar(of:)`): 1 240 points wide and as high as the least window. The page of the app is
+    /// then the window less 360 points (the sidebar of 320 and the padding of the page, 24 and 16), and the panel
+    /// stands beside the cards from a page of 876 points, which are the least width of the cards, 520, the gap of 16
+    /// and the panel, 340 (`DetailPanelMetrics.width`). The first round width that gives it is 1 240 points: a page of
+    /// 880, the cards 4 points over their least. In the least window, 1 210 points, the page is 850 with the sidebar
+    /// as wide as it goes, and the panel stands under the cards; with the sidebar of 232 points it is 938, and the
+    /// panel stands beside them.
+    static let impactPanelBeside = CGSize(width: 1_240, height: AppWindowSize.minimum.height)
 }
 
 /// An app model on a new folder, as of 17. 10. 2026, with the sample year 2026 stored: the regression plan of advances

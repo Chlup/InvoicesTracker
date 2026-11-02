@@ -3,9 +3,11 @@ import SwiftUI
 import Testing
 @testable import InvoicesTracker
 
-/// The room the tests give the content of the window: the least the app allows (`RootView`), and a large window.
+/// The room the tests give the content of the window: the least the app allows (`RootView.minimumSize`), and a large
+/// window. With the sidebar of 232 points the page of the least window is 938 points wide, and with the sidebar as
+/// wide as it goes, 320 points (`widenSidebar(of:)`), it is 850.
 enum AppWindowSize {
-    static let minimum = CGSize(width: 1_100, height: 720)
+    static let minimum = CGSize(width: 1_210, height: 720)
     static let large = CGSize(width: 1_600, height: 1_000)
 }
 
