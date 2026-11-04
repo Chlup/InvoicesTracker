@@ -172,6 +172,39 @@ struct BudgetModelTests {
         }
     }
 
+    /// Skutečnost divides exactly the figure Přehled shows as the average net income a month: 187 111 Kč on the sample
+    /// year, and "≈ 190 220 Kč" once an unpaid invoice of 50 000,00 Kč due this month counts as Přehled counts it.
+    @Test func theActualFigureIsPřehledsAverage() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = makeAppModel(in: directory)
+        try await startFresh(app)
+        let database = try #require(app.database)
+        try await SampleYear2026.store(in: database)
+        try await database.saveInvoice(SearchFixtures.earlierCrownInvoice())
+        await app.didWriteAndBackUp()
+        let budget = BudgetModel(app: app)
+        let overview = OverviewModel(app: app)
+
+        await budget.load()
+        await overview.load()
+
+        #expect(budget.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
+        #expect(budget.data?.keyFigure.figure == overview.data?.netIncome.monthValue)
+
+        // Issued on 5. 10. and due on 25. 10., unpaid.
+        try await database.saveInvoice(
+            Invoice.fixture(
+                number: "20261002", issued: "2026-10-05", duzp: "2026-10-05", dueDate: "2026-10-25",
+                items: [InvoiceItem.fixture("1", at: 5_000_000)]))
+        await app.didWriteAndBackUp()
+        await budget.load()
+        await overview.load()
+
+        #expect(budget.data?.keyFigure.figure == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
+        #expect(budget.data?.keyFigure.figure == overview.data?.netIncome.monthValue)
+    }
+
     /// Only the newest load shows what it read. Here the older one, for Odhad za rok, waits for the rates of the year
     /// from the server while Skutečnost is chosen and loaded; when it ends after all, it leaves the screen as the newer
     /// load made it.
