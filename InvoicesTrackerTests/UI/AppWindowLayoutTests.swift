@@ -4284,9 +4284,10 @@ struct AppWindowLayoutTests {
     /// column where the page has less than the 856 points that two columns need (850 at the least room with the wide
     /// sidebar) and in two columns where it has more (938 in the least window, and a large window; the cards of
     /// Výpočet, with the same headings), the key figure and the bar of the result card stand as the width says and the
-    /// figure of what is left to settle under them, the net income is read as one phrase in the card Příjmy, beside the
-    /// income and above the bar, the legend and the note of the money of next year, and no text of a cell is cut. Where
-    /// the months stand in rows of six, in cells of more than 100 points (810 points for the months at the least room
+    /// figure of what is left to settle under them, the net income and what to set aside are read as one phrase each
+    /// in the card Příjmy, beside the income (what to set aside wraps under them at the least room with the widest
+    /// sidebar) and above the bar, the legend and the note of the money of next year, and no text of a cell is cut.
+    /// Where the months stand in rows of six, in cells of more than 100 points (810 points for the months at the least room
     /// with the wide sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
     /// in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the least window, whose
     /// 898 points for the months give the cells 69, and in the narrowest window that holds them so, in cells of 64.
@@ -4446,11 +4447,16 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card Příjmy of Odhad odvodů for `page` in `window`, in words: it is missing; VoiceOver
-    /// does not read the income and the net income each as one phrase; the two do not stand side by side, 48 points
-    /// apart and level at the top, in the card; the bar of the income (14 points high) is not 14 points under the
-    /// lower of them; an item of the legend is not under the bar; or the note of the money of next year (which only a
-    /// year with such money has) is not under the legend. The origin of the screen is at the bottom left, so what is
-    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
+    /// does not read the income, the net income and what to set aside each as one phrase; the income and the net
+    /// income do not stand side by side, 48 points apart and level at the top, in the card; what to set aside does not
+    /// stand beside the net income, level at the top and 48 points from it, or, where the card is too narrow for three
+    /// figures in a row (the three and the two gaps are wider than the card inside its padding of 20, as at the
+    /// least room with the widest sidebar), at the left edge of the figures on the next row, 12 points under the
+    /// lower of the income and the net income, and only then; the bar of the income (14 points high) is
+    /// not 14 points under the lowest of the three; an item of the legend is not under the bar; or the note of the
+    /// money of next year (which only a year with such money has) is not under the legend. The origin of the screen is
+    /// at the bottom left, so what is above has the larger y. Empty when it stands so. Needs the accessibility
+    /// elements.
     private func problems(ofTheCardPrijmyOf page: PredictionPage, in window: NSWindow) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
@@ -4464,6 +4470,10 @@ struct AppWindowLayoutTests {
         guard let netIncome = frameOfText(startingWith: netPhrase, in: window) else {
             return ["The net income is not read as one phrase: \(netPhrase)"]
         }
+        let setAsidePhrase = [page.setAside.label, page.setAside.amount, page.setAside.sub].joined(separator: ", ")
+        guard let setAside = frameOfText(startingWith: setAsidePhrase, in: window) else {
+            return ["What to set aside is not read as one phrase: \(setAsidePhrase)"]
+        }
         guard let bar = accessibilityElement(labelled: "\(page.incomeHead): \(page.incomeTotal)", in: window)?
             .accessibilityFrame?()
         else {
@@ -4471,18 +4481,31 @@ struct AppWindowLayoutTests {
         }
         var found: [String] = []
         let inside = card.insetBy(dx: -0.5, dy: -0.5)
-        for (name, frame) in [("The income", income), ("The net income", netIncome), ("The bar", bar)]
+        for (name, frame) in [
+            ("The income", income), ("The net income", netIncome), ("What to set aside", setAside), ("The bar", bar),
+        ]
         where !inside.contains(frame) {
             found.append("\(name) is not within the card Příjmy: \(frame), the card \(card)")
         }
         if (income.maxY - netIncome.maxY).magnitude > 1 || (netIncome.minX - income.maxX - 48).magnitude > 1 {
             found.append("The net income is not beside the income, 48 points from it: \(netIncome), \(income)")
         }
+        let needsTwoRows = income.width + netIncome.width + setAside.width + 96 > card.width - 40 + 0.5
+        let isBesideNet =
+            (netIncome.maxY - setAside.maxY).magnitude <= 1 && (setAside.minX - netIncome.maxX - 48).magnitude <= 1
+        let isOnNextRow =
+            (setAside.minX - income.minX).magnitude <= 1
+            && (min(income.minY, netIncome.minY) - 12 - setAside.maxY).magnitude <= 1
+        if needsTwoRows ? !isOnNextRow : !isBesideNet {
+            let place =
+                needsTwoRows ? "under both, 12 points under the lower" : "beside the net income, 48 points from it"
+            found.append("What to set aside is not \(place): \(setAside), \(netIncome), \(income), the card \(card)")
+        }
         if (bar.height - 14).magnitude > 0.5 {
             found.append("The bar of the income is \(bar.height) points high, not 14")
         }
-        if (min(income.minY, netIncome.minY) - 14 - bar.maxY).magnitude > 1.5 {
-            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome)")
+        if (min(income.minY, netIncome.minY, setAside.minY) - 14 - bar.maxY).magnitude > 1.5 {
+            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome), \(setAside)")
         }
         var legendBottom = bar.minY
         for part in page.parts {
