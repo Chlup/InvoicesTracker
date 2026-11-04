@@ -28,7 +28,9 @@ import Observation
 ///   `saveDelay` the field says what it takes (`BudgetInput.refusedFields`): what is typed on the way to a valid
 ///   text ("30 0" of "30 000", "15," of "15,5") never shows the hint. An emptied field keeps the value too and says
 ///   nothing. A percentage or an amount above what the category can have is held at that limit while the field
-///   keeps the text.
+///   keeps the text. A field that hands back the text it shows, with no key typed into it, changes nothing: SwiftUI
+///   hands a field's text to the model as its editing ends, and that text is the value rounded as the field writes
+///   it.
 /// - Choosing the source or an invoice is saved at once, with any change that waits, and the screen loads again. An
 ///   invoice shown in place of a chosen one that has left the list is only shown: the choice stays until the person
 ///   picks another invoice.
@@ -219,10 +221,12 @@ final class BudgetModel: SavesTypedInput {
     /// `text` has been typed into the % field of `category`, which only a category held by a share has. The field keeps
     /// the text until editing ends. A percentage with at most one decimal, not negative, becomes the share at once,
     /// held to what the category can have. An empty field keeps the share as it is; any other text keeps it too, and
-    /// the field says what it takes once the typing has paused (`refuse(_:)`).
+    /// the field says what it takes once the typing has paused (`refuse(_:)`). The text the field shows while nothing
+    /// is typed into it changes nothing (`isShownValue(_:of:)`).
     func typePercent(_ text: String, for category: BudgetCategory) {
         guard takesShare(category) else { return }
         let field = BudgetField.percent(category)
+        guard !isShownValue(text, of: field) else { return }
         typedTexts[field] = text
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             accept(field)
@@ -240,10 +244,12 @@ final class BudgetModel: SavesTypedInput {
     /// keeps the text until editing ends. An amount in whole Kč becomes the fixed amount of a fixed category, or the
     /// share that gives exactly that amount of the net income of a share-held one, held to what it can have
     /// (`BudgetSplit.settingAmount(_:of:net:)`), at once. An empty field keeps the value as it is; any other text keeps
-    /// it too, and the field says what it takes once the typing has paused (`refuse(_:)`).
+    /// it too, and the field says what it takes once the typing has paused (`refuse(_:)`). The text the field shows
+    /// while nothing is typed into it changes nothing (`isShownValue(_:of:)`).
     func typeAmount(_ text: String, for category: BudgetCategory) {
         guard loaded != nil, category != settings.split.remainder else { return }
         let field = BudgetField.amount(category)
+        guard !isShownValue(text, of: field) else { return }
         typedTexts[field] = text
         switch TypedKc(text) {
         case .blank:
@@ -271,6 +277,20 @@ final class BudgetModel: SavesTypedInput {
     func toggleFixed(_ category: BudgetCategory) {
         forgetTyping(of: category)
         change { $0.togglingFixed(category, net: $1) }
+    }
+
+    /// Whether `text` is what `field` shows of the value of its category while nothing is typed into it. SwiftUI hands
+    /// a field its text as its editing ends, also when the field was only focused and left; that text is the value
+    /// rounded as the field writes it, "16,0" for a share of 16,03 % and "28 067" for one of 15 % of 187 111 Kč, so
+    /// taking it as typed would move the share it stands for.
+    private func isShownValue(_ text: String, of field: BudgetField) -> Bool {
+        guard typedTexts[field] == nil, let row = data?.rows.first(where: { $0.category == field.category }) else {
+            return false
+        }
+        return switch field {
+        case .percent: text == row.percentText
+        case .amount: text == row.amountText
+        }
     }
 
     /// Whether `category` is held by a share, so that its slider and its % field set it, once the screen has loaded.

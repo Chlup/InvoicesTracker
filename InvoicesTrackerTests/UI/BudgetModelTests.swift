@@ -262,6 +262,44 @@ struct BudgetModelTests {
         }
     }
 
+    /// SwiftUI hands the text of a field to the model as its editing ends, also when nothing was typed into it. That
+    /// text is the value as the field shows it, rounded, and changes nothing: a share set from koruny keeps its exact
+    /// share when its % field and then its Kč field hand their texts back, a share set in percent keeps it when its Kč
+    /// field does, and so does a fixed amount.
+    @Test func theTextAFieldShowsChangesNothingWhenItIsHandedBack() async throws {
+        try await EditorFixture.with { f in
+            let model = await loadedModel(of: f)
+            model.typeAmount("30 000", for: .savings)
+            model.endEditing(.savings)
+            model.typePercent("15", for: .investments)
+            model.endEditing(.investments)
+            model.typeAmount("20 000", for: .costs)
+            model.endEditing(.costs)
+            await model.saveNow()
+            let saved = f.app.appSettings.budget
+            #expect(saved.split.holding(of: .savings) == .share(Decimal(30_000) / Decimal(187_111)))
+            #expect(row(.savings, of: model)?.percentText == "16,0")
+
+            for field in [
+                BudgetField.percent(.savings), .amount(.savings), .amount(.investments), .amount(.costs),
+            ] {
+                let shown = try #require(row(field.category, of: model))
+                if case .percent = field {
+                    model.typePercent(shown.percentText, for: field.category)
+                } else {
+                    model.typeAmount(shown.amountText, for: field.category)
+                }
+                model.endEditing(field.category)
+
+                #expect(!model.hasUnsavedInput, "\(field)")
+                #expect(row(field.category, of: model) == shown, "\(field)")
+            }
+            await model.saveNow()
+            #expect(f.app.appSettings.budget == saved)
+            #expect(try await f.database.appSettings().budget == saved)
+        }
+    }
+
     @Test func junkInTheFieldsKeepsTheLastValueAndShowsAMessage() async throws {
         try await EditorFixture.with { f in
             let delay = ManualDelay()

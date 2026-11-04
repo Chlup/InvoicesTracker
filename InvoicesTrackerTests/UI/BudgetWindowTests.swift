@@ -9,6 +9,7 @@ import Testing
 /// - The row of the sidebar opens the screen, with Přehled's average as its key figure.
 /// - Koruny typed into the field of a category change the remainder key by key, and leaving the field shows the amount
 ///   as the screen writes it and saves the split.
+/// - A field that takes the focus and is left without a key typed changes nothing.
 /// - The slider of a category is one element that VoiceOver adjusts by 1 %, and the adjustment is saved at once.
 /// - Faktura shows the bill of the invoice it divides, and the menu of the invoices of the year picks another.
 ///
@@ -77,6 +78,51 @@ struct BudgetWindowTests {
                         let saved = f.app.appSettings.budget.split.allocation(net: 187_111, fixedMultiplier: 1)
                         #expect(saved.amounts[.savings] == 20_000)
                         #expect(saved.amounts[.spending] == 167_111)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A field that takes the focus and is left without a key typed changes nothing, though SwiftUI hands its text, the
+    /// value as the screen writes it, to the screen as its editing ends: a share set from koruny keeps its exact share
+    /// when its % field and its Kč field are left, a share set in percent keeps it when its Kč field is left, and a
+    /// fixed amount stays as it is. The split is set through the model, so that each field shows its value as the
+    /// screen writes it before the test takes the focus to it.
+    @Test func aFieldLeftWithoutTypingChangesNothing() async throws {
+        try await whileTypingAlone {
+            try await EditorFixture.with { f in
+                try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                    let model = try await showBudget(of: f.app, in: window)
+                    model.typeAmount("30 000", for: .savings)
+                    model.endEditing(.savings)
+                    model.typePercent("15", for: .investments)
+                    model.endEditing(.investments)
+                    model.typeAmount("20 000", for: .costs)
+                    model.endEditing(.costs)
+                    await model.saveNow()
+                    let saved = f.app.appSettings.budget
+                    #expect(saved.split.holding(of: .savings) == .share(Decimal(30_000) / Decimal(187_111)))
+                    #expect(saved.split.holding(of: .investments) == .share(decimal("0.15")))
+                    #expect(saved.split.holding(of: .costs) == .fixed(20_000))
+                    try await withAccessibilityElements {
+                        // 30 000 Kč of 187 111 Kč is 16,03 %, and 15 % of 187 111 Kč is 28 066,65 Kč.
+                        for (label, shown) in [
+                            ("Úspory v procentech", "16,0"), ("Úspory v korunách", "30\u{00A0}000"),
+                            ("Investice v korunách", "28\u{00A0}067"), ("Náklady v korunách", "20\u{00A0}000"),
+                        ] {
+                            try await waitUntil { textField(labelled: label, in: window)?.stringValue == shown }
+                            let field = try #require(textField(labelled: label, in: window))
+
+                            #expect(window.makeFirstResponder(field), "\(label)")
+                            try await layOut(window)
+                            #expect(window.makeFirstResponder(nil), "\(label)")
+                            try await layOut(window)
+                            await model.saveNow()
+
+                            #expect(f.app.appSettings.budget == saved, "\(label)")
+                            #expect(field.stringValue == shown, "\(label)")
+                        }
                     }
                 }
             }
