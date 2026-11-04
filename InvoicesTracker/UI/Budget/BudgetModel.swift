@@ -21,8 +21,14 @@ import Observation
 /// - A change of the split – the slider, a typed percentage or amount, the checkbox "pevná částka" and "Zbytek
 ///   dostane" – changes the choices the screen holds and shows them at once. It is saved `saveDelay` after the last
 ///   change, at once when a slide ends or a field is left, and when the app quits (`saveNow()`). A save writes the
-///   whole of the choices into the settings (`AppModel.updateAppSettings(_:)`); the settings are not data the screens
-///   show, so a save starts no reload.
+///   whole of the choices into the settings (`AppModel.updateAppSettings(in:_:)`); the settings are not data the
+///   screens show, so a save starts no reload.
+/// - A change belongs to the data that was open when it was made, the `Database` object, which a restore or an unlock
+///   replaces with another: it is written into that data alone. A change whose data is no longer open when it would be
+///   saved, or when the screen loads, is dropped with what was typed, logged and not written, and the screen says
+///   nothing of it. A load that sees other data opened, or the data let go, while it reads shows nothing of what it
+///   read: the data open now loads again and shows itself. When the app opens other data or lets the data go, it
+///   retires its model (`retire()`), which saves, loads and shows nothing from then on.
 /// - A typed text stays in its field until editing ends, also one that was taken, and is read key by key: a text that
 ///   can be read changes the split at once. A text that is no amount in whole Kč, or no percentage with at most one
 ///   decimal (a negative one included), keeps the value the category had, and once the typing has paused for
@@ -84,12 +90,19 @@ final class BudgetModel: SavesTypedInput {
     /// Whether `settings` holds a change that is not written yet.
     @ObservationIgnored private var hasChanges = false
 
+    /// The data the changes that wait to be saved were made on: the data the app had open when the first of them was
+    /// made, nil when none was (`markChanged()`). They are written into it alone (`saveNow()`).
+    @ObservationIgnored private var changesBelongTo: Database?
+
     /// The write that runs.
     @ObservationIgnored private var writeTask: Task<Void, Never>?
 
     /// How many loads have started. Only the latest one may show its result: a load that was started for a source or a
     /// year that has been replaced since must not undo the newer one.
     @ObservationIgnored private var loadsStarted = 0
+
+    /// Whether the app has replaced this model (`retire()`): it then saves, loads and shows nothing.
+    @ObservationIgnored private var isRetired = false
 
     /// A model of `app` that saves `saveDelay` after the last change of the split, and says that a typed text cannot be
     /// read `saveDelay` after the last key, waiting both out with `wait`, which a test replaces with a wait that it
@@ -108,22 +121,29 @@ final class BudgetModel: SavesTypedInput {
     // MARK: Loading
 
     /// Loads the net income of the source the screen shows for the selected year, and the choices from the settings
-    /// unless changes wait to be saved, and shows them. A figure that cannot be worked out leaves nothing to divide
+    /// unless changes wait to be saved, and shows them. Changes that wait but were made on other data than the data
+    /// open now are dropped first (`dropChanges()`). A figure that cannot be worked out leaves nothing to divide
     /// (`readSource()`); any other failure is logged (the domain and the code of the error alone) and shows
     /// `errorText` in place of the data, with the row of the sources above it (`failedSourceRow`). Cancellation keeps
-    /// what was shown without publishing this load. The model is known to the app from its first load on, so that a
-    /// quit saves what waits (`hasUnsavedInput`). A model whose app has gone has nothing to read, and shows
-    /// `errorText`.
+    /// what was shown without publishing this load, and so does other data opened, or the data let go, while it reads
+    /// (`mayShow(_:readFrom:)`). The model is known to the app from its first load on, so that a quit saves what waits
+    /// (`hasUnsavedInput`). A model whose app has gone has nothing to read, and shows `errorText`; a retired model
+    /// loads nothing.
     func load() async {
+        guard !isRetired else { return }
         app?.quitFlushes.register(self)
         loadsStarted += 1
         let thisLoad = loadsStarted
+        let openData = app?.database
+        if hasChanges, let openData, changesBelongTo !== openData {
+            dropChanges()
+        }
         if !hasUnsavedInput, let app {
             settings = app.appSettings.budget
         }
         do {
             let read = try await readSource()
-            guard thisLoad == loadsStarted, !Task.isCancelled else { return }
+            guard mayShow(thisLoad, readFrom: openData) else { return }
             loaded = read
             errorText = nil
             failedSourceRow = nil
@@ -131,7 +151,7 @@ final class BudgetModel: SavesTypedInput {
         } catch is CancellationError {
             return
         } catch {
-            guard thisLoad == loadsStarted, !Task.isCancelled else { return }
+            guard mayShow(thisLoad, readFrom: openData) else { return }
             AppModel.log("Loading Rozpočet", failedWith: error)
             loaded = nil
             data = nil
@@ -143,6 +163,13 @@ final class BudgetModel: SavesTypedInput {
                         invoices: []))
             }
         }
+    }
+
+    /// Whether the load numbered `load`, which started while the app had `database` open (nil when it had none), may
+    /// show what it read: it is the newest load and was not cancelled, the model has not been retired, and the data
+    /// open now is still `database`.
+    private func mayShow(_ load: Int, readFrom database: Database?) -> Bool {
+        load == loadsStarted && !Task.isCancelled && !isRetired && app?.database === database
     }
 
     /// Reads the year, today and the net income of the source the screen shows with the choices of now, and nothing of
@@ -192,7 +219,7 @@ final class BudgetModel: SavesTypedInput {
     func chooseSource(_ source: BudgetSource) async {
         if settings.source != source {
             settings.source = source
-            hasChanges = true
+            markChanged()
         }
         await saveNow()
         await load()
@@ -204,7 +231,7 @@ final class BudgetModel: SavesTypedInput {
         if settings.source != .invoice || settings.invoiceID != id {
             settings.source = .invoice
             settings.invoiceID = id
-            hasChanges = true
+            markChanged()
         }
         await saveNow()
         await load()
@@ -325,7 +352,7 @@ final class BudgetModel: SavesTypedInput {
         let split = edit(settings.split, BudgetBuilder.net(of: input))
         if split != settings.split {
             settings.split = split
-            hasChanges = true
+            markChanged()
             saveTimer.restart(after: saveDelay) {
                 await self.saveNow()
             }
@@ -364,8 +391,10 @@ final class BudgetModel: SavesTypedInput {
         }
     }
 
-    /// The typing has paused: the fields whose text could not be read, and which still hold it, say what they take.
+    /// The typing has paused: the fields whose text could not be read, and which still hold it, say what they take. A
+    /// retired model shows nothing.
     private func showRefusals() {
+        guard !isRetired else { return }
         for field in refusalsDue where typedTexts[field] != nil {
             refusedFields.insert(field)
         }
@@ -408,6 +437,17 @@ final class BudgetModel: SavesTypedInput {
         hasChanges || writeTask != nil
     }
 
+    /// Notes that `settings` holds a change that is not written yet. The first change that starts to wait records the
+    /// data the app has open (`changesBelongTo`), which the later ones join until they are saved. A retired model keeps
+    /// no change.
+    private func markChanged() {
+        guard !isRetired else { return }
+        if !hasChanges {
+            changesBelongTo = app?.database
+        }
+        hasChanges = true
+    }
+
     /// Saves what waits as soon as it can, without waiting out the delay.
     private func saveWithoutDelay() {
         guard hasChanges else { return }
@@ -416,24 +456,65 @@ final class BudgetModel: SavesTypedInput {
         }
     }
 
-    /// Writes the choices into the settings of the app when a change waits, and returns when it is written. The end of
-    /// the wait calls this, as do a slide that ends, a field that is left, the choice of a source or an invoice, and a
-    /// quit. When a save already runs, this waits for it and then saves what has come since. A save that cannot be
-    /// written is logged by the app (`AppModel.updateAppSettings(_:)`), and the next load shows what the settings hold.
-    /// A model whose app has gone writes nothing.
+    /// Writes the choices into the settings of the data the changes were made on when a change waits, and returns when
+    /// it is written. The end of the wait calls this, as do a slide that ends, a field that is left, the choice of a
+    /// source or an invoice, leaving the screen and a quit. When a save already runs, this waits for it and then saves
+    /// what has come since. Changes whose data is no longer open – a restore or an unlock opened other data, or the
+    /// data was let go – are dropped instead (`dropChanges()`), and so are changes made while no data was open. A save
+    /// that cannot be written is logged by the app (`AppModel.updateAppSettings(in:_:)`), and the next load shows what
+    /// the settings hold. A model whose app has gone writes nothing, and a retired model does nothing.
     func saveNow() async {
         saveTimer.cancel()
         while let running = writeTask {
             await running.value
         }
-        guard hasChanges else { return }
+        guard !isRetired, hasChanges else { return }
+        guard let app else {
+            hasChanges = false
+            changesBelongTo = nil
+            return
+        }
+        guard let database = changesBelongTo, app.database === database else {
+            dropChanges()
+            return
+        }
         hasChanges = false
+        changesBelongTo = nil
         let budget = settings
         let task = Task {
-            await self.app?.updateAppSettings { $0.budget = budget }
+            await app.updateAppSettings(in: database) { $0.budget = budget }
             self.writeTask = nil
         }
         writeTask = task
         await task.value
+    }
+
+    /// Drops the changes that wait to be saved, which were made on data that is no longer open, with what was typed
+    /// into the fields and the hints of it, so that nothing of them is written: the choices are those of the settings
+    /// of the app again, which the next load shows. Dropped changes are logged.
+    private func dropChanges() {
+        if hasChanges {
+            AppModel.log("Dropped the changes of Rozpočet made on data that was replaced")
+        }
+        saveTimer.cancel()
+        refusalTimer.cancel()
+        hasChanges = false
+        changesBelongTo = nil
+        typedTexts = [:]
+        refusedFields = []
+        refusalsDue = []
+        if let app {
+            settings = app.appSettings.budget
+        }
+    }
+
+    /// Retires the model, which the app replaces with a new one when it opens other data or lets the data go
+    /// (`AppModel.adopt(_:)`, `AppModel.lockAfterFailedChange(_:)`): the waits of the save and of the hints end without
+    /// their work, the changes that wait to be saved are dropped with what was typed (`dropChanges()`), and from now on
+    /// the model saves, loads and shows nothing, so that it never writes into the data opened since. A write that runs
+    /// goes on into the data it was started for.
+    func retire() {
+        isRetired = true
+        dropChanges()
     }
 }

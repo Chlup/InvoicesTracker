@@ -1,13 +1,15 @@
 import Foundation
+import os
 import Testing
 @testable import InvoicesTracker
 
 /// The model of Rozpočet: what a load reads and shows, how the slider, the typed fields, the checkbox and the choice of
-/// the remainder change the split, when the split is saved in the settings of the app, and how the source and the
-/// invoice are chosen. The data is the editor's fixture as of 17. 10. 2026, whose average net income is 187 111 Kč a
-/// month and whose latest paid invoice is 20260902. A model saves 500 ms after the last change unless a test says
-/// otherwise; the tests that watch the wait give it a `ManualDelay`. In every expected string `\u{00A0}` is the
-/// no-break space.
+/// the remainder change the split, when the split is saved in the settings of the app, how the source and the invoice
+/// are chosen, and that a change is written only into the data it was made on. The data is the editor's fixture as of
+/// 17. 10. 2026, whose average net income is 187 111 Kč a month and whose latest paid invoice is 20260902; the tests
+/// of data that is replaced start fresh data with a backup of their own instead. A model saves 500 ms after the last
+/// change unless a test says otherwise; the tests that watch the wait give it a `ManualDelay`. In every expected string
+/// `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct BudgetModelTests {
@@ -63,6 +65,35 @@ struct BudgetModelTests {
         try await database.write { connection in
             try connection.run("UPDATE payment SET date = ? WHERE invoice_id = ?", [.text("2027-02-30"), .integer(id)])
         }
+    }
+
+    /// An app on fresh data in `directory` whose budget has Úspory at 70 %, the local backup of that data, and a model
+    /// of Rozpočet that has loaded and waits for `delay` before it saves: the app's own (`AppModel.budgetModel`)
+    /// unless `heldByTheApp` is false.
+    private func backedUpBudget(
+        in directory: URL, delay: ManualDelay, heldByTheApp: Bool = true
+    ) async throws -> (app: AppModel, model: BudgetModel, backup: BackupListing) {
+        let app = try await makeSettingsApp(in: directory)
+        let model = BudgetModel(app: app, saveDelay: .milliseconds(500), wait: delay.wait)
+        if heldByTheApp {
+            app.budgetModel = model
+        }
+        await model.load()
+        model.slide(.savings, toPercent: 70)
+        await model.saveNow()
+        await app.didWriteAndBackUp()
+        let backup = try #require(try app.backups.localBackups().first)
+        #expect(try await #require(app.database).appSettings().budget.split.holding(of: .savings) == .share(seventy))
+        return (app, model, backup)
+    }
+
+    /// The share of Úspory in the backup of `backedUpBudget(in:delay:heldByTheApp:)`.
+    private let seventy = decimal("0.7")
+
+    /// The holding of Úspory as the app shows it and as the data open now stores it.
+    private func savingsShownAndStored(by app: AppModel) async throws -> (shown: BudgetHolding, stored: BudgetHolding) {
+        let stored = try await #require(app.database).appSettings().budget.split.holding(of: .savings)
+        return (app.appSettings.budget.split.holding(of: .savings), stored)
     }
 
     /// Ends the wait of the hint of a refused text, which must be the only wait there is, and waits until `model`
@@ -250,6 +281,29 @@ struct BudgetModelTests {
         #expect(app.appSettings.budget.source == .actual)
     }
 
+    /// A load that sees the data let go or replaced while it reads shows nothing of it, not even the line of a failure:
+    /// what it read is not the data open now, whose own load shows it. Here the data is let go as the load has
+    /// started, as a change of the keys or a restore that fails half way lets it go.
+    @Test func aLoadThatStraddlesALockOfTheDataShowsNothing() async throws {
+        try await EditorFixture.with { f in
+            let model = BudgetModel(app: f.app)
+            let load = Task.immediate { await model.load() }
+
+            f.app.database = nil
+            await load.value
+
+            #expect(model.data == nil)
+            #expect(model.errorText == nil)
+            #expect(model.failedSourceRow == nil)
+
+            // A load of the data open again shows it.
+            f.app.database = f.database
+            await model.load()
+
+            #expect(model.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
+        }
+    }
+
     /// A choice of the source is saved at once and then loads the figures of the new source. Until they come, the
     /// screen builds and changes the split from the figures it has and the source they were read for, so that a change
     /// made in the meantime works out from what the screen shows: ticking "pevná částka" keeps the amount shown.
@@ -338,6 +392,28 @@ struct BudgetModelTests {
             #expect(model.data?.source == .actual)
             #expect(model.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
             #expect(try await f.database.appSettings().budget.source == .actual)
+        }
+    }
+
+    /// A source picked from the row that a failed load shows is saved as any other choice, although the screen has
+    /// shown nothing yet: it belongs to the data that is open when it is picked.
+    @Test func aSourcePickedAfterAFailedLoadIsSaved() async throws {
+        try await EditorFixture.with { f in
+            try await storeAnInvoiceThatCannotBeListed(in: f.database)
+            await f.app.updateAppSettings { $0.budget.source = .invoice }
+            let model = BudgetModel(app: f.app)
+            await model.load()
+            #expect(model.errorText == BudgetModel.loadFailureText)
+            #expect(model.failedSourceRow?.source == .invoice)
+
+            await model.chooseSource(.actual)
+
+            #expect(try await f.database.appSettings().budget.source == .actual)
+            #expect(f.app.appSettings.budget.source == .actual)
+            #expect(!model.hasUnsavedInput)
+            #expect(model.errorText == nil)
+            #expect(model.data?.source == .actual)
+            #expect(model.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
         }
     }
 
@@ -752,6 +828,134 @@ struct BudgetModelTests {
         await orphan.saveNow()
     }
 
+    // MARK: Data that is replaced
+
+    /// A restore retires the model of Rozpočet that the app held, with the change that waited in it to be saved: the
+    /// change was made on the data the restore replaced, and neither the end of its wait nor a quit writes it into the
+    /// restored data. The app has a new model for the restored data.
+    @Test func aRestoreRetiresTheBudgetModelAndItsWaitingChange() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let delay = ManualDelay()
+        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay)
+        model.slide(.savings, toPercent: 15)
+        try await waitUntil { delay.armed == 1 }
+
+        _ = try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+
+        #expect(app.budgetModel !== model)
+        #expect(!model.hasUnsavedInput)
+        #expect(!app.hasUnsavedInput)
+        #expect(delay.armed == 0)
+        // Had the wait of the old model gone on, its end would save now; a quit saves what the screens hold.
+        delay.fire()
+        await letWaitingJobsRun()
+        await model.saveNow()
+        await app.flushUnsavedInput()
+
+        let savings = try await savingsShownAndStored(by: app)
+        #expect(savings.shown == .share(seventy))
+        #expect(savings.stored == .share(seventy))
+    }
+
+    /// A change that waits for the write of the one before it is dropped when that write ends after a restore: both
+    /// were made on the data the restore replaced. Here the first write starts once the restore has closed that data,
+    /// and waits for it until the restore is over.
+    @Test(.hangGuard) func aSaveWaitingBehindAnotherWriteIsDroppedAfterARestore() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let delay = ManualDelay()
+        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay)
+        let replaced = try #require(app.database)
+        var hold: DatabaseHold?
+        defer { hold?.end() }
+        var first: Task<Void, Never>?
+        var second: Task<Void, Never>?
+        app.vault.stepObserver = { step in
+            guard step == .databaseReplaced else { return }
+            hold = DatabaseHold(replaced)
+            model.slide(.savings, toPercent: 20)
+            first = Task.immediate { await model.saveNow() }
+            model.slide(.savings, toPercent: 15)
+            second = Task.immediate { await model.saveNow() }
+        }
+
+        _ = try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+        app.vault.stepObserver = nil
+        #expect(model.hasUnsavedInput)
+        hold?.end()
+        await first?.value
+        await second?.value
+
+        #expect(app.database !== replaced)
+        #expect(!model.hasUnsavedInput)
+        let savings = try await savingsShownAndStored(by: app)
+        #expect(savings.shown == .share(seventy))
+        #expect(savings.stored == .share(seventy))
+    }
+
+    /// A change of the keys or a restore that fails after the vault locked the data retires the model of Rozpočet that
+    /// the app held, with the change that waited in it to be saved: the end of its wait, after the data has been
+    /// unlocked again, writes nothing into the data that unlocking opened.
+    @Test func aFailedChangeThatLocksTheAppRetiresTheBudgetModel() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let delay = ManualDelay()
+        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay)
+        model.slide(.savings, toPercent: 15)
+        try await waitUntil { delay.armed == 1 }
+        let trap = VaultStepTrap.failingRestoreBeforeTheSwap(of: app)
+        defer { trap.release() }
+
+        await #expect(throws: (any Error).self) {
+            try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+        }
+
+        #expect(app.phase == .locked)
+        #expect(app.budgetModel !== model)
+        #expect(!model.hasUnsavedInput)
+        #expect(delay.armed == 0)
+        trap.release()
+        await app.unlockWithDevice()
+        #expect(app.phase == .ready)
+        // Had the wait of the old model gone on, its end would save now.
+        delay.fire()
+        await letWaitingJobsRun()
+        await model.saveNow()
+
+        let savings = try await savingsShownAndStored(by: app)
+        #expect(savings.shown == .share(seventy))
+        #expect(savings.stored == .share(seventy))
+    }
+
+    /// Even a model that the app does not hold, and so never retires, writes a change only into the data it was made
+    /// on: once that data has been replaced, saving drops the change, and so does a load, which then shows the split of
+    /// the data open now. Nothing of the change reaches the restored data.
+    @Test(arguments: [false, true])
+    func aChangeMadeOnReplacedDataIsNeverWrittenIntoTheDataOpenNow(loadingFirst: Bool) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let delay = ManualDelay()
+        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay, heldByTheApp: false)
+        model.slide(.savings, toPercent: 15)
+
+        _ = try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+
+        #expect(model.hasUnsavedInput)
+        if loadingFirst {
+            await model.load()
+
+            #expect(!model.hasUnsavedInput)
+            #expect(row(.savings, of: model)?.percentText == "70,0")
+        }
+        await model.saveNow()
+
+        #expect(!model.hasUnsavedInput)
+        let savings = try await savingsShownAndStored(by: app)
+        #expect(savings.shown == .share(seventy))
+        #expect(savings.stored == .share(seventy))
+    }
+
     // MARK: Relaunch
 
     @Test func theSplitSurvivesARelaunch() async throws {
@@ -781,5 +985,33 @@ struct BudgetModelTests {
             #expect(row(.costs, of: again)?.amountText == "20\u{00A0}000")
             #expect(row(.savings, of: again)?.percentText == "15,0")
         }
+    }
+}
+
+/// Keeps a database busy until `end()`, so that what is asked of it meanwhile waits: for a test that needs a write to
+/// be still running while something else happens. The hold runs on the actor of the database and keeps its thread
+/// while it waits, so it may only hold a database that nothing the test waits for needs any more, such as one that a
+/// restore has closed and replaced.
+private final class DatabaseHold: Sendable {
+    private let release = DispatchSemaphore(value: 0)
+    private let isHolding = OSAllocatedUnfairLock(initialState: false)
+
+    /// Holds `database`, and returns once the hold runs on its actor: whatever is asked of the database from now on
+    /// waits for `end()`.
+    init(_ database: Database) {
+        Task.detached { [release, isHolding] in
+            _ = try? await database.read { _ in
+                isHolding.withLock { $0 = true }
+                release.wait()
+            }
+        }
+        while !isHolding.withLock({ $0 }) {
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+    }
+
+    /// Ends the hold: what was asked of the database runs. Ending it again does nothing more.
+    func end() {
+        release.signal()
     }
 }
