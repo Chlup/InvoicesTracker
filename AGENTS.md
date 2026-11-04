@@ -167,9 +167,10 @@ user before building.
     under both.
   - **Dashboard** (Přehled), which starts with the same result card as the reports.
 
-  Rozpočet is a tool like the Simulátor, laid out as a report: the source row (where the net income comes from), the
-  result card, the "Rozdělení" card with a share slider and a split bar for each category, and a note
-  (`UI/Budget/`: `BudgetSourceRow`, `BudgetSplitCard`).
+  Rozpočet is a tool like the Simulátor, laid out as a report: the source row (where the net income comes from); the
+  result card, with the key figure and one split bar of all the parts; the "Rozdělení" card, with a row for each
+  category that has a share slider, or a read-only rail where the category is held by a fixed amount or is the
+  remainder; and a note (`UI/Budget/`: `BudgetSourceRow`, `BudgetSplitCard`).
 
   A screen's title is its sidebar label, except Import, whose title reads "Import faktur". The toolbar has no control
   for the day: the current year counts money received through today and invoices issued through the end of the
@@ -206,7 +207,8 @@ user before building.
   - card (`Card`, with its title `CardTitle`);
   - section heading: the title of a section of a page that stands outside any card, such as "Rozpis výpočtu" over the
     bill cards (`SectionHeading`);
-  - key figure;
+  - key figure (`KeyFigureView`), with an optional pill beside its eyebrow, after it on the same line
+    (`KeyFigureView(eyebrowPill:)`), such as the orange "odhad" of Rozpočet;
   - levy bar: one bar split into three solid parts in the authorities' colours, each as wide as its levy; short names
     and amounts under it. The advances and what is left to pay appear only in the popover on hover or focus;
   - figure tile: label, figure and note. Tiles sit next to each other with one gap and are never stretched into
@@ -231,8 +233,10 @@ user before building.
     (`ShareSlider`, `ShareRail`, in `ShareSlider.swift`);
   - split bar: one bar divided into any parts, as in Rozpočet, each as wide as its share, with a popover on hover
     or focus (`SplitBarView`, in `SplitBar.swift`). It shares the popover panel and metrics with the levy bar
-    (`LevyPopoverPanel`, `LevyBarMetrics`). The key figure takes an `eyebrowPill` above it
-    (`KeyFigureView(eyebrowPill:)`), and `AdaptiveColumns.rowSpacing` sets the gap between its rows;
+    (`LevyPopoverPanel`, `LevyBarMetrics`);
+  - adaptive columns: equal columns that fill the width, as many as fit, such as cards side by side or the legend of
+    the split bar (`AdaptiveColumns`). The rows are as far apart as the columns unless `rowSpacing` gives them a gap
+    of their own, as the rows of that legend have;
   - filter chip: the accent when selected, bg-card otherwise, 28 tall (`FilterChip`);
   - buttons: 32 for page and toolbar actions, 28 inside cards, segments and filters. A link is text in
     accent-text (`TextLinkButtonStyle`, `calloutLink()` in the callout size), and a destructive entry point is a
