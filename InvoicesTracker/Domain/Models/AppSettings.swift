@@ -97,6 +97,9 @@ nonisolated struct AppSettings: Sendable, Hashable, Codable {
     /// When the folder of the backups outside the Mac was chosen: the reminder of those backups counts from it while
     /// the folder has no backup yet.
     var backupFolderChosen: Date?
+
+    /// The choices of the budget screen.
+    var budget = BudgetSettings()
 }
 
 nonisolated extension AppSettings {
@@ -118,5 +121,7 @@ nonisolated extension AppSettings {
         replacedRecoveryCodeLabel = try values.decodeIfPresent(String.self, forKey: .replacedRecoveryCodeLabel)
         replacedRecoveryCodeNumber = try values.decodeIfPresent(Int.self, forKey: .replacedRecoveryCodeNumber)
         backupFolderChosen = try values.decodeIfPresent(Date.self, forKey: .backupFolderChosen)
+        // Lenient: one malformed budget must not make the whole settings row unreadable.
+        budget = (try? values.decodeIfPresent(BudgetSettings.self, forKey: .budget)) ?? budget
     }
 }

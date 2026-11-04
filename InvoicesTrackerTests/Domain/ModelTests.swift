@@ -407,4 +407,34 @@ struct ModelTests {
         let stored = try JSONEncoder().encode(AppSettings(idleLock: .never))
         #expect(try JSONDecoder().decode(AppSettings.self, from: stored).idleLock == .never)
     }
+
+    /// Settings stored before the budget existed read an empty budget and keep everything else they say.
+    @Test func settingsStoredBeforeTheBudgetReadAnEmptyBudget() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"appearance":"dark"}"#.utf8))
+
+        #expect(settings.budget == BudgetSettings())
+        #expect(settings.appearance == .dark)
+    }
+
+    /// One malformed budget must not make the whole settings row unreadable: the budget alone falls back.
+    @Test func aMalformedBudgetFallsBackAloneAndTheOtherSettingsSurvive() throws {
+        let stored = Data(#"{"appearance":"dark","chartWithVAT":true,"budget":{"source":"nonsense"}}"#.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: stored)
+
+        #expect(settings.budget == BudgetSettings())
+        #expect(settings.appearance == .dark)
+        #expect(settings.chartWithVAT == true)
+    }
+
+    /// A share set from an amount in Kč is kept without loss, so the amount comes back exactly after a save.
+    @Test func aShareSetFromKorunyRoundTripsExactly() throws {
+        let split = BudgetSplit.empty.settingAmount(30_000, of: .savings, net: 190_037)
+        let settings = AppSettings(budget: BudgetSettings(split: split, source: .invoice, invoiceID: 42))
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+
+        #expect(decoded == settings)
+        #expect(decoded.budget.split.allocation(net: 190_037, fixedMultiplier: 1).amounts[.savings] == 30_000)
+    }
 }
