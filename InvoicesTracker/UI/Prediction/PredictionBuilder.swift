@@ -71,6 +71,10 @@ nonisolated enum PredictionBuilder {
                 ? netIncome(outcome)
                 : PredictionNetIncome(
                     label: "Čistý příjem průměrně za měsíc (odhad)", amount: "—", sub: incompleteText),
+            setAside: prediction.isComplete
+                ? setAside(outcome)
+                : PredictionSetAside(
+                    label: "Odkládat průměrně za měsíc (odhad)", amount: unknownAmount, sub: incompleteText),
             nextYearNote: nextYearNote(prediction),
             banner: banner(
                 prediction, rulesAreEstimate: rulesAreEstimate, hasProvisionalIncome: hasProvisionalIncome),
@@ -279,6 +283,19 @@ nonisolated enum PredictionBuilder {
                 ? "Čistý příjem průměrně za měsíc" : "Čistý příjem průměrně za měsíc (odhad)",
             amount: estimate(CzechFormat.wholeKc(net.monthlyKc), when: sign),
             sub: "za celý rok " + estimate(CzechFormat.wholeKc(net.yearKc), when: sign) + share)
+    }
+
+    /// What to put aside each month for the irregular levy payments (`PredictionOutcome.setAsideTotal`): the average
+    /// per month as the amount, and under it the sum of the whole year. The result is of 31 December, so the average is
+    /// over all twelve months. The caption says that the figure is an estimate in a year in progress, as the head of
+    /// the income does, and the two figures have the sign of an estimate only where the net income's have it.
+    private static func setAside(_ outcome: PredictionOutcome) -> PredictionSetAside {
+        let sign = marksLevies(outcome)
+        return PredictionSetAside(
+            label: outcome.prediction.isClosed ? "Odkládat průměrně za měsíc" : "Odkládat průměrně za měsíc (odhad)",
+            amount: estimate(CzechFormat.wholeKc(outcome.setAsideMonthly), when: sign),
+            sub: "za celý rok " + estimate(CzechFormat.wholeKc(outcome.setAsideTotal), when: sign)
+                + " · doplatek a zálohy na daň")
     }
 
     /// The sum that is paid only in the next year, which is that year's income, or nil when there is none. The note

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The sizes and gaps of the card Příjmy that its parts do not set themselves, in points.
 private nonisolated enum PredictionIncomeCardMetrics {
-    /// The space between the two figures where they stand side by side.
+    /// The space between the figures where they stand side by side.
     static let figureSpacing: CGFloat = 48
 
     /// The space between the hairline and the figures under it.
@@ -20,9 +20,10 @@ private nonisolated enum PredictionIncomeCardMetrics {
 }
 
 /// The card Příjmy of Odhad odvodů: under its title and the line that says what the estimate counts, a hairline and the
-/// two figures side by side (the income of the year with its note, and the net income per month under a green dot, with
-/// the sum of the whole year under it), then the bar of the income and its legend in one line that wraps, and, where
-/// some money is paid only in the next year, the note about it in the tone of an estimate.
+/// three figures side by side (the income of the year with its note, the net income per month under a green dot, with
+/// the sum of the whole year under it, and what to set aside per month, with the sum of the year), then the bar of the
+/// income and its legend in one line that wraps, and, where some money is paid only in the next year, the note about
+/// it in the tone of an estimate.
 ///
 /// VoiceOver reads the card as a group under "Příjmy", each figure and each item of the legend as one phrase, and the
 /// bar as a picture named by the head of the income and its total.
@@ -43,7 +44,7 @@ struct PredictionIncomeCard: View {
         }
     }
 
-    /// The income and the net income under a hairline, 48 points apart, each as wide as its words.
+    /// The income, the net income and what to set aside under a hairline, 48 points apart, each as wide as its words.
     private var figures: some View {
         VStack(alignment: .leading, spacing: 0) {
             Hairline()
@@ -53,6 +54,9 @@ struct PredictionIncomeCard: View {
                     FigureTileData(
                         label: page.netIncome.label, figure: page.netIncome.amount, note: page.netIncome.sub,
                         marksNetIncome: true))
+                FigureTile(
+                    FigureTileData(
+                        label: page.setAside.label, figure: page.setAside.amount, note: page.setAside.sub))
             }
             .padding(.top, PredictionIncomeCardMetrics.figuresTop)
             .padding(.bottom, PredictionIncomeCardMetrics.figuresBottom)

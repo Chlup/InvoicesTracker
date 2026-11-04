@@ -152,6 +152,9 @@ struct PredictionGoldenTests {
         #expect(Authority.allCases.map { result.balance($0).remaining } == [68_786, 97_272, 32_644])
         #expect(outcome.owedTotal == 198_702)
         #expect(outcome.overpaidTotal == 0)
+        // What to set aside: the tax advances of 46 000 and the 198 702 that are left to pay, over twelve months.
+        #expect(outcome.setAsideTotal == 244_702)
+        #expect(outcome.setAsideMonthly == 20_392)
         #expect(CzechFormat.percent(result.marginalTotal) == "37,8\u{00A0}%")
         // The engine was given the 11 payments received by today and the 4 expected ones.
         #expect(outcome.input.receipts.count == 15)
@@ -262,6 +265,9 @@ struct PredictionGoldenTests {
         expectFigures(outcome, income: 0, tax: 0, social: 60_056, health: 39_664)
         #expect(outcome.owedTotal == 0)
         #expect(outcome.overpaidTotal == 168_360)
+        // Nothing is owed, so only the tax advances of 46 000 are set aside, and an overpayment lowers nothing.
+        #expect(outcome.setAsideTotal == 46_000)
+        #expect(outcome.setAsideMonthly == 3_833)
         #expect(outcome.prediction.clients.isEmpty)
     }
 

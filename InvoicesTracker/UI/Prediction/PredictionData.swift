@@ -66,6 +66,25 @@ nonisolated struct PredictionNetIncome: Sendable, Hashable {
     var sub: String
 }
 
+/// What to put aside each month for the irregular levy payments, as the card Příjmy shows it beside the net income: a
+/// caption, the average per month as the amount, and under it the sum of the whole year. The three texts are read as
+/// one.
+nonisolated struct PredictionSetAside: Sendable, Hashable {
+    /// What the amount is: "Odkládat průměrně za měsíc", and "Odkládat průměrně za měsíc (odhad)" for a year in
+    /// progress.
+    var label: String
+
+    /// The average per month in whole Kč: "20 392 Kč", or "—" while the estimate is not complete. It has the sign of an
+    /// estimate only in a year that is over and that the engine worked out with the rules of another year, as the
+    /// levies it comes from have.
+    var amount: String
+
+    /// The sum of the whole year that the amount is the average of, and what it is made of: "za celý rok 244 702 Kč ·
+    /// doplatek a zálohy na daň". The sum has the sign of an estimate as the amount does. While the estimate is not
+    /// complete it is the sentence that says so.
+    var sub: String
+}
+
 // MARK: - The months of the clients
 
 /// What a month of a client holds, which says how its cell is drawn: the colours are the view's.
@@ -199,6 +218,10 @@ nonisolated struct PredictionPage: Sendable, Hashable {
     /// What the income leaves after the levies, beside the income: the average per month and the sum of the whole
     /// year.
     var netIncome: PredictionNetIncome
+
+    /// What to put aside each month for the tax advances and the payment that is left with the returns, beside the net
+    /// income: the average per month and the sum of the whole year.
+    var setAside: PredictionSetAside
 
     /// The sum that is paid only in the next year, or nil when there is none.
     var nextYearNote: String?

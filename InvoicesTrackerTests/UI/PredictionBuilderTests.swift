@@ -164,6 +164,7 @@ struct PredictionBuilderTests {
     private func incomeTexts(of page: PredictionPage) -> [String] {
         var texts = [page.incomeSub, page.incomeNote, page.incomeHead, page.incomeTotal]
         texts += [page.netIncome.label, page.netIncome.amount, page.netIncome.sub]
+        texts += [page.setAside.label, page.setAside.amount, page.setAside.sub]
         texts += page.parts.flatMap { [$0.text, $0.value] }
         return texts + [page.nextYearNote].compactMap { $0 }
     }
@@ -296,6 +297,11 @@ struct PredictionBuilderTests {
                 == PredictionNetIncome(
                     label: "Čistý příjem průměrně za měsíc (odhad)", amount: "189\u{A0}698\u{A0}Kč",
                     sub: "za celý rok 2\u{A0}276\u{A0}375\u{A0}Kč · 83,0\u{A0}% příjmů po odvodech"))
+        #expect(
+            page.setAside
+                == PredictionSetAside(
+                    label: "Odkládat průměrně za měsíc (odhad)", amount: "20\u{00A0}392\u{00A0}Kč",
+                    sub: "za celý rok 244\u{00A0}702\u{00A0}Kč · doplatek a zálohy na daň"))
         #expect(
             page.nextYearNote
                 == "290\u{A0}193\u{A0}Kč přijde až v roce 2027 (faktury zaplacené po 31.\u{A0}12.)"
@@ -838,8 +844,13 @@ struct PredictionBuilderTests {
     /// tax at nothing, and the children's 37 524 Kč are paid as a bonus. The taxpayer's credit is used only as far as
     /// the tax goes.
     @Test func aNegativeTaxReadsAsABonus() throws {
-        let page = try makePage(of: inputWithOnePaymentThatLeavesTheTaxAsABonus())
+        let outcome = try outcome(of: inputWithOnePaymentThatLeavesTheTaxAsABonus())
+        let page = PredictionBuilder.page(outcome)
         let tax = try section("Daň z příjmů", in: page)
+
+        // A bonus never lowers what is set aside: it is the advances and what is owed, and not less than the advances.
+        #expect(outcome.setAsideTotal == outcome.result.balance(.tax).advancesPaid + outcome.owedTotal)
+        #expect(outcome.setAsideTotal >= outcome.result.balance(.tax).advancesPaid)
 
         let part = page.levyBar.parts[0]
         #expect(part.authority == .tax)
@@ -1132,6 +1143,12 @@ struct PredictionBuilderTests {
         #expect(page.netIncome.label == "Čistý příjem průměrně za měsíc")
         #expect(page.netIncome.amount.hasPrefix(sign))
         #expect(page.netIncome.sub.hasPrefix("za celý rok " + sign))
+        // What is set aside is made from the same levies, so its amount and its sum have the sign too.
+        #expect(page.setAside.label == "Odkládat průměrně za měsíc")
+        #expect(page.setAside.amount == sign + CzechFormat.wholeKc(outcome.setAsideMonthly))
+        #expect(
+            page.setAside.sub
+                == "za celý rok " + sign + CzechFormat.wholeKc(outcome.setAsideTotal) + " · doplatek a zálohy na daň")
         // The sign is on the figures of the levies, in the legend, the rows and the readings of the bar, on the figure
         // of what is left to settle and on the two figures of the net income, and on no other text of the page.
         let marked = texts(of: page).filter { $0.contains("≈") }
@@ -1139,10 +1156,12 @@ struct PredictionBuilderTests {
         #expect(marked.contains(page.due.figure))
         #expect(marked.contains(page.netIncome.amount))
         #expect(marked.contains(page.netIncome.sub))
+        #expect(marked.contains(page.setAside.amount))
+        #expect(marked.contains(page.setAside.sub))
         let unmarked = [
             page.keyFigure.eyebrow, page.keyFigure.sentence, page.keyFigure.share, page.due.eyebrow,
             page.due.sentence, page.levyBar.header, page.incomeSub, page.incomeNote, page.incomeHead,
-            page.incomeTotal, page.netIncome.label,
+            page.incomeTotal, page.netIncome.label, page.setAside.label,
         ].compactMap { $0 }
         #expect(unmarked.allSatisfy { !$0.contains("≈") }, "\(unmarked.filter { $0.contains("≈") })")
         #expect(page.keyFigure.eyebrow == "Odvody za rok 2021 – skutečnost")
@@ -1193,7 +1212,10 @@ struct PredictionBuilderTests {
             page.due.sentence
                 == "Zálohy " + CzechFormat.wholeKc(outcome.result.advancesPaidTotal)
                 + " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů.")
-        let marked = resultTexts(of: page) + [page.netIncome.amount, page.netIncome.sub, page.incomeTotal]
+        let marked =
+            resultTexts(of: page) + [
+                page.netIncome.amount, page.netIncome.sub, page.incomeTotal, page.setAside.amount, page.setAside.sub,
+            ]
         #expect(marked.filter { $0.contains("≈") }.isEmpty, "\(marked.filter { $0.contains("≈") })")
         #expect(page.netIncome.label == "Čistý příjem průměrně za měsíc (odhad)")
         #expect(page.banner.hasPrefix("Odhad vychází z faktur do 15.\u{A0}1.\u{A0}2027"))
@@ -1579,6 +1601,10 @@ struct PredictionBuilderTests {
         #expect(page.due.figure == "—")
         #expect(page.incomeTotal == "—")
         #expect(page.netIncome.amount == "—")
+        #expect(
+            page.setAside
+                == PredictionSetAside(
+                    label: "Odkládat průměrně za měsíc (odhad)", amount: "—", sub: PredictionBuilder.incompleteText))
         #expect(page.left.isEmpty && page.right.isEmpty)
         #expect(page.parts.allSatisfy { $0.fraction == 0 })
         #expect(page.parts[0].value == PredictionBuilder.kc(ofHalere: outcome.prediction.receivedHalere))

@@ -650,6 +650,10 @@ struct PredictionWindowTests {
                     readings.contains(
                         "Čistý příjem průměrně za měsíc (odhad), 189\u{00A0}698\u{00A0}Kč,"
                             + " za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč · 83,0\u{00A0}% příjmů po odvodech"))
+                #expect(
+                    readings.contains(
+                        "Odkládat průměrně za měsíc (odhad), 20\u{00A0}392\u{00A0}Kč,"
+                            + " za celý rok 244\u{00A0}702\u{00A0}Kč · doplatek a zálohy na daň"))
                 let barLabel = "Příjmy za rok 2026 (odhad): 2\u{00A0}743\u{00A0}157\u{00A0}Kč"
                 let bar = try #require(accessibilityElement(labelled: barLabel, in: window))
                 #expect(bar.accessibilityRole?() == .image)
@@ -687,6 +691,7 @@ struct PredictionWindowTests {
                     readings.contains {
                         $0.hasPrefix("Čistý příjem průměrně za měsíc, 199\u{00A0}441\u{00A0}Kč, za celý rok")
                     })
+                #expect(readings.contains { $0.hasPrefix("Odkládat průměrně za měsíc, ") })
                 #expect(!readings.contains { $0.contains("odhad") })
             }
         }
@@ -710,7 +715,29 @@ struct PredictionWindowTests {
                 #expect(
                     readings.contains(
                         "Čistý příjem průměrně za měsíc (odhad), —, \(PredictionBuilder.incompleteText)"))
+                #expect(
+                    readings.contains(
+                        "Odkládat průměrně za měsíc (odhad), —, \(PredictionBuilder.incompleteText)"))
                 #expect(!readings.contains { $0.contains("2\u{00A0}743\u{00A0}157") || $0.contains("83,0") })
+            }
+        }
+    }
+
+    /// At the least width of the window the income, the net income and what to set aside stand in one row: at the same
+    /// height, left to right, 48 points apart.
+    @Test func theThreeFiguresOfPrijmyStandInOneRowAtTheLeastRoom() async throws {
+        try await PredictionSample.withStoredSample { app in
+            try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    try await showPrediction(of: app, in: window)
+
+                    let income = try textFrame(startingWith: "Příjmy za rok 2026 (odhad), ", in: window)
+                    let net = try textFrame(startingWith: "Čistý příjem průměrně za měsíc (odhad), ", in: window)
+                    let setAside = try textFrame(startingWith: "Odkládat průměrně za měsíc (odhad), ", in: window)
+                    #expect(abs(income.minY - net.minY) <= 1 && abs(net.minY - setAside.minY) <= 1)
+                    #expect(abs(net.minX - income.maxX - 48) <= 1, "\(income) \(net)")
+                    #expect(abs(setAside.minX - net.maxX - 48) <= 1, "\(net) \(setAside)")
+                }
             }
         }
     }
