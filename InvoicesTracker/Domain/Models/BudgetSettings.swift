@@ -21,3 +21,17 @@ nonisolated struct BudgetSettings: Hashable, Sendable, Codable {
     /// The invoice whose net income is divided while `source` is `invoice`.
     var invoiceID: Int64?
 }
+
+nonisolated extension BudgetSettings {
+    /// Reads the choices written by this or another version of the app one field at a time. A field that is missing,
+    /// or that this version cannot read, takes its default alone: a source this version does not know, such as one a
+    /// newer version saved, reads as Skutečnost and leaves the split as it was saved, and a split that cannot be read
+    /// reads as the empty one and leaves the source and the invoice.
+    init(from decoder: any Decoder) throws {
+        self.init()
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        split = (try? values.decodeIfPresent(BudgetSplit.self, forKey: .split)) ?? split
+        source = (try? values.decodeIfPresent(BudgetSource.self, forKey: .source)) ?? source
+        invoiceID = (try? values.decodeIfPresent(Int64.self, forKey: .invoiceID)) ?? invoiceID
+    }
+}
