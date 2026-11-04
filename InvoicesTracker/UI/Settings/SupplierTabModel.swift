@@ -319,8 +319,9 @@ final class SupplierTabModel {
         }
     }
 
-    /// The line logged when changes are dropped because they were made on data that a restore or an unlock replaced.
-    private static let droppedChangesNote = "Dropped the changes of Moje údaje made on data that was replaced"
+    /// The line logged when changes are dropped because they were made on data that is no longer open: a restore or
+    /// an unlock replaced it, or it was let go.
+    private static let droppedChangesNote = "Dropped the changes of Moje údaje made on data that is no longer open"
 
     /// Drops the changes that wait to be saved, which were made on data that is no longer open, and logs it when there
     /// were some (`forgetChanges()`).

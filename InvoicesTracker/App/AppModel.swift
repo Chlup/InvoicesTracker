@@ -304,7 +304,8 @@ final class AppModel {
     /// waited, would read the split as the settings held it before the change and save that over the change. Other
     /// data gets a new one (`adopt(_:)`), and so does a lock of the data (`lockAfterFailedChange(_:)`): the model
     /// before is retired first (`retireBudgetModel()`), so that a change that waited in it is never written into the
-    /// data opened since.
+    /// data opened since. The setter is for tests only, which put a model of their own in place: it replaces the model
+    /// without retiring the one before.
     var budgetModel: BudgetModel {
         get {
             if let madeBudgetModel {
@@ -1053,7 +1054,7 @@ final class AppModel {
     /// are written. A change that cannot be saved is logged and not shown.
     func updateAppSettings(in database: Database, _ change: @Sendable (inout AppSettings) -> Void) async {
         guard self.database === database else {
-            Self.log("Dropped a change of the settings of data that was replaced")
+            Self.log("Dropped a change of the settings made on data that is no longer open")
             return
         }
         do {

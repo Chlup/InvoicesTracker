@@ -860,12 +860,14 @@ struct BudgetModelTests {
 
     /// A change that waits for the write of the one before it is dropped when that write ends after a restore: both
     /// were made on the data the restore replaced. Here the first write starts once the restore has closed that data,
-    /// and waits for it until the restore is over.
-    @Test(.hangGuard) func aSaveWaitingBehindAnotherWriteIsDroppedAfterARestore() async throws {
+    /// and waits for it until the restore is over. A model that the app holds is retired by the restore, which stops
+    /// the waiting save; one that the app does not hold is stopped only by the check of the data after the wait.
+    @Test(.hangGuard, arguments: [true, false])
+    func aSaveWaitingBehindAnotherWriteIsDroppedAfterARestore(heldByTheApp: Bool) async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let delay = ManualDelay()
-        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay)
+        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay, heldByTheApp: heldByTheApp)
         let replaced = try #require(app.database)
         var hold: DatabaseHold?
         defer { hold?.end() }
@@ -892,6 +894,12 @@ struct BudgetModelTests {
         let savings = try await savingsShownAndStored(by: app)
         #expect(savings.shown == .share(seventy))
         #expect(savings.stored == .share(seventy))
+        // The write of a dropped change is refused by the app in any case, so the drop is seen in what the model holds:
+        // a change made now carries nothing of the dropped ones.
+        model.slide(.investments, toPercent: 10)
+        await model.saveNow()
+        let later = try await savingsShownAndStored(by: app)
+        #expect(later.stored == .share(seventy))
     }
 
     /// A change of the keys or a restore that fails after the vault locked the data retires the model of Rozpočet that
@@ -956,6 +964,27 @@ struct BudgetModelTests {
         #expect(savings.stored == .share(seventy))
     }
 
+    /// A change made after the data was replaced does not join the changes that wait from before: those are dropped,
+    /// and the new one is written into the data open now alone, on top of what that data stores.
+    @Test func aChangeMadeAfterTheDataWasReplacedIsWrittenIntoTheDataOpenNowAlone() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let delay = ManualDelay()
+        let (app, model, backup) = try await backedUpBudget(in: directory, delay: delay, heldByTheApp: false)
+        model.slide(.savings, toPercent: 15)
+        _ = try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+        #expect(model.hasUnsavedInput)
+
+        model.slide(.investments, toPercent: 10)
+        await model.saveNow()
+
+        #expect(!model.hasUnsavedInput)
+        let stored = try await #require(app.database).appSettings().budget
+        #expect(stored.split.holding(of: .savings) == .share(seventy))
+        #expect(stored.split.holding(of: .investments) == .share(decimal("0.1")))
+        #expect(app.appSettings.budget == stored)
+    }
+
     // MARK: Relaunch
 
     @Test func theSplitSurvivesARelaunch() async throws {
@@ -991,21 +1020,28 @@ struct BudgetModelTests {
 /// Keeps a database busy until `end()`, so that what is asked of it meanwhile waits: for a test that needs a write to
 /// be still running while something else happens. The hold runs on the actor of the database and keeps its thread
 /// while it waits, so it may only hold a database that nothing the test waits for needs any more, such as one that a
-/// restore has closed and replaced.
+/// restore has closed and replaced. If the database never runs the hold, the init records an issue after 5 seconds and
+/// returns, so that the test ends instead of hanging.
 private final class DatabaseHold: Sendable {
     private let release = DispatchSemaphore(value: 0)
     private let isHolding = OSAllocatedUnfairLock(initialState: false)
 
     /// Holds `database`, and returns once the hold runs on its actor: whatever is asked of the database from now on
-    /// waits for `end()`.
+    /// waits for `end()`. It also returns, with an issue recorded, when the hold has not started after 5 seconds.
     init(_ database: Database) {
         Task.detached { [release, isHolding] in
             _ = try? await database.read { _ in
                 isHolding.withLock { $0 = true }
                 release.wait()
             }
+            isHolding.withLock { $0 = true }
         }
+        let deadline = Date.now.addingTimeInterval(5)
         while !isHolding.withLock({ $0 }) {
+            guard Date.now < deadline else {
+                Issue.record("The hold on the database did not start within 5 seconds.")
+                return
+            }
             Thread.sleep(forTimeInterval: 0.001)
         }
     }

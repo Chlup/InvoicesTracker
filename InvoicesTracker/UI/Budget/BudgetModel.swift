@@ -25,10 +25,12 @@ import Observation
 ///   screens show, so a save starts no reload.
 /// - A change belongs to the data that was open when it was made, the `Database` object, which a restore or an unlock
 ///   replaces with another: it is written into that data alone. A change whose data is no longer open when it would be
-///   saved, or when the screen loads, is dropped with what was typed, logged and not written, and the screen says
-///   nothing of it. A load that sees other data opened, or the data let go, while it reads shows nothing of what it
-///   read: the data open now loads again and shows itself. When the app opens other data or lets the data go, it
-///   retires its model (`retire()`), which saves, loads and shows nothing from then on.
+///   saved is dropped with what was typed, logged and not written, and the screen says nothing of it; so is one
+///   that waits when the screen loads and other data is open by then. A new change made while such changes wait
+///   drops them first and is then the only one written into the data open now. A load that sees other data opened, or
+///   the data let go, while it reads shows nothing of what it read: the data open now loads again and shows itself.
+///   When the app opens other data or lets the data go, it retires its model (`retire()`), which saves and loads
+///   nothing from then on.
 /// - A typed text stays in its field until editing ends, also one that was taken, and is read key by key: a text that
 ///   can be read changes the split at once. A text that is no amount in whole Kč, or no percentage with at most one
 ///   decimal (a negative one included), keeps the value the category had, and once the typing has paused for
@@ -101,7 +103,8 @@ final class BudgetModel: SavesTypedInput {
     /// year that has been replaced since must not undo the newer one.
     @ObservationIgnored private var loadsStarted = 0
 
-    /// Whether the app has replaced this model (`retire()`): it then saves, loads and shows nothing.
+    /// Whether the app has replaced this model (`retire()`): it then saves and loads nothing, and the screen reads the
+    /// app's new model.
     @ObservationIgnored private var isRetired = false
 
     /// A model of `app` that saves `saveDelay` after the last change of the split, and says that a typed text cannot be
@@ -135,9 +138,7 @@ final class BudgetModel: SavesTypedInput {
         loadsStarted += 1
         let thisLoad = loadsStarted
         let openData = app?.database
-        if hasChanges, let openData, changesBelongTo !== openData {
-            dropChanges()
-        }
+        dropStaleChanges()
         if !hasUnsavedInput, let app {
             settings = app.appSettings.budget
         }
@@ -217,6 +218,7 @@ final class BudgetModel: SavesTypedInput {
     /// Divides the net income of `source`, saves the choice at once with any change that waits, and loads the screen
     /// again. Until the load lands, the screen keeps the source of the figures it has (`currentInput()`).
     func chooseSource(_ source: BudgetSource) async {
+        dropStaleChanges()
         if settings.source != source {
             settings.source = source
             markChanged()
@@ -228,6 +230,7 @@ final class BudgetModel: SavesTypedInput {
     /// Divides what the invoice `id` leaves, in Faktura mode, saves the choice at once with any change that waits, and
     /// loads the screen again.
     func chooseInvoice(id: Int64) async {
+        dropStaleChanges()
         if settings.source != .invoice || settings.invoiceID != id {
             settings.source = .invoice
             settings.invoiceID = id
@@ -266,6 +269,7 @@ final class BudgetModel: SavesTypedInput {
     /// the field says what it takes once the typing has paused (`refuse(_:)`). The text the field shows while nothing
     /// is typed into it changes nothing (`isShownValue(_:of:)`).
     func typePercent(_ text: String, for category: BudgetCategory) {
+        dropStaleChanges()
         guard takesShare(category) else { return }
         let field = BudgetField.percent(category)
         guard !isShownValue(text, of: field) else { return }
@@ -289,6 +293,7 @@ final class BudgetModel: SavesTypedInput {
     /// it too, and the field says what it takes once the typing has paused (`refuse(_:)`). The text the field shows
     /// while nothing is typed into it changes nothing (`isShownValue(_:of:)`).
     func typeAmount(_ text: String, for category: BudgetCategory) {
+        dropStaleChanges()
         guard loaded != nil, category != settings.split.remainder else { return }
         let field = BudgetField.amount(category)
         guard !isShownValue(text, of: field) else { return }
@@ -348,6 +353,7 @@ final class BudgetModel: SavesTypedInput {
     /// (`BudgetBuilder.net(of:)`, nil when there is none), shows the result and saves it `saveDelay` after the last
     /// change. A change that leaves the split as it was saves nothing. Nothing changes before the screen has loaded.
     private func change(_ edit: (BudgetSplit, Int64?) -> BudgetSplit) {
+        dropStaleChanges()
         guard let input = currentInput() else { return }
         let split = edit(settings.split, BudgetBuilder.net(of: input))
         if split != settings.split {
@@ -437,6 +443,15 @@ final class BudgetModel: SavesTypedInput {
         hasChanges || writeTask != nil
     }
 
+    /// Drops the changes that wait when the app has data open other than the data they were made on
+    /// (`dropChanges()`). A new change calls this before it is applied, so that it starts from what the data open now
+    /// stores, belongs to that data and is the only one written into it.
+    private func dropStaleChanges() {
+        if hasChanges, let openData = app?.database, changesBelongTo !== openData {
+            dropChanges()
+        }
+    }
+
     /// Notes that `settings` holds a change that is not written yet. The first change that starts to wait records the
     /// data the app has open (`changesBelongTo`), which the later ones join until they are saved. A retired model keeps
     /// no change.
@@ -494,7 +509,7 @@ final class BudgetModel: SavesTypedInput {
     /// of the app again, which the next load shows. Dropped changes are logged.
     private func dropChanges() {
         if hasChanges {
-            AppModel.log("Dropped the changes of Rozpočet made on data that was replaced")
+            AppModel.log("Dropped the changes of Rozpočet made on data that is no longer open")
         }
         saveTimer.cancel()
         refusalTimer.cancel()
@@ -511,7 +526,7 @@ final class BudgetModel: SavesTypedInput {
     /// Retires the model, which the app replaces with a new one when it opens other data or lets the data go
     /// (`AppModel.adopt(_:)`, `AppModel.lockAfterFailedChange(_:)`): the waits of the save and of the hints end without
     /// their work, the changes that wait to be saved are dropped with what was typed (`dropChanges()`), and from now on
-    /// the model saves, loads and shows nothing, so that it never writes into the data opened since. A write that runs
+    /// the model saves and loads nothing, so that it never writes into the data opened since. A write that runs
     /// goes on into the data it was started for.
     func retire() {
         isRetired = true
