@@ -196,9 +196,31 @@ struct BudgetBuilderTests {
         #expect(data.sources.filter { $0.value != .prediction }.allSatisfy { $0.isEnabled })
     }
 
+    /// The year of Skutečnost is twelve times each amount of the month, the remainder's too. With Úspory at 15 % and
+    /// Investice at their limit, the remainder has 0 Kč a month and so 0 Kč a year, though dividing twelve months' net
+    /// income by the shares would leave it 4 Kč: 15 % of 2 245 332 Kč is 336 800 Kč, not 12 × 28 067 Kč.
+    @Test func theActualYearIsTwelveTimesEachAmountOfTheMonth() throws {
+        let split = sample.settingShare(1, of: .investments, net: 187_111)
+
+        let data = BudgetBuilder.build(input(split: split, actual: average(187_111)))
+
+        let spending = try row(.spending, in: data)
+        #expect(spending.amountText == "0\u{00A0}Kč")
+        #expect(spending.yearText == "za rok 0\u{00A0}Kč")
+        #expect(try row(.costs, in: data).yearText == "za rok 300\u{00A0}000\u{00A0}Kč")
+        #expect(try row(.savings, in: data).amountText == "28\u{00A0}067")
+        #expect(try row(.savings, in: data).yearText == "za rok 336\u{00A0}804\u{00A0}Kč")
+        #expect(try row(.investments, in: data).amountText == "134\u{00A0}044")
+        #expect(try row(.investments, in: data).yearText == "za rok 1\u{00A0}608\u{00A0}528\u{00A0}Kč")
+        #expect(
+            try group("spending", in: data).popover.rows.last
+                == LevyPopoverRow(label: "Za rok", value: "0\u{00A0}Kč", style: .muted))
+    }
+
     // MARK: Odhad za rok
 
-    /// Odhad za rok divides the predicted net income of the whole year: a twelfth of it a month, all of it a year.
+    /// Odhad za rok divides a twelfth of the predicted net income of the whole year a month, and twelve times that a
+    /// year, while the sentence gives the net income of the whole year.
     @Test func thePredictionShowsItsYearAndTheEstimatePill() throws {
         let outcome = try PredictionSample.outcome(year: 2026)
         try #require(outcome.prediction.isComplete)
@@ -219,7 +241,34 @@ struct BudgetBuilderTests {
         #expect(BudgetBuilder.net(of: budget) == net.monthlyKc)
         let spending = try row(.spending, in: data)
         #expect(spending.amountText == CzechFormat.wholeKc(net.monthlyKc))
-        #expect(spending.yearText == "za rok " + CzechFormat.wholeKc(net.yearKc))
+        #expect(spending.yearText == "za rok " + CzechFormat.wholeKc(net.monthlyKc * 12))
+    }
+
+    /// The year of Odhad za rok is twelve times each amount of the month as well, though the predicted net income of
+    /// the year is not twelve times its twelfth: with Investice at their limit the remainder has 0 Kč a month and 0 Kč
+    /// a year, where dividing the net income of the year would leave it a few koruny. The sentence still gives the net
+    /// income of the whole year.
+    @Test func theEstimatedYearIsTwelveTimesEachAmountOfTheMonth() throws {
+        let outcome = try PredictionSample.outcome(year: 2026)
+        try #require(outcome.prediction.isComplete)
+        let net = NetIncome(outcome.result)
+        try #require(net.yearKc != net.monthlyKc * 12)
+        let split = sample.settingShare(1, of: .investments, net: net.monthlyKc)
+        let month = split.allocation(net: net.monthlyKc, fixedMultiplier: 1)
+        #expect(month.amounts[.spending] == 0)
+
+        let data = BudgetBuilder.build(input(split: split, source: .prediction, prediction: outcome))
+
+        for category in BudgetCategory.allCases {
+            let amount = try #require(month.amounts[category])
+            #expect(try row(category, in: data).yearText == "za rok " + CzechFormat.wholeKc(amount * 12), "\(category)")
+        }
+        #expect(try row(.spending, in: data).yearText == "za rok 0\u{00A0}Kč")
+        #expect(
+            try group("spending", in: data).popover.rows.last
+                == LevyPopoverRow(label: "Za rok", value: "0\u{00A0}Kč", style: .muted))
+        let sentence = try #require(data.keyFigure.sentence)
+        #expect(sentence.hasSuffix("Po odvodech " + CzechFormat.wholeKc(net.yearKc) + " za rok."))
     }
 
     /// An incomplete prediction has nothing to divide: no figure, no amounts, but the shares stay as they are.

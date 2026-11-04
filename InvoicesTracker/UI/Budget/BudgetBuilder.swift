@@ -3,12 +3,13 @@ import Foundation
 /// Builds Rozpočet: what a net income is, how the split divides it among the four categories, and every text the screen
 /// shows of it (`BudgetData`).
 ///
-/// Three sources give the net income. Skutečnost divides Přehled's average per month (`AverageNetIncome`), with the
-/// year twelve times it. Odhad za rok divides the predicted net income of the whole year (`PredictionOutcome`), a
-/// twelfth of it a month and all of it a year; a past year has no estimate, so it shows Skutečnost. Faktura divides
-/// what one invoice of the year leaves after its levies, once its DPH and its levies have come off the top. All
-/// amounts are whole Kč. Where there is nothing to divide (an incomplete prediction, no invoice, a source that did not
-/// load) the amounts are "—" while the shares stay as they are; an average below zero divides 0.
+/// Three sources give the net income. Skutečnost divides Přehled's average per month (`AverageNetIncome`). Odhad za rok
+/// divides a twelfth of the predicted net income of the whole year (`PredictionOutcome`) a month, while its sentence
+/// gives the net income of the whole year; a past year has no estimate, so it shows Skutečnost. For both, every amount
+/// of the year is twelve times the amount of the month. Faktura divides what one invoice of the year leaves after its
+/// levies, once its DPH and its levies have come off the top. All amounts are whole Kč. Where there is nothing to
+/// divide (an incomplete prediction, no invoice, a source that did not load) the amounts are "—" while the shares stay
+/// as they are; an average below zero divides 0.
 nonisolated enum BudgetBuilder {
     /// Everything Rozpočet shows for `input`.
     static func build(_ input: BudgetInput) -> BudgetData {
@@ -156,8 +157,9 @@ nonisolated enum BudgetBuilder {
         /// The allocation of `net`, with the fixed amounts once, or nil when there is nothing to divide.
         var month: BudgetAllocation?
 
-        /// The allocation of the year, with the fixed amounts twelve times, or nil in Faktura mode or when there is
-        /// nothing to divide. Skutečnost divides twelve times the month, Odhad za rok the predicted net of the year.
+        /// The allocation of the year, or nil in Faktura mode or when there is nothing to divide. Every amount of it,
+        /// the remainder's included, is twelve times the amount of the month, for Skutečnost and Odhad za rok alike, so
+        /// that a remainder of 0 Kč a month has 0 Kč a year; the shares are those of the month.
         var year: BudgetAllocation?
 
         /// Whether the source is Faktura, which divides an invoice and has no year.
@@ -169,14 +171,15 @@ nonisolated enum BudgetBuilder {
             split = input.settings.split
             isInvoice = source == .invoice
             net = BudgetBuilder.net(of: input)
-            let yearNet: Int64? =
-                switch source {
-                case .actual: net.map { $0 * 12 }
-                case .prediction: BudgetBuilder.completeOutcome(of: input).map { max(0, NetIncome($0.result).yearKc) }
-                case .invoice: nil
+            let monthly = net.map { split.allocation(net: $0, fixedMultiplier: 1) }
+            month = monthly
+            year =
+                isInvoice
+                ? nil
+                : monthly.map { month in
+                    BudgetAllocation(
+                        amounts: month.amounts.mapValues { $0 * 12 }, shares: month.shares, remainder: month.remainder)
                 }
-            month = net.map { split.allocation(net: $0, fixedMultiplier: 1) }
-            year = yearNet.map { split.allocation(net: $0, fixedMultiplier: 12) }
         }
 
         /// How `category` is held.
