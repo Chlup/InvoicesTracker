@@ -172,6 +172,65 @@ struct BudgetModelTests {
         }
     }
 
+    /// Only the newest load shows what it read. Here the older one, for Odhad za rok, waits for the rates of the year
+    /// from the server while Skutečnost is chosen and loaded; when it ends after all, it leaves the screen as the newer
+    /// load made it.
+    @Test func aLoadThatEndsLateNeverReplacesANewerOne() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let gate = Gate()
+        let app = makeAppModel(in: directory, http: GatedHTTPClient(base: StubHTTPClient(), gate: gate))
+        try await startFresh(app)
+        try await PredictionSample.store(in: app)
+        let database = try #require(app.database)
+        // Without the rates the estimate asks the server for them, and the gate holds the request.
+        try await database.execute("DELETE FROM cnb_rate")
+        await app.updateAppSettings { $0.budget.source = .prediction }
+        let model = BudgetModel(app: app)
+        let older = Task { await model.load() }
+        await gate.untilARequestWaits()
+
+        let newer = Task { await model.chooseSource(.actual) }
+        try await waitUntil { model.data != nil }
+        let shown = try #require(model.data)
+        #expect(shown.source == .actual)
+        await gate.open()
+        await older.value
+        await newer.value
+
+        #expect(model.data == shown)
+        #expect(model.errorText == nil)
+        #expect(app.appSettings.budget.source == .actual)
+    }
+
+    /// A choice of the source is saved at once and then loads the figures of the new source. Until they come, the
+    /// screen builds and changes the split from the figures it has and the source they were read for, so that a change
+    /// made in the meantime works out from what the screen shows: ticking "pevná částka" keeps the amount shown.
+    @Test func aChangeWhileAnotherSourceLoadsWorksFromTheFiguresShown() async throws {
+        try await EditorFixture.with { f in
+            let model = await loadedModel(of: f)
+            model.slide(.savings, toPercent: 15)
+            #expect(row(.savings, of: model)?.amountText == "28\u{00A0}067")
+
+            // The choice runs until it waits for its save, before it loads.
+            let choice = Task.immediate { await model.chooseSource(.invoice) }
+            model.toggleFixed(.savings)
+
+            #expect(row(.savings, of: model)?.mode == .fixed)
+            #expect(row(.savings, of: model)?.amountText == "28\u{00A0}067")
+            #expect(row(.spending, of: model)?.amountText == "159\u{00A0}044\u{00A0}Kč")
+
+            await choice.value
+
+            #expect(model.data?.source == .invoice)
+            #expect(row(.savings, of: model)?.amountText == "28\u{00A0}067")
+            await model.saveNow()
+            let saved = try await f.database.appSettings().budget
+            #expect(saved.source == .invoice)
+            #expect(saved.split.holding(of: .savings) == .fixed(28_067))
+        }
+    }
+
     @Test func aLoadKeepsTheChangesThatWaitToBeSaved() async throws {
         try await EditorFixture.with { f in
             let delay = ManualDelay()

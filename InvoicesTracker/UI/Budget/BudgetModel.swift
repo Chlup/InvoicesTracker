@@ -31,9 +31,10 @@ import Observation
 ///   keeps the text. A field that hands back the text it shows, with no key typed into it, changes nothing: SwiftUI
 ///   hands a field's text to the model as its editing ends, and that text is the value rounded as the field writes
 ///   it.
-/// - Choosing the source or an invoice is saved at once, with any change that waits, and the screen loads again. An
-///   invoice shown in place of a chosen one that has left the list is only shown: the choice stays until the person
-///   picks another invoice.
+/// - Choosing the source or an invoice is saved at once, with any change that waits, and the screen loads again. Until
+///   that load lands, the screen shows and changes the split with the figures it has and the source they were read
+///   for, never with the new source and the figures of the old one. An invoice shown in place of a chosen one that has
+///   left the list is only shown: the choice stays until the person picks another invoice.
 @MainActor
 @Observable
 final class BudgetModel: SavesTypedInput {
@@ -173,7 +174,7 @@ final class BudgetModel: SavesTypedInput {
     // MARK: Choosing what is divided
 
     /// Divides the net income of `source`, saves the choice at once with any change that waits, and loads the screen
-    /// again.
+    /// again. Until the load lands, the screen keeps the source of the figures it has (`currentInput()`).
     func chooseSource(_ source: BudgetSource) async {
         if settings.source != source {
             settings.source = source
@@ -360,10 +361,15 @@ final class BudgetModel: SavesTypedInput {
 
     // MARK: Building
 
-    /// What was loaded with the choices and the typed texts of now, or nil before a load has shown anything.
+    /// What was loaded with the choices and the typed texts of now, or nil before a load has shown anything. The source
+    /// is the one the loaded figures were read for until the next load lands: a source just chosen is saved before its
+    /// figures are loaded (`chooseSource(_:)`), and with the figures of another source it would have nothing to divide,
+    /// so that a change made in the meantime would work out from nothing.
     private func currentInput() -> BudgetInput? {
         guard var input = loaded else { return nil }
+        let source = input.settings.source
         input.settings = settings
+        input.settings.source = source
         input.typedTexts = typedTexts
         input.refusedFields = refusedFields
         return input
