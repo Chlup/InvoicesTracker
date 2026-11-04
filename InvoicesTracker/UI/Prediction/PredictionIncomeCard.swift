@@ -45,6 +45,7 @@ struct PredictionIncomeCard: View {
     }
 
     /// The income, the net income and what to set aside under a hairline, 48 points apart, each as wide as its words.
+    /// While the estimate is incomplete the two monthly figures have no note.
     private var figures: some View {
         VStack(alignment: .leading, spacing: 0) {
             Hairline()

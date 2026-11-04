@@ -109,12 +109,13 @@ nonisolated extension PredictionBuilder {
             sub: "za celý rok " + CzechFormat.wholeKc(net.yearKc), marksNetIncome: true)
     }
 
-    /// What to set aside each month for the tax: the year's advances and the sum to pay with the return, over twelve
-    /// months (`PredictionOutcome.setAsideMonthly`), and under it the sum of the whole year. The card is an estimate
-    /// as a whole, so neither carries the sign "≈".
+    /// What to set aside each month for the irregular levy payments: the year's tax advances and the doplatek of all
+    /// three authorities, paid with the returns, over twelve months (`PredictionOutcome.setAsideMonthly`), and under
+    /// it the sum of the whole year (`PredictionBuilder.setAsideNote(_:total:)`). The card is an estimate as a whole,
+    /// so neither carries the sign "≈".
     private static func setAsideStat(_ outcome: PredictionOutcome) -> PredictionMini {
         PredictionMini(
             label: setAsideLabel, value: CzechFormat.wholeKc(outcome.setAsideMonthly),
-            sub: "za celý rok " + CzechFormat.wholeKc(outcome.setAsideTotal) + " · doplatek a zálohy na daň")
+            sub: setAsideNote(outcome, total: CzechFormat.wholeKc(outcome.setAsideTotal)))
     }
 }

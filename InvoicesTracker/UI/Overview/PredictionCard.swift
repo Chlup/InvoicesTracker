@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The sizes and gaps of the card of the estimate.
 private nonisolated enum PredictionCardMetrics {
-    /// The space between the parts of the card: the head, the figures under their hairline and the chart under its.
+    /// The space between the parts of the card: the head, each row of figures under its hairline and the chart under
+    /// its.
     static let spacing: CGFloat = 14
 
     /// The space between a hairline and the part under it.
@@ -46,28 +47,10 @@ struct PredictionCard: View {
         Card(spacing: PredictionCardMetrics.spacing, label: "Odhad za celý rok") {
             header
             part {
-                FigureRow(
-                    spacing: PredictionCardMetrics.figureSpacing,
-                    maxTileWidth: PredictionCardMetrics.figureMaximumWidth
-                ) {
-                    ForEach(card.stats) { stat in
-                        FigureTile(
-                            FigureTileData(label: stat.label, figure: stat.value, share: stat.share, note: stat.sub))
-                    }
-                }
+                figureRow(card.stats)
             }
             part {
-                FigureRow(
-                    spacing: PredictionCardMetrics.figureSpacing,
-                    maxTileWidth: PredictionCardMetrics.figureMaximumWidth
-                ) {
-                    ForEach(card.monthStats) { stat in
-                        FigureTile(
-                            FigureTileData(
-                                label: stat.label, figure: stat.value, share: stat.share, note: stat.sub,
-                                marksNetIncome: stat.marksNetIncome))
-                    }
-                }
+                figureRow(card.monthStats)
             }
             if !card.chart.isEmpty {
                 part {
@@ -84,6 +67,20 @@ struct PredictionCard: View {
         VStack(alignment: .leading, spacing: PredictionCardMetrics.hairlineGap) {
             Hairline()
             content()
+        }
+    }
+
+    /// A row of figure tiles, one for each of `stats`, side by side 40 points apart, each at most 240 points wide.
+    private func figureRow(_ stats: [PredictionMini]) -> some View {
+        FigureRow(
+            spacing: PredictionCardMetrics.figureSpacing, maxTileWidth: PredictionCardMetrics.figureMaximumWidth
+        ) {
+            ForEach(stats) { stat in
+                FigureTile(
+                    FigureTileData(
+                        label: stat.label, figure: stat.value, share: stat.share, note: stat.sub,
+                        marksNetIncome: stat.marksNetIncome))
+            }
         }
     }
 

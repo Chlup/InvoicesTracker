@@ -13,8 +13,8 @@ nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
     var share: String?
     var sub: String
 
-    /// Whether the figure is the net income, which a green dot in front of its label shows
-    /// (`FigureTileData.marksNetIncome`). Only the tiles about the net income have one.
+    /// Whether the figure is the net income per month, which a green dot in front of its label shows
+    /// (`FigureTileData.marksNetIncome`). Only the tile of the net income per month has one.
     var marksNetIncome = false
 
     var id: String {
@@ -66,8 +66,9 @@ nonisolated struct PredictionNetIncome: Sendable, Hashable {
     /// The sum of the whole year that the amount is the average of, and its part of the income: "za celý rok 2 276 375
     /// Kč · 83,0 % příjmů po odvodech". The sum has the sign of an estimate as the amount does. The part is left out
     /// while the income is not above zero, as there is nothing for the levies to take a part of, and is shown as it
-    /// is otherwise, even where it is below zero.
-    var sub: String
+    /// is otherwise, even where it is below zero. While the estimate is not complete there is no note: the sentence
+    /// that says so stands once, in the result card.
+    var sub: String?
 }
 
 /// What to put aside each month for the irregular levy payments, as the card Příjmy shows it beside the net income: a
@@ -84,9 +85,10 @@ nonisolated struct PredictionSetAside: Sendable, Hashable {
     var amount: String
 
     /// The sum of the whole year that the amount is the average of, and what it is made of: "za celý rok 244 702 Kč ·
-    /// doplatek a zálohy na daň". The sum has the sign of an estimate as the amount does. While the estimate is not
-    /// complete it is the sentence that says so.
-    var sub: String
+    /// doplatek a zálohy na daň", or, in a year without tax advances, "jen doplatek, bez záloh na daň". The sum has the
+    /// sign of an estimate as the amount does. While the estimate is not complete there is none: the sentence that
+    /// says so stands once, in the result card.
+    var sub: String?
 }
 
 // MARK: - The months of the clients

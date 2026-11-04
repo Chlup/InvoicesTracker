@@ -16,7 +16,7 @@ nonisolated struct FigureTileData: Sendable, Hashable {
     /// The note under the figure, such as "s přiznáním a přehledy za rok 2026", or nil for none.
     var note: String?
 
-    /// Whether the tile is about the net income, which a green dot in front of its label shows.
+    /// Whether the tile is the net income per month, which a green dot in front of its label shows.
     var marksNetIncome = false
 }
 
@@ -37,8 +37,8 @@ private nonisolated enum FigureTileMetrics {
 
 /// A figure with its label, its share and its note: the label in callout and secondary text, the figure in title 2 and
 /// the colour of text with the share beside it in body semibold and secondary text, and the note in callout and
-/// tertiary text. A tile about the net income has a green dot in front of its label. VoiceOver reads the tile as one
-/// phrase, and not the mark.
+/// tertiary text. The tile of the net income per month has a green dot in front of its label. VoiceOver reads the
+/// tile as one phrase, and not the mark.
 ///
 /// Tiles stand next to each other in a `FigureRow`; they are as wide as their texts are, and never stretched into
 /// columns.

@@ -434,11 +434,18 @@ nonisolated enum InvoiceListBuilder {
         of invoice: Invoice, input: InvoiceListInput
     ) -> (value: String, kind: NetIncomeKind) {
         guard let worked = input.netIncomes[invoice.id] else { return ("—", .none) }
-        let amount = PredictionBuilder.kc(ofHalere: worked.netHalere)
+        return marked(PredictionBuilder.kc(ofHalere: worked.netHalere), as: worked)
+    }
+
+    /// `text`, a figure of the net income of an invoice, with the sign of an estimate in front and the kind
+    /// `.estimate` where the invoice is not paid, with the sign and the kind `.paid` while the rate of its payment is
+    /// provisional, and as it is otherwise. The columns Čistý příjem and Odvod both go through it, so the share has its
+    /// sign exactly where the net income has it.
+    private static func marked(_ text: String, as worked: InvoiceNetIncome) -> (value: String, kind: NetIncomeKind) {
         if worked.isEstimate {
-            return (PredictionBuilder.estimateSign + amount, .estimate)
+            return (PredictionBuilder.estimateSign + text, .estimate)
         }
-        return ((worked.isProvisional ? PredictionBuilder.estimateSign : "") + amount, .paid)
+        return ((worked.isProvisional ? PredictionBuilder.estimateSign : "") + text, .paid)
     }
 
     /// The column "Odvod" of an invoice, from its net in `input.netIncomes`: the share of its income that the levies
@@ -450,10 +457,7 @@ nonisolated enum InvoiceListBuilder {
         guard let worked = input.netIncomes[invoice.id],
             let share = InvoiceDetailBuilder.share(of: worked.effect, income: worked.incomeHalere)
         else { return ("—", .none) }
-        if worked.isEstimate {
-            return (PredictionBuilder.estimateSign + share, .estimate)
-        }
-        return ((worked.isProvisional ? PredictionBuilder.estimateSign : "") + share, .paid)
+        return marked(share, as: worked)
     }
 
     // MARK: The summary row

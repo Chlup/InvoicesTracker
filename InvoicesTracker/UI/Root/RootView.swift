@@ -12,10 +12,10 @@ import SwiftUI
 /// windows, which the lock after inactivity counts from, when the app checks the lock by itself
 /// (`AppDependencies.startsIdleChecks`).
 struct RootView: View {
-    /// The least size of the window under its toolbar: 1 210 points wide and 720 high. The widest least width that the
-    /// table of Faktury can have, 916 points (where a date column shows a year), beside the sidebar (232 points) and
-    /// the margins of the page (24 and 16) needs 1 188 points, so that the table fits its card while the detail is
-    /// closed; 1 210 leaves room over that.
+    /// The least size of the window under its toolbar: 1 210 points wide and 720 high. The table of Faktury has a
+    /// least width of 972 points (988 where a date column shows a year), which beside the sidebar (232 points) and the
+    /// margins of the page (24 and 16) needs 1 244 points (1 260), so at the least window the table scrolls sideways
+    /// while the detail is closed. The window is not made wider for it, and the table keeps the widths of its columns.
     static let minimumSize = CGSize(width: 1_210, height: 720)
 
     let model: AppModel

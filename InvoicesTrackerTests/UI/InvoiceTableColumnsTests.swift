@@ -4,9 +4,9 @@ import Testing
 
 /// How wide the columns of the table of Faktury are in a table of a given width: Číslo, Odběratel, Vystaveno,
 /// Zaplaceno, V Kč bez DPH, Bez DPH, DPH, Čistý příjem, Odvod and Stav, on the grid of the design board, 8 points
-/// apart, with 16 points before the first and after the last. Číslo, the dates and Stav have widths of their own; the
-/// other five share what is left in the proportions 1.4 : 1.1 : 1 : 0.8 : 0.9, as the fractions of a CSS grid do, and a
-/// column whose share is less than its least width keeps that width while the others share the rest.
+/// apart, with 16 points before the first and after the last. Číslo, the dates, Odvod and Stav have widths of their
+/// own; the other five share what is left in the proportions 1.4 : 1.1 : 1 : 0.8 : 0.9, as the fractions of a CSS
+/// grid do, and a column whose share is less than its least width keeps that width while the others share the rest.
 struct InvoiceTableColumnsTests {
     /// The least width of every column: the board's, with Bez DPH and DPH raised from 96 to hold 999 999,99 in the
     /// widest currency and Stav from 96 to hold the widest pill, after the inset of 16 points before the pills.
@@ -15,7 +15,7 @@ struct InvoiceTableColumnsTests {
     /// The share of each column of the room left, or nil for a column with a width of its own.
     private let fractions: [CGFloat?] = [nil, 1.4, nil, nil, 1.1, 1, 0.8, 0.9, nil, nil]
 
-    /// The width of a table whose columns are `columns` wide: the columns, 8 gaps of 8 points and 2 margins of 16.
+    /// The width of a table whose columns are `columns` wide: the columns, 9 gaps of 8 points and 2 margins of 16.
     private func width(holding columns: [CGFloat]) -> CGFloat {
         columns.reduce(0, +) + 9 * 8 + 2 * 16
     }
@@ -41,7 +41,7 @@ struct InvoiceTableColumnsTests {
         #expect(DataTableMetrics.margin == 16)
     }
 
-    /// The board's table is at least 884 points wide; the columns that are raised make the least width of this one
+    /// The board's table is at least 956 points wide; the columns that are raised make the least width of this one
     /// the least widths of its columns with the room between and around them, 972 points.
     @Test func theLeastWidthOfTheTableIsTheLeastWidthsOfItsColumnsWithTheRoomBetweenAndAroundThem() {
         let columns = InvoiceTableColumns()

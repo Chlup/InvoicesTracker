@@ -712,13 +712,34 @@ struct PredictionWindowTests {
                 let readings = accessibilityReadings(in: window)
                 #expect(readings.contains("Příjmy za rok 2026 (odhad): —"))
                 #expect(readings.contains("Přišlo do 17.\u{00A0}10.\u{00A0}2026, 2\u{00A0}191\u{00A0}771\u{00A0}Kč"))
-                #expect(
-                    readings.contains(
-                        "Čistý příjem průměrně za měsíc (odhad), —, \(PredictionBuilder.incompleteText)"))
-                #expect(
-                    readings.contains(
-                        "Odkládat průměrně za měsíc (odhad), —, \(PredictionBuilder.incompleteText)"))
+                // The sentence that the estimate is incomplete stands once, in the result card, and not under the
+                // monthly figures.
+                #expect(readings.contains("Čistý příjem průměrně za měsíc (odhad), —"))
+                #expect(readings.contains("Odkládat průměrně za měsíc (odhad), —"))
+                #expect(!readings.contains { $0.contains(PredictionBuilder.incompleteText) })
                 #expect(!readings.contains { $0.contains("2\u{00A0}743\u{00A0}157") || $0.contains("83,0") })
+            }
+        }
+    }
+
+    /// The card Příjmy of an estimate that is not complete, in the room it has at the least window with the sidebar
+    /// of its default width (938 points of page, 898 of card), has its three figures in one row: the two monthly
+    /// ones have no long note to wrap alone.
+    @Test func theThreeFiguresOfAnIncompleteCardPrijmyShareOneRowAtTheLeastWindow() async throws {
+        var input = PredictionSample.input(year: 2026)
+        input.averageRates = [:]
+        let outcome = try PredictionOutcome.make(
+            prediction: IncomePrediction.make(input), yearInput: PredictionSample.yearInput(year: 2026))
+        let card = PredictionIncomeCard(page: PredictionBuilder.page(outcome)).frame(width: 938)
+        try await withHostedView(card, size: CGSize(width: 938, height: 600)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
+
+                let income = try textFrame(startingWith: "Příjmy za rok 2026 (odhad), ", in: window)
+                let net = try textFrame(startingWith: "Čistý příjem průměrně za měsíc (odhad), ", in: window)
+                let setAside = try textFrame(startingWith: "Odkládat průměrně za měsíc (odhad), ", in: window)
+                let isOneRow = abs(income.minY - net.minY) <= 1 && abs(net.minY - setAside.minY) <= 1
+                #expect(isOneRow, "\(income) \(net) \(setAside)")
             }
         }
     }

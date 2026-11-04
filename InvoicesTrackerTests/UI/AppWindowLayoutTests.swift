@@ -4295,10 +4295,12 @@ struct AppWindowLayoutTests {
     /// sidebar) and in two columns where it has more (938 in the least window, and a large window; the cards of
     /// Výpočet, with the same headings), the key figure and the bar of the result card stand as the width says and the
     /// figure of what is left to settle under them, the net income and what to set aside are read as one phrase each
-    /// in the card Příjmy, beside the income (what to set aside wraps under them at the least room with the widest
-    /// sidebar) and above the bar, the legend and the note of the money of next year, and no text of a cell is cut.
-    /// Where the months stand in rows of six, in cells of more than 100 points (810 points for the months at the least room
-    /// with the wide sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
+    /// in the card Příjmy, beside the income (what to set aside wraps under them where the card is too narrow for
+    /// three figures: at the least room with the widest sidebar and in the narrowest window for twelve months in a
+    /// row with the wide sidebar, whose 836 points inside are less than the 874 that the three need) and above the
+    /// bar, the legend and the note of the money of next year, and no text of a cell is cut. Where the months stand in
+    /// rows of six, in cells of more than 100 points (810 points for the months at the least room with the wide
+    /// sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
     /// in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the least window, whose
     /// 898 points for the months give the cells 69, and in the narrowest window that holds them so, in cells of 64.
     @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
@@ -4473,14 +4475,15 @@ struct AppWindowLayoutTests {
         }
         let net = page.netIncome
         let incomePhrase = [page.incomeHead, page.incomeTotal, page.incomeNote].joined(separator: ", ")
-        let netPhrase = [net.label, net.amount, net.sub].joined(separator: ", ")
+        let netPhrase = [net.label, net.amount, net.sub].compactMap { $0 }.joined(separator: ", ")
         guard let income = frameOfText(startingWith: incomePhrase, in: window) else {
             return ["The income is not read as one phrase: \(incomePhrase)"]
         }
         guard let netIncome = frameOfText(startingWith: netPhrase, in: window) else {
             return ["The net income is not read as one phrase: \(netPhrase)"]
         }
-        let setAsidePhrase = [page.setAside.label, page.setAside.amount, page.setAside.sub].joined(separator: ", ")
+        let setAsideParts = [page.setAside.label, page.setAside.amount, page.setAside.sub]
+        let setAsidePhrase = setAsideParts.compactMap { $0 }.joined(separator: ", ")
         guard let setAside = frameOfText(startingWith: setAsidePhrase, in: window) else {
             return ["What to set aside is not read as one phrase: \(setAsidePhrase)"]
         }

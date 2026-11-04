@@ -39,7 +39,8 @@ struct InvoiceTableViewTests {
         id: 4, number: "2026-01-01", client: "Sierra, SE", issued: "31.\u{00A0}1.", paidDate: "3.\u{00A0}2.",
         paidTone: .received, net: "220\u{00A0}000,00\u{00A0}Kč", vat: "46\u{00A0}200,00\u{00A0}Kč", hasVat: true,
         czk: "220\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
-        netIncome: "253\u{00A0}401\u{00A0}Kč", netIncomeKind: .paid, levyShare: "37,7\u{00A0}%", levyShareKind: .paid,
+        netIncome: "253\u{00A0}401\u{00A0}Kč", netIncomeKind: .paid, levyShare: "\u{2212}15,2\u{00A0}%",
+        levyShareKind: .paid,
         status: .paid(civilDate("2026-02-03")), listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
 
     /// A draft in dollars with the estimate of its net income and of its value in crowns.
@@ -406,7 +407,7 @@ struct InvoiceTableViewTests {
         let paid =
             "2026-01-01, Sierra, SE, Vystaveno 31.\u{00A0}1., Zaplaceno 3.\u{00A0}2.,"
             + " Bez DPH 220\u{00A0}000,00\u{00A0}Kč, DPH 46\u{00A0}200,00\u{00A0}Kč,"
-            + " Čistý příjem 253\u{00A0}401\u{00A0}Kč, Odvod 37,7\u{00A0}%, Stav: Uhrazená"
+            + " Čistý příjem 253\u{00A0}401\u{00A0}Kč, Odvod \u{2212}15,2\u{00A0}%, Stav: Uhrazená"
         #expect(withNetIncome.spokenText == paid)
 
         // An estimate is read with its sign.
