@@ -5,9 +5,10 @@ import SwiftUI
 /// 40 points high with one line of text each: Číslo, Odběratel (with the excerpt that says why the search found the
 /// invoice, when no column shows it, after the name), Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, DPH (the VAT of the
 /// invoice, a dash for an invoice without any), Čistý příjem (what the invoice leaves after the tax and the insurance
-/// its payment adds) and Stav, the nine columns. The name and the pills of Stav stand 16 points inside their column
-/// (`InvoiceTableColumns.statusInset`). The row of the open invoice is tinted pale blue, with a blue edge on its
-/// leading side. An empty list says why in a row under the names of the columns.
+/// its payment adds), Odvod (the share of the income that those levies take) and Stav, the ten columns. The name and
+/// the pills of Stav stand 16 points inside their column (`InvoiceTableColumns.statusInset`). The row of the open
+/// invoice is tinted pale blue, with a blue edge on its leading side. An empty list says why in a row under the names
+/// of the columns.
 ///
 /// The table is as wide as its card: its columns grow and shrink with the card (`InvoiceTableColumns`) down to the
 /// least width of the table, below which the table keeps that width and scrolls sideways under the summary row, which
@@ -132,7 +133,8 @@ struct InvoiceTableView: View {
             title("Bez DPH", width: widths[5], alignment: .trailing)
             title("DPH", width: widths[6], alignment: .trailing)
             title("Čistý příjem", width: widths[7], alignment: .trailing)
-            title("Stav", width: widths[8], inset: InvoiceTableColumns.statusInset)
+            title("Odvod", width: widths[8], alignment: .trailing)
+            title("Stav", width: widths[9], inset: InvoiceTableColumns.statusInset)
         }
         .padding(.horizontal, DataTableMetrics.margin)
         .accessibilityHidden(true)
@@ -178,8 +180,9 @@ struct InvoiceTableView: View {
 nonisolated extension InvoiceRow {
     /// What VoiceOver reads for the row: the number, the client and the excerpt of the search, then each other column
     /// with its name. A column that is empty for the invoice is left out, Zaplaceno of an invoice without a payment,
-    /// DPH of one without VAT and Čistý příjem of one with no net income, and so is V Kč bez DPH of an invoice in
-    /// crowns, which repeats Bez DPH. The status is read without a date, as the date of the payment is read before it.
+    /// DPH of one without VAT, and Čistý příjem and Odvod of one with no net income, and so is V Kč bez DPH of an
+    /// invoice in crowns, which repeats Bez DPH. The status is read without a date, as the date of the payment is read
+    /// before it.
     var spokenText: String {
         var parts = [number, client]
         if let excerpt {
@@ -199,6 +202,9 @@ nonisolated extension InvoiceRow {
         if netIncomeKind != .none {
             parts.append("Čistý příjem \(netIncome)")
         }
+        if levyShareKind != .none {
+            parts.append("Odvod \(levyShare)")
+        }
         parts.append("Stav: \(listStatus)")
         return parts.joined(separator: ", ")
     }
@@ -211,12 +217,12 @@ nonisolated extension InvoiceRow {
 /// shows: the amounts with digits of one width, aligned to the right; Bez DPH and DPH in secondary grey, where the
 /// DPH of an invoice without VAT is a dash in the faintest grey; an estimate in secondary grey; a dash in the faintest
 /// grey; the date of a payment dated after today in the grey of notes; the net income of a payment in the green of
-/// text; and the status as a pill in its tone, without a date, after the inset of its column
-/// (`InvoiceTableColumns.statusInset`).
+/// text; the levy share in the colour of text, in secondary grey for an estimate; and the status as a pill in its
+/// tone, without a date, after the inset of its column (`InvoiceTableColumns.statusInset`).
 struct InvoiceRowCells: View {
     let row: InvoiceRow
 
-    /// The widths of the nine columns, in their order.
+    /// The widths of the ten columns, in their order.
     let widths: [CGFloat]
 
     var body: some View {
@@ -249,7 +255,10 @@ struct InvoiceRowCells: View {
             cell(width: widths[7], alignment: .trailing) {
                 InvoiceNetIncomeText(text: row.netIncome, kind: row.netIncomeKind)
             }
-            cell(width: widths[8]) {
+            cell(width: widths[8], alignment: .trailing) {
+                InvoiceLevyShareText(text: row.levyShare, kind: row.levyShareKind)
+            }
+            cell(width: widths[9]) {
                 Pill(row.listStatus, tone: row.pillTone)
                     .padding(.leading, InvoiceTableColumns.statusInset)
             }
@@ -356,6 +365,32 @@ struct InvoiceNetIncomeText: View {
     private var color: Color {
         switch kind {
         case .paid: Palette.greenText
+        case .estimate: Palette.text2
+        case .none: Palette.text4
+        }
+    }
+}
+
+/// The share of its income that the levies of an invoice take, as its cell shows it: body with digits of one width, on
+/// one line, neither green nor semibold. That of a paid invoice is in the colour of text, an estimate is in secondary
+/// grey, and the dash of an invoice without a net income in the faintest grey. The width of Odvod holds 100,0 % with
+/// the sign of an estimate, whole (`InvoiceTableColumns`).
+struct InvoiceLevyShareText: View {
+    let text: String
+    let kind: NetIncomeKind
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(Typography.body)
+            .monospacedDigit()
+            .lineLimit(1)
+            .foregroundStyle(color)
+    }
+
+    /// The colour of the levy share of `kind`.
+    private var color: Color {
+        switch kind {
+        case .paid: Palette.text
         case .estimate: Palette.text2
         case .none: Palette.text4
         }

@@ -470,8 +470,10 @@ struct AppWindowLayoutTests {
     }
 
     /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
-    /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
-    /// the least window, while the detail is closed, the card (938 points) holds the table, whose least width is 900.
+    /// before once the window is large again. In a large window, with the detail closed, it is as wide as its card,
+    /// with nothing to scroll sideways. In the least window the card (938 points) is narrower than the least width of
+    /// the table, 972 points with the column Odvod: the table keeps that width and scrolls sideways, and the scroll
+    /// reaches its end, where Odvod and Stav are.
     @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -484,10 +486,20 @@ struct AppWindowLayoutTests {
                     let large = try tableWidth(in: window)
 
                     window.setContentSize(AppWindowSize.minimum)
-                    try await expectSettled(window) {
-                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
-                    }
+                    try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                    let scrollView = try #require(tableScrollView(in: window))
+                    let least = InvoiceTableColumns().minimumWidth
+                    #expect(least == 972)
                     #expect(try tableWidth(in: window) < large)
+                    #expect((try tableWidth(in: window) - least).magnitude < 0.5)
+                    #expect((scrollView.contentView.bounds.width - 938).magnitude <= 1)
+                    #expect(try tableWidth(in: window) > scrollView.contentView.bounds.width + 0.5)
+                    #expect(scrollView.horizontalScroller?.isHidden == false)
+                    // The sideways scroll reaches the end of the table, where Odvod and Stav are.
+                    let clip = scrollView.contentView
+                    clip.scroll(to: NSPoint(x: try tableWidth(in: window) - clip.bounds.width, y: 0))
+                    scrollView.reflectScrolledClipView(clip)
+                    #expect((clip.bounds.maxX - (try tableWidth(in: window))).magnitude < 0.5)
 
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
@@ -499,13 +511,12 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The widest table that Faktury can show, 916 points where the day of a payment prints its year (the days of
-    /// issue of the invoices of the year shown print none), fills the card of the least window, which is 938 points
-    /// wide while the detail is closed, with nothing to scroll sideways. A table of 900 points would fill that card
-    /// too, so the width of the table on the screen is read with the detail of that invoice open: the card of 582
-    /// points is narrower than any table, and the table keeps its least width, 916 points with the widened column of
-    /// Zaplaceno.
-    @Test func theWidestTableThatCanOccurFillsItsCardInTheLeastWindow() async throws {
+    /// The widest table that Faktury can show, 988 points where the day of a payment prints its year (the days of
+    /// issue of the invoices of the year shown print none), is wider than the card of the least window, which is 938
+    /// points wide while the detail is closed, and scrolls sideways in it. The width of the table on the screen is read
+    /// with the detail of that invoice open as well: the card of 582 points is narrower than any table, and the table
+    /// keeps its least width, 988 points with the widened column of Zaplaceno.
+    @Test func theWidestTableThatCanOccurKeepsItsLeastWidthInTheLeastWindow() async throws {
         try await EditorFixture.with { f in
             // Issued in the year shown and paid in the next, on a day after that of the fixture.
             var invoice = Invoice.fixture(
@@ -525,25 +536,24 @@ struct AppWindowLayoutTests {
                     #expect(labels.contains { $0.hasPrefix("20261003,") && $0.contains(paidWithItsYear) })
 
                     let widest = InvoiceTableColumns(issueDatesShowYear: false, paymentDatesShowYear: true)
-                    #expect(widest.minimumWidth == 916)
-                    try await expectSettled(window) {
-                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
-                    }
+                    #expect(widest.minimumWidth == 988)
+                    try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                    #expect((try tableWidth(in: window) - 988).magnitude < 0.5)
 
                     // The detail of that invoice open: the card of 582 points is narrower than the table, which keeps
-                    // its least width, as the table of 900 points does in `aTableBelowItsMinimumScrollsSideways`.
+                    // its least width, as the table of 972 points does in `aTableBelowItsMinimumScrollsSideways`.
                     f.app.openInvoice(id)
                     try await waitUntil { detailCardFrame(in: window) != nil }
                     try await expectSettled(window) { problems(of: window, detailOpen: true) }
-                    #expect((try tableWidth(in: window) - 916).magnitude < 0.5)
+                    #expect((try tableWidth(in: window) - 988).magnitude < 0.5)
                 }
             }
         }
     }
 
     /// Below its least width the table keeps that width and scrolls sideways in its card, with the detail beside the
-    /// card. In the least window with the detail open it is that wide, the least widths of its columns (804 points)
-    /// with 8 points between each two and 16 at either end, 900 points, which is more than its card of 582 points
+    /// card. In the least window with the detail open it is that wide, the least widths of its columns (868 points)
+    /// with 8 points between each two and 16 at either end, 972 points, which is more than its card of 582 points
     /// shows, and the card has a horizontal scroller.
     @Test func aTableBelowItsMinimumScrollsSideways() async throws {
         try await EditorFixture.with { f in
@@ -555,8 +565,8 @@ struct AppWindowLayoutTests {
 
                     let scrollView = try #require(tableScrollView(in: window))
                     let table = try tableWidth(in: window)
-                    #expect(InvoiceTableColumns().minimumWidth == 900)
-                    #expect((table - 900).magnitude < 0.5)
+                    #expect(InvoiceTableColumns().minimumWidth == 972)
+                    #expect((table - 972).magnitude < 0.5)
                     #expect(table > scrollView.contentView.bounds.width + 0.5)
                     #expect(scrollView.hasHorizontalScroller)
                     #expect(scrollView.horizontalScroller?.isHidden == false)
