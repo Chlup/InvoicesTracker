@@ -4,8 +4,9 @@ nonisolated extension BudgetBuilder {
     /// The split bar of the result card. In Faktura mode it starts with the DPH, where the invoice has some, and the
     /// three levies, which a group "Odvody" stands for in the legend; then come the four categories, each as wide as
     /// its amount. A remainder below zero has no width, and while there is nothing to divide no part has a width and
-    /// the legend says "—".
-    /// `invoice` and `figures` are those of the chosen invoice in Faktura mode.
+    /// the legend says "—". A levy below zero, a tax bonus, has no width either, while the legend gives the total of
+    /// the levies with its sign, so the widths then do not add up to the total. `invoice` and `figures` are those of
+    /// the chosen invoice in Faktura mode.
     static func bar(division: Division, invoice: BudgetInvoice?, figures: InvoiceFigures?) -> SplitBarData {
         var segments: [SplitBarSegment] = []
         var groups: [SplitBarGroup] = []

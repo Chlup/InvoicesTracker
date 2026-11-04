@@ -112,7 +112,8 @@ nonisolated enum BudgetBuilder {
             day = net.day
         }
 
-        /// The three levies together.
+        /// The three levies together. They are below zero when the payment brings a tax bonus larger than the
+        /// insurance it adds.
         var leviesKc: Int64 {
             effect.total
         }
@@ -122,7 +123,8 @@ nonisolated enum BudgetBuilder {
             incomeKc + vatKc
         }
 
-        /// What the split divides: the income less its levies, never below 0.
+        /// What the split divides: the income less its levies, never below 0. Levies below zero, a tax bonus, add to
+        /// it.
         var netKc: Int64 {
             max(0, incomeKc - leviesKc)
         }

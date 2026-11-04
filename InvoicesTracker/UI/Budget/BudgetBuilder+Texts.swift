@@ -130,7 +130,7 @@ nonisolated extension BudgetBuilder {
         guard let invoice else {
             return Headline(
                 keyFigure: KeyFigureData(
-                    eyebrow: "Čistý příjem z faktury", figure: unknown,
+                    eyebrow: "Příjem z faktury", figure: unknown,
                     sentence: "V roce \(input.year) zatím není vystavená žádná faktura."),
                 isEstimate: false)
         }
@@ -168,7 +168,9 @@ nonisolated extension BudgetBuilder {
     // MARK: The bill of an invoice
 
     /// The bill of the chosen invoice: what reaches the account, the DPH where it has some, the levies with their
-    /// share of the income, and what is left to divide under the strong line.
+    /// share of the income, and what is left to divide under the strong line. Levies below zero, as a payment that
+    /// brings a tax bonus can have, are added with a plus instead of taken off, so the rows always add up: the total
+    /// less the DPH and the levies is what is left. The note and the share give the levies with their signs.
     static func billRows(_ invoice: BudgetInvoice, figures: InvoiceFigures, in input: BudgetInput) -> [BudgetBillRow] {
         let number = invoice.invoice.number
         let isPaid = paidDay(of: invoice.invoice, in: input) != nil
@@ -195,10 +197,12 @@ nonisolated extension BudgetBuilder {
             ? CzechFormat.percent(Decimal(figures.leviesKc) / Decimal(figures.incomeKc), fractionDigits: 1)
                 + (figures.hasVAT ? " z příjmu bez DPH" : " z faktury")
             : nil
+        let isBonus = figures.leviesKc < 0
+        let value = CzechFormat.wholeKc(-figures.leviesKc)
         rows.append(
             BudgetBillRow(
-                sign: minus, label: "Daně a odvody", note: levies.joined(separator: " · "),
-                value: CzechFormat.wholeKc(-figures.leviesKc), share: share, isLocked: true, isResult: false))
+                sign: isBonus ? "+" : minus, label: "Daně a odvody", note: levies.joined(separator: " · "),
+                value: isBonus ? "+" + value : value, share: share, isLocked: true, isResult: false))
         rows.append(
             BudgetBillRow(
                 sign: "=", label: "Čistý příjem k rozdělení", note: nil, value: CzechFormat.wholeKc(figures.netKc),

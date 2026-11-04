@@ -41,15 +41,17 @@ struct BudgetBuilderTests {
     }
 
     /// The net of an invoice whose income is `income` haléře with `vat` haléře of DPH received, or expected, on `day`
-    /// (`YYYY-MM-DD`), and which adds 750 Kč of tax, 810 Kč of social and 340 Kč of health insurance to the levies.
+    /// (`YYYY-MM-DD`), and which adds `tax`, `social` and `health` Kč to the levies: unless given, 750 Kč of tax,
+    /// 810 Kč of social and 340 Kč of health insurance.
     private func net(
-        of invoice: Invoice, on day: String, income: Int64, vat: Int64, isEstimate: Bool
+        of invoice: Invoice, on day: String, income: Int64, vat: Int64, isEstimate: Bool, tax: Int64 = 750,
+        social: Int64 = 810, health: Int64 = 340
     ) -> InvoiceNetIncome {
         InvoiceNetIncome(
             effect: ReceiptEffect(
                 receipt: Receipt(
                     day: civilDate(day), czkNetHalere: income, czkVatHalere: vat, source: .invoice(invoice.id)),
-                tax: 750, social: 810, health: 340, total: 1_900),
+                tax: tax, social: social, health: health, total: tax + social + health),
             isEstimate: isEstimate, isProvisional: false)
     }
 
@@ -403,10 +405,43 @@ struct BudgetBuilderTests {
 
         #expect(data.invoicePicker == nil)
         #expect(BudgetBuilder.net(of: budget) == nil)
+        #expect(data.keyFigure.eyebrow == "Příjem z faktury")
         #expect(data.keyFigure.figure == "—")
         #expect(data.keyFigure.sentence == "V roce 2026 zatím není vystavená žádná faktura.")
         #expect(data.billRows.isEmpty)
         #expect(try row(.spending, in: data).amountText == "—")
+    }
+
+    /// A payment that brings a tax bonus lowers the levies below zero: the bonus comes on top of the income, so the
+    /// bill adds it with a plus, and the amount to divide is the income and the bonus.
+    @Test func aTaxBonusInvoiceAddsTheBonusToTheMoneyToDivide() throws {
+        var invoice = paidInvoice()
+        invoice.invoice.vatMode = .outsideCountry
+        invoice.net = net(
+            of: invoice.invoice, on: "2026-10-05", income: 504_000, vat: 0, isEstimate: false, tax: -1_200)
+        let budget = input(source: .invoice, invoices: [invoice])
+
+        let data = BudgetBuilder.build(budget)
+
+        #expect(BudgetBuilder.net(of: budget) == 5_090)
+        #expect(
+            data.billRows == [
+                BudgetBillRow(
+                    sign: "", label: "Přišlo z faktury", note: "20260905 · Alfa Systems s.r.o.",
+                    value: "5\u{00A0}040\u{00A0}Kč", share: nil, isLocked: false, isResult: false),
+                BudgetBillRow(
+                    sign: "+", label: "Daně a odvody", note: "daň −1\u{00A0}200 · sociální 810 · zdravotní 340",
+                    value: "+50\u{00A0}Kč", share: "−1,0\u{00A0}% z faktury", isLocked: true, isResult: false),
+                BudgetBillRow(
+                    sign: "=", label: "Čistý příjem k rozdělení", note: nil, value: "5\u{00A0}090\u{00A0}Kč",
+                    share: nil, isLocked: false, isResult: true),
+            ])
+        let levies = try group("levies", in: data)
+        #expect(levies.value == "−50\u{00A0}Kč")
+        #expect(levies.valueIsNegative)
+        #expect(
+            data.bar.segments.filter { $0.group == "levies" }.map(\.weight) == [0, 810, 340])
+        #expect(try row(.spending, in: data).amountText == "5\u{00A0}090\u{00A0}Kč")
     }
 
     // MARK: Rows and hints
