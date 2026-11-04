@@ -299,6 +299,30 @@ final class AppModel {
     /// (`lockAfterFailedChange(_:)`).
     @ObservationIgnored lazy var simulatorModel = SimulatorModel(app: self)
 
+    /// The model of Rozpočet, made when it is first asked for. The app holds it, not the screen, so that there is only
+    /// ever one model of the split while a change of it waits to be saved: a second model, made while the first still
+    /// waited, would read the split as the settings held it before the change and save that over the change. Other
+    /// data gets a new one (`adopt(_:)`), and so does a lock of the data (`lockAfterFailedChange(_:)`): the model
+    /// before is retired first (`retireBudgetModel()`), so that a change that waited in it is never written into the
+    /// data opened since. The setter is for tests only, which put a model of their own in place: it replaces the model
+    /// without retiring the one before.
+    var budgetModel: BudgetModel {
+        get {
+            if let madeBudgetModel {
+                return madeBudgetModel
+            }
+            let model = BudgetModel(app: self)
+            madeBudgetModel = model
+            return model
+        }
+        set {
+            madeBudgetModel = newValue
+        }
+    }
+
+    /// The model of Rozpočet once it has been made (`budgetModel`), and nil before.
+    @ObservationIgnored private var madeBudgetModel: BudgetModel?
+
     /// What the menu item Zkontrolovat aktualizace… and the card Aktualizace in Nastavení show of Sparkle's updater and
     /// ask of it. Nil until the launch sets it, before the window shows and whether or not the data is unlocked. The
     /// launch sets none while the app hosts the unit tests, which start no updater.
@@ -655,11 +679,13 @@ final class AppModel {
     /// cannot be read are logged, and the defaults and the current year stand in; the screens then show what they
     /// cannot read themselves. What waited for the local backup of other data is forgotten, and so are what Nastavení
     /// said of a change of the keys of the data before, a failed backup outside the Mac of that data and how its year
-    /// shown converted its income. What waited for the unlock after inactivity is of the data before, and goes too.
+    /// shown converted its income. What waited for the unlock after inactivity is of the data before, and goes too. The
+    /// model of Rozpočet is retired, and a change of the data before that waited in it to be saved is dropped.
     private func adopt(_ database: Database) async {
         self.database = database
         importModel = ImportModel(app: self)
         simulatorModel = SimulatorModel(app: self)
+        retireBudgetModel()
         uniformRateOffer = nil
         uniformRateOfferAfterUnlock = nil
         heldAnnouncements = []
@@ -701,8 +727,9 @@ final class AppModel {
 
     /// Shows the locked screen after the vault locked the data in the middle of `change`, which failed (a restore whose
     /// database could not be put in place or opened, a new recovery code whose rekey failed): the refresh stops and the
-    /// data is let go, with what was entered in the Simulátor, and unlocking opens what is on disk, as after a launch,
-    /// and says what `change` left in force. The locked screen takes the place of a lock after inactivity, and asks for
+    /// data is let go, with what was entered in the Simulátor and a change of Rozpočet that was not saved yet, whose
+    /// model is retired so that it never writes the change, and unlocking opens what is on disk, as after a launch, and
+    /// says what `change` left in force. The locked screen takes the place of a lock after inactivity, and asks for
     /// Touch ID or the password itself.
     func lockAfterFailedChange(_ change: InterruptedChange) {
         interruptedChange = change
@@ -714,9 +741,19 @@ final class AppModel {
         editorRequest = nil
         completion = nil
         database = nil
-        // The inputs of a simulation, its children's names and days of birth among them, go with the data.
+        // The inputs of a simulation, its children's names and days of birth among them, go with the data, and so does
+        // a change of the budget that waited to be saved.
         simulatorModel = SimulatorModel(app: self)
+        retireBudgetModel()
         phase = .locked
+    }
+
+    /// Retires the model of Rozpočet, when one was made, for the data it was made on has been replaced or let go: a
+    /// change that waited in it to be saved is dropped, and the model saves and loads nothing from now on
+    /// (`BudgetModel.retire()`). The screen gets a new model when it next asks for one (`budgetModel`).
+    private func retireBudgetModel() {
+        madeBudgetModel?.retire()
+        madeBudgetModel = nil
     }
 
     /// What to show when the data did not open with `error`, after what there is on disk: the welcome when the files
@@ -1010,6 +1047,27 @@ final class AppModel {
         }
     }
 
+    /// Changes the settings of `database` with `change` and saves them, as `updateAppSettings(_:)` does, for a change
+    /// that was made on that data: it is written into `database` alone, and only while `database` is the open data.
+    /// Once other data has been opened, or the data let go, the change is dropped without a word and logged, so that it
+    /// never reaches data it was not made on. The settings saved are shown while `database` is still open when they
+    /// are written. A change that cannot be saved is logged and not shown.
+    func updateAppSettings(in database: Database, _ change: @Sendable (inout AppSettings) -> Void) async {
+        guard self.database === database else {
+            Self.log("Dropped a change of the settings made on data that is no longer open")
+            return
+        }
+        do {
+            let saved = try await database.updateAppSettings(change)
+            // The data may have been replaced meanwhile (a restore): the settings shown are those of the data open now.
+            if self.database === database {
+                take(saved)
+            }
+        } catch {
+            Self.log("Saving the settings", failedWith: error)
+        }
+    }
+
     /// Changes the settings with `change` and saves them, as `updateAppSettings(_:)` does, for a step that has to know
     /// whether they were saved. Throws `VaultError.locked` while the data is locked, and what the database throws;
     /// nothing changes then.
@@ -1066,5 +1124,10 @@ final class AppModel {
         let error = error as NSError
         logger.error(
             "\(step, privacy: .public) failed: \(error.domain, privacy: .public) \(error.code, privacy: .public)")
+    }
+
+    /// Logs `note`, which says what the app did and names no data, as `log(_:failedWith:)` logs a failure.
+    nonisolated static func log(_ note: String) {
+        logger.notice("\(note, privacy: .public)")
     }
 }

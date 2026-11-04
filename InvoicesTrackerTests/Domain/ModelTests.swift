@@ -407,4 +407,57 @@ struct ModelTests {
         let stored = try JSONEncoder().encode(AppSettings(idleLock: .never))
         #expect(try JSONDecoder().decode(AppSettings.self, from: stored).idleLock == .never)
     }
+
+    /// Settings stored before the budget existed read an empty budget and keep everything else they say.
+    @Test func settingsStoredBeforeTheBudgetReadAnEmptyBudget() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"appearance":"dark"}"#.utf8))
+
+        #expect(settings.budget == BudgetSettings())
+        #expect(settings.appearance == .dark)
+    }
+
+    /// One malformed budget must not make the whole settings row unreadable: the budget alone falls back.
+    @Test func aMalformedBudgetFallsBackAloneAndTheOtherSettingsSurvive() throws {
+        let stored = Data(#"{"appearance":"dark","chartWithVAT":true,"budget":{"source":"nonsense"}}"#.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: stored)
+
+        #expect(settings.budget == BudgetSettings())
+        #expect(settings.appearance == .dark)
+        #expect(settings.chartWithVAT == true)
+    }
+
+    /// A source this version does not know, such as one a newer version saved, falls back to Skutečnost alone: the
+    /// split and the chosen invoice survive.
+    @Test func anUnknownSourceFallsBackAloneAndTheSplitSurvives() throws {
+        let split = BudgetSplit.empty.settingAmount(30_000, of: .savings, net: 190_037)
+        let splitJSON = try #require(String(data: JSONEncoder().encode(split), encoding: .utf8))
+        let stored = Data(
+            #"{"appearance":"dark","budget":{"split":\#(splitJSON),"source":"nonsense","invoiceID":42}}"#.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: stored)
+
+        #expect(settings.budget == BudgetSettings(split: split, source: .actual, invoiceID: 42))
+        #expect(settings.appearance == .dark)
+    }
+
+    /// A split that cannot be read falls back to the empty split alone: the source and the chosen invoice survive.
+    @Test func aMalformedSplitFallsBackAloneAndTheSourceSurvives() throws {
+        let stored = Data(#"{"split":{"holdings":"nonsense"},"source":"invoice","invoiceID":7}"#.utf8)
+
+        let budget = try JSONDecoder().decode(BudgetSettings.self, from: stored)
+
+        #expect(budget == BudgetSettings(split: .empty, source: .invoice, invoiceID: 7))
+    }
+
+    /// A share set from an amount in Kč is kept without loss, so the amount comes back exactly after a save.
+    @Test func aShareSetFromKorunyRoundTripsExactly() throws {
+        let split = BudgetSplit.empty.settingAmount(30_000, of: .savings, net: 190_037)
+        let settings = AppSettings(budget: BudgetSettings(split: split, source: .invoice, invoiceID: 42))
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+
+        #expect(decoded == settings)
+        #expect(decoded.budget.split.allocation(net: 190_037, fixedMultiplier: 1).amounts[.savings] == 30_000)
+    }
 }

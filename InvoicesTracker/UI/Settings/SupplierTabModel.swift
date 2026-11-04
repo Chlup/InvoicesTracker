@@ -17,6 +17,12 @@ import Observation
 /// - Each save writes only the fields that were changed, on top of what is stored at that moment, and then tells the
 ///   app (`didWrite()`). A save that fails is said (`saveFailure`), keeps the texts and the changes, and is tried again
 ///   with the next change.
+/// - A change belongs to the data that was open when it was made, the `Database` object, which a restore or an unlock
+///   replaces with another: it is written into that data alone. Changes whose data is no longer open when they would
+///   be saved, when the tab loads or when the next change is made are dropped with what was typed, logged and not
+///   written, and the tab says nothing of them. While no data is open at all, a change waits for the data the tab was
+///   loaded from, as a save that fails does. A load that sees other data opened while it reads shows nothing of what it
+///   read: the data open now loads again and shows itself.
 @MainActor
 @Observable
 final class SupplierTabModel {
@@ -69,6 +75,13 @@ final class SupplierTabModel {
     /// The fields the person has typed in, and of those the ones whose text has not been read yet.
     @ObservationIgnored private var touched: Set<SupplierField> = []
     @ObservationIgnored private var unread: Set<SupplierField> = []
+
+    /// The data the changes that wait to be saved were made on (`noteWaitingChange()`). It says nothing while no change
+    /// waits; what is being written belongs to the data its write was started for (`write(_:madeOn:)`).
+    @ObservationIgnored private var changesBelongTo: Database?
+
+    /// The data the tab was last loaded from.
+    @ObservationIgnored private var shownFrom: Database?
 
     /// How many loads have started. Only the latest may show its result.
     @ObservationIgnored private var loadsStarted = 0
@@ -124,27 +137,40 @@ final class SupplierTabModel {
 
     // MARK: Loading
 
-    /// Loads the supplier and the accounts. What was changed on the tab and is not saved yet stays on it. A failure is
-    /// logged and shows `errorText`; what was on the tab stays as it was. The model is known to the app from its first
-    /// load on, so that a quit waits for what is typed (`hasUnsavedInput`).
+    /// Loads the supplier and the accounts from the data open as the load starts. What was changed on the tab and is
+    /// not saved yet stays on it, unless it waits for other data than the data open now: that is dropped first
+    /// (`dropChanges()`). A failure is logged and shows `errorText`; what was on the tab stays as it was. Other data
+    /// opened while the load reads keeps what was shown without publishing this load (`mayShow(_:readFrom:)`). The
+    /// model is known to the app from its first load on, so that a quit waits for what is typed (`hasUnsavedInput`).
     func load() async {
         app.quitFlushes.register(self)
         loadsStarted += 1
         let thisLoad = loadsStarted
+        let openData = app.database
+        if let openData, hasWaitingChanges, changesBelongTo !== openData {
+            dropChanges()
+        }
         do {
-            guard let database = app.database else { throw VaultError.locked }
+            guard let database = openData else { throw VaultError.locked }
             let readSupplier = try await database.supplier()
             let readAccounts = try await database.bankAccounts()
-            guard thisLoad == loadsStarted else { return }
+            guard mayShow(thisLoad, readFrom: database) else { return }
+            shownFrom = database
             stored = (readSupplier, readAccounts)
             refreshEffective()
             seedTexts()
             errorText = nil
         } catch {
-            guard thisLoad == loadsStarted else { return }
+            guard mayShow(thisLoad, readFrom: openData) else { return }
             AppModel.log("Loading the supplier", failedWith: error)
             errorText = Self.loadFailureText
         }
+    }
+
+    /// Whether the load numbered `load`, which started while the app had `database` open (nil when it had none), may
+    /// show what it read: it is the newest load, and the data open now is still `database`.
+    private func mayShow(_ load: Int, readFrom database: Database?) -> Bool {
+        load == loadsStarted && app.database === database
     }
 
     /// Puts what the supplier and the accounts have into the texts of the fields the person has not touched.
@@ -166,6 +192,7 @@ final class SupplierTabModel {
     func setText(_ field: SupplierField, _ text: String) {
         guard stored != nil else { return }
         texts[field] = text
+        noteWaitingChange()
         touched.insert(field)
         unread.insert(field)
         scheduleSave(after: saveDelay)
@@ -203,6 +230,7 @@ final class SupplierTabModel {
     /// Makes `edits` the changes that wait for their targets, and saves them at once.
     private func queue(_ edits: [SupplierEdit]) {
         guard stored != nil else { return }
+        noteWaitingChange()
         for edit in edits {
             stage(edit)
         }
@@ -271,6 +299,64 @@ final class SupplierTabModel {
         !unread.isEmpty || !pending.isEmpty || writeTask != nil
     }
 
+    /// Whether changes wait to be saved: a text that waits for the typing to stop, or a change that waits for its save.
+    /// What is being written does not count: it belongs to the data its write was started for.
+    private var hasWaitingChanges: Bool {
+        !unread.isEmpty || !pending.isEmpty
+    }
+
+    /// A change starts to wait to be saved, or joins those that wait. The first one records the data the app has open,
+    /// or the data the tab was loaded from while the app has none open (`changesBelongTo`), and the later ones join it.
+    /// Changes that wait for data that is no longer open, as other data has been opened since, are dropped first
+    /// (`dropChanges()`), and this one belongs to the data open now.
+    private func noteWaitingChange() {
+        let openData = app.database
+        if let openData, hasWaitingChanges, changesBelongTo !== openData {
+            dropChanges()
+        }
+        if !hasWaitingChanges {
+            changesBelongTo = openData ?? shownFrom
+        }
+    }
+
+    /// The line logged when changes are dropped because they were made on data that is no longer open: a restore or
+    /// an unlock replaced it, or it was let go.
+    private static let droppedChangesNote = "Dropped the changes of Moje údaje made on data that is no longer open"
+
+    /// Drops the changes that wait to be saved, which were made on data that is no longer open, and logs it when there
+    /// were some (`forgetChanges()`).
+    private func dropChanges() {
+        if hasWaitingChanges {
+            AppModel.log(Self.droppedChangesNote)
+        }
+        forgetChanges()
+    }
+
+    /// Forgets the changes that wait to be saved and the wait for the save, what was typed, the messages under the
+    /// texts that were refused and the line of a save that failed: they were made on data that is no longer open, and
+    /// nothing of them is written. The supplier and the accounts shown are those stored again, and every field shows
+    /// what the data holds once the tab loads, which a restore and an unlock make it do.
+    private func forgetChanges() {
+        saveTimer.cancel()
+        pending = []
+        unread = []
+        touched = []
+        changesBelongTo = nil
+        fieldErrors = [:]
+        saveFailure = nil
+        refreshEffective()
+    }
+
+    /// What was being written was made on data that is no longer open: it is neither written nor put back to wait. The
+    /// changes that wait go with it, and what was typed (`forgetChanges()`), unless they were made on the data open
+    /// now. It is logged, and the tab says nothing of it.
+    private func dropWhatWasWritten() {
+        AppModel.log(Self.droppedChangesNote)
+        if !hasWaitingChanges || changesBelongTo !== app.database {
+            forgetChanges()
+        }
+    }
+
     /// Starts the wait before the save again. No delay at all is no wait.
     private func scheduleSave(after delay: Duration) {
         saveTimer.restart(after: delay) {
@@ -280,7 +366,8 @@ final class SupplierTabModel {
 
     /// Reads the texts that were typed, saves what waits to be saved, and returns when it is written and the app has
     /// been told of it. The screen calls this when the person leaves a field, presses Return or leaves the screen; the
-    /// end of the wait does too. When a save is already running this waits for it and then saves what has come since.
+    /// end of the wait does too, and so does a quit. When a save is already running this waits for it and then saves
+    /// what has come since. Changes made on data that is no longer open are dropped instead (`write(_:madeOn:)`).
     func saveNow() async {
         saveTimer.cancel()
         while let running = writeTask {
@@ -289,23 +376,33 @@ final class SupplierTabModel {
         readTypedTexts()
         guard !pending.isEmpty else { return }
         let edits = pending
+        let madeOn = changesBelongTo
         inFlight = edits
         pending = []
-        let task = Task { await self.write(edits) }
+        let task = Task { await self.write(edits, madeOn: madeOn) }
         writeTask = task
         await task.value
     }
 
-    /// Writes `edits` on top of what is stored, in one transaction, and tells the app.
-    private func write(_ edits: [SupplierEdit]) async {
+    /// Writes `edits`, which were made on the data `madeOn`, on top of what is stored, in one transaction, and tells
+    /// the app. It writes into `madeOn` alone, and only while it is the data the app has open as the write starts:
+    /// edits made on data that a restore or an unlock has replaced since are dropped instead (`dropWhatWasWritten()`),
+    /// and so are those whose write fails because other data was opened meanwhile. While no data is open they wait for
+    /// the next save, and the failure is said, as it is for a write that fails. A write that ends after other data was
+    /// opened shows nothing of what it wrote, and does not tell the app.
+    private func write(_ edits: [SupplierEdit], madeOn: Database?) async {
         defer {
             inFlight = []
             writeTask = nil
             refreshEffective()
         }
         guard let database = app.database else {
-            restore(edits)
+            restore(edits, madeOn: madeOn)
             saveFailure = Self.saveFailureText
+            return
+        }
+        guard database === madeOn else {
+            dropWhatWasWritten()
             return
         }
         do {
@@ -314,19 +411,33 @@ final class SupplierTabModel {
                     edit.apply(to: &supplier, accounts: &accounts)
                 }
             }
+            if let openData = app.database, openData !== database {
+                return
+            }
             stored = (saved.supplier, saved.accounts)
         } catch {
+            if let openData = app.database, openData !== database {
+                dropWhatWasWritten()
+                return
+            }
             AppModel.log("Saving the supplier", failedWith: error)
-            restore(edits)
+            restore(edits, madeOn: database)
             saveFailure = Self.saveFailureText
             return
         }
         saveFailure = nil
+        if !hasWaitingChanges {
+            changesBelongTo = nil
+        }
         await app.didWrite()
     }
 
-    /// Puts `edits`, which could not be written, back in front of those that came meanwhile.
-    private func restore(_ edits: [SupplierEdit]) {
+    /// Puts `edits`, which were made on the data `madeOn` and could not be written, back in front of those that came
+    /// meanwhile. When none came, they wait for `madeOn` again.
+    private func restore(_ edits: [SupplierEdit], madeOn: Database?) {
+        if !hasWaitingChanges {
+            changesBelongTo = madeOn
+        }
         let newer = pending
         pending = edits.filter { edit in !newer.contains { $0.target == edit.target } } + newer
     }

@@ -305,6 +305,7 @@ struct CardAndFigureTests {
     @Test(arguments: [
         (KeyFigureSpacing.board, CGFloat(8), CGFloat(8), CGFloat(14)), (.simulator, 8, 8, 12),
         (.overview, 8, 12, 14), (.computation, 8, 10, 14), (.prediction, 8, 10, 14), (.predictionDue, 6, 6, 14),
+        (.budget, 8, 10, 14),
     ])
     func theSpacesAroundTheFigureAreThoseOfTheScreen(
         spacing: KeyFigureSpacing, above: CGFloat, below: CGFloat, shareGap: CGFloat
@@ -428,6 +429,31 @@ struct CardAndFigureTests {
                     ])
             }
         }
+    }
+
+    /// A pill beside the eyebrow, such as the "odhad" of an estimate on Rozpočet, stands on the line of the eyebrow,
+    /// after it, and is read after the eyebrow in the one phrase of the key figure. The line is as tall as the taller
+    /// of the two, so the pill lowers the figure by no more than it is taller than the eyebrow.
+    @Test func aPillBesideTheEyebrowIsReadAfterIt() async throws {
+        let data = KeyFigureData(
+            eyebrow: "Čistý příjem průměrně za měsíc", figure: "190\u{00A0}220\u{00A0}Kč",
+            sentence: "Odhad za celý rok 2026.")
+        let figure = KeyFigureView(data, eyebrowPill: Pill("odhad", tone: .estimate)).padding(24)
+
+        try await withHostedView(figure, size: CGSize(width: 800, height: 240)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { !accessibilityReadings(in: window).isEmpty }
+                #expect(
+                    accessibilityReadings(in: window) == [
+                        "Čistý příjem průměrně za měsíc, odhad, 190\u{00A0}220\u{00A0}Kč, Odhad za celý rok 2026."
+                    ])
+            }
+        }
+        let plain = fittingHeight(of: KeyFigureView(data), width: 400)
+        let withPill = fittingHeight(of: KeyFigureView(data, eyebrowPill: Pill("odhad", tone: .estimate)), width: 400)
+        let pill = NSHostingView(rootView: Pill("odhad", tone: .estimate)).fittingSize.height
+        let eyebrow = fittingHeight(of: Text(verbatim: data.eyebrow).eyebrow(), width: 400)
+        #expect(abs(withPill - plain - max(0, pill - eyebrow)) < 0.5, "\(withPill) with the pill, \(plain) without")
     }
 
     // MARK: The figure tile

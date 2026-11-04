@@ -83,12 +83,18 @@ nonisolated struct KeyFigureSpacing: Sendable, Hashable {
 
     /// What is left to settle on Odhad odvodů: a column 6 points apart.
     static let predictionDue = KeyFigureSpacing(aboveFigure: 6, belowFigure: 6)
+
+    /// Rozpočet: a column 8 points apart, and the sentence 2 points lower (its margin of 2).
+    static let budget = KeyFigureSpacing(aboveFigure: 8, belowFigure: 10)
 }
 
 /// The sizes and gaps of a key figure.
 private nonisolated enum KeyFigureMetrics {
     /// The space between the figure and its share where the share has gone under the figure.
     static let shareLineGap: CGFloat = 4
+
+    /// The space between the eyebrow and the pill beside it.
+    static let pillGap: CGFloat = 10
 
     /// The tracking of the figure: −0.02 em of its 44 points.
     static let figureTracking: CGFloat = -0.88
@@ -108,7 +114,9 @@ private nonisolated enum KeyFigureMetrics {
 /// design has. The sentence is set in the body size unless the screen gives it another font, as the Simulátor sets the
 /// one line of context under its figure in callout. The figure stands in a line as tall as its size, and the spaces
 /// between that line and the eyebrow and the sentence are those the screen gives it (`KeyFigureSpacing`), 8 points
-/// each unless it gives others. VoiceOver reads the lot as one phrase.
+/// each unless it gives others. A pill may stand after the eyebrow, 10 points from it and centred on its line, such as
+/// the "odhad" of a figure that is an estimate as a whole. VoiceOver reads the lot as one phrase, the pill after the
+/// eyebrow.
 struct KeyFigureView: View {
     let data: KeyFigureData
 
@@ -121,23 +129,26 @@ struct KeyFigureView: View {
     /// The spaces around the figure that the screen gives it.
     let spacing: KeyFigureSpacing
 
+    /// The pill after the eyebrow, or nil for none.
+    let eyebrowPill: Pill?
+
     /// A key figure that shows `data`, its sentence at most `sentenceMaximumWidth` points wide and set in
-    /// `sentenceFont`, with the spaces around the figure of `spacing`.
+    /// `sentenceFont`, with the spaces around the figure of `spacing`, and `eyebrowPill` after its eyebrow where there
+    /// is one.
     init(
         _ data: KeyFigureData, sentenceMaximumWidth: CGFloat = KeyFigureMetrics.sentenceMaximumWidth,
-        sentenceFont: Font = Typography.body, spacing: KeyFigureSpacing = .board
+        sentenceFont: Font = Typography.body, spacing: KeyFigureSpacing = .board, eyebrowPill: Pill? = nil
     ) {
         self.data = data
         self.sentenceMaximumWidth = sentenceMaximumWidth
         self.sentenceFont = sentenceFont
         self.spacing = spacing
+        self.eyebrowPill = eyebrowPill
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(verbatim: data.eyebrow)
-                .eyebrow()
-                .fixedSize(horizontal: false, vertical: true)
+            eyebrowLine
             figureLine
                 .padding(.top, spacing.aboveFigure)
             if data.sentence != nil {
@@ -150,6 +161,22 @@ struct KeyFigureView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// The eyebrow, with the pill after it where there is one, centred on its line.
+    @ViewBuilder
+    private var eyebrowLine: some View {
+        let eyebrow = Text(verbatim: data.eyebrow)
+            .eyebrow()
+            .fixedSize(horizontal: false, vertical: true)
+        if let eyebrowPill {
+            HStack(spacing: KeyFigureMetrics.pillGap) {
+                eyebrow
+                eyebrowPill
+            }
+        } else {
+            eyebrow
+        }
     }
 
     /// The figure, with its share beside it where both fit the room, and under it where they do not.

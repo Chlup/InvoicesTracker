@@ -18,6 +18,13 @@ extension AppModel {
     /// levies are worked out as of. The prediction reads the year without this (`predictionOutcome(year:)`).
     func yearInput(for year: Int) async throws -> (input: YearInput, settings: YearSettings) {
         guard let database else { throw VaultError.locked }
+        return try await yearInput(for: year, from: database)
+    }
+
+    /// What the computation of `year` needs, read from `database` as `yearInput(for:)` reads it from the open data,
+    /// the receipts after the real today left out: for a screen that reads all it shows from the data that was open
+    /// when its load started, whatever the app opens meanwhile.
+    func yearInput(for year: Int, from database: Database) async throws -> (input: YearInput, settings: YearSettings) {
         var read = try await Self.yearInput(for: year, in: database)
         if year == today.year {
             let today = self.today

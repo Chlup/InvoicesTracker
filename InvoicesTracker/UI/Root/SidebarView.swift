@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The sidebar: the screens of the selected year under "Rok 2026", Faktury with the number of its drafts, the records
-/// under "Evidence", the tools under "Nástroje" (Simulátor, and Import with the progress of an import that runs), and
-/// Nastavení pinned at the bottom with the version of the app under it.
+/// under "Evidence", the tools under "Nástroje" (Simulátor, Rozpočet, and Import with the progress of an import that
+/// runs), and Nastavení pinned at the bottom with the version of the app under it.
 struct SidebarView: View {
     let model: AppModel
 
@@ -23,6 +23,7 @@ struct SidebarView: View {
             }
             Section("Nástroje") {
                 row(.simulator)
+                row(.budget)
                 row(.importer, badge: model.importBadge)
             }
         }
@@ -131,6 +132,7 @@ private extension Screen {
         case .prediction: "chart.line.uptrend.xyaxis"
         case .clients: "person.2"
         case .simulator: "plus.forwardslash.minus"
+        case .budget: "chart.pie"
         case .settings: "gearshape"
         case .importer: "square.and.arrow.down"
         }

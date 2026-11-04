@@ -5,18 +5,22 @@ import SwiftUI
 /// other. (A `LazyVGrid` with an adaptive column keeps the columns that are empty, which would leave the width unused.)
 /// The columns are aligned at the top, and a row is as high as its highest subview. With `equalRowHeights` every
 /// subview of a row is also offered the height of the row, which a subview that fills the room it is offered takes, so
-/// that cards side by side are of one height; the others keep their own.
+/// that cards side by side are of one height; the others keep their own. The columns are `spacing` apart, and so are
+/// the rows unless `rowSpacing` gives them a gap of their own.
 struct AdaptiveColumns: Layout {
     let minimumColumnWidth: CGFloat
     let spacing: CGFloat
     var equalRowHeights = false
+
+    /// The gap between rows, or nil for the same as `spacing`.
+    var rowSpacing: CGFloat?
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard !subviews.isEmpty else { return .zero }
         let width = availableWidth(proposal, count: subviews.count)
         let columns = columnCount(width: width, count: subviews.count)
         let heights = rowHeights(subviews, columns: columns, columnWidth: columnWidth(width: width, columns: columns))
-        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(heights.count - 1))
+        return CGSize(width: width, height: heights.reduce(0, +) + rowGap * CGFloat(heights.count - 1))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -33,8 +37,13 @@ struct AdaptiveColumns: Layout {
                     at: CGPoint(x: bounds.minX + CGFloat(column) * (width + spacing), y: top), anchor: .topLeading,
                     proposal: ProposedViewSize(width: width, height: equalRowHeights ? height : nil))
             }
-            top += height + spacing
+            top += height + rowGap
         }
+    }
+
+    /// The gap between rows.
+    private var rowGap: CGFloat {
+        rowSpacing ?? spacing
     }
 
     /// The width to lay out in: the one proposed, or for none the width of all the subviews side by side. A proposal of

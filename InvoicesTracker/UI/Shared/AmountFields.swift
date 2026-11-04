@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The text field of an amount typed in a form, without a title: whole Kč or a number of months, against the right
-/// edge in digits of one width. VoiceOver reads it under `title`, and Return in it calls `submit`.
+/// The text field of an amount typed in a form, without a title: whole Kč, a share in percent or a number of months,
+/// against the right edge in digits of one width. VoiceOver reads it under `title`, and Return in it calls `submit`.
 struct AmountTextField: View {
     let title: String
     let text: Binding<String>

@@ -93,6 +93,22 @@ struct ContainerNamesTests {
         }
     }
 
+    /// Rozpočet names the choice of what it divides, its result, the bar of the split and the card of the categories
+    /// as the prototype names them.
+    @Test func theSourceTheResultAndTheSplitOfTheBudgetAreNamedAsThePrototypeNamesThem() async throws {
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .budget
+                try await waitUntil { window.title == "Rozpočet" }
+                try await withAccessibilityElements {
+                    try await expectContainers(
+                        ["Z čeho rozpočet počítat", "K rozdělení", "Rozdělení podle kategorií", "Rozdělení"],
+                        in: window, "Rozpočet")
+                }
+            }
+        }
+    }
+
     // MARK: The lists and the editor
 
     /// Faktury names its filters, the list, the summary row and, with a detail open, the detail with its payment and

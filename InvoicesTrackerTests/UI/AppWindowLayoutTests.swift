@@ -47,8 +47,9 @@ import Testing
 /// same two columns and the texts of its cells whole, and it runs result card, Příjmy, note, months, breakdown; the
 /// page of a year without rules of its own fits as well, which has a warning above its result card and no sign "≈" in
 /// it. A form of a page that the least window shows only with the sidebar as wide as it goes is looked at with the
-/// sidebar widened, and one that only a narrower page shows, on the page shown alone in a window of its own. One window
-/// at a time, so that what a test sees settle is its own window.
+/// sidebar widened, and one that only a narrower page shows, on the page shown alone in a window of its own. Rozpočet
+/// fits in Faktura mode on an invoice with DPH, its parts one under the other and the controls of each category clear
+/// of each other inside its card. One window at a time, so that what a test sees settle is its own window.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct AppWindowLayoutTests {
@@ -5875,6 +5876,205 @@ struct AppWindowLayoutTests {
                 #expect(f.app.pendingUniformRate != nil)
             }
         }
+    }
+
+    // MARK: Rozpočet
+
+    /// The parts of Rozpočet by the labels VoiceOver reads them under, from the top of the page: the choice of what it
+    /// divides, the result card and the card of the categories.
+    private static let budgetParts = ["Z čeho rozpočet počítat", "K rozdělení", "Rozdělení"]
+
+    /// How the note under the card of the categories of Rozpočet begins.
+    private static let budgetNote = "Když změníte"
+
+    /// How what VoiceOver reads for each row of the bill of an invoice with DPH begins, from the top.
+    private static let budgetBill = [
+        "Přišlo z faktury: ", "DPH: ", "Daně a odvody: ", "Čistý příjem k rozdělení: ",
+    ]
+
+    /// The labels VoiceOver reads the controls of each row of the categories under, with the empty budget of a new app:
+    /// Náklady are held by a fixed amount, with its field and its checkbox; Útrata is the remainder, which has no
+    /// control; and Úspory and Investice are held by their shares, with the slider and the two fields.
+    private static let budgetControls = [
+        ["Náklady v korunách", "Náklady: pevná částka v Kč"],
+        [
+            "Úspory, podíl z čistého příjmu", "Úspory v procentech", "Úspory v korunách",
+            "Úspory: pevná částka v Kč",
+        ],
+        [
+            "Investice, podíl z čistého příjmu", "Investice v procentech", "Investice v korunách",
+            "Investice: pevná částka v Kč",
+        ],
+    ]
+
+    /// Rozpočet of the year the app shows in Faktura mode, on an invoice of 4 500 Kč with 945 Kč of DPH, so that its
+    /// bill has all four rows: at the least room, at a large size and at the least room again, the choice of the
+    /// source, the result card, the card of the categories and the note under it stand one under the other on the
+    /// page, none runs out of it sideways and none lies over another, and the note is whole; the key figure and the bar
+    /// of the split are inside the result card, clear of each other, and each of the six items of the legend of the bar
+    /// is its two lines, its name and its amount, none squeezed into more; the rows of the bill stand one under the
+    /// other inside the card of the categories; and the slider, the fields and the checkbox of each category are inside
+    /// that card and clear of each other, as is the pill of the remainder (`problems(ofBudgetIn:groups:)`).
+    @Test func theBudgetFitsTheSmallestAndTheLargestWindow() async throws {
+        try await EditorFixture.with { f in
+            // 4 500,00 Kč and 945,00 Kč DPH, paid on 1. 10. 2026.
+            var invoice = Invoice.fixture(
+                number: "20260990", issued: "2026-09-30", payment: Payment.fixture(on: "2026-10-01"))
+            invoice.id = try await f.database.saveInvoice(invoice)
+            await f.app.didWrite()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .budget
+                try await waitUntil { window.title == "Rozpočet" }
+                await f.app.budgetModel.chooseInvoice(id: invoice.id)
+                try await waitUntil { f.app.budgetModel.data?.billRows.count == 4 }
+                let groups = try #require(f.app.budgetModel.data?.bar.groups)
+                #expect(groups.count == 6)
+                try await withAccessibilityElements {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
+                        window.setContentSize(size)
+                        try await expectSettled(window) { problems(ofBudgetIn: window, groups: groups) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What is wrong with Rozpočet in Faktura mode in `window`, whose bar has the items `groups` in its legend, in
+    /// words: the page sticks out of the window; a part of it (`budgetParts` and the note) is missing, runs out of the
+    /// page sideways, is not under the part before it, or the note is cut short; the key figure or the bar of the split
+    /// is not inside the result card, or they overlap, or an item of the legend is missing, not inside the bar, lies
+    /// over another or is taller than its two lines; a row of the bill (`budgetBill`) is not inside the card of the
+    /// categories or not under the row before it; or a control of a category (`budgetControls`), or the pill of the
+    /// remainder, is not inside that card or lies over another control of its row. The origin of the screen is at the
+    /// bottom left, so what is above has the larger y. Empty when it fits. Needs the accessibility elements.
+    private func problems(ofBudgetIn window: NSWindow, groups: [SplitBarGroup]) -> [String] {
+        var problems = problems(ofPageIn: window)
+        guard let page = scrolledPage(in: window)?.enclosingScrollView else {
+            return problems + ["The page is not shown"]
+        }
+        let room = window.convertToScreen(frameInWindow(page))
+        var parts: [(label: String, frame: CGRect)] = []
+        for label in Self.budgetParts {
+            guard let frame = frameOfCard(labelled: label, in: window) else {
+                problems.append("No part \(label)")
+                continue
+            }
+            parts.append((label: label, frame: frame))
+        }
+        if let note = frameOfText(startingWith: Self.budgetNote, in: window) {
+            parts.append((label: "the note", frame: note))
+            let column = CGRect(x: room.minX, y: note.minY, width: room.width, height: note.height)
+            problems += self.problems(ofText: Self.budgetNote, frame: note, font: .body, within: column, in: window)
+        } else {
+            problems.append("No note under the card of the categories")
+        }
+        for (index, part) in parts.enumerated() {
+            if part.frame.minX < room.minX - 0.5 || part.frame.maxX > room.maxX + 0.5 {
+                problems.append("\(part.label) runs out of the page \(room): \(part.frame)")
+            }
+            if index > 0, part.frame.maxY > parts[index - 1].frame.minY + 0.5 {
+                problems.append("\(part.label) is not under \(parts[index - 1].label): \(part.frame)")
+            }
+        }
+        if let result = frameOfCard(labelled: "K rozdělení", in: window) {
+            problems += problemsOfBudgetResult(in: result, groups: groups, window: window)
+        }
+        if let card = frameOfCard(labelled: "Rozdělení", in: window) {
+            problems += problemsOfBudgetSplit(in: card, window: window)
+        }
+        return problems
+    }
+
+    /// What is wrong with the result card of Rozpočet at `card` in `window`: its key figure or its bar of the split is
+    /// missing, not inside it, or they overlap; or an item of `groups` in the legend of the bar is missing, not inside
+    /// the bar, lies over another item, or is taller than the line of its name and the line of its amount, as an item
+    /// squeezed so narrow that its words break is.
+    private func problemsOfBudgetResult(in card: CGRect, groups: [SplitBarGroup], window: NSWindow) -> [String] {
+        guard let figure = frameOfText(startingWith: "Přišlo z faktury 20260990, ", in: window) else {
+            return ["No key figure of the invoice"]
+        }
+        guard let bar = frameOfCard(labelled: "Rozdělení podle kategorií", in: window) else {
+            return ["No bar of the split"]
+        }
+        var problems: [String] = []
+        let inside = card.insetBy(dx: -0.5, dy: -0.5)
+        if !inside.contains(figure) {
+            problems.append("The key figure \(figure) is not inside the result card \(card)")
+        }
+        if !inside.contains(bar) {
+            problems.append("The bar \(bar) is not inside the result card \(card)")
+        }
+        if figure.insetBy(dx: 0.5, dy: 0.5).intersects(bar) {
+            problems.append("The key figure \(figure) lies over the bar \(bar)")
+        }
+        let twoLines =
+            fittingHeight(of: Text(verbatim: "Odvody").font(Typography.callout), width: 400)
+            + fittingHeight(of: Text(verbatim: "945 Kč").font(Typography.bodySemibold), width: 400)
+            + LevyBarMetrics.legendLineGap
+        var placed: [(title: String, frame: CGRect)] = []
+        for group in groups {
+            guard let item = accessibilityElement(labelled: group.accessibilityLabel, in: window)?.accessibilityFrame?()
+            else {
+                problems.append("No item \(group.shortTitle) in the legend")
+                continue
+            }
+            if !bar.insetBy(dx: -0.5, dy: -0.5).contains(item) {
+                problems.append("The item \(group.shortTitle) \(item) is not inside the bar \(bar)")
+            }
+            if item.height > twoLines + 1 {
+                problems.append("The item \(group.shortTitle) is \(item.height) points tall, not \(twoLines)")
+            }
+            for other in placed where item.insetBy(dx: 0.5, dy: 0.5).intersects(other.frame) {
+                problems.append("The item \(group.shortTitle) \(item) lies over \(other.title) \(other.frame)")
+            }
+            placed.append((title: group.shortTitle, frame: item))
+        }
+        return problems
+    }
+
+    /// What is wrong with the card of the categories of Rozpočet at `card` in `window`: a row of its bill or a control
+    /// of a category is missing or not inside it, a row of the bill is not under the one before it, or a control lies
+    /// over another control of its row.
+    private func problemsOfBudgetSplit(in card: CGRect, window: NSWindow) -> [String] {
+        var problems: [String] = []
+        let inside = card.insetBy(dx: -0.5, dy: -0.5)
+        var above: (prefix: String, frame: CGRect)?
+        for prefix in Self.budgetBill {
+            guard let frame = accessibilityElement(labelStartingWith: prefix, in: window)?.accessibilityFrame?() else {
+                problems.append("No row of the bill \(prefix)")
+                continue
+            }
+            if !inside.contains(frame) {
+                problems.append("The row \(prefix) \(frame) is not inside the card \(card)")
+            }
+            if let above, frame.maxY > above.frame.minY + 0.5 {
+                problems.append("The row \(prefix) \(frame) is not under the row \(above.prefix) \(above.frame)")
+            }
+            above = (prefix: prefix, frame: frame)
+        }
+        var rows = Self.budgetControls.map { labels in
+            labels.map { label in
+                (label: label, frame: accessibilityElement(labelled: label, in: window)?.accessibilityFrame?())
+            }
+        }
+        rows.append([(label: "the pill zbytek", frame: frameOfText(startingWith: "zbytek", in: window))])
+        for controls in rows {
+            var placed: [(label: String, frame: CGRect)] = []
+            for control in controls {
+                guard let frame = control.frame, frame.width > 0, frame.height > 0 else {
+                    problems.append("No control \(control.label)")
+                    continue
+                }
+                if !inside.contains(frame) {
+                    problems.append("\(control.label) \(frame) is not inside the card \(card)")
+                }
+                for other in placed where frame.insetBy(dx: 0.5, dy: 0.5).intersects(other.frame) {
+                    problems.append("\(control.label) \(frame) lies over \(other.label) \(other.frame)")
+                }
+                placed.append((label: control.label, frame: frame))
+            }
+        }
+        return problems
     }
 
     /// The room of a page that the window of the app no longer leaves a screen, as its page has at least 850 points

@@ -20,9 +20,10 @@ struct DesignControlsTests {
             (.edited, Palette.fill, Palette.text2),
             (.estimate, Palette.orangeTint, Palette.orangeText),
             (.review, Palette.orangeTint, Palette.orangeText),
+            (.neutral, Palette.fill, Palette.text2),
         ]
 
-        #expect(Set(tones.map(\.tone)).count == 7)
+        #expect(Set(tones.map(\.tone)).count == 8)
         for entry in tones {
             #expect(entry.tone.background == entry.background, "\(entry.tone) has the wrong background")
             #expect(entry.tone.foreground == entry.foreground, "\(entry.tone) has the wrong text colour")
@@ -242,6 +243,50 @@ struct DesignControlsTests {
                 let chosen = try #require(accessibilityButton(labelled: "Zaplacené", in: window))
                 #expect(chosen.accessibilityPerformPress?() == true)
                 #expect(choice.scope == .paid)
+            }
+        }
+    }
+
+    /// The source of Rozpočet, whose Odhad za rok cannot be chosen in a past year, as a test chooses it.
+    @MainActor
+    @Observable
+    final class SourceChoice {
+        var source = BudgetSource.actual
+    }
+
+    /// A segment that cannot be chosen is disabled, VoiceOver reads why as its help, and a press on it changes nothing;
+    /// the other segments are chosen as ever.
+    @Test func aSegmentThatCannotBeChosenIsDisabledAndSaysWhy() async throws {
+        let choice = SourceChoice()
+        let why = "Za minulý rok je odhad stejný jako skutečnost."
+        let control = SegmentedControl(
+            "Z čeho rozpočet počítat",
+            selection: Binding(get: { choice.source }, set: { choice.source = $0 }),
+            segments: [
+                (value: BudgetSource.actual, title: "Skutečnost"),
+                (value: BudgetSource.prediction, title: "Odhad za rok"),
+                (value: BudgetSource.invoice, title: "Faktura"),
+            ],
+            disabled: [.prediction], help: [.prediction: why]
+        )
+        .padding(20)
+
+        try await withHostedView(control, size: CGSize(width: 420, height: 120)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityButton(labelled: "Odhad za rok", in: window) != nil }
+                let estimate = try #require(accessibilityButton(labelled: "Odhad za rok", in: window))
+                let invoice = try #require(accessibilityButton(labelled: "Faktura", in: window))
+                #expect(estimate.isAccessibilityEnabled?() == false)
+                #expect(accessibilityHelp(of: estimate) == why)
+                #expect(invoice.isAccessibilityEnabled?() == true)
+                #expect(accessibilityHelp(of: invoice) == nil)
+
+                _ = estimate.accessibilityPerformPress?()
+                try await layOut(window)
+                #expect(choice.source == .actual)
+
+                #expect(invoice.accessibilityPerformPress?() == true)
+                try await waitUntil { choice.source == .invoice }
             }
         }
     }

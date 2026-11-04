@@ -130,4 +130,24 @@ struct AdaptiveColumnsTests {
 
         #expect(sizes.map(\.height) == [30, 50, 40], "laid out with \(sizes)")
     }
+
+    // MARK: The gap between rows
+
+    /// The rows are the gap between the columns apart unless the layout has a gap of its own for them, as the legend of
+    /// the split bar has rows 8 points apart and columns 16.
+    @Test func theRowsAreTheirOwnGapApartWhereTheLayoutHasOne() {
+        let boxes = ForEach(0..<3, id: \.self) { _ in
+            Color.clear.frame(height: 30)
+        }
+        // Two columns fit 230 points: two rows of boxes 30 points high.
+        let ofTheColumns = NSHostingView(
+            rootView: AdaptiveColumns(minimumColumnWidth: 100, spacing: 10) { boxes }.frame(width: 230)
+        ).fittingSize
+        let ofTheirOwn = NSHostingView(
+            rootView: AdaptiveColumns(minimumColumnWidth: 100, spacing: 10, rowSpacing: 4) { boxes }.frame(width: 230)
+        ).fittingSize
+
+        #expect(ofTheColumns.height == 70)
+        #expect(ofTheirOwn.height == 64)
+    }
 }

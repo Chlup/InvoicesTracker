@@ -10,7 +10,7 @@ struct ScreenTests {
         #expect(
             Screen.allCases.map(\.title) == [
                 "Přehled", "Faktury", "Zálohy a odpočty", "Výpočet", "Odhad odvodů", "Odběratelé", "Simulátor",
-                "Nastavení", "Import",
+                "Rozpočet", "Nastavení", "Import",
             ])
     }
 
@@ -45,6 +45,9 @@ struct ScreenTests {
                     subtitle: "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{00A0}10.\u{00A0}2026"),
                 ScreenHeader(title: "Odběratelé", subtitle: "Výchozí údaje a šablony pro nové faktury"),
                 ScreenHeader(title: "Simulátor", subtitle: "Kolik zaplatíte na odvodech při zvoleném příjmu"),
+                ScreenHeader(
+                    title: "Rozpočet",
+                    subtitle: "Rok 2026 · jak rozdělit čistý příjem na náklady, útratu, úspory a investice"),
                 ScreenHeader(title: "Nastavení", subtitle: "Aplikace, moje údaje, zabezpečení a rok 2026"),
                 ScreenHeader(
                     title: "Import faktur",

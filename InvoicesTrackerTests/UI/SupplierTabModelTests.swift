@@ -3,9 +3,9 @@ import Testing
 @testable import InvoicesTracker
 
 /// The tab Moje údaje: the supplier's details and bank accounts are saved by themselves a moment after the last key (at
-/// once in these tests, unless a test waits itself), a menu and the account in euros at once, and an IBAN or a BIC with
-/// a typo is kept in its field with a message and never saved. The data is invented, the IBANs the well-known example
-/// ones.
+/// once in these tests, unless a test waits itself), a menu and the account in euros at once, an IBAN or a BIC with a
+/// typo is kept in its field with a message and never saved, and a change is written only into the data it was made
+/// on. The data is invented, the IBANs the well-known example ones.
 @Suite(.settlesBackups)
 @MainActor
 struct SupplierTabModelTests {
@@ -275,5 +275,77 @@ struct SupplierTabModelTests {
 
         #expect(try await database.supplier().email == "jan@example.com")
         #expect(model.text(.email) == "  jan@example.com \n")
+    }
+
+    // MARK: Data that is replaced
+
+    /// A change that waits to be saved while a restore replaces the data was made on the data before: neither the end
+    /// of its wait nor a quit writes it into the restored data, and nothing says that it failed. A load of the restored
+    /// data drops it at once, and the field shows what the restored data holds.
+    @Test(arguments: [false, true])
+    func aChangeWaitingDuringARestoreIsNotWrittenIntoTheRestoredData(loadingFirst: Bool) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let delay = ManualDelay()
+        let model = await loadedModel(of: app, wait: delay)
+        model.setText(.name, "Jan Novák")
+        await model.saveNow()
+        await app.didWriteAndBackUp()
+        let backup = try #require(try app.backups.localBackups().first)
+        model.setText(.name, "Petr Svoboda")
+        try await waitUntil { delay.armed == 1 }
+
+        _ = try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+
+        if loadingFirst {
+            await model.load()
+
+            #expect(!model.hasUnsavedInput)
+            #expect(model.text(.name) == "Jan Novák")
+        }
+        // The end of the wait saves what waits, and so does a quit.
+        delay.fire()
+        await letWaitingJobsRun()
+        await model.saveNow()
+        await app.flushUnsavedInput()
+
+        #expect(!model.hasUnsavedInput)
+        #expect(model.saveFailure == nil)
+        #expect(try await #require(app.database).supplier().name == "Jan Novák")
+    }
+
+    /// A load that sees other data opened while it reads, as a restore or an unlock opens a new `Database`, shows
+    /// nothing of what it read, not even the line of a failure: the restore and the unlock make every screen load the
+    /// data open now, and that load shows it. Here the data is replaced by hand as the load has started.
+    @Test func aLoadThatStraddlesARestoreShowsNothingOfTheOldData() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        var before = try await database.supplier()
+        before.name = "Jan Novák"
+        try await database.saveSupplier(before)
+        let (restored, restoredDirectory) = try makeDatabase()
+        defer { removeTemporaryDirectory(restoredDirectory) }
+        var restoredSupplier = try await restored.supplier()
+        restoredSupplier.name = "Petr Svoboda"
+        try await restored.saveSupplier(restoredSupplier)
+        let model = SupplierTabModel(app: app, saveDelay: .zero)
+        let load = Task.immediate { await model.load() }
+
+        app.database = restored
+        await load.value
+
+        #expect(model.supplier == nil)
+        #expect(model.text(.name) == "")
+        #expect(model.errorText == nil)
+
+        // The load that the restore starts shows the restored data.
+        await model.load()
+
+        #expect(model.supplier?.name == "Petr Svoboda")
+        #expect(model.text(.name) == "Petr Svoboda")
+        #expect(model.errorText == nil)
     }
 }
