@@ -376,14 +376,17 @@ final class BudgetModel: SavesTypedInput {
     // MARK: Building
 
     /// What was loaded with the choices and the typed texts of now, or nil before a load has shown anything. The source
-    /// is the one the loaded figures were read for until the next load lands: a source just chosen is saved before its
-    /// figures are loaded (`chooseSource(_:)`), and with the figures of another source it would have nothing to divide,
-    /// so that a change made in the meantime would work out from nothing.
+    /// and the invoice are the ones the loaded figures were read for until the next load lands: a source or an invoice
+    /// just chosen is saved before its figures are loaded (`chooseSource(_:)`, `chooseInvoice(id:)`), and with the
+    /// figures of another source or invoice a change made in the meantime would work out from a net that the screen
+    /// does not show.
     private func currentInput() -> BudgetInput? {
         guard var input = loaded else { return nil }
         let source = input.settings.source
+        let invoiceID = input.settings.invoiceID
         input.settings = settings
         input.settings.source = source
+        input.settings.invoiceID = invoiceID
         input.typedTexts = typedTexts
         input.refusedFields = refusedFields
         return input

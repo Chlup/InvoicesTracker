@@ -278,6 +278,40 @@ struct BudgetModelTests {
         }
     }
 
+    /// A change made while another invoice is being chosen works from the invoice the screen still shows, as one made
+    /// while another source loads works from the source it shows: the choice is saved before the figures of the new
+    /// invoice are loaded.
+    @Test func aChangeWhileAnotherInvoiceLoadsWorksFromTheInvoiceShown() async throws {
+        try await EditorFixture.with { f in
+            let model = await loadedModel(of: f)
+            let listed = try await f.app.budgetInvoices()
+            let september = try #require(listed.first { $0.invoice.number == "20260902" })
+            let august = try #require(listed.first { $0.invoice.number == "20260801" })
+            await model.chooseSource(.invoice)
+            model.slide(.savings, toPercent: 15)
+            #expect(model.data?.invoicePicker?.number == "20260902")
+            let shown = try #require(row(.savings, of: model)?.amountText)
+            let net = max(0, try #require(september.incomeKc) - (september.leviesKc ?? 0))
+            let frozen = DecimalMath.halfUp(Decimal(net) * decimal("0.15"))
+            #expect(shown == CzechFormat.grouped(frozen))
+
+            // The choice runs until it waits for its save, before it loads.
+            let choice = Task.immediate { await model.chooseInvoice(id: august.invoice.id) }
+            model.toggleFixed(.savings)
+
+            #expect(row(.savings, of: model)?.mode == .fixed)
+            #expect(row(.savings, of: model)?.amountText == shown)
+
+            await choice.value
+
+            #expect(model.data?.invoicePicker?.number == "20260801")
+            await model.saveNow()
+            let saved = try await f.database.appSettings().budget
+            #expect(saved.invoiceID == august.invoice.id)
+            #expect(saved.split.holding(of: .savings) == .fixed(frozen))
+        }
+    }
+
     /// A failed listing of the invoices in Faktura mode shows its line in place of the page, under the row of the
     /// sources as the choices are, without the button of an invoice, so that another source can still be chosen:
     /// Skutečnost then loads Přehled's average, and the row goes with the line.
