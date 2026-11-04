@@ -42,6 +42,26 @@ struct BudgetModelTests {
         try await f.database.appSettings().budget.split.holding(of: category)
     }
 
+    /// Writes the months of 2026 without the health insurance minimum as the text the table keeps them in, which is how
+    /// the data is changed outside the app: "13", a month no form saves, makes the computation of the year refuse it.
+    private nonisolated func storeHealthExemptMonths(_ text: String, in database: Database) async throws {
+        try await database.write { connection in
+            try connection.run(
+                "UPDATE year_settings SET health_exempt_months = ? WHERE year = ?", [.text(text), .integer(2026)])
+        }
+    }
+
+    /// Ends the wait of the hint of a refused text, which must be the only wait there is, and waits until `model`
+    /// shows `hint` under the row of `category`.
+    private func pauseTyping(
+        _ delay: ManualDelay, until hint: BudgetHint, under category: BudgetCategory, of model: BudgetModel,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        try await waitUntil(sourceLocation: sourceLocation) { delay.armed == 1 }
+        #expect(delay.fire(), sourceLocation: sourceLocation)
+        try await waitUntil(sourceLocation: sourceLocation) { row(category, of: model)?.hint == hint }
+    }
+
     // MARK: Loading
 
     @Test func aNewAppStartsWithAnEmptyBudget() async throws {
@@ -115,6 +135,40 @@ struct BudgetModelTests {
             #expect(model.errorText == nil)
             #expect(row(.savings, of: model)?.percentText == "15,0")
             #expect(f.app.appSettings.budget == saved)
+        }
+    }
+
+    @Test func aFigureThatCannotBeWorkedOutLeavesNothingToDivideAndTheSplitEditable() async throws {
+        try await EditorFixture.with { f in
+            let model = await loadedModel(of: f)
+            // The computation of 2026 refuses what the data holds now, so neither its average nor its estimate can be
+            // worked out, while its invoices can still be listed.
+            try await storeHealthExemptMonths("13", in: f.database)
+
+            await model.load()
+
+            let data = try #require(model.data)
+            #expect(model.errorText == nil)
+            #expect(data.source == .actual)
+            #expect(data.keyFigure.figure == "—")
+            #expect(row(.spending, of: model)?.amountText == "—")
+
+            // The shares can still be set; there is no amount to show for them.
+            model.slide(.savings, toPercent: 15)
+
+            #expect(row(.savings, of: model)?.percentText == "15,0")
+            #expect(row(.savings, of: model)?.amountText == "—")
+            await model.saveNow()
+            let stored = try await storedHolding(.savings, in: f)
+            #expect(stored == .share(decimal("0.15")))
+
+            // Odhad za rok has no figure either.
+            await model.chooseSource(.prediction)
+
+            #expect(model.errorText == nil)
+            #expect(model.data?.source == .prediction)
+            #expect(model.data?.keyFigure.figure == "—")
+            #expect(row(.savings, of: model)?.percentText == "15,0")
         }
     }
 
@@ -210,16 +264,29 @@ struct BudgetModelTests {
 
     @Test func junkInTheFieldsKeepsTheLastValueAndShowsAMessage() async throws {
         try await EditorFixture.with { f in
-            let model = await loadedModel(of: f)
+            let delay = ManualDelay()
+            let model = await loadedModel(of: f, delay: delay)
             model.typePercent("15", for: .savings)
             #expect(row(.savings, of: model)?.hint == nil)
+            // Nothing waits to be saved, so the only wait from now on is the one of the hint.
+            await model.saveNow()
 
             for junk in ["abc", "-5", "15,55"] {
                 model.typePercent(junk, for: .savings)
 
                 #expect(row(.savings, of: model)?.percentText == junk)
-                #expect(row(.savings, of: model)?.hint == percentHint)
+                #expect(row(.savings, of: model)?.hint == nil)
                 #expect(row(.spending, of: model)?.amountText == "159\u{00A0}044\u{00A0}Kč")
+
+                // Once the typing pauses, the field says what it takes; the value is still the last valid one.
+                try await pauseTyping(delay, until: percentHint, under: .savings, of: model)
+
+                #expect(row(.savings, of: model)?.percentText == junk)
+                #expect(row(.spending, of: model)?.amountText == "159\u{00A0}044\u{00A0}Kč")
+
+                // A valid text takes the hint away at once.
+                model.typePercent("15", for: .savings)
+                #expect(row(.savings, of: model)?.hint == nil)
             }
 
             // An emptied field keeps the value and says nothing.
@@ -233,10 +300,11 @@ struct BudgetModelTests {
             #expect(row(.savings, of: model)?.percentText == "15,0")
 
             model.typeAmount("20 000", for: .costs)
+            await model.saveNow()
             model.typeAmount("1e9", for: .costs)
+            try await pauseTyping(delay, until: amountHint, under: .costs, of: model)
 
             #expect(row(.costs, of: model)?.amountText == "1e9")
-            #expect(row(.costs, of: model)?.hint == amountHint)
             #expect(row(.spending, of: model)?.amountText == "139\u{00A0}044\u{00A0}Kč")
 
             model.typeAmount("", for: .costs)
@@ -250,6 +318,72 @@ struct BudgetModelTests {
             let stored = try await f.database.appSettings().budget.split
             #expect(stored.holding(of: .costs) == .fixed(20_000))
             #expect(stored.holding(of: .savings) == .share(decimal("0.15")))
+        }
+    }
+
+    @Test func aRefusedTextSaysSoOnlyOnceTheTypingPauses() async throws {
+        try await EditorFixture.with { f in
+            let delay = ManualDelay()
+            let model = await loadedModel(of: f, delay: delay)
+
+            model.typeAmount("30 0", for: .savings)
+
+            #expect(row(.savings, of: model)?.amountText == "30 0")
+            #expect(row(.savings, of: model)?.hint == nil)
+            #expect(row(.spending, of: model)?.amountText == "187\u{00A0}111\u{00A0}Kč")
+            try await waitUntil { delay.started == 1 && delay.armed == 1 }
+
+            // Every key starts the wait again.
+            model.typeAmount("30 00", for: .savings)
+
+            try await waitUntil { delay.started == 2 && delay.cancelled == 1 && delay.armed == 1 }
+            #expect(row(.savings, of: model)?.hint == nil)
+
+            // The pause ends the wait: now the field says what it takes, and the value is the one it had.
+            #expect(delay.fire())
+
+            try await waitUntil { row(.savings, of: model)?.hint == amountHint }
+            #expect(row(.savings, of: model)?.amountText == "30 00")
+            #expect(row(.spending, of: model)?.amountText == "187\u{00A0}111\u{00A0}Kč")
+            #expect(f.app.appSettings.budget == BudgetSettings())
+        }
+    }
+
+    @Test func aRefusedTextOnTheWayToAValidOneNeverShowsTheHint() async throws {
+        try await EditorFixture.with { f in
+            let delay = ManualDelay()
+            let model = await loadedModel(of: f, delay: delay)
+            model.typeAmount("30 0", for: .savings)
+            try await waitUntil { delay.armed == 1 }
+
+            model.typeAmount("30 000", for: .savings)
+
+            // The valid text is taken at once, and the wait of the hint goes: only the one of the save is left.
+            #expect(row(.savings, of: model)?.hint == nil)
+            #expect(row(.spending, of: model)?.amountText == "157\u{00A0}111\u{00A0}Kč")
+            try await waitUntil { delay.started == 2 && delay.cancelled == 1 && delay.armed == 1 }
+            #expect(delay.fire())
+
+            try await waitUntil { !model.hasUnsavedInput }
+            #expect(row(.savings, of: model)?.hint == nil)
+            #expect(delay.armed == 0)
+            let stored = try await storedHolding(.savings, in: f)
+            #expect(stored == .share(Decimal(30_000) / Decimal(187_111)))
+        }
+    }
+
+    @Test func leavingAFieldDropsTheHintThatWaits() async throws {
+        try await EditorFixture.with { f in
+            let delay = ManualDelay()
+            let model = await loadedModel(of: f, delay: delay)
+            model.typeAmount("30 0", for: .savings)
+            try await waitUntil { delay.armed == 1 }
+
+            model.endEditing(.savings)
+
+            try await waitUntil { delay.cancelled == 1 && delay.armed == 0 }
+            #expect(row(.savings, of: model)?.amountText == "0")
+            #expect(row(.savings, of: model)?.hint == nil)
         }
     }
 

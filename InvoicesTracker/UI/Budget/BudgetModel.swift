@@ -11,18 +11,23 @@ import Observation
 ///   average is read instead), and for Faktura the invoices of the year (`AppModel.budgetInvoices()`). It takes the
 ///   choices as the settings hold them, unless changes made on the screen wait to be saved, which win. The screen
 ///   loads again whenever what the data depends on changes (`AppModel.reloadKey`). Only the newest load shows its
-///   result, and the data of the last one stays until then, so that the screen does not flash empty. A load that
-///   fails is logged (the domain and the code of the error alone) and shows a line in place of the data; one that is
-///   cancelled keeps what was shown.
+///   result, and the data of the last one stays until then, so that the screen does not flash empty. A figure that
+///   cannot be worked out – the average or the prediction – is logged (the domain and the code of the error alone)
+///   and leaves nothing to divide: the amounts are "—" and the split can still be changed. A load that fails
+///   otherwise – the data is locked, or the invoices cannot be listed – is logged too and shows a line in place of
+///   the data. A load that is cancelled keeps what was shown.
 /// - A change of the split – the slider, a typed percentage or amount, the checkbox "pevná částka" and "Zbytek
 ///   dostane" – changes the choices the screen holds and shows them at once. It is saved `saveDelay` after the last
 ///   change, at once when a slide ends or a field is left, and when the app quits (`saveNow()`). A save writes the
 ///   whole of the choices into the settings (`AppModel.updateAppSettings(_:)`); the settings are not data the screens
 ///   show, so a save starts no reload.
-/// - A typed text stays in its field until editing ends, also one that was taken. A text that is no amount in whole
-///   Kč, or no percentage with at most one decimal (a negative one included), keeps the value the category had and
-///   says what the field takes (`BudgetInput.refusedFields`); an emptied field keeps it too and says nothing. A
-///   percentage or an amount above what the category can have is held at that limit while the field keeps the text.
+/// - A typed text stays in its field until editing ends, also one that was taken, and is read key by key: a text that
+///   can be read changes the split at once. A text that is no amount in whole Kč, or no percentage with at most one
+///   decimal (a negative one included), keeps the value the category had, and once the typing has paused for
+///   `saveDelay` the field says what it takes (`BudgetInput.refusedFields`): what is typed on the way to a valid
+///   text ("30 0" of "30 000", "15," of "15,5") never shows the hint. An emptied field keeps the value too and says
+///   nothing. A percentage or an amount above what the category can have is held at that limit while the field
+///   keeps the text.
 /// - Choosing the source or an invoice is saved at once, with any change that waits, and the screen loads again. An
 ///   invoice shown in place of a chosen one that has left the list is only shown: the choice stays until the person
 ///   picks another invoice.
@@ -55,9 +60,15 @@ final class BudgetModel: SavesTypedInput {
     /// that failed, when there is nothing to change.
     @ObservationIgnored private var loaded: BudgetInput?
 
-    /// The text of each field that is being edited, and those of them that could not be read.
+    /// The text of each field that is being edited, and those of them that could not be read and say so.
     @ObservationIgnored private var typedTexts: [BudgetField: String] = [:]
     @ObservationIgnored private var refusedFields: Set<BudgetField> = []
+
+    /// The fields whose text could not be read and that say so once the typing has paused (`refusalTimer`).
+    @ObservationIgnored private var refusalsDue: Set<BudgetField> = []
+
+    /// The wait before a field whose text could not be read says so.
+    private let refusalTimer: DebounceTimer
 
     /// Whether `settings` holds a change that is not written yet.
     @ObservationIgnored private var hasChanges = false
@@ -69,8 +80,9 @@ final class BudgetModel: SavesTypedInput {
     /// year that has been replaced since must not undo the newer one.
     @ObservationIgnored private var loadsStarted = 0
 
-    /// A model of `app` that saves `saveDelay` after the last change of the split, waiting it out with `wait`, which a
-    /// test replaces with a wait that it ends itself. It starts with the choices the settings hold.
+    /// A model of `app` that saves `saveDelay` after the last change of the split, and says that a typed text cannot be
+    /// read `saveDelay` after the last key, waiting both out with `wait`, which a test replaces with a wait that it
+    /// ends itself. It starts with the choices the settings hold.
     init(
         app: AppModel, saveDelay: Duration = .milliseconds(500),
         wait: @escaping DebounceTimer.Wait = { try await Task.sleep(for: $0) }
@@ -78,16 +90,17 @@ final class BudgetModel: SavesTypedInput {
         self.app = app
         self.saveDelay = saveDelay
         saveTimer = DebounceTimer(wait: wait)
+        refusalTimer = DebounceTimer(wait: wait)
         settings = app.appSettings.budget
     }
 
     // MARK: Loading
 
     /// Loads the net income of the source the screen shows for the selected year, and the choices from the settings
-    /// unless changes wait to be saved, and shows them. A failure is logged (the domain and the code of the error
-    /// alone) and shows `errorText` in place of the data. Cancellation keeps what was shown without publishing this
-    /// load. The model is known to the app from its first load on, so that a quit saves what waits
-    /// (`hasUnsavedInput`).
+    /// unless changes wait to be saved, and shows them. A figure that cannot be worked out leaves nothing to divide
+    /// (`readSource()`); any other failure is logged (the domain and the code of the error alone) and shows
+    /// `errorText` in place of the data. Cancellation keeps what was shown without publishing this load. The model is
+    /// known to the app from its first load on, so that a quit saves what waits (`hasUnsavedInput`).
     func load() async {
         app.quitFlushes.register(self)
         loadsStarted += 1
@@ -113,20 +126,43 @@ final class BudgetModel: SavesTypedInput {
     }
 
     /// Reads the year, today and the net income of the source the screen shows with the choices of now, and nothing of
-    /// the other sources. Throws `VaultError.locked` while the data is locked, and what the reading throws.
+    /// the other sources. The average or the prediction that cannot be worked out is logged and left out, so that
+    /// there is nothing to divide (`figure(_:_:)`). Throws `VaultError.locked` while the data is locked, what listing
+    /// the invoices throws, and `CancellationError` when the reading was cancelled.
     private func readSource() async throws -> BudgetInput {
         guard app.database != nil else { throw VaultError.locked }
         var input = BudgetInput(
             year: app.asOf.year, today: app.today, settings: settings, actual: nil, prediction: nil, invoices: [])
         switch BudgetBuilder.source(of: input) {
         case .actual:
-            input.actual = try await app.averageNetIncome()
+            input.actual = try await figure("Loading the average of Rozpočet") {
+                try await self.app.averageNetIncome()
+            }
         case .prediction:
-            input.prediction = try await app.predictionOutcome(year: input.year)
+            let year = input.year
+            input.prediction = try await figure("Loading the estimate of Rozpočet") {
+                try await self.app.predictionOutcome(year: year)
+            }
         case .invoice:
             input.invoices = try await app.budgetInvoices()
         }
         return input
+    }
+
+    /// What `read` gives, or nil when it fails: the failure is logged under `action` (the domain and the code of the
+    /// error alone), and the screen then has nothing to divide. A cancellation and a lock of the data are thrown on,
+    /// for the load to keep what was shown or to show its line.
+    private func figure<Figure>(_ action: String, _ read: () async throws -> Figure) async throws -> Figure? {
+        do {
+            return try await read()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch VaultError.locked {
+            throw VaultError.locked
+        } catch {
+            AppModel.log(action, failedWith: error)
+            return nil
+        }
     }
 
     // MARK: Choosing what is divided
@@ -178,21 +214,21 @@ final class BudgetModel: SavesTypedInput {
     }
 
     /// `text` has been typed into the % field of `category`, which only a category held by a share has. The field keeps
-    /// the text until editing ends. A percentage with at most one decimal, not negative, becomes the share, held to
-    /// what the category can have. An empty field keeps the share as it is; any other text keeps it too and says what
-    /// the field takes.
+    /// the text until editing ends. A percentage with at most one decimal, not negative, becomes the share at once,
+    /// held to what the category can have. An empty field keeps the share as it is; any other text keeps it too, and
+    /// the field says what it takes once the typing has paused (`refuse(_:)`).
     func typePercent(_ text: String, for category: BudgetCategory) {
         guard takesShare(category) else { return }
         let field = BudgetField.percent(category)
         typedTexts[field] = text
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            refusedFields.remove(field)
+            accept(field)
             rebuild()
         } else if let percent = AmountParser.decimal(text, maxFractionDigits: 1), percent >= 0 {
-            refusedFields.remove(field)
+            accept(field)
             change { $0.settingShare(percent / 100, of: category, net: $1) }
         } else {
-            refusedFields.insert(field)
+            refuse(field)
             rebuild()
         }
     }
@@ -200,21 +236,21 @@ final class BudgetModel: SavesTypedInput {
     /// `text` has been typed into the Kč field of `category`, which every category but the remainder has. The field
     /// keeps the text until editing ends. An amount in whole Kč becomes the fixed amount of a fixed category, or the
     /// share that gives exactly that amount of the net income of a share-held one, held to what it can have
-    /// (`BudgetSplit.settingAmount(_:of:net:)`). An empty field keeps the value as it is; any other text keeps it too
-    /// and says what the field takes.
+    /// (`BudgetSplit.settingAmount(_:of:net:)`), at once. An empty field keeps the value as it is; any other text keeps
+    /// it too, and the field says what it takes once the typing has paused (`refuse(_:)`).
     func typeAmount(_ text: String, for category: BudgetCategory) {
         guard loaded != nil, category != settings.split.remainder else { return }
         let field = BudgetField.amount(category)
         typedTexts[field] = text
         switch TypedKc(text) {
         case .blank:
-            refusedFields.remove(field)
+            accept(field)
             rebuild()
         case .value(let kc):
-            refusedFields.remove(field)
+            accept(field)
             change { $0.settingAmount(kc, of: category, net: $1) }
         case .refused:
-            refusedFields.insert(field)
+            refuse(field)
             rebuild()
         }
     }
@@ -259,12 +295,44 @@ final class BudgetModel: SavesTypedInput {
         rebuild()
     }
 
-    /// Drops what was typed into the fields of `category`, and the hints of it.
+    /// Drops what was typed into the fields of `category`, and the hints of it, also those that wait for the typing to
+    /// pause.
     private func forgetTyping(of category: BudgetCategory) {
         for field in [BudgetField.percent(category), BudgetField.amount(category)] {
             typedTexts[field] = nil
-            refusedFields.remove(field)
+            accept(field)
         }
+    }
+
+    // MARK: Texts that cannot be read
+
+    /// The text of `field` can be read, or is empty: the field says nothing, and nothing waits to say it.
+    private func accept(_ field: BudgetField) {
+        refusedFields.remove(field)
+        refusalsDue.remove(field)
+        if refusalsDue.isEmpty {
+            refusalTimer.cancel()
+        }
+    }
+
+    /// The text of `field` cannot be read. A field that says so already goes on saying it; any other one says it once
+    /// the typing has paused for `saveDelay` (`showRefusals()`), so that a text on its way to a valid one, which a
+    /// key reads again before the pause, never says it. Every key starts the wait again.
+    private func refuse(_ field: BudgetField) {
+        guard !refusedFields.contains(field) else { return }
+        refusalsDue.insert(field)
+        refusalTimer.restart(after: saveDelay) {
+            self.showRefusals()
+        }
+    }
+
+    /// The typing has paused: the fields whose text could not be read, and which still hold it, say what they take.
+    private func showRefusals() {
+        for field in refusalsDue where typedTexts[field] != nil {
+            refusedFields.insert(field)
+        }
+        refusalsDue = []
+        rebuild()
     }
 
     // MARK: Building
