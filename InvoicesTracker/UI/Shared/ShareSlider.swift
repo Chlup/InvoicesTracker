@@ -30,6 +30,63 @@ nonisolated enum ShareSliderLayout {
         let fraction = Double((x - thumbDiameter / 2) / travel)
         return Int((min(max(fraction, 0), 1) * 100).rounded())
     }
+
+    /// The whole percent a step of `delta` takes a share of `fraction` (0 to 1) to, kept between 0 and 100: the first
+    /// whole percent above the share for a step up, and the first below it for a step down, so that 15,5 % steps to
+    /// 16 % and to 15 %, and 15 % to 16 % and to 14 %. A share within a millionth of a percent of a whole percent is
+    /// that percent, as 15 % comes as 15.000000000000002 in a Double.
+    static func percent(steppingFrom fraction: Double, by delta: Int) -> Int {
+        let exact = min(max(fraction, 0), 1) * 100
+        let tolerance = 0.000_001
+        let next: Double
+        if delta > 0 {
+            next = (exact + tolerance).rounded(.down) + Double(delta)
+        } else if delta < 0 {
+            next = (exact - tolerance).rounded(.up) + Double(delta)
+        } else {
+            next = exact.rounded()
+        }
+        return Int(min(max(next, 0), 100))
+    }
+}
+
+/// How a drag took hold of a share slider when it started: by the thumb, at the distance of the pointer from the
+/// centre of the thumb, or by the track beside the thumb. A drag that took the thumb reports nothing until the pointer
+/// moves, so that a click on the thumb, which also focuses the slider, leaves the share as it is, also one that is no
+/// whole percent; then the thumb follows the pointer at the distance it was taken at. A drag that took the track puts
+/// the thumb under the pointer at once.
+nonisolated struct ShareSliderGrab: Equatable {
+    /// How far right of the centre of the thumb the drag took it, below zero to the left of it, or nil when the drag
+    /// took the track.
+    let thumbOffset: CGFloat?
+
+    /// Where the drag started, in points from the leading edge of the slider.
+    let startX: CGFloat
+
+    /// Whether the pointer has moved since the drag started.
+    private(set) var hasMoved = false
+
+    /// The hold of a drag that starts `startX` points from the leading edge of a slider `width` points wide whose
+    /// thumb stands at `fraction`: the thumb when the pointer is on it, at most 10 points from its centre, and the
+    /// track otherwise.
+    init(startX: CGFloat, fraction: Double, width: CGFloat) {
+        let thumbX = ShareSliderLayout.thumbX(fraction: min(max(fraction, 0), 1), width: width)
+        let offset = startX - (thumbX + ShareSliderLayout.thumbDiameter / 2)
+        thumbOffset = abs(offset) <= ShareSliderLayout.thumbDiameter / 2 ? offset : nil
+        self.startX = startX
+    }
+
+    /// The whole percent the drag sets with the pointer `x` points from the leading edge of the slider, `width` points
+    /// wide: the one under the centre of the thumb as the drag holds it. Nil while a drag that took the thumb has not
+    /// moved.
+    mutating func percent(atX x: CGFloat, width: CGFloat) -> Int? {
+        guard let thumbOffset else { return ShareSliderLayout.percent(atX: x, width: width) }
+        if x != startX {
+            hasMoved = true
+        }
+        guard hasMoved else { return nil }
+        return ShareSliderLayout.percent(atX: x - thumbOffset, width: width)
+    }
 }
 
 /// The track of a share: the whole width in the fill token, with an optional rail in the strong separator from the
@@ -86,11 +143,14 @@ struct ShareRail: View {
 }
 
 /// A slider for a share of 0 to 100 %: a track with the fill in `color`, the part the thumb can reach in the strong
-/// separator, a mark at `limitFraction` when it is below 100 %, and a round thumb. A drag or a click reports the whole
-/// percent under the pointer and does not clamp it: the owner clamps to the exact limit and passes the new `fraction`
-/// back, so the thumb stops at the limit. The arrow keys move the share by 1 %.
+/// separator, a mark at `limitFraction` when it is below 100 %, and a round thumb. A press on the track beside the
+/// thumb puts the thumb under the pointer; a press on the thumb takes hold of it where the pointer is, so a click on
+/// it changes nothing and a drag moves it with the pointer (`ShareSliderGrab`). Either reports the whole percent under
+/// the centre of the thumb and does not clamp it: the owner clamps to the exact limit and passes the new `fraction`
+/// back, so the thumb stops at the limit. The arrow keys step the share to the next whole percent in their direction
+/// (`ShareSliderLayout.percent(steppingFrom:by:)`).
 ///
-/// VoiceOver reads one adjustable element under `label` with the value `valueText`, and adjusts it by 1 %.
+/// VoiceOver reads one adjustable element under `label` with the value `valueText`, and steps it as the arrow keys do.
 struct ShareSlider: View {
     let label: String
     let fraction: Double
@@ -101,6 +161,9 @@ struct ShareSlider: View {
     let onCommit: () -> Void
 
     @FocusState private var isFocused: Bool
+
+    /// How the drag that runs took hold of the slider, from its start to its end; nil while there is no drag.
+    @State private var grab: ShareSliderGrab?
 
     /// A slider named `label` at `fraction` (0 to 1) that can reach `limitFraction`, filled in `color` and read as
     /// `valueText`. `onChange` gets the whole percent the person chose, and `onCommit` is called when the choice is
@@ -155,10 +218,11 @@ struct ShareSlider: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         isFocused = true
-                        onChange(ShareSliderLayout.percent(atX: value.location.x, width: width))
+                        drag(to: value, width: width)
                     }
                     .onEnded { value in
-                        onChange(ShareSliderLayout.percent(atX: value.location.x, width: width))
+                        drag(to: value, width: width)
+                        grab = nil
                         onCommit()
                     }
             )
@@ -179,7 +243,7 @@ struct ShareSlider: View {
             Slider(
                 value: Binding(
                     get: { Double(percent) },
-                    set: { onChange(Int($0.rounded())) }),
+                    set: { adjust(to: Int($0.rounded())) }),
                 in: 0...100, step: 1,
                 onEditingChanged: { editing in
                     if !editing { onCommit() }
@@ -190,9 +254,35 @@ struct ShareSlider: View {
         .accessibilityValue(valueText)
     }
 
-    /// Reports the share `delta` percent from the current one, kept between 0 and 100, and then the end of the choice.
+    /// Reports the whole percent of the drag that `value` describes, held as it was taken when the drag started
+    /// (`ShareSliderGrab`), and nothing while a drag that took the thumb has not moved.
+    private func drag(to value: DragGesture.Value, width: CGFloat) {
+        var current = grab ?? ShareSliderGrab(startX: value.startLocation.x, fraction: fraction, width: width)
+        let reported = current.percent(atX: value.location.x, width: width)
+        grab = current
+        if let reported {
+            onChange(reported)
+        }
+    }
+
+    /// Reports the share a step of `delta` takes the current one to, the next whole percent in its direction, and
+    /// then the end of the choice.
     private func step(_ delta: Int) {
-        onChange(min(max(percent + delta, 0), 100))
+        onChange(ShareSliderLayout.percent(steppingFrom: fraction, by: delta))
         onCommit()
+    }
+
+    /// Reports the whole percent `target` that VoiceOver sets: a step of 1 % from the whole percent it reads, the
+    /// increment or the decrement, steps from the share itself as an arrow key does, and nothing when it is the
+    /// percent it reads.
+    private func adjust(to target: Int) {
+        switch target - percent {
+        case 0:
+            return
+        case 1, -1:
+            onChange(ShareSliderLayout.percent(steppingFrom: fraction, by: target - percent))
+        default:
+            onChange(target)
+        }
     }
 }

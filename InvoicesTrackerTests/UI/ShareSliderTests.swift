@@ -4,7 +4,8 @@ import Testing
 @testable import InvoicesTracker
 
 /// The share slider and the read-only rail: where the thumb stands for a share and which share is under the pointer,
-/// the colours of the track, drawn off-screen in a light and a dark window, and the slider as VoiceOver adjusts it.
+/// the colours of the track, drawn off-screen in a light and a dark window, the slider as VoiceOver adjusts it, how a
+/// drag takes hold of the thumb or the track, and where an arrow key steps to.
 @Suite(.serialized)
 @MainActor
 struct ShareSliderTests {
@@ -91,5 +92,89 @@ struct ShareSliderTests {
                 #expect(commits == 2)
             }
         }
+    }
+
+    /// From a share that is no whole percent, as one set from koruny, VoiceOver steps to the next whole percent: up to
+    /// the first above it and down to the first below it, so 15,7 % and 15,3 % both step to 16 % and to 15 %.
+    @Test(arguments: [0.157, 0.153])
+    func voiceOverStepsFromAShareBetweenWholePercentsToTheNextOne(fraction: Double) async throws {
+        var changes: [Int] = []
+        let slider = ShareSlider(
+            label: "Podíl rezervy", fraction: fraction, limitFraction: 1, color: Palette.greenText, valueText: "",
+            onChange: { changes.append($0) }, onCommit: {}
+        )
+
+        try await withHostedView(slider, size: CGSize(width: 320, height: 80)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityElement(labelled: "Podíl rezervy", in: window) != nil }
+                let element = try #require(accessibilityElement(labelled: "Podíl rezervy", in: window))
+
+                _ = element.accessibilityPerformIncrement?()
+                _ = element.accessibilityPerformDecrement?()
+
+                #expect(changes == [16, 15])
+            }
+        }
+    }
+
+    // MARK: The pointer
+
+    /// A drag that starts on the thumb takes hold of it where the pointer is: it reports nothing until the pointer
+    /// moves, so a click on the thumb leaves a share that is no whole percent, as one set from koruny, as it is; then
+    /// the thumb follows the pointer at the distance it was taken at, also back to where it started. The slider is
+    /// 220 points wide, so the centre of its thumb travels 200 points from 10 points in: at 16,033 % it is 42,07
+    /// points in.
+    @Test func aDragFromTheThumbHoldsItWhereThePointerTookIt() {
+        let centre = 10 + 200 * 0.160_33
+        var grab = ShareSliderGrab(startX: centre + 5, fraction: 0.160_33, width: 220)
+
+        #expect(grab.percent(atX: centre + 5, width: 220) == nil)
+        #expect(grab.percent(atX: centre + 5, width: 220) == nil)
+        // 40 points to the right, the centre of the thumb is 82,07 points in: 36 %.
+        #expect(grab.percent(atX: centre + 45, width: 220) == 36)
+        // Back where it started, the thumb is where it was, at the whole percent there.
+        #expect(grab.percent(atX: centre + 5, width: 220) == 16)
+    }
+
+    /// A drag that starts on the track beside the thumb puts the thumb under the pointer at once, and then follows the
+    /// pointer: 160 points in is 75 %, 170 points in 80 %.
+    @Test func aDragFromTheTrackPutsTheThumbUnderThePointer() {
+        var grab = ShareSliderGrab(startX: 160, fraction: 0.160_33, width: 220)
+
+        #expect(grab.percent(atX: 160, width: 220) == 75)
+        #expect(grab.percent(atX: 170, width: 220) == 80)
+    }
+
+    /// The thumb is 20 points across: a press up to 10 points from its centre takes the thumb, one further takes the
+    /// track.
+    @Test func theThumbReachesTenPointsFromItsCentre() {
+        let centre = 10 + 200 * 0.5
+        for x in [centre - 10, centre, centre + 10] {
+            var grab = ShareSliderGrab(startX: x, fraction: 0.5, width: 220)
+            #expect(grab.percent(atX: x, width: 220) == nil, "\(x)")
+        }
+        for x in [centre - 10.5, centre + 10.5] {
+            var grab = ShareSliderGrab(startX: x, fraction: 0.5, width: 220)
+            #expect(grab.percent(atX: x, width: 220) == ShareSliderLayout.percent(atX: x, width: 220), "\(x)")
+        }
+    }
+
+    // MARK: The keys
+
+    /// An arrow key steps from the share to the next whole percent in its direction: from 15,5 % up to 16 % and down to
+    /// 15 %, from a whole 15 % to 16 % and 14 %, though 15 % comes as 15.000000000000002 in a Double, and never beyond
+    /// 0 % or 100 %.
+    @Test func aStepGoesToTheNextWholePercentInItsDirection() {
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.155, by: 1) == 16)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.155, by: -1) == 15)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.157, by: 1) == 16)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.153, by: -1) == 15)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.15, by: 1) == 16)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.15, by: -1) == 14)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.07, by: -1) == 6)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0, by: -1) == 0)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.004, by: -1) == 0)
+        #expect(ShareSliderLayout.percent(steppingFrom: 1, by: 1) == 100)
+        #expect(ShareSliderLayout.percent(steppingFrom: 0.996, by: 1) == 100)
     }
 }
