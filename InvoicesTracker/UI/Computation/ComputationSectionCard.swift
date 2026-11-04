@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The sizes and gaps of a bill card and its rows, in points.
-private nonisolated enum BillMetrics {
+/// The sizes and gaps of a bill card and its rows, in points, which the bill of an invoice on Rozpočet shares.
+nonisolated enum BillMetrics {
     /// The size of the dot before the title.
     static let dotSize: CGFloat = 10
 

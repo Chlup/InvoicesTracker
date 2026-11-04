@@ -89,8 +89,16 @@ nonisolated struct SplitBarData: Hashable, Sendable {
 
 // MARK: - Layout
 
-/// The widths of the parts of the split bar and the middles of its groups, which the view and the popover share.
+/// The widths of the parts of the split bar and the middles of its groups, which the view and the popover share, and
+/// the columns of its legend.
 nonisolated enum SplitBarLayout {
+    /// The least width of a column of the legend. As many columns as fit stand side by side, 16 points apart, and the
+    /// items that do not fit go on to the next row.
+    static let legendMinimumColumnWidth: CGFloat = 88
+
+    /// The space between the rows of the legend.
+    static let legendRowGap: CGFloat = 8
+
     /// The widths of the parts of `data` in a bar `width` points wide (`LevyBarLayout.partWidths`): a part of no
     /// weight has no width.
     static func widths(of data: SplitBarData, width: CGFloat) -> [CGFloat] {
@@ -143,7 +151,8 @@ extension SplitBarGroup {
 // MARK: - The view
 
 /// A bar split into any parts: the header, one bar whose parts are as wide as their weights in the colours of their
-/// tones, and a legend of the groups, each with its dots, short name and amount. The pointer over a part or an item of
+/// tones, and a legend of the groups, each with its dots, short name and amount, in columns of at least 88 points that
+/// go on to another row where the groups do not fit one (`SplitBarLayout`). The pointer over a part or an item of
 /// the legend, or the focus of the keyboard on an item, fades the parts of the other groups and shows the popover of
 /// the group under the bar, centred on all the parts of the group. Like the levy bar, the popover takes no room and no
 /// pointer and is not read; VoiceOver reads the bar as one picture and each item of the legend as its popover. The
@@ -228,9 +237,13 @@ struct SplitBarView: View {
 
     // MARK: Legend
 
-    /// The legend: a column of one width for each group.
+    /// The legend: columns of one width, as many as fit at 88 points and no more than there are groups, one group in
+    /// each, and the groups that do not fit in rows under them, 8 points apart.
     private var legend: some View {
-        HStack(alignment: .top, spacing: LevyBarMetrics.legendGap) {
+        AdaptiveColumns(
+            minimumColumnWidth: SplitBarLayout.legendMinimumColumnWidth, spacing: LevyBarMetrics.legendGap,
+            rowSpacing: SplitBarLayout.legendRowGap
+        ) {
             ForEach(data.groups) { group in
                 legendItem(group)
             }

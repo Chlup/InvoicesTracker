@@ -516,6 +516,34 @@ struct BudgetModelTests {
         }
     }
 
+    // MARK: The app
+
+    /// The app holds the model of Rozpočet (`AppModel.budgetModel`), which so holds the app weakly: the app and its
+    /// data go when nothing else holds them, also while a change of the split waits to be saved. What is left of the
+    /// model has no data to read, and says so.
+    @Test func theAppIsNotKeptAliveByTheBudgetItHolds() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        weak var released: AppModel?
+        var held: BudgetModel?
+        do {
+            let app = makeAppModel(in: directory)
+            try await startFresh(app)
+            held = app.budgetModel
+            await held?.load()
+            // A change that waits to be saved does not hold the app either.
+            held?.slide(.savings, toPercent: 15)
+            released = app
+            await app.database?.close()
+        }
+
+        #expect(released == nil)
+        let orphan = try #require(held)
+        await orphan.load()
+        #expect(orphan.errorText == BudgetModel.loadFailureText)
+        await orphan.saveNow()
+    }
+
     // MARK: Relaunch
 
     @Test func theSplitSurvivesARelaunch() async throws {

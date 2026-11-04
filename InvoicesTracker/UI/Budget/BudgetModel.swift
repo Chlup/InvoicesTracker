@@ -3,7 +3,8 @@ import Observation
 
 /// The model of Rozpočet: loads the net income the budget divides and turns it, with the choices of the person, into
 /// view data (`BudgetBuilder`), and keeps those choices – the split, the source and the chosen invoice – in the
-/// settings of the app (`AppSettings.budget`), which every year shares.
+/// settings of the app (`AppSettings.budget`), which every year shares. The app holds the one model of the screen
+/// (`AppModel.budgetModel`), and the model holds the app weakly.
 ///
 /// - A load reads only the source the screen shows (`BudgetBuilder.source(of:)`): for Skutečnost Přehled's average
 ///   net income of the selected year (`AppModel.averageNetIncome()`), for Odhad za rok the prediction of the year
@@ -43,7 +44,8 @@ final class BudgetModel: SavesTypedInput {
     /// What the screen says in place of its content when the last load failed, otherwise nil.
     private(set) var errorText: String?
 
-    private let app: AppModel
+    /// The app, held weakly: it holds this model (`AppModel.budgetModel`).
+    @ObservationIgnored private weak var app: AppModel?
 
     /// How long after the last change of the split it is saved.
     private let saveDelay: Duration
@@ -100,12 +102,13 @@ final class BudgetModel: SavesTypedInput {
     /// unless changes wait to be saved, and shows them. A figure that cannot be worked out leaves nothing to divide
     /// (`readSource()`); any other failure is logged (the domain and the code of the error alone) and shows
     /// `errorText` in place of the data. Cancellation keeps what was shown without publishing this load. The model is
-    /// known to the app from its first load on, so that a quit saves what waits (`hasUnsavedInput`).
+    /// known to the app from its first load on, so that a quit saves what waits (`hasUnsavedInput`). A model whose app
+    /// has gone has nothing to read, and shows `errorText`.
     func load() async {
-        app.quitFlushes.register(self)
+        app?.quitFlushes.register(self)
         loadsStarted += 1
         let thisLoad = loadsStarted
-        if !hasUnsavedInput {
+        if !hasUnsavedInput, let app {
             settings = app.appSettings.budget
         }
         do {
@@ -127,21 +130,21 @@ final class BudgetModel: SavesTypedInput {
 
     /// Reads the year, today and the net income of the source the screen shows with the choices of now, and nothing of
     /// the other sources. The average or the prediction that cannot be worked out is logged and left out, so that
-    /// there is nothing to divide (`figure(_:_:)`). Throws `VaultError.locked` while the data is locked, what listing
-    /// the invoices throws, and `CancellationError` when the reading was cancelled.
+    /// there is nothing to divide (`figure(_:_:)`). Throws `VaultError.locked` while the data is locked or the app has
+    /// gone, what listing the invoices throws, and `CancellationError` when the reading was cancelled.
     private func readSource() async throws -> BudgetInput {
-        guard app.database != nil else { throw VaultError.locked }
+        guard let app, app.database != nil else { throw VaultError.locked }
         var input = BudgetInput(
             year: app.asOf.year, today: app.today, settings: settings, actual: nil, prediction: nil, invoices: [])
         switch BudgetBuilder.source(of: input) {
         case .actual:
             input.actual = try await figure("Loading the average of Rozpočet") {
-                try await self.app.averageNetIncome()
+                try await app.averageNetIncome()
             }
         case .prediction:
             let year = input.year
             input.prediction = try await figure("Loading the estimate of Rozpočet") {
-                try await self.app.predictionOutcome(year: year)
+                try await app.predictionOutcome(year: year)
             }
         case .invoice:
             input.invoices = try await app.budgetInvoices()
@@ -374,6 +377,7 @@ final class BudgetModel: SavesTypedInput {
     /// the wait calls this, as do a slide that ends, a field that is left, the choice of a source or an invoice, and a
     /// quit. When a save already runs, this waits for it and then saves what has come since. A save that cannot be
     /// written is logged by the app (`AppModel.updateAppSettings(_:)`), and the next load shows what the settings hold.
+    /// A model whose app has gone writes nothing.
     func saveNow() async {
         saveTimer.cancel()
         while let running = writeTask {
@@ -383,7 +387,7 @@ final class BudgetModel: SavesTypedInput {
         hasChanges = false
         let budget = settings
         let task = Task {
-            await self.app.updateAppSettings { $0.budget = budget }
+            await self.app?.updateAppSettings { $0.budget = budget }
             self.writeTask = nil
         }
         writeTask = task

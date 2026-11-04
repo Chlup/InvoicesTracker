@@ -23,6 +23,9 @@ nonisolated enum PillTone: Sendable, Hashable {
 
     /// An invoice that needs to be checked, in the orange of attention.
     case review
+
+    /// A word that tells what something is and no state of it, in grey, such as the remainder of a budget.
+    case neutral
 }
 
 /// The colours of the tones of a pill, from the palette.
@@ -33,7 +36,7 @@ extension PillTone {
         case .paid: Palette.greenTint
         case .waiting: Palette.accentTint
         case .overdue: Palette.redTint
-        case .draft, .edited: Palette.fill
+        case .draft, .edited, .neutral: Palette.fill
         case .estimate, .review: Palette.orangeTint
         }
     }
@@ -44,7 +47,7 @@ extension PillTone {
         case .paid: Palette.greenText
         case .waiting: Palette.accentText
         case .overdue: Palette.redText
-        case .draft, .edited: Palette.text2
+        case .draft, .edited, .neutral: Palette.text2
         case .estimate, .review: Palette.orangeText
         }
     }

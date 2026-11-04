@@ -299,6 +299,12 @@ final class AppModel {
     /// (`lockAfterFailedChange(_:)`).
     @ObservationIgnored lazy var simulatorModel = SimulatorModel(app: self)
 
+    /// The model of Rozpočet. The app holds it, not the screen, so that there is only ever one model of the split while
+    /// a change of it waits to be saved: a second model, made while the first still waited, would read the split as
+    /// the settings held it before the change and save that over the change. Other data gets a new one (`adopt(_:)`),
+    /// and so does a lock of the data (`lockAfterFailedChange(_:)`).
+    @ObservationIgnored lazy var budgetModel = BudgetModel(app: self)
+
     /// What the menu item Zkontrolovat aktualizace… and the card Aktualizace in Nastavení show of Sparkle's updater and
     /// ask of it. Nil until the launch sets it, before the window shows and whether or not the data is unlocked. The
     /// launch sets none while the app hosts the unit tests, which start no updater.
@@ -660,6 +666,7 @@ final class AppModel {
         self.database = database
         importModel = ImportModel(app: self)
         simulatorModel = SimulatorModel(app: self)
+        budgetModel = BudgetModel(app: self)
         uniformRateOffer = nil
         uniformRateOfferAfterUnlock = nil
         heldAnnouncements = []
@@ -701,9 +708,9 @@ final class AppModel {
 
     /// Shows the locked screen after the vault locked the data in the middle of `change`, which failed (a restore whose
     /// database could not be put in place or opened, a new recovery code whose rekey failed): the refresh stops and the
-    /// data is let go, with what was entered in the Simulátor, and unlocking opens what is on disk, as after a launch,
-    /// and says what `change` left in force. The locked screen takes the place of a lock after inactivity, and asks for
-    /// Touch ID or the password itself.
+    /// data is let go, with what was entered in the Simulátor and a change of Rozpočet that was not saved yet, and
+    /// unlocking opens what is on disk, as after a launch, and says what `change` left in force. The locked screen
+    /// takes the place of a lock after inactivity, and asks for Touch ID or the password itself.
     func lockAfterFailedChange(_ change: InterruptedChange) {
         interruptedChange = change
         refresh?.stop()
@@ -714,8 +721,10 @@ final class AppModel {
         editorRequest = nil
         completion = nil
         database = nil
-        // The inputs of a simulation, its children's names and days of birth among them, go with the data.
+        // The inputs of a simulation, its children's names and days of birth among them, go with the data, and so does
+        // a change of the budget that waited to be saved.
         simulatorModel = SimulatorModel(app: self)
+        budgetModel = BudgetModel(app: self)
         phase = .locked
     }
 

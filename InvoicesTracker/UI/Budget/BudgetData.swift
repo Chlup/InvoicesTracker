@@ -9,6 +9,13 @@ nonisolated enum BudgetField: Hashable, Sendable {
 
     /// The amount of a category in whole Kč a month.
     case amount(BudgetCategory)
+
+    /// The category whose row the field is in.
+    var category: BudgetCategory {
+        switch self {
+        case .percent(let category), .amount(let category): category
+        }
+    }
 }
 
 /// What Rozpočet is made from: the year and the day, the choices of the person, the net incomes each source divides,
@@ -117,6 +124,11 @@ nonisolated struct BudgetInvoicePicker: Hashable, Sendable {
 
     /// The invoices of the year, newest number first.
     var items: [BudgetInvoiceItem]
+
+    /// What VoiceOver reads for the button: "Faktura 20260905, Alfa Systems s.r.o.".
+    var accessibilityLabel: String {
+        "Faktura " + number + ", " + client
+    }
 }
 
 /// A row of the bill of an invoice in Faktura mode: an operator, a label with a note under it, and an amount.
@@ -225,6 +237,12 @@ nonisolated struct BudgetRow: Identifiable, Hashable, Sendable {
     /// What VoiceOver reads for the slider: "Úspory, podíl z čistého příjmu".
     var sliderAccessibilityLabel: String {
         name + ", podíl z čistého příjmu"
+    }
+
+    /// What VoiceOver reads as the value of the slider: the share the rail is filled to, "15,0 %", whatever the % field
+    /// holds while it is being typed into.
+    var sliderValueText: String {
+        CzechFormat.percent(Decimal(fillFraction), fractionDigits: 1)
     }
 
     /// What VoiceOver reads for the % field: "Úspory v procentech".
