@@ -49,6 +49,12 @@ nonisolated struct PrefillErrors: Equatable, Sendable {
 ///   (`Database.updateYearSettings`), and then tells the app (`didWrite()`). A menu, a checkbox, the prefill and the
 ///   copy are saved at once. A save that fails is said on the screen (`saveFailure`), keeps the typed texts and the
 ///   values, and is tried again with the next change.
+/// - A change belongs to the data that was open when it was made, the `Database` object, which a restore or an unlock
+///   replaces with another: it is written into that data alone. Changes whose data is no longer open when they would
+///   be saved, when the screen loads or when the next change is made are dropped with what was typed, logged and not
+///   written, and the screen says nothing of them. While no data is open at all, a change waits for the data the screen
+///   was loaded from, as a save that fails does. A load that sees other data opened while it reads shows nothing of
+///   what it read: the data open now loads again and shows itself.
 ///
 /// - The children are written at once through `FamilyEditing`, each change of the dialog of a child in one write with
 ///   the orders of the other children, and one that is not written throws for the dialog to say so. The spouse belongs
@@ -167,6 +173,13 @@ final class AdvancesModel {
     @ObservationIgnored private var touched: Set<TypedField> = []
     @ObservationIgnored private var unread: Set<TypedField> = []
 
+    /// The data the changes that wait to be saved were made on (`noteWaitingChange()`). It says nothing while no change
+    /// waits; what is being written belongs to the data its write was started for (`write(_:madeOn:)`).
+    @ObservationIgnored private var changesBelongTo: Database?
+
+    /// The data the year shown was last loaded from.
+    @ObservationIgnored private var shownFrom: Database?
+
     /// How many loads have started. Only the latest may show its result: one that was started for a year that has been
     /// replaced since must not undo the newer one.
     @ObservationIgnored private var loadsStarted = 0
@@ -251,26 +264,33 @@ final class AdvancesModel {
 
     // MARK: Loading
 
-    /// Loads the selected year as of the day shown. What was changed on the screen and is not saved yet stays on it;
-    /// what waits to be saved for the year that was shown before is saved first. A failure is logged (the domain and
-    /// the code of the error alone) and shows `errorText`; the plan that was on the screen stays as it was. The model
-    /// is known to the app from its first load on, so that a quit waits for what is typed (`hasUnsavedInput`).
+    /// Loads the selected year as of the day shown from the data open as the load starts, and reads nothing from any
+    /// other. What was changed on the screen and is not saved yet stays on it; what waits to be saved for the year that
+    /// was shown before is saved first, and what waits for other data than the data open now is dropped first
+    /// (`dropChanges()`). A failure is logged (the domain and the code of the error alone) and shows `errorText`; the
+    /// plan that was on the screen stays as it was. Other data opened while the load reads keeps what was shown without
+    /// publishing this load (`mayShow(_:readFrom:)`). The model is known to the app from its first load on, so that a
+    /// quit waits for what is typed (`hasUnsavedInput`).
     func load() async {
         app.quitFlushes.register(self)
         loadsStarted += 1
         let thisLoad = loadsStarted
         let shown = app.asOf
         let day = app.receivedThrough
+        let openData = app.database
+        if let openData, hasWaitingChanges, changesBelongTo !== openData {
+            dropChanges()
+        }
         do {
-            guard let database = app.database else { throw VaultError.locked }
+            guard let database = openData else { throw VaultError.locked }
             // What waits to be saved belongs to the year it was typed in, not to the one that comes.
             if let shownBefore = settings?.year, shownBefore != shown.year {
                 await saveNow()
             }
-            let (input, readSettings) = try await app.yearInput(for: shown.year)
+            let (input, readSettings) = try await app.yearInput(for: shown.year, from: database)
             let readFamily = try await database.family(year: shown.year)
             let previousYearIsThere = try await database.storedSettingsYears().contains(shown.year - 1)
-            guard thisLoad == loadsStarted else { return }
+            guard mayShow(thisLoad, readFrom: database) else { return }
 
             if let shownBefore = settings?.year, shownBefore != shown.year {
                 // What could not be saved before the year was left is lost with it, and the screen says so.
@@ -281,6 +301,7 @@ final class AdvancesModel {
                     saveFailure = Self.unsavedYearText(shownBefore)
                 }
             }
+            shownFrom = database
             stored = readSettings
             loadedFamily = readFamily
             refreshSettings()
@@ -295,10 +316,16 @@ final class AdvancesModel {
                 of: AppModel.yearInput(effective, receipts: input.receipts, family: FamilyFacts(family)),
                 family: family, asOf: day)
         } catch {
-            guard thisLoad == loadsStarted else { return }
+            guard mayShow(thisLoad, readFrom: openData) else { return }
             AppModel.log("Loading Zálohy a odpočty", failedWith: error)
             errorText = Self.loadFailureText
         }
+    }
+
+    /// Whether the load numbered `load`, which started while the app had `database` open (nil when it had none), may
+    /// show what it read: it is the newest load, and the data open now is still `database`.
+    private func mayShow(_ load: Int, readFrom database: Database?) -> Bool {
+        load == loadsStarted && app.database === database
     }
 
     /// Works out the impact of the deductions and the credits in `input`, and the cards of `family`, the family of the
@@ -391,6 +418,7 @@ final class AdvancesModel {
         case .spouseIncome:
             spouseIncomeText = text
         }
+        noteWaitingChange()
         touched.insert(field)
         unread.insert(field)
         scheduleSave(after: saveDelay)
@@ -432,13 +460,14 @@ final class AdvancesModel {
     }
 
     /// Copies the advances and the secondary months of the year before into the year shown, and saves them before it
-    /// returns. Nothing else of the year before is copied. Does nothing when the year before has no settings.
+    /// returns. Nothing else of the year before is copied. Does nothing when the year before has no settings, and
+    /// copies nothing when other data was opened while the year before was read.
     func copyFromPreviousYear() async {
         guard hasPreviousYear, let shown = settings, let database = app.database else { return }
         do {
             let previous = try await database.yearSettings(shown.year - 1)
-            // The person may have moved to another year meanwhile.
-            guard settings?.year == shown.year else { return }
+            // The person may have moved to another year meanwhile, or a restore may have opened other data.
+            guard settings?.year == shown.year, app.database === database else { return }
             var edits: [YearSettingsEdit] = []
             for month in 1...12 {
                 for column in AdvanceColumn.allCases {
@@ -534,6 +563,7 @@ final class AdvancesModel {
     /// Makes `edits` the changes that wait for their fields, and saves them `delay` after the last change.
     private func queue(_ edits: [YearSettingsEdit], after delay: Duration) {
         guard stored != nil else { return }
+        noteWaitingChange()
         for edit in edits {
             stage(edit)
         }
@@ -624,6 +654,65 @@ final class AdvancesModel {
         !unread.isEmpty || !pending.isEmpty || writeTask != nil
     }
 
+    /// Whether changes wait to be saved: a text that waits for the typing to stop, or a change that waits for its save.
+    /// What is being written does not count: it belongs to the data its write was started for.
+    private var hasWaitingChanges: Bool {
+        !unread.isEmpty || !pending.isEmpty
+    }
+
+    /// A change starts to wait to be saved, or joins those that wait. The first one records the data the app has open,
+    /// or the data the screen was loaded from while the app has none open (`changesBelongTo`), and the later ones join
+    /// it. Changes that wait for data that is no longer open, as other data has been opened since, are dropped first
+    /// (`dropChanges()`), and this one belongs to the data open now.
+    private func noteWaitingChange() {
+        let openData = app.database
+        if let openData, hasWaitingChanges, changesBelongTo !== openData {
+            dropChanges()
+        }
+        if !hasWaitingChanges {
+            changesBelongTo = openData ?? shownFrom
+        }
+    }
+
+    /// The line logged when changes are dropped because they were made on data that a restore or an unlock replaced.
+    private static let droppedChangesNote = "Dropped the changes of Zálohy a odpočty made on data that was replaced"
+
+    /// Drops the changes that wait to be saved, which were made on data that is no longer open, and logs it when there
+    /// were some (`forgetChanges()`).
+    private func dropChanges() {
+        if hasWaitingChanges {
+            AppModel.log(Self.droppedChangesNote)
+        }
+        forgetChanges()
+    }
+
+    /// Forgets the changes that wait to be saved and the wait for the save, what was typed, the messages under the
+    /// texts that were refused and the line of a save that failed: they were made on data that is no longer open, and
+    /// nothing of them is written. The settings shown are those stored again, and every field shows what the data
+    /// holds once the screen loads, which a restore and an unlock make it do.
+    private func forgetChanges() {
+        saveTimer.cancel()
+        pending = []
+        unread = []
+        touched = []
+        changesBelongTo = nil
+        cellErrors = [:]
+        deductionErrors = [:]
+        spouseIncomeError = nil
+        saveFailure = nil
+        refreshSettings()
+    }
+
+    /// What was being written was made on data that is no longer open: it is neither written nor put back to wait. The
+    /// changes that wait go with it, and what was typed (`forgetChanges()`), unless they were made on the data open
+    /// now. It is logged, and the screen says nothing of it.
+    private func dropWhatWasWritten() {
+        AppModel.log(Self.droppedChangesNote)
+        if !hasWaitingChanges || changesBelongTo !== app.database {
+            forgetChanges()
+        }
+    }
+
     /// Makes `edits` changes that wait for no field and saves them at once, with what waits to be saved, as the choices
     /// of the screen are saved. Returns whether they are written: a save that fails is said (`saveFailure`), and they
     /// wait for the next save. False before the year is loaded, as there is nothing to change yet.
@@ -644,9 +733,10 @@ final class AdvancesModel {
 
     /// Reads the texts that were typed, saves what waits to be saved, and returns when it is written and the app has
     /// been told of it. The screen calls this when the person leaves a field, presses Return or leaves the screen, and
-    /// when the year changes; the end of the wait does. When a save is already running this waits for it and then
-    /// saves what has come since. A save that fails is not tried again here: it is said in `saveFailure`, and the
-    /// changes wait for the next one.
+    /// when the year changes; the end of the wait does, and so does a quit. When a save is already running this waits
+    /// for it and then saves what has come since. A save that fails is not tried again here: it is said in
+    /// `saveFailure`, and the changes wait for the next one. Changes made on data that is no longer open are dropped
+    /// instead (`write(_:madeOn:)`).
     func saveNow() async {
         saveTimer.cancel()
         while let running = writeTask {
@@ -655,23 +745,33 @@ final class AdvancesModel {
         readTypedTexts()
         guard !pending.isEmpty else { return }
         let edits = pending
+        let madeOn = changesBelongTo
         inFlight = edits
         pending = []
-        let task = Task { await self.write(edits) }
+        let task = Task { await self.write(edits, madeOn: madeOn) }
         writeTask = task
         await task.value
     }
 
-    /// Writes `edits` on top of what is stored for the year shown, in one transaction, and tells the app.
-    private func write(_ edits: [YearSettingsEdit]) async {
+    /// Writes `edits`, which were made on the data `madeOn`, on top of what is stored for the year shown, in one
+    /// transaction, and tells the app. It writes into `madeOn` alone, and only while it is the data the app has open as
+    /// the write starts: edits made on data that a restore or an unlock has replaced since are dropped instead
+    /// (`dropWhatWasWritten()`), and so are those whose write fails because other data was opened meanwhile. While no
+    /// data is open they wait for the next save, and the failure is said, as it is for a write that fails. A write
+    /// that ends after other data was opened shows nothing of what it wrote, and does not tell the app.
+    private func write(_ edits: [YearSettingsEdit], madeOn: Database?) async {
         defer {
             inFlight = []
             writeTask = nil
             refreshSettings()
         }
         guard let year = stored?.year, let database = app.database else {
-            restore(edits)
+            restore(edits, madeOn: madeOn)
             saveFailure = Self.saveFailureText
+            return
+        }
+        guard database === madeOn else {
+            dropWhatWasWritten()
             return
         }
         do {
@@ -680,21 +780,35 @@ final class AdvancesModel {
                     edit.apply(to: &settings)
                 }
             }
+            if let openData = app.database, openData !== database {
+                return
+            }
             if stored?.year == saved.year {
                 stored = saved
             }
         } catch {
+            if let openData = app.database, openData !== database {
+                dropWhatWasWritten()
+                return
+            }
             AppModel.log("Saving the advances and deductions", failedWith: error)
-            restore(edits)
+            restore(edits, madeOn: database)
             saveFailure = Self.saveFailureText
             return
         }
         saveFailure = nil
+        if !hasWaitingChanges {
+            changesBelongTo = nil
+        }
         await app.didWrite()
     }
 
-    /// Puts `edits`, which could not be written, back in front of those that came meanwhile.
-    private func restore(_ edits: [YearSettingsEdit]) {
+    /// Puts `edits`, which were made on the data `madeOn` and could not be written, back in front of those that came
+    /// meanwhile. When none came, they wait for `madeOn` again.
+    private func restore(_ edits: [YearSettingsEdit], madeOn: Database?) {
+        if !hasWaitingChanges {
+            changesBelongTo = madeOn
+        }
         let newer = pending
         pending = edits.filter { edit in !newer.contains { $0.target == edit.target } } + newer
     }

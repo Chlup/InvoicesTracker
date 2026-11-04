@@ -4,11 +4,12 @@ import Testing
 
 /// The model of Zálohy a odpočty: the plan of advances as texts, the totals of the year and to the day shown, how a
 /// cell that is not an amount is refused, what is saved and when, the change of the year, the secondary activity, the
-/// prefill, the copy from the year before, and the family: a child is written at once, the spouse is saved at once
-/// with the settings, and the spouse's own income is a typed field like those of the deductions. The data is the
-/// sample year of the engine's regression test, stored in a temporary database; the app is as of 17. 10. 2026. A model
-/// has no delay before it saves unless a test gives it one (`saveDelay`), and the tests that need a save to wait give
-/// it an hour and save by hand. In every expected string `\u{00A0}` is the no-break space.
+/// prefill, the copy from the year before, the family: a child is written at once, the spouse is saved at once with
+/// the settings, and the spouse's own income is a typed field like those of the deductions; and that a change is
+/// written only into the data it was made on. The data is the sample year of the engine's regression test, stored in a
+/// temporary database, of which the app made its backup; the app is as of 17. 10. 2026. A model has no delay before it
+/// saves unless a test gives it one (`saveDelay`), and the tests that need a save to wait give it an hour and save by
+/// hand. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct AdvancesModelTests {
@@ -374,22 +375,18 @@ struct AdvancesModelTests {
         let app = try await makeAdvancesApp(in: directory)
         let database = try #require(app.database)
         let model = await loadedAdvancesModel(of: app, saveDelay: .seconds(3_600))
-        await database.close()
+        try await setDatabaseReadOnly(true, database)
         model.setCell(month: 3, column: 0, text: "13 000")
         await model.saveNow()
         #expect(model.saveFailure != nil)
 
-        // The data works again (here: another database, with the same year), and the next change takes the one that
-        // failed with it.
-        let (working, workingDirectory) = try makeDatabase()
-        defer { removeTemporaryDirectory(workingDirectory) }
-        try await working.saveYearSettings(SampleYear2026.yearSettings)
-        app.database = working
+        // The data works again, and the next change takes the one that failed with it.
+        try await setDatabaseReadOnly(false, database)
         model.setCell(month: 4, column: 0, text: "14 000")
         await model.saveNow()
 
         #expect(model.saveFailure == nil)
-        let saved = try await working.yearSettings(2026)
+        let saved = try await database.yearSettings(2026)
         #expect(saved.advances.social[2] == 13_000)
         #expect(saved.advances.social[3] == 14_000)
     }
@@ -415,6 +412,30 @@ struct AdvancesModelTests {
 
         #expect(model.saveFailure == nil)
         #expect(try await storedYear(2026, in: app).advances.social[2] == 13_000)
+    }
+
+    /// A change made while no data is open waits for the data the screen showed, and only for it: when other data opens
+    /// instead, as an unlock opens after a restore that failed half way, the change is dropped, nothing of it is
+    /// written there and the line of the failure goes.
+    @Test func aChangeMadeWhileTheDataIsLockedIsDroppedWhenOtherDataOpens() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeAdvancesApp(in: directory)
+        let model = await loadedAdvancesModel(of: app, saveDelay: .seconds(3_600))
+        app.database = nil
+        model.setCell(month: 3, column: 0, text: "13 000")
+        await model.saveNow()
+        #expect(model.saveFailure == "Změnu se nepodařilo uložit.")
+
+        let (other, otherDirectory) = try makeDatabase()
+        defer { removeTemporaryDirectory(otherDirectory) }
+        try await other.saveYearSettings(SampleYear2026.yearSettings)
+        app.database = other
+        await model.saveNow()
+
+        #expect(!model.hasUnsavedInput)
+        #expect(model.saveFailure == nil)
+        #expect(try await other.yearSettings(2026) == SampleYear2026.yearSettings)
     }
 
     // MARK: Typing
@@ -978,6 +999,75 @@ struct AdvancesModelTests {
 
         #expect(model.errorText == nil)
         #expect(model.settings != nil)
+    }
+
+    // MARK: Data that is replaced
+
+    /// A change that waits to be saved while a restore replaces the data was made on the data before: neither the end
+    /// of its wait nor a quit writes it into the restored data, and nothing says that it failed. A load of the restored
+    /// data drops it at once, and the cell shows what the restored data holds.
+    @Test(arguments: [false, true])
+    func aChangeWaitingDuringARestoreIsNotWrittenIntoTheRestoredData(loadingFirst: Bool) async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeAdvancesApp(in: directory)
+        // The backup that the app made of the sample year.
+        let backup = try #require(try app.backups.localBackups().first)
+        let delay = ManualDelay()
+        let model = AdvancesModel(app: app, saveDelay: .milliseconds(500), wait: delay.wait)
+        await model.load()
+        model.setCell(month: 3, column: 0, text: "13 000")
+        try await waitUntil { delay.armed == 1 }
+
+        _ = try await app.restoreWhileOpen(from: backup.url, recoveryCode: nil)
+
+        if loadingFirst {
+            await model.load()
+
+            #expect(!model.hasUnsavedInput)
+            #expect(model.cells[2][0] == "13\u{00A0}340")
+        }
+        // The end of the wait saves what waits, and so does a quit.
+        delay.fire()
+        await letWaitingJobsRun()
+        await model.saveNow()
+        await app.flushUnsavedInput()
+
+        #expect(!model.hasUnsavedInput)
+        #expect(model.saveFailure == nil)
+        let restored = try await storedYear(2026, in: app)
+        #expect(restored.advances.social[2] == 13_340)
+        #expect(restored == SampleYear2026.yearSettings)
+    }
+
+    /// A load that sees other data opened while it reads, as a restore or an unlock opens a new `Database`, shows
+    /// nothing of what it read, not even the line of a failure: the restore and the unlock make every screen load the
+    /// data open now, and that load shows it. Here the data is replaced by hand as the load has started.
+    @Test func aLoadThatStraddlesARestoreShowsNothingOfTheOldData() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeAdvancesApp(in: directory)
+        let (restored, restoredDirectory) = try makeDatabase()
+        defer { removeTemporaryDirectory(restoredDirectory) }
+        var restoredYear = advancesYear2025()
+        restoredYear.year = 2026
+        try await restored.saveYearSettings(restoredYear)
+        let model = AdvancesModel(app: app, saveDelay: .zero)
+        let load = Task.immediate { await model.load() }
+
+        app.database = restored
+        await load.value
+
+        #expect(model.settings == nil)
+        #expect(model.cells[0] == ["", "", ""])
+        #expect(model.errorText == nil)
+
+        // The load that the restore starts shows the restored data.
+        await model.load()
+
+        #expect(model.settings == restoredYear)
+        #expect(model.cells[0] == ["9\u{00A0}450", "4\u{00A0}700", ""])
+        #expect(model.errorText == nil)
     }
 
     // MARK: The family
