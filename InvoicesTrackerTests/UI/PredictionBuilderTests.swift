@@ -893,11 +893,30 @@ struct PredictionBuilderTests {
     @Test func theNetIncomeIsTheSameAsOnPrehledsEstimateCard() throws {
         let outcome = try PredictionSample.outcome(year: 2026)
         let page = PredictionBuilder.page(outcome)
-        let card = try #require(PredictionBuilder.card(outcome).stats.last)
+        let card = try #require(PredictionBuilder.card(outcome).monthStats.first)
 
         #expect(card.label + " (odhad)" == page.netIncome.label)
         #expect(card.value == page.netIncome.amount)
         #expect(page.netIncome.sub.hasPrefix(card.sub))
+    }
+
+    /// The card of Přehled has the year's figures in one row and the figures per month in another: the net income,
+    /// which has the green dot, and what to set aside, which has no sign of an estimate, as the whole card is one.
+    @Test func theEstimateCardHasTheYearsFiguresAndThoseOfTheMonth() throws {
+        let outcome = try PredictionSample.outcome(year: 2026)
+        let card = PredictionBuilder.card(outcome)
+
+        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek"])
+        #expect(card.stats.allSatisfy { !$0.marksNetIncome })
+        #expect(
+            card.monthStats == [
+                PredictionMini(
+                    label: "Čistý příjem průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč",
+                    sub: "za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč", marksNetIncome: true),
+                PredictionMini(
+                    label: "Odkládat průměrně za měsíc", value: "20\u{00A0}392\u{00A0}Kč",
+                    sub: "za celý rok 244\u{00A0}702\u{00A0}Kč · doplatek a zálohy na daň"),
+            ])
     }
 
     /// The card of the net income closes the right column, under the two insurances. It is the card of Výpočet worded
@@ -1616,6 +1635,9 @@ struct PredictionBuilderTests {
         let card = PredictionBuilder.card(outcome)
         #expect(card.stats.allSatisfy { $0.value == "—" && $0.share == nil })
         #expect(card.stats[0].sub.contains(page.parts[0].value))
+        #expect(card.monthStats.map(\.label) == ["Čistý příjem průměrně za měsíc", "Odkládat průměrně za měsíc"])
+        #expect(card.monthStats.allSatisfy { $0.value == "—" && $0.sub == PredictionBuilder.incompleteText })
+        #expect(card.monthStats.map(\.marksNetIncome) == [true, false])
         #expect(card.sub.contains("chybí kurz"))
     }
 

@@ -2123,9 +2123,15 @@ struct OverviewBuilderTests {
                 PredictionMini(
                     label: "Doplatek", value: "198\u{00A0}702\u{00A0}Kč",
                     sub: "po zálohách 268\u{00A0}080\u{00A0}Kč za celý rok"),
+            ])
+        #expect(
+            card.monthStats == [
                 PredictionMini(
                     label: "Čistý příjem průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč",
-                    sub: "za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč"),
+                    sub: "za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč", marksNetIncome: true),
+                PredictionMini(
+                    label: "Odkládat průměrně za měsíc", value: "20\u{00A0}392\u{00A0}Kč",
+                    sub: "za celý rok 244\u{00A0}702\u{00A0}Kč · doplatek a zálohy na daň"),
             ])
     }
 
@@ -2170,10 +2176,12 @@ struct OverviewBuilderTests {
                     label: "Odvody", value: "99\u{00A0}720\u{00A0}Kč",
                     sub: "daň 0 · sociální 60\u{00A0}056 · zdravotní 39\u{00A0}664"),
                 PredictionMini(label: "Přeplatek", value: "168\u{00A0}360\u{00A0}Kč", sub: "zálohy převýší odvody"),
-                PredictionMini(
-                    label: "Čistý příjem průměrně za měsíc", value: "\u{2212}8\u{00A0}310\u{00A0}Kč",
-                    sub: "za celý rok \u{2212}99\u{00A0}720\u{00A0}Kč"),
             ])
+        #expect(
+            overpaid.monthStats.first
+                == PredictionMini(
+                    label: "Čistý příjem průměrně za měsíc", value: "\u{2212}8\u{00A0}310\u{00A0}Kč",
+                    sub: "za celý rok \u{2212}99\u{00A0}720\u{00A0}Kč", marksNetIncome: true))
 
         // Advances that pay exactly the levies leave nothing to settle: that is a sum of nothing to pay.
         let none = [Int64](repeating: 0, count: 12)
@@ -2227,7 +2235,7 @@ struct OverviewBuilderTests {
     }
 
     /// The card is an area of estimates as a whole, so none of its texts carries the sign "≈": not the head, the line
-    /// under it, the labels, the four figures, the share beside one of them, the lines under them, and not the months
+    /// under it, the labels, the figures, the share beside one of them, the lines under them, and not the months
     /// of its chart, also a month whose issued amount is approximate: that month says so in its note alone.
     @Test func theEstimateCardHasNoApproximationSign() throws {
         // October also has an invoice in dollars that waits for its payment and for the rate of its day, so that it is
@@ -2241,7 +2249,7 @@ struct OverviewBuilderTests {
             let card = try #require(build(input(chartRows: rows, prediction: estimate)).prediction)
             #expect(card.chart[9].issuedActualIsApproximate)
             #expect(card.chart[9].notes.contains(ChartColumn.approximateIssuedNote))
-            let figures = card.stats.flatMap { [$0.label, $0.value, $0.share ?? "", $0.sub] }
+            let figures = (card.stats + card.monthStats).flatMap { [$0.label, $0.value, $0.share ?? "", $0.sub] }
             let months = card.chart.flatMap { month in
                 [
                     month.title, month.issuedActualText, month.issuedEstimateText, month.receivedActualText,
@@ -2265,12 +2273,12 @@ struct OverviewBuilderTests {
         #expect(levies.label == "Odvody")
         #expect(levies.value == "466\u{00A0}782\u{00A0}Kč")
         #expect(levies.share == "17,0\u{00A0}%")
-        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek", "Čistý příjem průměrně za měsíc"])
+        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek"])
         // Only the levies have a share of the income.
-        #expect(card.stats.map { $0.share == nil } == [true, false, true, true])
+        #expect(card.stats.map { $0.share == nil } == [true, false, true])
+        #expect(card.monthStats.allSatisfy { $0.share == nil })
         let overpaid = try #require(build(input(prediction: try estimateWithoutIncome())).prediction)
-        #expect(
-            overpaid.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Přeplatek", "Čistý příjem průměrně za měsíc"])
+        #expect(overpaid.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Přeplatek"])
     }
 
     /// An estimate that is not complete has dashes for its figures and says why under each, under the same labels as
@@ -2291,12 +2299,14 @@ struct OverviewBuilderTests {
 
         let card = try #require(build(input(prediction: outcome)).prediction)
 
-        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek", "Čistý příjem průměrně za měsíc"])
-        #expect(card.stats.allSatisfy { $0.value == "—" && $0.share == nil })
+        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek"])
+        #expect(card.monthStats.map(\.label) == ["Čistý příjem průměrně za měsíc", "Odkládat průměrně za měsíc"])
+        #expect((card.stats + card.monthStats).allSatisfy { $0.value == "—" && $0.share == nil })
         #expect(card.stats[0].sub.hasPrefix("z toho přišlo "))
         #expect(card.stats.dropFirst().allSatisfy { $0.sub.hasPrefix("Odhad je neúplný: ") })
+        #expect(card.monthStats.allSatisfy { $0.sub.hasPrefix("Odhad je neúplný: ") })
         #expect(card.sub.hasPrefix("Odhad je neúplný: "))
-        for stat in card.stats {
+        for stat in card.stats + card.monthStats {
             #expect(!stat.value.contains("≈") && !stat.sub.contains("≈"))
         }
     }

@@ -212,7 +212,9 @@ user before building.
   - levy bar: one bar split into three solid parts in the authorities' colours, each as wide as its levy; short names
     and amounts under it. The advances and what is left to pay appear only in the popover on hover or focus;
   - figure tile: label, figure and note. Tiles sit next to each other with one gap and are never stretched into
-    columns across the card;
+    columns across the card. A tile about the net income has the green dot before its label
+    (`FigureTileData.marksNetIncome`). Where a card has more figures than fit one row they go in rows by meaning, each
+    under a hairline (Přehled's "Odhad za celý rok": the year, then per month), so no figure wraps alone;
   - table: a 32-point header and 40-point rows with one line of text each; further details belong in the detail panel;
   - detail panel: 340 wide, with the title, a pill and ✕ at the top, a row of 28-point actions, and its parts under
     hairlines (`DetailPanel`, `DetailSection`);

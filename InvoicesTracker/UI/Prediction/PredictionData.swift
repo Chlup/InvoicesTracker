@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - The card of Přehled
 
-/// One of the four figures of the card of Přehled, with its caption and the line under it: "Doplatek", "198 702 Kč",
+/// One of the figures of the card of Přehled, with its caption and the line under it: "Doplatek", "198 702 Kč",
 /// "po zálohách 268 080 Kč za celý rok".
 nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
     var label: String
@@ -12,6 +12,10 @@ nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
     /// the insurance have one (`PredictionBuilder.leviesShare(_:)`).
     var share: String?
     var sub: String
+
+    /// Whether the figure is the net income, which a green dot in front of its label shows
+    /// (`FigureTileData.marksNetIncome`). Only the tiles about the net income have one.
+    var marksNetIncome = false
 
     var id: String {
         label

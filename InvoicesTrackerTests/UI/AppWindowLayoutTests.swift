@@ -1753,13 +1753,12 @@ struct AppWindowLayoutTests {
     }
 
     /// The page fits the window with the card of the estimate, and the card holds its parts: the title (with no pill)
-    /// and the line under it, the button to the right of them, under them the four figures (the income, the levies,
-    /// the settlement and the net income) 40 points apart and none of them more than 240 wide or beyond the card or on
-    /// another, and under the figures the chart of the year, whose months VoiceOver reads within the card. At the
-    /// least room (938 points of page) and in a large window all four stand side by side in one row; with the sidebar
-    /// as wide as it goes (850 points of page) the figures stand in two rows, the first three side by side and the net
-    /// income under the income, and in a large window with that sidebar they stand in one row again. No sign of an
-    /// estimate is read anywhere in the card.
+    /// and the line under it, the button to the right of them, under them the five figures (the income, the levies,
+    /// the settlement, the net income and what to set aside) 40 points apart and none of them more than 240 wide or
+    /// beyond the card or on another, and under the figures the chart of the year, whose months VoiceOver reads within
+    /// the card. The figures stand in two rows by meaning, the year's three and the two per month, at the least room
+    /// (938 points of page), in a large window, with the sidebar as wide as it goes (850 points of page) and in a large
+    /// window with that sidebar: no figure wraps alone. No sign of an estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -1767,7 +1766,7 @@ struct AppWindowLayoutTests {
                     try await showOverviewWithTheEstimate(of: app, in: window)
 
                     for (size, figureRows) in [
-                        (AppWindowSize.minimum, [4]), (AppWindowSize.large, [4]), (AppWindowSize.minimum, [4]),
+                        (AppWindowSize.minimum, [3, 2]), (AppWindowSize.large, [3, 2]), (AppWindowSize.minimum, [3, 2]),
                     ] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
@@ -1780,15 +1779,14 @@ struct AppWindowLayoutTests {
                     widenSidebar(of: window)
                     try await expectSettled(window) {
                         problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 1])
+                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
                     }
 
-                    // A large window again, the sidebar still as wide as it goes: the figures, two rows in the least
-                    // window, stand in one row again.
+                    // A large window again, the sidebar still as wide as it goes: the same two rows.
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
                         problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [4])
+                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
                     }
                 }
             }
@@ -1879,13 +1877,13 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the line under the
-    /// title, the four figures, the button or the months of the chart are not there, are beyond the card, lie on one
+    /// title, the five figures, the button or the months of the chart are not there, are beyond the card, lie on one
     /// another, or are not arranged as the card arranges them; the card has a pill "odhad" or a sign "≈" among
     /// what VoiceOver reads. The button stands to the right of the title and the line, in a row level with the title's:
     /// its middle is within the height of the title and the line. The figures stand under the title and the button, in
     /// rows of `figureRows` figures from the top; the figures of a row are level, side by side in the order income,
-    /// levies, settlement, net income, 40 points apart and at most 240 points wide, and each row is under the one
-    /// before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
+    /// levies, settlement, net income, set-aside, 40 points apart and at most 240 points wide, and each row is under
+    /// the one before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
     /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
     /// has the smaller y. Needs the accessibility elements.
     private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
@@ -1900,6 +1898,7 @@ struct AppWindowLayoutTests {
             (name: "the line under the title", reading: "z faktur do "), (name: "the income", reading: "Příjmy za rok"),
             (name: "the levies", reading: "Odvody, "), (name: "the settlement", reading: "Doplatek, "),
             (name: "the net income", reading: "Čistý příjem průměrně za měsíc"),
+            (name: "the set-aside", reading: "Odkládat průměrně za měsíc"),
             (name: "the button", reading: "Odhad odvodů"),
         ]
         let children = (card.accessibilityChildren?() ?? []).map { $0 as AnyObject }
@@ -1934,7 +1933,9 @@ struct AppWindowLayoutTests {
             return found
         }
         // The figures in the order they stand in.
-        let figures = ["the income", "the levies", "the settlement", "the net income"].compactMap { frames[$0] }
+        let figures = [
+            "the income", "the levies", "the settlement", "the net income", "the set-aside",
+        ].compactMap { frames[$0] }
         let names = parts.map(\.name)
         for (index, name) in names.enumerated() {
             for other in names[(index + 1)...] {

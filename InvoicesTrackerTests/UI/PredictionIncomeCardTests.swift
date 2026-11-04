@@ -94,9 +94,8 @@ struct PredictionIncomeCardTests {
 
     // MARK: The net income
 
-    /// The net income is marked by a green dot of 8 points, as the card of Odhad odvodů marks it, and not by the line
-    /// of 16 by 3 points that the strip of Přehled has: nothing else in the card is green, so the green pixels of the
-    /// card fit a square of 8 points.
+    /// The net income is marked by a green dot of 8 points, as the card of Odhad odvodů marks it, and not by a line:
+    /// nothing else in the card is green, so the green pixels of the card fit a square of 8 points.
     @Test(arguments: [ColorScheme.light, ColorScheme.dark])
     func theNetIncomeIsMarkedByADotOf8Points(scheme: ColorScheme) throws {
         let page = try PredictionSample.page(year: 2026)
