@@ -175,16 +175,19 @@ struct ShareSlider: View {
             step(1)
             return .handled
         }
-        .accessibilityElement()
+        .accessibilityRepresentation {
+            Slider(
+                value: Binding(
+                    get: { Double(percent) },
+                    set: { onChange(Int($0.rounded())) }),
+                in: 0...100, step: 1,
+                onEditingChanged: { editing in
+                    if !editing { onCommit() }
+                }
+            )
+        }
         .accessibilityLabel(label)
         .accessibilityValue(valueText)
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: step(1)
-            case .decrement: step(-1)
-            @unknown default: break
-            }
-        }
     }
 
     /// Reports the share `delta` percent from the current one, kept between 0 and 100, and then the end of the choice.

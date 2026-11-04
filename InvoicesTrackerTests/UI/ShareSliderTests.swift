@@ -74,6 +74,13 @@ struct ShareSliderTests {
             try await withAccessibilityElements {
                 try await waitUntil { accessibilityElement(labelled: "Podíl rezervy", in: window) != nil }
                 let element = try #require(accessibilityElement(labelled: "Podíl rezervy", in: window))
+                // Asked for as a function of its type, because the protocols of accessibility declare
+                // `accessibilityValue()` with more than one type.
+                let value: (() -> Any?)? = element.accessibilityValue
+                #expect(element.accessibilityRole?() == .slider)
+                #expect(((value?() ?? nil) as? NSNumber)?.intValue == 15)
+                // The text VoiceOver speaks beside the number, which the value of a slider is.
+                #expect(element.accessibilityValueDescription?() == "15 %")
 
                 _ = element.accessibilityPerformIncrement?()
                 #expect(changes == [16])
