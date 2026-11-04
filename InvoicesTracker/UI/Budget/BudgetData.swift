@@ -299,4 +299,23 @@ nonisolated struct BudgetData: Hashable, Sendable {
 
     /// The note under the card.
     var note: String
+
+    /// The row that picks the source, as the screen shows it with the data.
+    var sourceRow: BudgetSourceRowData {
+        BudgetSourceRowData(source: source, sources: sources, invoicePicker: invoicePicker)
+    }
+}
+
+/// The row at the top of Rozpočet that picks what is divided: with the data (`BudgetData.sourceRow`), and also above
+/// the line of a load that failed, so that another source can be chosen (`BudgetModel.failedSourceRow`).
+nonisolated struct BudgetSourceRowData: Hashable, Sendable {
+    /// The source the row selects.
+    var source: BudgetSource
+
+    /// The choices of the row.
+    var sources: [BudgetSourceChoice]
+
+    /// The button that picks the invoice, in Faktura mode while the year has an invoice and the invoices could be
+    /// listed; nil otherwise.
+    var invoicePicker: BudgetInvoicePicker?
 }

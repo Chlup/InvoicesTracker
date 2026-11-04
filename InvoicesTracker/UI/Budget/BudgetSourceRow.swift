@@ -36,7 +36,7 @@ private nonisolated enum BudgetSourceRowMetrics {
 /// the year has an invoice, the button of the invoice the budget divides, which opens the menu of the invoices of the
 /// year. A choice is handed to `chooseSource` or `chooseInvoice`.
 struct BudgetSourceRow: View {
-    let data: BudgetData
+    let row: BudgetSourceRowData
     let chooseSource: @MainActor (BudgetSource) -> Void
     let chooseInvoice: @MainActor (Int64) -> Void
 
@@ -44,14 +44,14 @@ struct BudgetSourceRow: View {
         HStack(spacing: BudgetSourceRowMetrics.spacing) {
             SegmentedControl(
                 "Z čeho rozpočet počítat",
-                selection: Binding(get: { data.source }, set: chooseSource),
-                segments: data.sources.map { (value: $0.value, title: $0.title) },
-                disabled: Set(data.sources.filter { !$0.isEnabled }.map(\.value)),
+                selection: Binding(get: { row.source }, set: chooseSource),
+                segments: row.sources.map { (value: $0.value, title: $0.title) },
+                disabled: Set(row.sources.filter { !$0.isEnabled }.map(\.value)),
                 help: Dictionary(
-                    uniqueKeysWithValues: data.sources.compactMap { choice in choice.help.map { (choice.value, $0) } })
+                    uniqueKeysWithValues: row.sources.compactMap { choice in choice.help.map { (choice.value, $0) } })
             )
             .fixedSize()
-            if let picker = data.invoicePicker {
+            if let picker = row.invoicePicker {
                 BudgetInvoiceButton(picker: picker, choose: chooseInvoice)
             }
             Spacer(minLength: 0)

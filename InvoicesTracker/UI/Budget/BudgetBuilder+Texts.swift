@@ -61,6 +61,12 @@ nonisolated extension BudgetBuilder {
         ]
     }
 
+    /// The source row of `input` without its figures, as the screen shows it above the line of a load that failed:
+    /// the source the choices of `input` show and the choices, without the button of an invoice.
+    static func sourceRow(of input: BudgetInput) -> BudgetSourceRowData {
+        BudgetSourceRowData(source: source(of: input), sources: sources(input), invoicePicker: nil)
+    }
+
     /// The key figure of `source`; `invoice` and `figures` are those of the chosen invoice in Faktura mode.
     static func headline(
         _ input: BudgetInput, source: BudgetSource, invoice: BudgetInvoice?, figures: InvoiceFigures?

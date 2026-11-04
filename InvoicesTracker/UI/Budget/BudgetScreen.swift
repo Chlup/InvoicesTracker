@@ -15,7 +15,8 @@ private nonisolated enum BudgetScreenMetrics {
 /// it where the card is too narrow for two columns, whose popovers hang out over the card under it; the card
 /// Rozdělení, with "Zbytek dostane", the bill of the invoice in Faktura mode and a row for each category; and the note
 /// on how the split behaves. The title and the line under it are the shell's. The texts are the builder's
-/// (`BudgetBuilder`); a load that fails shows its line in place of the page.
+/// (`BudgetBuilder`); a load that fails shows its line in place of the page under the row of the sources, so that
+/// another source can be chosen.
 ///
 /// The model is the app's (`AppModel.budgetModel`), so that one model holds the changes of the split until they are
 /// saved, and other data gets a new one: the screen reads it through the app whenever it is drawn, and has it load
@@ -60,18 +61,12 @@ struct BudgetScreen: View {
         }
     }
 
-    /// The page of the data `model` shows, or the line that says it could not be loaded.
+    /// The page of the data `model` shows, or the line that says it could not be loaded, under the row of the sources,
+    /// so that another source can be chosen.
     @ViewBuilder
     private func content(of model: BudgetModel) -> some View {
         if let data = model.data {
-            BudgetSourceRow(
-                data: data,
-                chooseSource: { source in
-                    Task { await model.chooseSource(source) }
-                },
-                chooseInvoice: { id in
-                    Task { await model.chooseInvoice(id: id) }
-                })
+            sourceRow(data.sourceRow, of: model)
             // The popovers of the bar hang out of the card over the card under it, so the card is drawn above it,
             // and nothing clips it.
             BudgetResultCard(data: data)
@@ -79,12 +74,27 @@ struct BudgetScreen: View {
             BudgetSplitCard(data: data, model: model, editedCategory: $editedCategory)
             Note(.info, text: data.note)
         } else if let errorText = model.errorText {
+            if let row = model.failedSourceRow {
+                sourceRow(row, of: model)
+            }
             Text(verbatim: errorText)
                 .font(Typography.body)
                 .foregroundStyle(Palette.text2)
                 .frame(maxWidth: .infinity)
                 .padding(.top, BudgetScreenMetrics.failureTop)
         }
+    }
+
+    /// The row of the sources `row`, which hands a choice to `model`.
+    private func sourceRow(_ row: BudgetSourceRowData, of model: BudgetModel) -> some View {
+        BudgetSourceRow(
+            row: row,
+            chooseSource: { source in
+                Task { await model.chooseSource(source) }
+            },
+            chooseInvoice: { id in
+                Task { await model.chooseInvoice(id: id) }
+            })
     }
 
     /// What the screen loads again for: another model, or the screens loading again.

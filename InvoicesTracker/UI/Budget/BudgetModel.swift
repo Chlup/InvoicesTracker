@@ -16,7 +16,8 @@ import Observation
 ///   cannot be worked out – the average or the prediction – is logged (the domain and the code of the error alone)
 ///   and leaves nothing to divide: the amounts are "—" and the split can still be changed. A load that fails
 ///   otherwise – the data is locked, or the invoices cannot be listed – is logged too and shows a line in place of
-///   the data. A load that is cancelled keeps what was shown.
+///   the data, under the row of the sources as the choices are (`failedSourceRow`), so that another source can be
+///   chosen. A load that is cancelled keeps what was shown.
 /// - A change of the split – the slider, a typed percentage or amount, the checkbox "pevná částka" and "Zbytek
 ///   dostane" – changes the choices the screen holds and shows them at once. It is saved `saveDelay` after the last
 ///   change, at once when a slide ends or a field is left, and when the app quits (`saveNow()`). A save writes the
@@ -46,6 +47,11 @@ final class BudgetModel: SavesTypedInput {
 
     /// What the screen says in place of its content when the last load failed, otherwise nil.
     private(set) var errorText: String?
+
+    /// The row of the sources that the screen shows above `errorText` while the last load failed, built from the
+    /// choices it holds, so that another source can be chosen. Nil while the screen shows data, and when the app has
+    /// gone and there is nothing to choose.
+    private(set) var failedSourceRow: BudgetSourceRowData?
 
     /// The app, held weakly: it holds this model (`AppModel.budgetModel`).
     @ObservationIgnored private weak var app: AppModel?
@@ -104,9 +110,10 @@ final class BudgetModel: SavesTypedInput {
     /// Loads the net income of the source the screen shows for the selected year, and the choices from the settings
     /// unless changes wait to be saved, and shows them. A figure that cannot be worked out leaves nothing to divide
     /// (`readSource()`); any other failure is logged (the domain and the code of the error alone) and shows
-    /// `errorText` in place of the data. Cancellation keeps what was shown without publishing this load. The model is
-    /// known to the app from its first load on, so that a quit saves what waits (`hasUnsavedInput`). A model whose app
-    /// has gone has nothing to read, and shows `errorText`.
+    /// `errorText` in place of the data, with the row of the sources above it (`failedSourceRow`). Cancellation keeps
+    /// what was shown without publishing this load. The model is known to the app from its first load on, so that a
+    /// quit saves what waits (`hasUnsavedInput`). A model whose app has gone has nothing to read, and shows
+    /// `errorText`.
     func load() async {
         app?.quitFlushes.register(self)
         loadsStarted += 1
@@ -119,6 +126,7 @@ final class BudgetModel: SavesTypedInput {
             guard thisLoad == loadsStarted, !Task.isCancelled else { return }
             loaded = read
             errorText = nil
+            failedSourceRow = nil
             rebuild()
         } catch is CancellationError {
             return
@@ -128,6 +136,12 @@ final class BudgetModel: SavesTypedInput {
             loaded = nil
             data = nil
             errorText = Self.loadFailureText
+            failedSourceRow = app.map { app in
+                BudgetBuilder.sourceRow(
+                    of: BudgetInput(
+                        year: app.asOf.year, today: app.today, settings: settings, actual: nil, prediction: nil,
+                        invoices: []))
+            }
         }
     }
 

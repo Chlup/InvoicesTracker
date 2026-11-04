@@ -12,6 +12,7 @@ import Testing
 /// - A field that takes the focus and is left without a key typed changes nothing.
 /// - The slider of a category is one element that VoiceOver adjusts by 1 %, and the adjustment is saved at once.
 /// - Faktura shows the bill of the invoice it divides, and the menu of the invoices of the year picks another.
+/// - A failed listing of the invoices keeps the row of the sources above its line, so that another one can be chosen.
 ///
 /// The fields and the controls are found by the labels VoiceOver reads them under, and pressed as VoiceOver presses
 /// them. A test that types does so in its turn among the tests that type into a window (`whileTypingAlone`): the text
@@ -124,6 +125,35 @@ struct BudgetWindowTests {
                             #expect(field.stringValue == shown, "\(label)")
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// A failed listing of the invoices in Faktura mode shows the line that the page could not be loaded, and above it
+    /// the row of the sources, so that another one can be chosen: Skutečnost then shows Přehled's average.
+    @Test func aFailedListingOfInvoicesKeepsTheSourcesToChooseFrom() async throws {
+        try await EditorFixture.with { f in
+            try await storeAnInvoiceThatCannotBeListed(in: f.database)
+            await f.app.updateAppSettings { $0.budget.source = .invoice }
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                window.makeKeyAndOrderFront(nil)
+                f.app.screen = .budget
+                try await waitUntil { window.title == "Rozpočet" }
+                try await waitUntil { f.app.budgetModel.errorText != nil }
+                try await layOut(window)
+                try await withAccessibilityElements {
+                    try await waitUntil { showsText("Rozpočet se nepodařilo načíst.", in: window) }
+                    try await waitUntil { accessibilityButton(labelled: "Skutečnost", in: window) != nil }
+
+                    _ = try #require(accessibilityButton(labelled: "Skutečnost", in: window))
+                        .accessibilityPerformPress?()
+
+                    try await waitUntil { f.app.budgetModel.data?.source == .actual }
+                    #expect(f.app.budgetModel.errorText == nil)
+                    #expect(f.app.budgetModel.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
+                    try await waitUntil { !showsText("Rozpočet se nepodařilo načíst.", in: window) }
+                    #expect(f.app.appSettings.budget.source == .actual)
                 }
             }
         }
@@ -246,6 +276,19 @@ struct BudgetWindowTests {
             return [outline]
         }
         return view.subviews.flatMap { outlines(in: $0) }
+    }
+
+    /// Stores an invoice of 2026 that cannot be read: issued on 5. 10. 2026 and due on 25. 11., with a payment whose
+    /// day, 30. 2. 2027, does not exist, as a change of the data outside the app could write it. The average of 2026
+    /// never comes upon it; the list of the invoices of 2026, which Faktura mode reads, does, and fails.
+    private nonisolated func storeAnInvoiceThatCannotBeListed(in database: Database) async throws {
+        let id = try await database.saveInvoice(
+            Invoice.fixture(
+                number: "20261005", issued: "2026-10-05", duzp: "2026-10-05", dueDate: "2026-11-25",
+                payment: Payment.fixture(on: "2027-03-01")))
+        try await database.write { connection in
+            try connection.run("UPDATE payment SET date = ? WHERE invoice_id = ?", [.text("2027-02-30"), .integer(id)])
+        }
     }
 
     /// Types `text` into `field` as a person does: the field takes the focus and its text is replaced, and the change

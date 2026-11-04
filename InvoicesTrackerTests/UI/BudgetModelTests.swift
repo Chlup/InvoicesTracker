@@ -51,6 +51,20 @@ struct BudgetModelTests {
         }
     }
 
+    /// Stores an invoice of 2026 that cannot be read: issued on 5. 10. 2026 and due on 25. 11., with a payment whose
+    /// day, 30. 2. 2027, does not exist, as a change of the data outside the app could write it. The average of 2026
+    /// never comes upon it, as it reads the payments by their days in the year; the list of the invoices of 2026,
+    /// which Faktura mode reads, does, and fails.
+    private nonisolated func storeAnInvoiceThatCannotBeListed(in database: Database) async throws {
+        let id = try await database.saveInvoice(
+            Invoice.fixture(
+                number: "20261005", issued: "2026-10-05", duzp: "2026-10-05", dueDate: "2026-11-25",
+                payment: Payment.fixture(on: "2027-03-01")))
+        try await database.write { connection in
+            try connection.run("UPDATE payment SET date = ? WHERE invoice_id = ?", [.text("2027-02-30"), .integer(id)])
+        }
+    }
+
     /// Ends the wait of the hint of a refused text, which must be the only wait there is, and waits until `model`
     /// shows `hint` under the row of `category`.
     private func pauseTyping(
@@ -261,6 +275,35 @@ struct BudgetModelTests {
             let saved = try await f.database.appSettings().budget
             #expect(saved.source == .invoice)
             #expect(saved.split.holding(of: .savings) == .fixed(28_067))
+        }
+    }
+
+    /// A failed listing of the invoices in Faktura mode shows its line in place of the page, under the row of the
+    /// sources as the choices are, without the button of an invoice, so that another source can still be chosen:
+    /// Skutečnost then loads Přehled's average, and the row goes with the line.
+    @Test func aFailedListingOfInvoicesLeavesTheOtherSourcesToChoose() async throws {
+        try await EditorFixture.with { f in
+            let model = await loadedModel(of: f)
+            #expect(model.failedSourceRow == nil)
+            try await storeAnInvoiceThatCannotBeListed(in: f.database)
+
+            await model.chooseSource(.invoice)
+
+            #expect(model.errorText == BudgetModel.loadFailureText)
+            #expect(model.data == nil)
+            let sourceRow = try #require(model.failedSourceRow)
+            #expect(sourceRow.source == .invoice)
+            #expect(sourceRow.sources.map(\.title) == ["Skutečnost", "Odhad za rok", "Faktura"])
+            #expect(sourceRow.sources.allSatisfy { $0.isEnabled })
+            #expect(sourceRow.invoicePicker == nil)
+
+            await model.chooseSource(.actual)
+
+            #expect(model.failedSourceRow == nil)
+            #expect(model.errorText == nil)
+            #expect(model.data?.source == .actual)
+            #expect(model.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
+            #expect(try await f.database.appSettings().budget.source == .actual)
         }
     }
 
@@ -671,6 +714,7 @@ struct BudgetModelTests {
         let orphan = try #require(held)
         await orphan.load()
         #expect(orphan.errorText == BudgetModel.loadFailureText)
+        #expect(orphan.failedSourceRow == nil)
         await orphan.saveNow()
     }
 
