@@ -199,9 +199,10 @@ final class OverviewModel {
     /// today) there is no figure, as the average it would replace is of that day. The invoices are read by
     /// `Database.dueUnpaidRows(issuedFrom:dueThrough:today:)` and turned into receipts of today
     /// (`DueInvoices.receipts(of:on:)`), which are added to the receipts of the year as the data holds them. The
-    /// figure is an extra of the page: a failure is logged (the domain and the code of the error alone) and never keeps
-    /// the rest of the page from showing. Cancellation propagates to the screen load so that an interrupted lookup
-    /// cannot remove an already displayed figure.
+    /// figure is worked out by `AppModel.dueNetIncome(adding:result:today:in:)`, which other screens share. It is an
+    /// extra of the page: a failure is logged (the domain and the code of the error alone) and never keeps the rest of
+    /// the page from showing. Cancellation propagates to the screen load so that an interrupted lookup cannot remove an
+    /// already displayed figure.
     private func loadDueNetIncome(
         shown: AsOfState, shownInput: YearInput, result: TaxResult, netIncomeResults: [Int: TaxResult],
         today: CivilDate, in database: Database
@@ -209,17 +210,11 @@ final class OverviewModel {
         let current = shown.year == today.year ? result : netIncomeResults[today.year]
         guard let current, current.asOf == today else { return nil }
         do {
-            let dueThrough = DueInvoices.dueThrough(today: today)
-            let rows = try await database.dueUnpaidRows(
-                issuedFrom: DueInvoices.issuedFrom(today: today), dueThrough: dueThrough, today: today)
-            let receipts = DueInvoices.receipts(of: rows, on: today)
-            guard !receipts.isEmpty else { return nil }
             var input = shownInput
             if shown.year != today.year {
                 input = try await app.yearInput(for: today.year).input
             }
-            input.receipts += receipts
-            return DueNetIncome(result: try AppModel.compute(input, asOf: today), dueThrough: dueThrough)
+            return try await app.dueNetIncome(adding: input, result: current, today: today, in: database)
         } catch is CancellationError {
             throw CancellationError()
         } catch {

@@ -738,6 +738,35 @@ struct OverviewModelTests {
         #expect(try #require(model.data).netIncome.monthValue == both)
     }
 
+    /// The average that other screens take from the app is the figure of the strip of Přehled.
+    @Test func theAppsAverageIsTheFigureOfTheStrip() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+
+        let average = try await app.averageNetIncome()
+
+        #expect(CzechFormat.wholeKc(average.monthlyKc) == "187\u{00A0}111\u{00A0}Kč")
+        #expect(!average.isEstimate)
+        let strip = try #require(await loadedModel(of: app).data).netIncome
+        #expect(strip.monthValue == CzechFormat.wholeKc(average.monthlyKc))
+    }
+
+    /// The average of the app counts an unpaid invoice due this month as the strip of Přehled does.
+    @Test func theAppsAverageCountsTheDueInvoiceAsTheStripDoes() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await store([theDueInvoice], in: app)
+
+        let average = try await app.averageNetIncome()
+
+        let text = OverviewBuilder.dueAverage(try #require(average.due))
+        #expect(text == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
+        #expect(average.isEstimate)
+        #expect(try #require(await loadedModel(of: app).data).netIncome.monthValue == text)
+    }
+
     /// Nothing is due this month in the sample: its one invoice that is not paid is a draft in dollars due on 30. 11.
     /// An issued invoice that is due the day after the month ends does not count either, however soon it is.
     @Test func theSamplesInvoiceDueNextMonthDoesNotCount() async throws {

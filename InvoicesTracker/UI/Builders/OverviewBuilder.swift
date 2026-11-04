@@ -552,7 +552,7 @@ nonisolated enum OverviewBuilder {
     /// The average net income per month with the unpaid invoices due by the end of the month counted
     /// (`DueNetIncome`), in whole Kč. It is an estimate, so the sign stands before it, once, whatever the rules of the
     /// year are: "≈ 199 566 Kč".
-    private static func dueAverage(_ due: DueNetIncome) -> String {
+    static func dueAverage(_ due: DueNetIncome) -> String {
         PredictionBuilder.estimateSign + CzechFormat.wholeKc(NetIncome(due.result).monthlyKc)
     }
 
@@ -560,7 +560,7 @@ nonisolated enum OverviewBuilder {
     /// counted to, written without the year as the figure is of the current one: "včetně nezaplacených faktur
     /// splatných do 31. 10.". The strip goes on with them after the months, and the tooltip makes a sentence of them
     /// by a capital letter: the day ends with its dot, which is the full stop.
-    private static func includingDueInvoices(_ due: DueNetIncome) -> String {
+    static func includingDueInvoices(_ due: DueNetIncome) -> String {
         "včetně nezaplacených faktur splatných do " + BuilderText.date(due.dueThrough, omittingYear: due.result.year)
     }
 
