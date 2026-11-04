@@ -67,6 +67,11 @@ The code is layered, bottom to top:
 - **Prediction** (`Prediction/`), pure. It predicts a year's whole income client by client, and feeds the predicted
   payments to the engine as synthetic receipts, computed as of 31 Dec. `AppModel.predictionOutcome(year:)` loads it,
   always from today's data and never from the reporting cutoff (`asOf`).
+- **Budget** (`Budget/`), pure. `BudgetSplit` divides a monthly net income into Náklady, Útrata, Úspory and Investice,
+  each held by a share or a fixed amount of whole Kč. The choices are `AppSettings.budget` (`BudgetSettings`), and
+  `AppModel` holds one `budgetModel`, as it holds `simulatorModel`. `AppModel.averageNetIncome()`
+  (`AppModel+NetIncome.swift`) is the average net income that Přehled and Rozpočet share, and
+  `AppModel.budgetInvoices()` (`AppModel+Budget.swift`) loads the invoices the screen draws on.
 - **Feature services**, used by the models:
   - `ExchangeRates/`: ČNB daily rates, and the GFŘ uniform rate of a year;
   - `Import/`: Fakturoid CSV import;
@@ -162,6 +167,10 @@ user before building.
     under both.
   - **Dashboard** (Přehled), which starts with the same result card as the reports.
 
+  Rozpočet is a tool like the Simulátor, laid out as a report: the source row (where the net income comes from), the
+  result card, the "Rozdělení" card with a share slider and a split bar for each category, and a note
+  (`UI/Budget/`: `BudgetSourceRow`, `BudgetSplitCard`).
+
   A screen's title is its sidebar label, except Import, whose title reads "Import faktur". The toolbar has no control
   for the day: the current year counts money received through today and invoices issued through the end of the
   month, and another year is shown as a whole. The sidebar shows the app version under Nastavení.
@@ -178,6 +187,9 @@ user before building.
     - accent;
     - green, orange and red, each with text and tint variants;
     - tax, social and health.
+  - Rozpočet adds no tokens. Its categories use existing ones: Útrata `Palette.green`, Úspory `Palette.greenText`,
+    Investice `Palette.accent`, Náklady `Palette.text2` and DPH `Palette.text4`. The levies keep the authorities'
+    colours.
   - Exempt: the printed pages (the invoice PDF and the recovery-code page) and the appearance thumbnails of
     Nastavení › Aplikace, which draw a light and a dark window on purpose.
   - Each status colour has one meaning: blue is action and information, green is paid and your money, orange is an
@@ -209,11 +221,18 @@ user before building.
   - hairline: the 1-point separator between the parts of a card (`Hairline`; `isStrong` for the one above the
     result of a bill);
   - hatching: the 3-point stripes that mark an estimate in a bar or a chart (`Hatching`, `HatchedFill`);
-  - pill;
+  - pill (`PillTone.neutral` is the plain grey one);
   - note (`Note`, with the tones `.info`, `.attention`, `.success` and `.error`);
   - bill row;
   - segmented control: a fill track with the selected segment on bg-card (`SegmentedControl`), for the few choices
-    of a screen, such as the scope of Faktury, the grouping of the charts and the tabs of Nastavení;
+    of a screen, such as the scope of Faktury, the grouping of the charts and the tabs of Nastavení. It can be
+    `disabled` with a `help` text that says why;
+  - share slider: a slider for a share of a whole, with a read-only rail for a share that is not set by hand
+    (`ShareSlider`, `ShareRail`, in `ShareSlider.swift`);
+  - split bar: one bar divided into any parts, as in Rozpočet, each as wide as its share, with a popover on hover
+    or focus (`SplitBarView`, in `SplitBar.swift`). It shares the popover panel and metrics with the levy bar
+    (`LevyPopoverPanel`, `LevyBarMetrics`). The key figure takes an `eyebrowPill` above it
+    (`KeyFigureView(eyebrowPill:)`), and `AdaptiveColumns.rowSpacing` sets the gap between its rows;
   - filter chip: the accent when selected, bg-card otherwise, 28 tall (`FilterChip`);
   - buttons: 32 for page and toolbar actions, 28 inside cards, segments and filters. A link is text in
     accent-text (`TextLinkButtonStyle`, `calloutLink()` in the callout size), and a destructive entry point is a
