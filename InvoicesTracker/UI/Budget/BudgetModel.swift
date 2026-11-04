@@ -26,11 +26,11 @@ import Observation
 /// - A change belongs to the data that was open when it was made, the `Database` object, which a restore or an unlock
 ///   replaces with another: it is written into that data alone. A change whose data is no longer open when it would be
 ///   saved is dropped with what was typed, logged and not written, and the screen says nothing of it; so is one
-///   that waits when the screen loads and other data is open by then. A new change made while such changes wait
-///   drops them first and is then the only one written into the data open now. A load that sees other data opened, or
-///   the data let go, while it reads shows nothing of what it read: the data open now loads again and shows itself.
-///   When the app opens other data or lets the data go, it retires its model (`retire()`), which saves and loads
-///   nothing from then on.
+///   that waits when the screen loads and other data is open by then. A new change made while such changes wait and
+///   other data is open drops them first and is then the only one written into the data open now; while no data is
+///   open, it joins them. A load that sees other data opened, or the data let go, while it reads shows nothing of
+///   what it read: the data open now loads again and shows itself. When the app opens other data or lets the data
+///   go, it retires its model (`retire()`), which saves and loads nothing from then on.
 /// - A typed text stays in its field until editing ends, also one that was taken, and is read key by key: a text that
 ///   can be read changes the split at once. A text that is no amount in whole Kč, or no percentage with at most one
 ///   decimal (a negative one included), keeps the value the category had, and once the typing has paused for

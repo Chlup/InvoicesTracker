@@ -749,7 +749,7 @@ final class AppModel {
     }
 
     /// Retires the model of Rozpočet, when one was made, for the data it was made on has been replaced or let go: a
-    /// change that waited in it to be saved is dropped, and the model writes, loads and shows nothing from now on
+    /// change that waited in it to be saved is dropped, and the model saves and loads nothing from now on
     /// (`BudgetModel.retire()`). The screen gets a new model when it next asks for one (`budgetModel`).
     private func retireBudgetModel() {
         madeBudgetModel?.retire()
