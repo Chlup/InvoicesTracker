@@ -142,42 +142,6 @@ extension SplitBarGroup {
 
 // MARK: - The view
 
-/// The sizes and gaps of the split bar that only its view needs.
-private nonisolated enum SplitBarMetrics {
-    /// The space between two columns of the legend.
-    static let legendGap: CGFloat = 16
-
-    /// The space between the name of a group and its value in the legend.
-    static let legendLineGap: CGFloat = 2
-
-    /// The size of a dot of the legend.
-    static let legendDotSize: CGFloat = 8
-
-    /// The space between the dots, and between the dots and the name, in the legend.
-    static let legendDotGap: CGFloat = 4
-
-    /// The size of the dot of the popover.
-    static let popoverDotSize: CGFloat = 10
-
-    /// The space between the parts of the popover, and between the dot, the name and the subtitle at its top.
-    static let popoverSpacing: CGFloat = 8
-
-    /// The space between the edges of the popover and its content, at the top and the bottom.
-    static let popoverVerticalPadding: CGFloat = 12
-
-    /// The space between the edges of the popover and its content, at the sides.
-    static let popoverHorizontalPadding: CGFloat = 14
-
-    /// The space between the labels and the values of the rows of the popover.
-    static let rowColumnGap: CGFloat = 12
-
-    /// The space between two rows of the popover.
-    static let rowGap: CGFloat = 4
-
-    /// How long a part takes to fade, and to come back.
-    static let fadeDuration: Double = 0.12
-}
-
 /// A bar split into any parts: the header, one bar whose parts are as wide as their weights in the colours of their
 /// tones, and a legend of the groups, each with its dots, short name and amount. The pointer over a part or an item of
 /// the legend, or the focus of the keyboard on an item, fades the parts of the other groups and shows the popover of
@@ -248,7 +212,7 @@ struct SplitBarView: View {
                             }
                     }
                 }
-                .animation(.easeInOut(duration: SplitBarMetrics.fadeDuration), value: active)
+                .animation(.easeInOut(duration: LevyBarMetrics.fadeDuration), value: active)
             }
         }
         .frame(height: LevyBarLayout.barHeight)
@@ -266,7 +230,7 @@ struct SplitBarView: View {
 
     /// The legend: a column of one width for each group.
     private var legend: some View {
-        HStack(alignment: .top, spacing: SplitBarMetrics.legendGap) {
+        HStack(alignment: .top, spacing: LevyBarMetrics.legendGap) {
             ForEach(data.groups) { group in
                 legendItem(group)
             }
@@ -276,12 +240,12 @@ struct SplitBarView: View {
     /// The item of `group`: its dots and short name in callout and secondary text, and its amount under them in body
     /// semibold, never cut, and in the red of text where it is below zero.
     private func legendItem(_ group: SplitBarGroup) -> some View {
-        VStack(alignment: .leading, spacing: SplitBarMetrics.legendLineGap) {
-            HStack(spacing: SplitBarMetrics.legendDotGap) {
+        VStack(alignment: .leading, spacing: LevyBarMetrics.legendLineGap) {
+            HStack(spacing: LevyBarMetrics.legendDotGap) {
                 ForEach(group.dots.indices, id: \.self) { index in
                     Circle()
                         .fill(group.dots[index].color)
-                        .frame(width: SplitBarMetrics.legendDotSize, height: SplitBarMetrics.legendDotSize)
+                        .frame(width: LevyBarMetrics.legendDotSize, height: LevyBarMetrics.legendDotSize)
                 }
                 Text(verbatim: group.shortTitle)
                     .font(Typography.callout)
@@ -335,61 +299,14 @@ struct SplitBarView: View {
     }
 }
 
-/// The popover of a group of the split bar: the dot, the name in bold and the subtitle in callout and tertiary text,
-/// then the rows in two columns, and the note under them. A panel 260 points wide on the colour of a card, raised off
-/// the page, as the popover of the levy bar is.
+/// The popover of a group of the split bar: the dot, the name and the subtitle, the rows, and the note under them, in
+/// the panel of the levy bar's popover (`LevyPopoverPanel`).
 private struct SplitBarPopoverView: View {
     let popover: SplitBarPopover
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SplitBarMetrics.popoverSpacing) {
-            HStack(spacing: SplitBarMetrics.popoverSpacing) {
-                Circle()
-                    .fill(popover.tone.color)
-                    .frame(width: SplitBarMetrics.popoverDotSize, height: SplitBarMetrics.popoverDotSize)
-                Text(verbatim: popover.title)
-                    .font(Typography.bodyBold)
-                    .foregroundStyle(Palette.text)
-                Spacer(minLength: SplitBarMetrics.popoverSpacing)
-                Text(verbatim: popover.subtitle)
-                    .font(Typography.callout)
-                    .foregroundStyle(Palette.text3)
-            }
-            // A label that a long value leaves too little room wraps, and the value stands on its first line.
-            Grid(
-                alignment: .leadingFirstTextBaseline, horizontalSpacing: SplitBarMetrics.rowColumnGap,
-                verticalSpacing: SplitBarMetrics.rowGap
-            ) {
-                ForEach(popover.rows.indices, id: \.self) { index in
-                    let row = popover.rows[index]
-                    GridRow {
-                        Text(verbatim: row.label)
-                            .font(Typography.body)
-                            .foregroundStyle(Palette.text2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(verbatim: row.value)
-                            .font(row.style.font)
-                            .monospacedDigit()
-                            .foregroundStyle(row.style.color)
-                            .fixedSize()
-                            .gridColumnAlignment(.trailing)
-                    }
-                }
-            }
-            if let note = popover.note {
-                Text(verbatim: note)
-                    .font(Typography.callout)
-                    .foregroundStyle(Palette.text3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, SplitBarMetrics.popoverVerticalPadding)
-        .padding(.horizontal, SplitBarMetrics.popoverHorizontalPadding)
-        .frame(width: LevyBarLayout.popoverWidth, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
-                .surface(Palette.bgCard, elevation: .pop)
-        }
+        LevyPopoverPanel(
+            dot: popover.tone.color, title: popover.title, trailing: popover.subtitle, rows: popover.rows,
+            footnotes: [popover.note].compactMap { $0 })
     }
 }

@@ -196,8 +196,8 @@ extension LevyRowStyle {
     }
 }
 
-/// The sizes and gaps of the levy bar that only its view needs.
-private nonisolated enum LevyBarMetrics {
+/// The sizes and gaps of the levy bar and of the split bar, which share the look of their legends and popovers.
+nonisolated enum LevyBarMetrics {
     /// The least space between the header and the total at the end of its line.
     static let headerGap: CGFloat = 16
 
@@ -461,23 +461,49 @@ struct LevyBarView: View {
 }
 
 /// The popover of a part of the levy bar: at its top the dot, the full name of the authority in bold and its office in
-/// callout and tertiary text, then the rows in two columns, the labels in secondary text and the values at the trailing
-/// edge in their style, and last the share line and the note in callout and tertiary text. It is a panel 260 points
-/// wide on the colour of a card, raised off the page as a popover is.
+/// callout and tertiary text, then the rows in two columns, and last the share line and the note in callout and
+/// tertiary text (`LevyPopoverPanel`).
 private struct LevyPopover: View {
     let part: LevyBarPart
+
+    var body: some View {
+        LevyPopoverPanel(
+            dot: part.authority.color, title: part.authority.title, trailing: part.authority.office, rows: part.rows,
+            footnotes: [part.shareLine, part.note].compactMap { $0 })
+    }
+}
+
+/// The panel of a popover of the levy bar and of the split bar: at its top the dot, the name in bold and a word at the
+/// trailing edge in callout and tertiary text, then the rows in two columns, the labels in secondary text and the
+/// values at the trailing edge in their style, and last the footnotes in callout and tertiary text. It is 260 points
+/// wide on the colour of a card, raised off the page as a popover is.
+struct LevyPopoverPanel: View {
+    /// The colour of the dot beside the name.
+    let dot: Color
+
+    /// The name at the top.
+    let title: String
+
+    /// The word at the trailing edge of the top line, such as the office of an authority.
+    let trailing: String
+
+    /// The rows of figures, in the order they are shown.
+    let rows: [LevyPopoverRow]
+
+    /// The lines under the rows, which wrap.
+    let footnotes: [String]
 
     var body: some View {
         VStack(alignment: .leading, spacing: LevyBarMetrics.popoverSpacing) {
             HStack(spacing: LevyBarMetrics.popoverSpacing) {
                 Circle()
-                    .fill(part.authority.color)
+                    .fill(dot)
                     .frame(width: LevyBarMetrics.popoverDotSize, height: LevyBarMetrics.popoverDotSize)
-                Text(verbatim: part.authority.title)
+                Text(verbatim: title)
                     .font(Typography.bodyBold)
                     .foregroundStyle(Palette.text)
                 Spacer(minLength: LevyBarMetrics.popoverSpacing)
-                Text(verbatim: part.authority.office)
+                Text(verbatim: trailing)
                     .font(Typography.callout)
                     .foregroundStyle(Palette.text3)
             }
@@ -486,8 +512,8 @@ private struct LevyPopover: View {
                 alignment: .leadingFirstTextBaseline, horizontalSpacing: LevyBarMetrics.rowColumnGap,
                 verticalSpacing: LevyBarMetrics.rowGap
             ) {
-                ForEach(part.rows.indices, id: \.self) { index in
-                    let row = part.rows[index]
+                ForEach(rows.indices, id: \.self) { index in
+                    let row = rows[index]
                     GridRow {
                         Text(verbatim: row.label)
                             .font(Typography.body)
@@ -503,11 +529,11 @@ private struct LevyPopover: View {
                     }
                 }
             }
-            if let shareLine = part.shareLine {
-                footnote(shareLine)
-            }
-            if let note = part.note {
-                footnote(note)
+            ForEach(footnotes.indices, id: \.self) { index in
+                Text(verbatim: footnotes[index])
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.vertical, LevyBarMetrics.popoverVerticalPadding)
@@ -517,13 +543,5 @@ private struct LevyPopover: View {
             RoundedRectangle(cornerRadius: DesignMetrics.panelRadius)
                 .surface(Palette.bgCard, elevation: .pop)
         }
-    }
-
-    /// A line under the rows, the share line or the note, in callout and tertiary text, which wraps in the popover.
-    private func footnote(_ text: String) -> some View {
-        Text(verbatim: text)
-            .font(Typography.callout)
-            .foregroundStyle(Palette.text3)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
