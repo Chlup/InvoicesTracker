@@ -75,7 +75,8 @@ nonisolated struct BillRow: Identifiable, Sendable, Hashable {
     /// The share of the income that the value is, beside the label in body and secondary text: "17,0 %".
     var share: String? = nil
 
-    /// The months the value is over, beside the label after the share in tertiary text: "· 10 měsíců", with no-break spaces.
+    /// The months the value is over, beside the label after the share in tertiary text: "· 10 měsíců", with no-break
+    /// spaces.
     var period: String? = nil
 
     /// Whether the row is the net income per month, which a green dot of 8 points in front of its label shows.
