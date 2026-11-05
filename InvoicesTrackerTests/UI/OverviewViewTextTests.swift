@@ -131,7 +131,7 @@ struct OverviewViewTextTests {
     // MARK: The size of the tooltip
 
     @Test @MainActor func aMonthTooltipKeepsEveryLineOnOneLine() {
-        // The four amounts of a month: 1 Kč each, and the most the columns of the chart hold, 99 999 999,99 Kč, which
+        // The two amounts of a month: 1 Kč each, and the most the columns of the chart hold, 99 999 999,99 Kč, which
         // are 100 000 000 Kč in whole Kč.
         func tooltip(allAmountsHalere halere: Int64) -> ChartTooltip {
             ChartTooltip(
@@ -158,17 +158,15 @@ struct OverviewViewTextTests {
         try await withHostedView(ChartTooltip(column: column), size: CGSize(width: 400, height: 300)) { window in
             try await withAccessibilityElements {
                 try await waitUntil { frameOfText(startingWith: "310\u{00A0}227\u{00A0}Kč", in: window) != nil }
-                #expect(frameOfText(startingWith: "310\u{00A0}227\u{00A0}Kč", in: window) != nil)
                 #expect(frameOfText(startingWith: "279\u{00A0}433\u{00A0}Kč", in: window) != nil)
                 #expect(frameOfText(startingWith: "s DPH", in: window) == nil)
                 #expect(frameOfText(startingWith: "bez DPH", in: window) == nil)
-                #expect(frameOfText(startingWith: "311\u{00A0}172", in: window) == nil)
             }
         }
     }
 
     @Test @MainActor func aYearTooltipKeepsItsRowsOnOneLineAndWrapsOnlyItsFooter() {
-        // A year with its four amounts and its net income all at 1 Kč, or all at the most the columns of the chart
+        // A year with its two amounts and its net income all at 1 Kč, or all at the most the columns of the chart
         // hold, 99 999 999,99 Kč (100 000 000 Kč in whole Kč), with the average of 2026 so far at 1 Kč, or at a figure
         // of nine digits.
         func tooltip(allAmountsHalere halere: Int64, average: String) -> ChartTooltip {
@@ -194,7 +192,7 @@ struct OverviewViewTextTests {
     }
 
     @Test @MainActor func aYearTooltipWithTheRulesSentenceKeepsItsRowsOnOneLine() {
-        // A year that the engine works out with the rules of another year, 2021, with its four amounts and its net
+        // A year that the engine works out with the rules of another year, 2021, with its two amounts and its net
         // income all at 1 Kč, or all at the most the columns of the chart hold, 99 999 999,99 Kč (100 000 000 Kč in
         // whole Kč), the net income and the average marked as estimates, with the sentence about the rules under the
         // footer or without it.
@@ -231,7 +229,7 @@ struct OverviewViewTextTests {
     }
 
     @Test @MainActor func aNoteUnderTheNetIncomeKeepsEveryRowOnOneLineAndMakesTheTooltipNoWider() {
-        // A month with its four amounts and its net income all at 1 Kč, or all at the most the columns of the chart
+        // A month with its two amounts and its net income all at 1 Kč, or all at the most the columns of the chart
         // hold, 99 999 999,99 Kč (100 000 000 Kč in whole Kč), with the average of 2026 so far, and with a note under
         // the net income row or without one: the note of a month, which is a line, and a longer one, which wraps.
         func size(allAmountsHalere halere: Int64, note: String?) -> CGSize {

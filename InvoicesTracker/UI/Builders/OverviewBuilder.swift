@@ -160,8 +160,8 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// Whether the lines of what was received and of the net income have a point in this column.
     var hasLinePoint: Bool
 
-    /// The net income of the column in haléře: the point of the green line. It is negative where
-    /// the levies are more than the income.
+    /// The net income of the column in haléře: the point of the green line. It is negative where the levies are more
+    /// than the income.
     ///
     /// A month has what the invoices paid in it leave after the levies their payments added, each as of its own day
     /// (`ReceiptEffect.netHalere`), up to the day the chart is cut at: 0 for a month with no such payment, also for a
@@ -473,7 +473,7 @@ nonisolated enum OverviewBuilder {
     /// from the first of January through the day the money is received by, "Příjmy od 1. 1. do 17. 10.", and the
     /// average is over the months through the month of the day the levies were worked out for. The shares come from
     /// `shares`, and are left out where there are none, while the income is not above zero. It is a figure of the
-    /// levies, not of the chart, so the chart's grouping and VAT do not change it.
+    /// levies, not of the chart, so the chart's grouping does not change it.
     ///
     /// Where the input has the figure with the unpaid invoices due by the end of the month counted
     /// (`OverviewInput.dueNetIncome`) for the year shown, the average is that one, with the sign of an estimate in
@@ -728,7 +728,8 @@ nonisolated enum OverviewBuilder {
         return nets
     }
 
-    /// What an issued invoice is worth in the charts, in haléře without and with VAT, and whether that is approximate.
+    /// What an issued invoice is worth in haléře, without and with VAT, and whether that is approximate. The chart
+    /// uses `net`; `gross` serves the VAT of the receipts of the due invoices (`DueInvoices.receipts(of:on:)`).
     nonisolated struct IssuedValue: Sendable, Hashable {
         var net: Int64
         var gross: Int64

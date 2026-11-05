@@ -142,9 +142,9 @@ struct IncomeCalculation: View {
 /// points for the net income: by month that of the invoices paid in each month up to the day shown, by year that of
 /// each year that has been worked out. Hovering over a column highlights it and shows a tooltip with the amounts
 /// issued and received, in whole Kč, the net income of the column where it has it, with the words that say what it
-/// covers, and, under a hairline, the average net income per month. A year that the engine worked out with the rules of another year is marked as an estimate there, with the
-/// sentence that says so, while its point stays in the chart. VoiceOver reads each column in the words of the
-/// tooltip, but for the words under the net income.
+/// covers, and, under a hairline, the average net income per month. A year that the engine worked out with the rules
+/// of another year is marked as an estimate there, with the sentence that says so, while its point stays in the
+/// chart. VoiceOver reads each column in the words of the tooltip, but for the words under the net income.
 struct IncomeChart: View {
     let columns: [ChartColumn]
     let subtitle: String
@@ -457,12 +457,12 @@ struct ChartRing: View {
 /// The popover of a column: its title, and what was issued and received without VAT, in whole Kč and in semibold, in
 /// one column of amounts with no header row. A column that has a net income also has a row for it, in the text the
 /// column gives (`netIncomeText`). Under the row stand the words that say what the figure covers (`netIncomeNote`),
-/// across the grid in a smaller grey type. A column that has
-/// an average net income per month ends with it, under a hairline, and when the year is computed with the rules of
-/// another year, with the sentence that says so under it, in the orange of the warnings. The rows are as wide as their
-/// amounts are long, so that none of them wraps; only the words under the net income, the words of the footer and
-/// that sentence wrap, at a fixed width, and the amount of the footer does not. It is a panel of the colour of a card,
-/// raised off the chart as a popover is.
+/// across the grid in a smaller grey type. A column that has an average net income per month ends with it, under a
+/// hairline, and when the year is computed with the rules of another year, with the sentence that says so under it,
+/// in the orange of the warnings. The rows are as wide as their amounts are long, so that none of them wraps; only the
+/// words under the net income, the words of the footer and that sentence wrap, at a fixed width, and the amount of
+/// the footer does not. It is a panel of the colour of a card, raised off the chart as a popover is. The chart hides
+/// it from VoiceOver at its call site, because the label of the column reads the same words.
 struct ChartTooltip: View {
     /// The width of the words under the net income row, of the words of the footer and of the sentence under it, in
     /// points. The note, the label and the sentence are long, so they wrap at this width and the tooltip does not grow
