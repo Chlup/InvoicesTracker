@@ -13,7 +13,7 @@ struct RepositoryTests {
             appearance: .dark, touchIDUnlock: false, backupFolderBookmark: Data([0x00, 0x01, 0xFE, 0xFF]),
             backupFolderName: "Záloha – externí disk", lastLocalBackup: Date(timeIntervalSince1970: 1_760_000_000),
             lastOffMacBackup: Date(timeIntervalSince1970: 1_760_003_600),
-            localBackupPendingSince: Date(timeIntervalSince1970: 1_760_007_200), chartMode: .years, chartWithVAT: true
+            localBackupPendingSince: Date(timeIntervalSince1970: 1_760_007_200), chartMode: .years
         )
     }
 
@@ -152,8 +152,8 @@ struct RepositoryTests {
         defer { removeTemporaryDirectory(directory) }
 
         // Before anything is saved, the change applies to the defaults.
-        let first = try await database.updateAppSettings { $0.chartWithVAT = true }
-        #expect(first == AppSettings(chartWithVAT: true))
+        let first = try await database.updateAppSettings { $0.chartMode = .years }
+        #expect(first == AppSettings(chartMode: .years))
         try await database.saveAppSettings(Self.appSettings())
         let writes = await database.writeCount
 

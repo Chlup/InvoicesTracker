@@ -589,8 +589,8 @@ struct OverviewCardsTests {
 
     @Test func theHoverBoxOfTheIncomeChartIsAPanelOfTheColourOfACard() throws {
         let column = ChartColumn(
-            label: "zář", title: "Září 2026", issuedNetHalere: 31_022_675, issuedGrossHalere: 31_117_175,
-            receivedNetHalere: 27_943_300, receivedGrossHalere: 27_943_300, isFuture: false, isCurrent: false,
+            label: "zář", title: "Září 2026", issuedNetHalere: 31_022_675,
+            receivedNetHalere: 27_943_300, isFuture: false, isCurrent: false,
             hasLinePoint: true, netIncomeHalere: 23_716_800, netIncomeText: "237\u{00A0}168\u{00A0}Kč",
             netIncomeNote: "součet za faktury zaplacené v měsíci")
 
@@ -601,19 +601,19 @@ struct OverviewCardsTests {
     /// haléře, which round to the same crowns, give the very same picture, while a column that differs by a crown
     /// gives another. Shown in haléře, the first two would differ in their last digits.
     @Test func theHoverBoxOfTheIncomeChartDrawsWholeCrownsAndNoHalere() throws {
-        func column(issued: Int64, gross: Int64, received: Int64) -> ChartColumn {
+        func column(issued: Int64, received: Int64) -> ChartColumn {
             ChartColumn(
-                label: "zář", title: "Září 2026", issuedNetHalere: issued, issuedGrossHalere: gross,
-                receivedNetHalere: received, receivedGrossHalere: received, isFuture: false, isCurrent: false,
+                label: "zář", title: "Září 2026", issuedNetHalere: issued,
+                receivedNetHalere: received, isFuture: false, isCurrent: false,
                 hasLinePoint: true)
         }
         func picture(of column: ChartColumn) throws -> OffscreenPicture {
             try OffscreenPicture(of: ChartTooltip(column: column).padding(10), in: .light)
         }
 
-        let withHalere = try picture(of: column(issued: 31_022_675, gross: 31_117_175, received: 27_943_349))
-        let rounded = try picture(of: column(issued: 31_022_700, gross: 31_117_200, received: 27_943_300))
-        let another = try picture(of: column(issued: 31_032_700, gross: 31_117_200, received: 27_943_300))
+        let withHalere = try picture(of: column(issued: 31_022_675, received: 27_943_349))
+        let rounded = try picture(of: column(issued: 31_022_700, received: 27_943_300))
+        let another = try picture(of: column(issued: 31_032_700, received: 27_943_300))
 
         #expect(withHalere.isSame(as: rounded), "The amounts are not drawn in whole Kč")
         #expect(!rounded.isSame(as: another), "A different amount draws the same picture")

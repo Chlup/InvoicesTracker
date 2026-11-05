@@ -2319,6 +2319,8 @@ struct AppWindowLayoutTests {
                     #expect(months.isAccessibilitySelected?() == true)
                     #expect(accessibilityButton(labelled: "Roky", in: window)?.isAccessibilitySelected?() != true)
                     #expect(app.appSettings.chartMode == .months)
+                    // The chart is about money without VAT alone, so the card has no checkbox "S DPH".
+                    #expect(accessibilityElement(labelled: "S DPH", in: window) == nil)
 
                     let years = try #require(accessibilityButton(labelled: "Roky", in: window))
                     #expect(years.accessibilityPerformPress?() == true)

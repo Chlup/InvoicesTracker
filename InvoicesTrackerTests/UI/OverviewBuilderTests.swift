@@ -64,7 +64,7 @@ struct OverviewBuilderTests {
         year: Int = 2026, asOf: String = "2026-10-17", today todayText: String = "2026-10-17",
         result: TaxResult? = nil, advances: AdvancePlan? = nil,
         latestReceipts: [(invoice: Invoice, effect: ReceiptEffect)] = [], chartMode: ChartMode = .months,
-        chartWithVAT: Bool = false, chartRows: [InvoiceChartRow] = [], chartYears: [Int] = [2024, 2025, 2026],
+        chartRows: [InvoiceChartRow] = [], chartYears: [Int] = [2024, 2025, 2026],
         vatByMonth: [Int64]? = nil, vatToCheckMonths: Set<Int> = [], foreignCurrencies: [CurrencyCode] = [],
         uniformRates: [UniformRate] = [], yearsAtUniformRate: Set<Int> = [], prediction: PredictionOutcome? = nil,
         netIncomeResults: [Int: TaxResult] = [:], invoicePaymentEffects: [ReceiptEffect] = [],
@@ -82,7 +82,7 @@ struct OverviewBuilderTests {
         return OverviewInput(
             year: year, asOf: civilDate(asOf), today: civilDate(todayText), result: computed,
             advances: advances ?? (isSampleYear ? TaxEngineRegressionTests.sampleYear2026.advances : .empty),
-            latestReceipts: latestReceipts, chartMode: chartMode, chartWithVAT: chartWithVAT, chartRows: chartRows,
+            latestReceipts: latestReceipts, chartMode: chartMode, chartRows: chartRows,
             chartYears: chartYears, vatByMonth: vatByMonth ?? sampleVAT, vatToCheckMonths: vatToCheckMonths,
             foreignCurrencies: foreignCurrencies, uniformRates: uniformRates, yearsAtUniformRate: yearsAtUniformRate,
             prediction: prediction, netIncomeResults: netIncomeResults, invoicePaymentEffects: invoicePaymentEffects,
@@ -851,11 +851,10 @@ struct OverviewBuilderTests {
         #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
     }
 
-    /// The calculation is about the levies, not about the chart: grouping the chart by years and drawing it with VAT
-    /// leaves it as it is.
-    @Test func theCalculationIsTheSameInBothViewsAndWithVAT() {
-        let months = build(input(chartMode: .months, chartWithVAT: false)).calculation
-        let years = build(input(chartMode: .years, chartWithVAT: true)).calculation
+    /// The calculation is about the levies, not about the chart: grouping the chart by years leaves it as it is.
+    @Test func theCalculationIsTheSameInBothViews() {
+        let months = build(input(chartMode: .months)).calculation
+        let years = build(input(chartMode: .years)).calculation
 
         #expect(years == months)
     }
@@ -934,13 +933,10 @@ struct OverviewBuilderTests {
 
         // September: the dollar invoice at what was paid for it plus the crown invoice.
         #expect(columns[8].issuedNetHalere == 31_022_675)
-        #expect(columns[8].issuedGrossHalere == 31_117_175)
         #expect(columns[8].receivedNetHalere == 0)
         // October: the money arrives; the draft of October is not issued.
         #expect(columns[9].issuedNetHalere == 0)
-        #expect(columns[9].issuedGrossHalere == 0)
         #expect(columns[9].receivedNetHalere == 31_022_675)
-        #expect(columns[9].receivedGrossHalere == 31_117_175)
     }
 
     @Test func theMonthsAfterTheChosenDayAreFutureAndHaveNoPointOnTheLine() {
@@ -985,22 +981,7 @@ struct OverviewBuilderTests {
         let october = build(input(chartRows: rows)).columns[9]
 
         #expect(october.issuedNetHalere == 26_032_888)
-        #expect(october.issuedGrossHalere == 26_032_888)
         #expect(october.receivedNetHalere == 0)
-    }
-
-    @Test func theEstimateOfAnUnpaidForeignInvoiceWithVATConvertsTheVATAtTheSameRate() {
-        // 10 000,00 USD and 2 100,00 USD VAT at 21,622: 216 220,00 Kč and 45 406,20 Kč.
-        let rows = [
-            chartRow(
-                id: 1, issued: "2026-10-05", currency: .usd, net: 1_000_000, vat: 210_000,
-                issueDayRate: usd("21.622"))
-        ]
-
-        let october = build(input(chartRows: rows)).columns[9]
-
-        #expect(october.issuedNetHalere == 21_622_000)
-        #expect(october.issuedGrossHalere == 26_162_620)
     }
 
     @Test func anUnpaidForeignInvoiceWhoseRateIsNotKnownIsWorthNothingInTheChartYet() {
@@ -1019,7 +1000,6 @@ struct OverviewBuilderTests {
         // 14 350,00 USD at 21,359 (the rate of 30. 9.) is 306 501,65 Kč; the payment of 2. 10. is still to come.
         #expect(columns[8].issuedNetHalere == 30_650_165)
         #expect(columns[9].receivedNetHalere == 0)
-        #expect(columns[9].receivedGrossHalere == 0)
     }
 
     @Test func anInvoiceIssuedAfterTheChosenDayIsNotInTheChartYet() {
@@ -1066,7 +1046,6 @@ struct OverviewBuilderTests {
 
         #expect(columns.allSatisfy { $0.issuedNetHalere == 0 })
         #expect(columns[0].receivedNetHalere == 1_000_000)
-        #expect(columns[0].receivedGrossHalere == 1_210_000)
         #expect(columns[1...].allSatisfy { $0.receivedNetHalere == 0 })
     }
 
@@ -1110,7 +1089,6 @@ struct OverviewBuilderTests {
 
         #expect(columns.map(\.issuedNetHalere) == [400_000, 1_000_000, 0])
         #expect(columns.map(\.receivedNetHalere) == [400_000, 0, 1_000_000])
-        #expect(columns.map(\.receivedGrossHalere) == [400_000, 0, 1_210_000])
     }
 
     @Test func rowsOfYearsThatAreNotInTheListAreLeftOut() {
@@ -1220,7 +1198,7 @@ struct OverviewBuilderTests {
         #expect(columns[1].netIncomeNote == "součet za faktury zaplacené v měsíci")
         #expect(columns[1].accessibilityLabel.contains("; čistý příjem 253\u{00A0}401\u{00A0}Kč;"))
         #expect(columns[10].netIncomeText == "0\u{00A0}Kč" && columns[10].hasLinePoint == false)
-        #expect(IncomeChartLayout.largestAmount(in: columns, withVAT: false) >= 25_340_100)
+        #expect(IncomeChartLayout.largestAmount(in: columns) >= 25_340_100)
     }
 
     /// A reporting day after today cannot turn future payments into received net income. November and December
@@ -1269,16 +1247,15 @@ struct OverviewBuilderTests {
         #expect(columns[9].netIncomeHalere == -100_000)
         #expect(columns[9].netIncomeText == "\u{2212}1\u{00A0}000\u{00A0}Kč")
         #expect(columns[9].accessibilityLabel.contains("; čistý příjem \u{2212}1\u{00A0}000\u{00A0}Kč;"))
-        #expect(IncomeChartLayout.largestAmount(in: columns, withVAT: false) == 0)
+        #expect(IncomeChartLayout.largestAmount(in: columns) == 0)
     }
 
     /// The months chart is about the selected year alone: the results of other years that the input holds are not
-    /// read, and neither do the months follow the chart's VAT, as the net income is always without it.
-    @Test func theMonthsChartIgnoresOtherYearsAndTheChartsVATForItsNetIncome() {
+    /// read.
+    @Test func theMonthsChartIgnoresOtherYearsForItsNetIncome() {
         let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
         let plain = build(sampleMonthsInput()).columns
         var other = sampleMonthsInput()
-        other.chartWithVAT = true
         other.netIncomeResults = [2025: whole2025]
 
         let columns = build(other).columns
@@ -1638,31 +1615,28 @@ struct OverviewBuilderTests {
     @Test func theScaleFitsTheNetIncomeButNotBelowZero() {
         func column(net: Int64?) -> ChartColumn {
             ChartColumn(
-                label: "2026", title: "Rok 2026", issuedNetHalere: 0, issuedGrossHalere: 0, receivedNetHalere: 1_000,
-                receivedGrossHalere: 1_000, isFuture: false, isCurrent: true, hasLinePoint: true, netIncomeHalere: net)
+                label: "2026", title: "Rok 2026", issuedNetHalere: 0, receivedNetHalere: 1_000, isFuture: false,
+                isCurrent: true, hasLinePoint: true, netIncomeHalere: net)
         }
 
-        #expect(IncomeChartLayout.largestAmount(in: [column(net: 5_000)], withVAT: false) == 5_000)
-        #expect(IncomeChartLayout.largestAmount(in: [column(net: -50_000)], withVAT: false) == 1_000)
-        #expect(IncomeChartLayout.largestAmount(in: [column(net: nil)], withVAT: false) == 1_000)
-        #expect(IncomeChartLayout.largestAmount(in: [], withVAT: false) == 0)
+        #expect(IncomeChartLayout.largestAmount(in: [column(net: 5_000)]) == 5_000)
+        #expect(IncomeChartLayout.largestAmount(in: [column(net: -50_000)]) == 1_000)
+        #expect(IncomeChartLayout.largestAmount(in: [column(net: nil)]) == 1_000)
+        #expect(IncomeChartLayout.largestAmount(in: []) == 0)
     }
 
-    /// The largest amount is that of the series drawn: what was issued and received with VAT or without, and the net
-    /// income, which is always without VAT, from the column that has the most of it.
-    @Test func theScaleFollowsTheVATOfTheChartForTheBarsAndTheLineButNotForTheNetIncome() {
+    /// The largest amount is that of the series drawn: what was issued and received, and the net income from the
+    /// column that has the most of it.
+    @Test func theScaleFollowsTheBarsAndTheNetIncomeLine() {
         let small = ChartColumn(
-            label: "2025", title: "Rok 2025", issuedNetHalere: 2_000, issuedGrossHalere: 2_420,
-            receivedNetHalere: 1_000, receivedGrossHalere: 1_210, isFuture: false, isCurrent: false,
-            hasLinePoint: true)
+            label: "2025", title: "Rok 2025", issuedNetHalere: 2_000, receivedNetHalere: 1_000, isFuture: false,
+            isCurrent: false, hasLinePoint: true)
         let bigNet = ChartColumn(
-            label: "2026", title: "Rok 2026", issuedNetHalere: 100, issuedGrossHalere: 121, receivedNetHalere: 100,
-            receivedGrossHalere: 121, isFuture: false, isCurrent: true, hasLinePoint: true, netIncomeHalere: 2_450)
+            label: "2026", title: "Rok 2026", issuedNetHalere: 100, receivedNetHalere: 100, isFuture: false,
+            isCurrent: true, hasLinePoint: true, netIncomeHalere: 2_450)
 
-        #expect(IncomeChartLayout.largestAmount(in: [small], withVAT: false) == 2_000)
-        #expect(IncomeChartLayout.largestAmount(in: [small], withVAT: true) == 2_420)
-        #expect(IncomeChartLayout.largestAmount(in: [small, bigNet], withVAT: false) == 2_450)
-        #expect(IncomeChartLayout.largestAmount(in: [small, bigNet], withVAT: true) == 2_450)
+        #expect(IncomeChartLayout.largestAmount(in: [small]) == 2_000)
+        #expect(IncomeChartLayout.largestAmount(in: [small, bigNet]) == 2_450)
     }
 
     // MARK: The sample year
@@ -1675,52 +1649,52 @@ struct OverviewBuilderTests {
 
         let readOut: [(String, String)] = [
             (
-                "Leden 2026: vystaveno 220\u{00A0}000\u{00A0}Kč bez DPH, 266\u{00A0}200\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Leden 2026: vystaveno 220\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
             (
-                "Únor 2026: vystaveno 190\u{00A0}000\u{00A0}Kč bez DPH, 229\u{00A0}900\u{00A0}Kč s DPH; ",
-                "přijato 220\u{00A0}000\u{00A0}Kč bez DPH, 266\u{00A0}200\u{00A0}Kč s DPH"
+                "Únor 2026: vystaveno 190\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 220\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Březen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH; ",
-                "přijato 190\u{00A0}000\u{00A0}Kč bez DPH, 229\u{00A0}900\u{00A0}Kč s DPH"
+                "Březen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 190\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Duben 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH; ",
-                "přijato 420\u{00A0}000\u{00A0}Kč bez DPH, 508\u{00A0}200\u{00A0}Kč s DPH"
+                "Duben 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 420\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Květen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH; ",
-                "přijato 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH"
+                "Květen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 210\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Červen 2026: vystaveno 288\u{00A0}806\u{00A0}Kč bez DPH, 288\u{00A0}806\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Červen 2026: vystaveno 288\u{00A0}806\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
             (
-                "Červenec 2026: vystaveno 268\u{00A0}806\u{00A0}Kč bez DPH, 268\u{00A0}806\u{00A0}Kč s DPH; ",
-                "přijato 288\u{00A0}806\u{00A0}Kč bez DPH, 288\u{00A0}806\u{00A0}Kč s DPH"
+                "Červenec 2026: vystaveno 268\u{00A0}806\u{00A0}Kč bez DPH; ",
+                "přijato 288\u{00A0}806\u{00A0}Kč bez DPH"
             ),
             (
-                "Srpen 2026: vystaveno 283\u{00A0}933\u{00A0}Kč bez DPH, 284\u{00A0}878\u{00A0}Kč s DPH; ",
-                "přijato 273\u{00A0}306\u{00A0}Kč bez DPH, 274\u{00A0}251\u{00A0}Kč s DPH"
+                "Srpen 2026: vystaveno 283\u{00A0}933\u{00A0}Kč bez DPH; ",
+                "přijato 273\u{00A0}306\u{00A0}Kč bez DPH"
             ),
             (
-                "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH, 311\u{00A0}172\u{00A0}Kč s DPH; ",
-                "přijato 279\u{00A0}433\u{00A0}Kč bez DPH, 279\u{00A0}433\u{00A0}Kč s DPH"
+                "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH; ",
+                "přijato 279\u{00A0}433\u{00A0}Kč bez DPH"
             ),
             (
-                "Říjen 2026: vystaveno 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; ",
-                "přijato 310\u{00A0}227\u{00A0}Kč bez DPH, 311\u{00A0}172\u{00A0}Kč s DPH"
+                "Říjen 2026: vystaveno 0\u{00A0}Kč bez DPH; ",
+                "přijato 310\u{00A0}227\u{00A0}Kč bez DPH"
             ),
             (
-                "Listopad 2026: vystaveno 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Listopad 2026: vystaveno 0\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
             (
-                "Prosinec 2026: vystaveno 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Prosinec 2026: vystaveno 0\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
         ]
         // Every month also reads out its net income, 0 Kč here as the input holds no payment's effect on the levies
@@ -1785,8 +1759,8 @@ struct OverviewBuilderTests {
         let hover = " · podrobnosti po najetí myší"
         #expect(build(input()).chartSubtitle == "Rok 2026 po měsících · v Kč bez DPH" + conversion + hover)
         #expect(
-            build(input(chartMode: .years, chartWithVAT: true)).chartSubtitle
-                == "Po letech · v Kč s DPH" + conversion + hover)
+            build(input(chartMode: .years)).chartSubtitle
+                == "Po letech · v Kč bez DPH" + conversion + hover)
     }
 
     /// The money received in a year that converts it at its uniform rate is in the chart at that rate, and the line
@@ -1799,8 +1773,8 @@ struct OverviewBuilderTests {
             build(input(yearsAtUniformRate: [2026])).chartSubtitle
                 == "Rok 2026 po měsících · v Kč bez DPH · přijaté v cizí měně jednotným kurzem 2026" + unpaid + hover)
         #expect(
-            build(input(chartMode: .years, chartWithVAT: true, yearsAtUniformRate: [2025])).chartSubtitle
-                == "Po letech · v Kč s DPH · přijaté v cizí měně přepočtem zvoleným pro svůj rok" + unpaid + hover)
+            build(input(chartMode: .years, yearsAtUniformRate: [2025])).chartSubtitle
+                == "Po letech · v Kč bez DPH · přijaté v cizí měně přepočtem zvoleným pro svůj rok" + unpaid + hover)
         // The months of 2026 are about 2026 alone, and the years chart about the years it has.
         #expect(
             build(input(yearsAtUniformRate: [2025])).chartSubtitle
@@ -1810,39 +1784,35 @@ struct OverviewBuilderTests {
                 == "Po letech · v Kč bez DPH · cizí měny kurzem ČNB ke dni platby" + unpaid + hover)
     }
 
-    @Test func aColumnSpeaksForVoiceOverWithBothSeriesWithAndWithoutVAT() {
+    @Test func aColumnSpeaksForVoiceOverWithBothSeriesWithoutVAT() {
         let columns = build(input(chartRows: sampleChartRows)).columns
 
         let expected =
-            "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH, 311\u{00A0}172\u{00A0}Kč s DPH; "
-            + "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; čistý příjem 0\u{00A0}Kč; "
+            "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH; přijato 0\u{00A0}Kč bez DPH; "
+            + "čistý příjem 0\u{00A0}Kč; "
             + "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) 187\u{00A0}111\u{00A0}Kč"
         #expect(columns[8].accessibilityLabel == expected)
     }
 
     /// The hover box of a column and VoiceOver tell its amounts in whole Kč, rounded half up, while the column keeps
-    /// them in haléře for the chart to draw: September of the sample year issued 310 226,75 Kč without VAT and
-    /// 311 171,75 Kč with it, and received 279 433,00 Kč.
+    /// them in haléře for the chart to draw: September of the sample year issued 310 226,75 Kč and received
+    /// 279 433,00 Kč.
     @Test func aColumnTellsItsAmountsInWholeCrownsAndKeepsThemInHalereForTheChart() {
         let september = build(input(chartRows: SampleYear2026.chartRows)).columns[8]
 
-        #expect(september.issuedNetHalere == 31_022_675 && september.issuedGrossHalere == 31_117_175)
+        #expect(september.issuedNetHalere == 31_022_675)
         #expect(september.issuedNetText == "310\u{00A0}227\u{00A0}Kč")
-        #expect(september.issuedGrossText == "311\u{00A0}172\u{00A0}Kč")
         #expect(september.receivedNetText == "279\u{00A0}433\u{00A0}Kč")
-        #expect(september.receivedGrossText == "279\u{00A0}433\u{00A0}Kč")
     }
 
     /// Half a crown is rounded up, as everywhere else in whole Kč (`DecimalMath.halfUp`).
     @Test func halfACrownInAColumnIsRoundedUp() {
         let column = ChartColumn(
-            label: "zář", title: "Září 2026", issuedNetHalere: 100_050, issuedGrossHalere: 100_049,
-            receivedNetHalere: 99, receivedGrossHalere: 50, isFuture: false, isCurrent: false, hasLinePoint: true)
+            label: "zář", title: "Září 2026", issuedNetHalere: 100_050, receivedNetHalere: 99, isFuture: false,
+            isCurrent: false, hasLinePoint: true)
 
         #expect(column.issuedNetText == "1\u{00A0}001\u{00A0}Kč")
-        #expect(column.issuedGrossText == "1\u{00A0}000\u{00A0}Kč")
         #expect(column.receivedNetText == "1\u{00A0}Kč")
-        #expect(column.receivedGrossText == "1\u{00A0}Kč")
     }
 
     /// An issued amount that is only approximate keeps the sign "≈" in the hover box and for VoiceOver of the chart of
@@ -1857,11 +1827,8 @@ struct OverviewBuilderTests {
 
         #expect(october.issuedIsApproximate)
         #expect(october.issuedNetText == "≈\u{00A0}215\u{00A0}000\u{00A0}Kč")
-        #expect(october.issuedGrossText == "≈\u{00A0}215\u{00A0}000\u{00A0}Kč")
-        #expect(october.receivedNetText == "0\u{00A0}Kč" && october.receivedGrossText == "0\u{00A0}Kč")
-        #expect(
-            october.accessibilityLabel.contains(
-                "vystaveno ≈\u{00A0}215\u{00A0}000\u{00A0}Kč bez DPH, ≈\u{00A0}215\u{00A0}000\u{00A0}Kč s DPH;"))
+        #expect(october.receivedNetText == "0\u{00A0}Kč")
+        #expect(october.accessibilityLabel.contains("vystaveno ≈\u{00A0}215\u{00A0}000\u{00A0}Kč bez DPH;"))
     }
 
     // MARK: The uniform rate of the year

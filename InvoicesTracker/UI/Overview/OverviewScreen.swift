@@ -77,12 +77,9 @@ struct OverviewScreen: View {
             .zIndex(1)
             IncomeChart(
                 columns: data.columns, subtitle: data.chartSubtitle, calculation: data.calculation,
-                uniformLine: data.uniformLine, mode: app.appSettings.chartMode, withVAT: app.appSettings.chartWithVAT,
+                uniformLine: data.uniformLine, mode: app.appSettings.chartMode,
                 setMode: { mode in
                     Task { await model.setChartMode(mode) }
-                },
-                setWithVAT: { on in
-                    Task { await model.setChartWithVAT(on) }
                 })
             if let prediction = data.prediction {
                 PredictionCard(card: prediction, showPrediction: { app.screen = .prediction })

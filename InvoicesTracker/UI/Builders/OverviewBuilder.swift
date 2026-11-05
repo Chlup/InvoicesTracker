@@ -28,9 +28,6 @@ nonisolated struct OverviewInput: Sendable {
     var latestReceipts: [(invoice: Invoice, effect: ReceiptEffect)]
     var chartMode: ChartMode
 
-    /// Whether the chart is drawn with VAT. Both series are in the columns either way.
-    var chartWithVAT: Bool
-
     /// The invoices of the chart: those issued in the years shown, and those issued outside them that have a payment
     /// in them. The chart of the estimate card counts the months of `year` up to today from them as well.
     var chartRows: [InvoiceChartRow]
@@ -133,8 +130,8 @@ nonisolated struct ChartNetAverage: Sendable, Hashable {
 }
 
 /// A column of the income chart: a month or a year, with what was issued (the bars) and what was received (the line),
-/// each without and with VAT, in haléře, which the chart is drawn from; the hover box and VoiceOver tell them in whole
-/// Kč (`issuedNetText` and its like). Where the levies of its year are known it also tells what is left of the
+/// both without VAT, in haléře, which the chart is drawn from; the hover box and VoiceOver tell them in whole Kč
+/// (`issuedNetText` and its like). Where the levies of its year are known it also tells what is left of the
 /// income after them (the green line). A month has the net income of the invoices paid in it, and the average per
 /// month of the selected year; a year of the years chart that has been worked out has the net income of the year and
 /// its average. Where the engine worked the year out with the rules of another year, the net income and the average
@@ -146,9 +143,7 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// "Září 2026" or "Rok 2026".
     var title: String
     var issuedNetHalere: Int64
-    var issuedGrossHalere: Int64
     var receivedNetHalere: Int64
-    var receivedGrossHalere: Int64
 
     /// Whether an issued amount of the column is approximate: an invoice in a foreign currency, not paid, whose ČNB
     /// rate of the day of issue is not declared yet is worth what the latest declared rate makes of it. The tooltip
@@ -165,7 +160,7 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// Whether the lines of what was received and of the net income have a point in this column.
     var hasLinePoint: Bool
 
-    /// The net income of the column in haléře, always without VAT: the point of the green line. It is negative where
+    /// The net income of the column in haléře: the point of the green line. It is negative where
     /// the levies are more than the income.
     ///
     /// A month has what the invoices paid in it leave after the levies their payments added, each as of its own day
@@ -199,8 +194,8 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// where the column has them, and after the average its note where it has one: that the average counts the unpaid
     /// invoices due this month, and that the year is computed with the rules of another year.
     var accessibilityLabel: String {
-        let issued = issuedNetText + " bez DPH, " + issuedGrossText + " s DPH"
-        let received = receivedNetText + " bez DPH, " + receivedGrossText + " s DPH"
+        let issued = issuedNetText + " bez DPH"
+        let received = receivedNetText + " bez DPH"
         var label = "\(title): vystaveno \(issued); přijato \(received)"
         if issuedIsApproximate {
             label += "; " + Self.approximateIssuedNote
@@ -226,19 +221,9 @@ nonisolated extension ChartColumn {
         issuedSign + PredictionBuilder.kc(ofHalere: issuedNetHalere)
     }
 
-    /// What was issued with VAT, in whole Kč (`issuedNetText`).
-    var issuedGrossText: String {
-        issuedSign + PredictionBuilder.kc(ofHalere: issuedGrossHalere)
-    }
-
     /// What was received without VAT, in whole Kč, "279 433 Kč".
     var receivedNetText: String {
         PredictionBuilder.kc(ofHalere: receivedNetHalere)
-    }
-
-    /// What was received with VAT, in whole Kč.
-    var receivedGrossText: String {
-        PredictionBuilder.kc(ofHalere: receivedGrossHalere)
     }
 
     /// The sign "≈", with its no-break space, before the issued amounts of a column whose amounts are approximate,
@@ -558,17 +543,15 @@ nonisolated enum OverviewBuilder {
                 input.yearsAtUniformRate.isDisjoint(with: input.chartYears)
                 ? "cizí měny kurzem ČNB ke dni platby" : "přijaté v cizí měně přepočtem zvoleným pro svůj rok"
         }
-        return scope + " · v Kč " + (input.chartWithVAT ? "s DPH" : "bez DPH") + " · " + received
+        return scope + " · v Kč bez DPH · " + received
             + ", nezaplacené kurzem ČNB ke dni vystavení · podrobnosti po najetí myší"
     }
 
-    /// The four sums of a column of the chart.
+    /// The sums of a column of the chart, without VAT.
     private nonisolated struct ColumnSums {
         var issuedNet: Int64 = 0
-        var issuedGross: Int64 = 0
         var issuedIsApproximate = false
         var receivedNet: Int64 = 0
-        var receivedGross: Int64 = 0
     }
 
     /// The day after which no invoice counts as issued in the chart: the reporting cutoff, but today for the years
@@ -686,14 +669,12 @@ nonisolated enum OverviewBuilder {
             if row.issueDate <= cut, let index = column(of: row.issueDate) {
                 let issued = issuedValue(of: row, receivedThrough: receivedCut)
                 sums[index].issuedNet += issued.net
-                sums[index].issuedGross += issued.gross
                 sums[index].issuedIsApproximate = sums[index].issuedIsApproximate || issued.isApproximate
             }
             if let day = row.paymentDate, day <= receivedCut, let net = row.paymentNetHalere,
                 let index = column(of: day)
             {
                 sums[index].receivedNet += net
-                sums[index].receivedGross += net + (row.paymentVatHalere ?? 0)
             }
         }
 
@@ -708,8 +689,7 @@ nonisolated enum OverviewBuilder {
                 return ChartColumn(
                     label: CzechFormat.monthShort[index],
                     title: BuilderText.capitalized(CzechFormat.monthNames[index]) + " \(input.year)",
-                    issuedNetHalere: sum.issuedNet, issuedGrossHalere: sum.issuedGross,
-                    receivedNetHalere: sum.receivedNet, receivedGrossHalere: sum.receivedGross,
+                    issuedNetHalere: sum.issuedNet, receivedNetHalere: sum.receivedNet,
                     issuedIsApproximate: sum.issuedIsApproximate,
                     isFuture: !isOver && index > currentMonth, isCurrent: !isOver && index == currentMonth,
                     hasLinePoint: isOver || index <= currentMonth, netIncomeHalere: monthNets[index],
@@ -722,8 +702,7 @@ nonisolated enum OverviewBuilder {
                 let result = input.netIncomeResults[year]
                 return ChartColumn(
                     label: String(year), title: "Rok \(year)",
-                    issuedNetHalere: sum.issuedNet, issuedGrossHalere: sum.issuedGross,
-                    receivedNetHalere: sum.receivedNet, receivedGrossHalere: sum.receivedGross,
+                    issuedNetHalere: sum.issuedNet, receivedNetHalere: sum.receivedNet,
                     issuedIsApproximate: sum.issuedIsApproximate,
                     isFuture: false, isCurrent: year == input.year, hasLinePoint: true,
                     netIncomeHalere: result.map { NetIncome($0).yearKc * 100 },

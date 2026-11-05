@@ -506,23 +506,15 @@ struct OverviewModelTests {
         #expect(years.columns.count == 2)
         #expect(years.chartSubtitle == "Po letech · v Kč bez DPH" + conversion + hover)
 
-        await model.setChartWithVAT(true)
-
-        #expect(app.appSettings.chartWithVAT)
-        #expect(try await database.appSettings().chartWithVAT)
-        #expect(try #require(model.data).chartSubtitle == "Po letech · v Kč s DPH" + conversion + hover)
-
         // A screen that is opened later starts with the choices made.
         let later = await loadedModel(of: app)
         #expect(try #require(later.data).columns.count == 2)
 
         await later.setChartMode(.months)
-        await later.setChartWithVAT(false)
 
         #expect(try #require(later.data).columns.count == 12)
         #expect(try #require(later.data).chartSubtitle == "Rok 2026 po měsících · v Kč bez DPH" + conversion + hover)
         #expect(try await database.appSettings().chartMode == .months)
-        #expect(try await database.appSettings().chartWithVAT == false)
     }
 
     // MARK: The net income of each year of the chart
