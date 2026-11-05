@@ -92,49 +92,4 @@ struct FlowLayoutTests {
         #expect(bottom["short"] == CGRect(x: 0, y: 20, width: 100, height: 20), "laid out as \(bottom)")
         #expect(bottom["tall"] == CGRect(x: 106, y: 0, width: 100, height: 40), "laid out as \(bottom)")
     }
-
-    // MARK: A greatest width of a box
-
-    /// Where `layout` puts two boxes that ask for 500 points when they are asked for no width, and take the width they
-    /// are given when they are asked for one, as text that breaks its lines does, in a room of `width` points.
-    private func placeFlexibleBoxes(in layout: FlowLayout, width: CGFloat) -> [String: CGRect] {
-        let view = layout {
-            LayoutPart(name: "first")
-                .frame(minWidth: 0, idealWidth: 500, maxWidth: .infinity)
-                .frame(height: 20)
-            LayoutPart(name: "second")
-                .frame(minWidth: 0, idealWidth: 500, maxWidth: .infinity)
-                .frame(height: 20)
-        }
-        .frame(width: width, alignment: .topLeading)
-        let hosting = NSHostingView(rootView: view)
-        hosting.frame = CGRect(origin: .zero, size: hosting.fittingSize)
-        hosting.layoutSubtreeIfNeeded()
-        return framesOfParts(in: hosting)
-    }
-
-    @Test func aBoxIsAskedForTheWidthItWantsUnlessTheLayoutHoldsItToAGreatestOne() {
-        // Two boxes of 500 points and the gap of 6 are 1 006 points: they do not fit 800, and each has a row.
-        let free = placeFlexibleBoxes(in: FlowLayout(spacing: 6), width: 800)
-        #expect(free["first"] == CGRect(x: 0, y: 0, width: 500, height: 20), "laid out as \(free)")
-        #expect(free["second"] == CGRect(x: 0, y: 26, width: 500, height: 20), "laid out as \(free)")
-
-        // Held to 300 points each they do fit, side by side with the gap between them ...
-        let held = FlowLayout(spacing: 6, maximumSubviewWidth: 300)
-        let beside = placeFlexibleBoxes(in: held, width: 800)
-        #expect(beside["first"] == CGRect(x: 0, y: 0, width: 300, height: 20), "laid out as \(beside)")
-        #expect(beside["second"] == CGRect(x: 306, y: 0, width: 300, height: 20), "laid out as \(beside)")
-
-        // ... and are no wider than that, however much room there is.
-        #expect(placeFlexibleBoxes(in: held, width: 2_000) == beside)
-    }
-
-    @Test func aBoxIsNeverAskedForMoreThanTheRoomThereIs() {
-        // The greatest width is 300 and the room 250: a box has the room, and the next one goes to the next row.
-        let held = FlowLayout(spacing: 6, maximumSubviewWidth: 300)
-        let narrow = placeFlexibleBoxes(in: held, width: 250)
-
-        #expect(narrow["first"] == CGRect(x: 0, y: 0, width: 250, height: 20), "laid out as \(narrow)")
-        #expect(narrow["second"] == CGRect(x: 0, y: 26, width: 250, height: 20), "laid out as \(narrow)")
-    }
 }

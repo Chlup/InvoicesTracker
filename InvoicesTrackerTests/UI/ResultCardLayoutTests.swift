@@ -301,30 +301,4 @@ struct ResultCardLayoutTests {
         #expect(placed.frames["tall"] == CGRect(x: 168, y: 0, width: 120, height: 60), "laid out as \(placed.frames)")
         #expect(placed.size.height == 60)
     }
-
-    /// A figure that takes the width it is given, as text does, and wants 500 points where it is given none.
-    private func flexibleFigure(_ name: String) -> some View {
-        LayoutPart(name: name)
-            .frame(minWidth: 0, idealWidth: 500, maxWidth: .infinity)
-            .frame(height: 40)
-    }
-
-    @Test func aRowHoldsItsFiguresToTheGreatestWidthItIsGiven() {
-        let held = FigureRow(spacing: 48, maxTileWidth: 200) {
-            flexibleFigure("first")
-            flexibleFigure("second")
-        }
-        let free = FigureRow(spacing: 48) {
-            flexibleFigure("first")
-            flexibleFigure("second")
-        }
-        let beside = place(held, width: 1_000)
-        let wrapped = place(free, width: 1_000)
-
-        // Held to 200 points each they stand side by side, with the gap of 48 between them.
-        #expect(beside.frames["first"] == CGRect(x: 0, y: 0, width: 200, height: 40), "laid out as \(beside.frames)")
-        #expect(beside.frames["second"] == CGRect(x: 248, y: 0, width: 200, height: 40), "laid out as \(beside.frames)")
-        // Not held they want 500 points each: two of them and the gap are 1 048, which a room of 1 000 cannot hold.
-        #expect(wrapped.frames["second"]?.minY == 52, "laid out as \(wrapped.frames)")
-    }
 }

@@ -89,24 +89,19 @@ private nonisolated enum FigureRowMetrics {
 
 /// Tiles next to each other with one gap between them, `spacing` points, 48 unless told otherwise. They go on to the
 /// next row, 12 points lower, where they do not fit the width, and they line up at their top. A tile is never stretched
-/// to fill the width, and is held to `maxTileWidth` where that is given, so that its texts break there.
+/// to fill the width.
 struct FigureRow<Content: View>: View {
     let spacing: CGFloat
-    let maxTileWidth: CGFloat?
     private let content: Content
 
     /// A row of the tiles in `content`.
-    init(spacing: CGFloat = 48, maxTileWidth: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+    init(spacing: CGFloat = 48, @ViewBuilder content: () -> Content) {
         self.spacing = spacing
-        self.maxTileWidth = maxTileWidth
         self.content = content()
     }
 
     var body: some View {
-        FlowLayout(
-            spacing: spacing, lineSpacing: FigureRowMetrics.lineSpacing, alignment: .top,
-            maximumSubviewWidth: maxTileWidth
-        ) {
+        FlowLayout(spacing: spacing, lineSpacing: FigureRowMetrics.lineSpacing, alignment: .top) {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
