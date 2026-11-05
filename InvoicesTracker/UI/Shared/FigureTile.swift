@@ -16,24 +16,8 @@ nonisolated struct FigureTileData: Sendable, Hashable {
     /// The note under the figure, such as "s přiznáním a přehledy za rok 2026", or nil for none.
     var note: String?
 
-    /// Whether the tile is about the net income, which a green mark in front of its label shows (`marker`).
+    /// Whether the tile is the net income per month, which a green dot in front of its label shows.
     var marksNetIncome = false
-
-    /// What the mark in front of the label of a tile about the net income looks like. A tile that is not about the net
-    /// income has none, whatever this is.
-    var marker = NetIncomeMarker.dot
-}
-
-/// The green mark in front of the label of a tile about the net income. The two shapes are the two ways the design
-/// marks the net income: as a dot where a card gives it a figure of its own, and as the short line of the key of the
-/// net income line in the legend of a chart where the figure stands over that chart.
-nonisolated enum NetIncomeMarker: Sendable, Hashable {
-    /// A dot of 8 points, as the card of Odhad odvodů marks it.
-    case dot
-
-    /// A line of 16 by 3 points, like the key of the net income in the legend of the charts, as the strip over the
-    /// chart of Příjmy marks it.
-    case line
 }
 
 /// The sizes and gaps of a figure tile.
@@ -47,17 +31,14 @@ private nonisolated enum FigureTileMetrics {
     /// The size of the dot that marks the net income.
     static let dotSize: CGFloat = 8
 
-    /// The size of the line that marks the net income.
-    static let lineSize = CGSize(width: 16, height: 3)
-
     /// The space between the mark and the label.
     static let dotGap: CGFloat = 6
 }
 
 /// A figure with its label, its share and its note: the label in callout and secondary text, the figure in title 2 and
 /// the colour of text with the share beside it in body semibold and secondary text, and the note in callout and
-/// tertiary text. A tile about the net income has a green mark in front of its label, a dot or a line
-/// (`NetIncomeMarker`). VoiceOver reads the tile as one phrase, and not the mark.
+/// tertiary text. The tile of the net income per month has a green dot in front of its label. VoiceOver reads the
+/// tile as one phrase, and not the mark.
 ///
 /// Tiles stand next to each other in a `FigureRow`; they are as wide as their texts are, and never stretched into
 /// columns.
@@ -83,29 +64,17 @@ struct FigureTile: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The label, with the green mark in front of it where the tile is about the net income: a dot that sits on the
-    /// baseline of the first line of the label, or a line that is centred on the height of the label, as the key of a
-    /// legend is.
-    @ViewBuilder
+    /// The label, with the green dot in front of it where the tile is about the net income: a dot that sits on the
+    /// baseline of the first line of the label.
     private var labelLine: some View {
-        if data.marksNetIncome, data.marker == .line {
-            HStack(alignment: .center, spacing: FigureTileMetrics.dotGap) {
-                Capsule()
+        HStack(alignment: .firstTextBaseline, spacing: FigureTileMetrics.dotGap) {
+            if data.marksNetIncome {
+                Circle()
                     .fill(Palette.green)
-                    .frame(width: FigureTileMetrics.lineSize.width, height: FigureTileMetrics.lineSize.height)
+                    .frame(width: FigureTileMetrics.dotSize, height: FigureTileMetrics.dotSize)
                     .accessibilityHidden(true)
-                label
             }
-        } else {
-            HStack(alignment: .firstTextBaseline, spacing: FigureTileMetrics.dotGap) {
-                if data.marksNetIncome {
-                    Circle()
-                        .fill(Palette.green)
-                        .frame(width: FigureTileMetrics.dotSize, height: FigureTileMetrics.dotSize)
-                        .accessibilityHidden(true)
-                }
-                label
-            }
+            label
         }
     }
 

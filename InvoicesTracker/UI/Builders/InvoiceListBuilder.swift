@@ -137,8 +137,8 @@ nonisolated enum CrownsKind: Sendable, Hashable {
     case unknown
 }
 
-/// A row of the table: Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, DPH, Čistý příjem and Stav,
-/// each one line, with the excerpt that says why the search found the invoice.
+/// A row of the table: Číslo, Odběratel, Vystaveno, Zaplaceno, V Kč bez DPH, Bez DPH, DPH, Čistý příjem, Odvod
+/// and Stav, each one line, with the excerpt that says why the search found the invoice.
 nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
     var id: Int64
     var number: String
@@ -188,6 +188,16 @@ nonisolated struct InvoiceRow: Sendable, Hashable, Identifiable {
 
     /// Whether `netIncome` is a payment, an estimate or nothing.
     var netIncomeKind: NetIncomeKind
+
+    /// The share of its income without VAT that the payment adds to the levies, tax and insurance together, as the
+    /// detail tells it: "39,4 %", with the minus sign where the levies fell, as a tax bonus makes them. "≈" stands
+    /// before it where `netIncome` has the sign of an estimate, and "—" for an invoice with no net income or an
+    /// income of nothing.
+    var levyShare: String
+
+    /// Whether `levyShare` is a payment's, an estimate or nothing, which is how its cell looks (`netIncomeKind` says
+    /// the same of the net income).
+    var levyShareKind: NetIncomeKind
 
     /// The status on `InvoiceListInput.statusDay`. The detail says it with the day of a payment
     /// (`InvoiceDisplayStatus.label(asOf:)`).
@@ -380,6 +390,7 @@ nonisolated enum InvoiceListBuilder {
         let vatMinor = invoice.vatMinor
         let crowns = crowns(of: entry, input: input)
         let afterLevies = netIncome(of: invoice, input: input)
+        let share = levyShare(of: invoice, input: input)
         let paidTone: PaidTone = invoice.payment.map { $0.date > input.statusDay ? .later : .received } ?? .none
         return InvoiceRow(
             id: invoice.id, number: invoice.number, client: invoice.client.name, issued: day(invoice.issueDate),
@@ -387,8 +398,8 @@ nonisolated enum InvoiceListBuilder {
             vat: vatMinor == 0 ? "—" : money(vatMinor), hasVat: vatMinor != 0,
             czk: crowns.value, czkKind: crowns.kind, czkHelp: crowns.help,
             hasReceivedPayment: entry.receivedPayment != nil, netIncome: afterLevies.value,
-            netIncomeKind: afterLevies.kind, status: entry.status, listStatus: entry.status.listLabel,
-            pillTone: entry.status.pillTone,
+            netIncomeKind: afterLevies.kind, levyShare: share.value, levyShareKind: share.kind,
+            status: entry.status, listStatus: entry.status.listLabel, pillTone: entry.status.pillTone,
             excerpt: words.isEmpty ? nil : SearchExcerpt.excerpt(for: invoice, words: words)
         )
     }
@@ -423,11 +434,30 @@ nonisolated enum InvoiceListBuilder {
         of invoice: Invoice, input: InvoiceListInput
     ) -> (value: String, kind: NetIncomeKind) {
         guard let worked = input.netIncomes[invoice.id] else { return ("—", .none) }
-        let amount = PredictionBuilder.kc(ofHalere: worked.netHalere)
+        return marked(PredictionBuilder.kc(ofHalere: worked.netHalere), as: worked)
+    }
+
+    /// `text`, a figure of the net income of an invoice, with the sign of an estimate in front and the kind
+    /// `.estimate` where the invoice is not paid, with the sign and the kind `.paid` while the rate of its payment is
+    /// provisional, and as it is otherwise. The columns Čistý příjem and Odvod both go through it, so the share has its
+    /// sign exactly where the net income has it.
+    private static func marked(_ text: String, as worked: InvoiceNetIncome) -> (value: String, kind: NetIncomeKind) {
         if worked.isEstimate {
-            return (PredictionBuilder.estimateSign + amount, .estimate)
+            return (PredictionBuilder.estimateSign + text, .estimate)
         }
-        return ((worked.isProvisional ? PredictionBuilder.estimateSign : "") + amount, .paid)
+        return ((worked.isProvisional ? PredictionBuilder.estimateSign : "") + text, .paid)
+    }
+
+    /// The column "Odvod" of an invoice, from its net in `input.netIncomes`: the share of its income that the levies
+    /// of the payment take (`InvoiceDetailBuilder.share(of:income:)`), with the sign of an estimate in front exactly
+    /// where the net income has it, and "—" for an invoice with no net or an income of nothing.
+    private static func levyShare(
+        of invoice: Invoice, input: InvoiceListInput
+    ) -> (value: String, kind: NetIncomeKind) {
+        guard let worked = input.netIncomes[invoice.id],
+            let share = InvoiceDetailBuilder.share(of: worked.effect, income: worked.incomeHalere)
+        else { return ("—", .none) }
+        return marked(share, as: worked)
     }
 
     // MARK: The summary row

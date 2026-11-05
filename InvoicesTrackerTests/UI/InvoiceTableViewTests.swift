@@ -23,24 +23,25 @@ struct InvoiceTableViewTests {
         id: 1, number: "20261001", client: "Cetus Data s.r.o.", issued: "1.\u{00A0}10.", paidDate: "—",
         paidTone: .none, net: "4\u{00A0}500,00\u{00A0}Kč", vat: "945,00\u{00A0}Kč", hasVat: true,
         czk: "4\u{00A0}500,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: false,
-        netIncome: "—", netIncomeKind: .none, status: .awaitingPayment, listStatus: "Čeká na platbu",
-        pillTone: .waiting, excerpt: nil)
+        netIncome: "—", netIncomeKind: .none, levyShare: "—", levyShareKind: .none, status: .awaitingPayment,
+        listStatus: "Čeká na platbu", pillTone: .waiting, excerpt: nil)
 
     /// An invoice in dollars that is paid, with its value in crowns and no net income.
     private let dollars = InvoiceRow(
         id: 2, number: "20260901", client: "Bravo Labs, Inc.", issued: "30.\u{00A0}9.", paidDate: "2.\u{00A0}10.",
         paidTone: .received, net: "14\u{00A0}350,00\u{00A0}USD", vat: "—", hasVat: false,
         czk: "305\u{00A0}726,75\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true, netIncome: "—",
-        netIncomeKind: .none, status: .paid(civilDate("2026-10-02")), listStatus: "Uhrazená", pillTone: .paid,
-        excerpt: nil)
+        netIncomeKind: .none, levyShare: "—", levyShareKind: .none, status: .paid(civilDate("2026-10-02")),
+        listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
 
     /// An invoice in crowns that is paid and whose payment reduced the levies, with its net income.
     private let withNetIncome = InvoiceRow(
         id: 4, number: "2026-01-01", client: "Sierra, SE", issued: "31.\u{00A0}1.", paidDate: "3.\u{00A0}2.",
         paidTone: .received, net: "220\u{00A0}000,00\u{00A0}Kč", vat: "46\u{00A0}200,00\u{00A0}Kč", hasVat: true,
         czk: "220\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
-        netIncome: "253\u{00A0}401\u{00A0}Kč", netIncomeKind: .paid, status: .paid(civilDate("2026-02-03")),
-        listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
+        netIncome: "253\u{00A0}401\u{00A0}Kč", netIncomeKind: .paid, levyShare: "\u{2212}15,2\u{00A0}%",
+        levyShareKind: .paid,
+        status: .paid(civilDate("2026-02-03")), listStatus: "Uhrazená", pillTone: .paid, excerpt: nil)
 
     /// A draft in dollars with the estimate of its net income and of its value in crowns.
     private let estimated = InvoiceRow(
@@ -48,16 +49,18 @@ struct InvoiceTableViewTests {
         paidTone: .none, net: "12\u{00A0}040,00\u{00A0}USD", vat: "—", hasVat: false,
         czk: "≈ 260\u{00A0}328,88\u{00A0}Kč", czkKind: .estimate,
         czkHelp: "Odhad kurzem ČNB ke dni vystavení: 21,622\u{00A0}Kč/USD", hasReceivedPayment: false,
-        netIncome: "≈\u{00A0}159\u{00A0}636\u{00A0}Kč", netIncomeKind: .estimate, status: .draft,
-        listStatus: "Koncept", pillTone: .draft, excerpt: nil)
+        netIncome: "≈\u{00A0}159\u{00A0}636\u{00A0}Kč", netIncomeKind: .estimate,
+        levyShare: "≈\u{00A0}39,4\u{00A0}%", levyShareKind: .estimate, status: .draft, listStatus: "Koncept",
+        pillTone: .draft, excerpt: nil)
 
     /// An invoice in dollars that is paid by a payment dated after today, which has not come yet, and whose rate of the
     /// day of issue is not known.
     private let later = InvoiceRow(
         id: 6, number: "20260801", client: "Bravo Labs, Inc.", issued: "31.\u{00A0}8.", paidDate: "20.\u{00A0}10.",
         paidTone: .later, net: "13\u{00A0}300,00\u{00A0}USD", vat: "—", hasVat: false, czk: "—", czkKind: .unknown,
-        czkHelp: nil, hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none, status: .overdue,
-        listStatus: "Po splatnosti", pillTone: .overdue, excerpt: nil)
+        czkHelp: nil, hasReceivedPayment: false, netIncome: "—", netIncomeKind: .none,
+        levyShare: "—", levyShareKind: .none, status: .overdue, listStatus: "Po splatnosti", pillTone: .overdue,
+        excerpt: nil)
 
     /// An invoice in crowns that the search found by its note.
     private func found() throws -> InvoiceRow {
@@ -66,8 +69,8 @@ struct InvoiceTableViewTests {
             id: 3, number: "2026-03-01", client: "Alfa Systems s.r.o.", issued: "31.\u{00A0}3.",
             paidDate: "7.\u{00A0}4.", paidTone: .received, net: "210\u{00A0}000,00\u{00A0}Kč", vat: "—", hasVat: false,
             czk: "210\u{00A0}000,00\u{00A0}Kč", czkKind: .actual, czkHelp: nil, hasReceivedPayment: true,
-            netIncome: "—", netIncomeKind: .none, status: .paid(civilDate("2026-04-07")), listStatus: "Uhrazená",
-            pillTone: .paid,
+            netIncome: "—", netIncomeKind: .none, levyShare: "—", levyShareKind: .none,
+            status: .paid(civilDate("2026-04-07")), listStatus: "Uhrazená", pillTone: .paid,
             excerpt: SearchExcerptResult(
                 label: "Poznámka", text: note, highlight: try #require(note.range(of: "Routing"))))
     }
@@ -91,11 +94,11 @@ struct InvoiceTableViewTests {
     /// pills of the rows do, so none of the colour of the name lies in the first points of the column, and some lies
     /// after them.
     @Test func theOpenRowIsTintedPaleBlueWithABlueEdgeOnItsLeadingSide() async throws {
-        // The three rows, the middle one open, in a card 20 points inside a light window of 1 000 × 400 points. The
-        // card is 960 points wide, which holds the table, whose least width is 900.
+        // The three rows, the middle one open, in a card 20 points inside a light window of 1 080 × 400 points. The
+        // card is 1 040 points wide, which holds the table, whose least width is 972.
         let table = InvoiceTableView(
             data: list(of: [crowns, dollars, try found()]), openID: dollars.id, click: { _ in }, move: { _ in })
-        try await withPictureOf(table.padding(20), size: CGSize(width: 1_000, height: 400)) { picture in
+        try await withPictureOf(table.padding(20), size: CGSize(width: 1_080, height: 400)) { picture in
             // Down the leading edge of the card, inside the 3 points of the edge of a row: one band of the blue of the
             // edge, as tall as a row less the hairline across its top, 39 points.
             let edge: CGFloat = 20 + 1.5
@@ -106,7 +109,7 @@ struct InvoiceTableViewTests {
 
             // The tint across the row, in the margin before the first column and in the one after the last.
             let middle = (band.lowerBound + band.upperBound) / 2
-            for x in [20 + 10, 980 - 10] as [CGFloat] {
+            for x in [20 + 10, 1_060 - 10] as [CGFloat] {
                 let tint = try picture.bytes(at: CGPoint(x: x, y: middle))
                 #expect(isClose(tint, to: [0xE8, 0xF1, 0xFD]), "the open row at \(x) on \(picture.screen) is \(tint)")
             }
@@ -124,12 +127,12 @@ struct InvoiceTableViewTests {
             // The header stands over the first row, which is one row above the open one (the band starts under the
             // hairline across the top of its row). The name of Stav is in the middle of the 32 points of the header,
             // so the 4 points at either end are left out, and it stands 16 points inside its column, which starts
-            // after the other eight columns and their gaps. The first 16 points of the column hold no pixel within
+            // after the other nine columns and their gaps. The first 16 points of the column hold no pixel within
             // 12 levels of the secondary grey of the name, a band that takes in the soft edge of its letters; the
             // rest of the column holds the stems of the letters, pixels of that grey within 3 levels, at least 80 of
             // them: a third of the 248 that the window gives.
-            let widths = InvoiceTableColumns().columnWidths(inTableOf: 960)
-            let column = 20 + DataTableMetrics.margin + widths[..<8].reduce(0, +) + 8 * DataTableMetrics.gap
+            let widths = InvoiceTableColumns().columnWidths(inTableOf: 1_040)
+            let column = 20 + DataTableMetrics.margin + widths[..<9].reduce(0, +) + 9 * DataTableMetrics.gap
             let headerBottom = band.lowerBound - 1 - DataTableMetrics.rowHeight
             let headerTop = headerBottom - DataTableMetrics.headerHeight
             let grey = try OffscreenPicture.bytes(of: Palette.text2, in: .light)
@@ -137,11 +140,21 @@ struct InvoiceTableViewTests {
                 x: column, y: headerTop + 4, width: InvoiceTableColumns.statusInset,
                 height: DataTableMetrics.headerHeight - 8)
             let name = CGRect(
-                x: inset.maxX, y: inset.minY, width: widths[8] - InvoiceTableColumns.statusInset, height: inset.height)
+                x: inset.maxX, y: inset.minY, width: widths[9] - InvoiceTableColumns.statusInset, height: inset.height)
             let inked = picture.count(near: grey, in: inset, by: 12)
             #expect(inked == 0, "the inset before the name of Stav has \(inked) pixels of \(grey) on \(picture.screen)")
             let stems = picture.count(near: grey, in: name, by: 3)
             #expect(stems >= 80, "the name of Stav has \(stems) pixels of \(grey) on \(picture.screen)")
+
+            // The name of Odvod stands in the column before Stav, at its trailing side: the column holds ink of the
+            // same grey, and the gap between the two columns holds none.
+            let odvod = CGRect(
+                x: column - DataTableMetrics.gap - widths[8], y: inset.minY, width: widths[8], height: inset.height)
+            let odvodStems = picture.count(near: grey, in: odvod, by: 3)
+            #expect(odvodStems >= 25, "the name of Odvod has \(odvodStems) pixels of \(grey) on \(picture.screen)")
+            let gap = CGRect(
+                x: column - DataTableMetrics.gap, y: inset.minY, width: DataTableMetrics.gap, height: inset.height)
+            #expect(picture.count(near: grey, in: gap, by: 12) == 0, "the gap before Stav is not empty")
         }
     }
 
@@ -256,10 +269,12 @@ struct InvoiceTableViewTests {
         try expectCell(cell(5, ofRow: 0), in: Palette.text2, atLeast: 220, "the amount in dollars")
         try expectCell(cell(6, ofRow: 0), in: Palette.text4, atLeast: 6, "the dash for no VAT")
         try expectCell(cell(7, ofRow: 0), in: Palette.text4, atLeast: 20, "the dash for no net income")
+        try expectCell(cell(8, ofRow: 0), in: Palette.text4, atLeast: 6, "the dash for no levy share")
         // The draft: no payment, the estimates in secondary grey.
         try expectCell(cell(3, ofRow: 1), in: Palette.text4, atLeast: 6, "the dash for no payment")
         try expectCell(cell(4, ofRow: 1), in: Palette.text2, atLeast: 235, "the estimate in crowns")
         try expectCell(cell(7, ofRow: 1), in: Palette.text2, atLeast: 270, "the estimated net income")
+        try expectCell(cell(8, ofRow: 1), in: Palette.text2, atLeast: 100, "the estimated levy share")
         // A payment dated after today, and a rate that is not known.
         try expectCell(cell(3, ofRow: 2), in: Palette.text3, atLeast: 90, "the day of a later payment")
         try expectCell(cell(4, ofRow: 2), in: Palette.text4, atLeast: 6, "the dash for a rate not known")
@@ -269,13 +284,15 @@ struct InvoiceTableViewTests {
         try expectCell(cell(6, ofRow: 3), in: Palette.text2, atLeast: 200, "the VAT")
         let net = problems(of: cell(7, ofRow: 3), in: green, "the net income of a payment")
         #expect(net.isEmpty, "\(net)")
+        // The levy share of a payment is in the colour of text, not green.
+        try expectCell(cell(8, ofRow: 3), in: Palette.text, atLeast: 70, "the levy share of a payment")
 
         // The pills: green for paid, grey for a draft, red for overdue. Each stands after the inset of its column: none
         // of its tint lies in the first points of the cell.
         let pills: [(row: Int, tint: Color)] = [(0, Palette.greenTint), (1, Palette.fill), (2, Palette.redTint)]
         for pill in pills {
             let tint = try OffscreenPicture.bytes(of: pill.tint, in: .light)
-            let region = cell(8, ofRow: pill.row)
+            let region = cell(9, ofRow: pill.row)
             #expect(picture.count(near: tint, in: region, by: 2) > 100, "the pill of row \(pill.row)")
             let inset = CGRect(
                 x: region.minX, y: region.minY, width: InvoiceTableColumns.statusInset, height: region.height)
@@ -323,6 +340,10 @@ struct InvoiceTableViewTests {
         for kind in [NetIncomeKind.paid, .estimate, .none] {
             check(width(of: InvoiceNetIncomeText(text: netIncome, kind: kind)), "\(netIncome) as \(kind)", column: 7)
         }
+        let levyShare = "≈\u{00A0}100,0\u{00A0}%"
+        for kind in [NetIncomeKind.paid, .estimate, .none] {
+            check(width(of: InvoiceLevyShareText(text: levyShare, kind: kind)), "\(levyShare) as \(kind)", column: 8)
+        }
         for column in [2, 3] {
             check(width(of: InvoiceDateText(text: "31.\u{00A0}12.")), "31. 12.", column: column)
         }
@@ -336,10 +357,11 @@ struct InvoiceTableViewTests {
         ]
         let inset = InvoiceTableColumns.statusInset
         for status in statuses {
-            check(width(of: Pill(status.listLabel, tone: status.pillTone)) + inset, status.listLabel, column: 8)
+            check(width(of: Pill(status.listLabel, tone: status.pillTone)) + inset, status.listLabel, column: 9)
         }
         let names = [
-            "Číslo", "Odběratel", "Vystaveno", "Zaplaceno", "V Kč bez DPH", "Bez DPH", "DPH", "Čistý příjem", "Stav",
+            "Číslo", "Odběratel", "Vystaveno", "Zaplaceno", "V Kč bez DPH", "Bez DPH", "DPH", "Čistý příjem",
+            "Odvod", "Stav",
         ]
         for (column, name) in names.enumerated() {
             // The name of Stav stands after the inset of its column, as the pills do.
@@ -385,13 +407,14 @@ struct InvoiceTableViewTests {
         let paid =
             "2026-01-01, Sierra, SE, Vystaveno 31.\u{00A0}1., Zaplaceno 3.\u{00A0}2.,"
             + " Bez DPH 220\u{00A0}000,00\u{00A0}Kč, DPH 46\u{00A0}200,00\u{00A0}Kč,"
-            + " Čistý příjem 253\u{00A0}401\u{00A0}Kč, Stav: Uhrazená"
+            + " Čistý příjem 253\u{00A0}401\u{00A0}Kč, Odvod \u{2212}15,2\u{00A0}%, Stav: Uhrazená"
         #expect(withNetIncome.spokenText == paid)
 
         // An estimate is read with its sign.
         let estimate =
             "20261001, Bravo Labs, Inc., Vystaveno 31.\u{00A0}10., V Kč bez DPH ≈ 260\u{00A0}328,88\u{00A0}Kč,"
-            + " Bez DPH 12\u{00A0}040,00\u{00A0}USD, Čistý příjem ≈\u{00A0}159\u{00A0}636\u{00A0}Kč, Stav: Koncept"
+            + " Bez DPH 12\u{00A0}040,00\u{00A0}USD, Čistý příjem ≈\u{00A0}159\u{00A0}636\u{00A0}Kč,"
+            + " Odvod ≈\u{00A0}39,4\u{00A0}%, Stav: Koncept"
         #expect(estimated.spokenText == estimate)
     }
 

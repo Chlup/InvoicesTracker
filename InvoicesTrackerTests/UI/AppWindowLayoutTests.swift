@@ -470,8 +470,10 @@ struct AppWindowLayoutTests {
     }
 
     /// The table follows the window both ways: it is narrower in the least window than in a large one, and as wide as
-    /// before once the window is large again. Each time it is as wide as its card, with nothing to scroll sideways: in
-    /// the least window, while the detail is closed, the card (938 points) holds the table, whose least width is 900.
+    /// before once the window is large again. In a large window, with the detail closed, it is as wide as its card,
+    /// with nothing to scroll sideways. In the least window the card (938 points) is narrower than the least width of
+    /// the table, 972 points with the column Odvod: the table keeps that width and scrolls sideways, and the scroll
+    /// reaches its end, where Odvod and Stav are.
     @Test func theTableShrinksWhenTheWindowNarrowsAndGrowsBack() async throws {
         try await EditorFixture.with { f in
             try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
@@ -484,10 +486,20 @@ struct AppWindowLayoutTests {
                     let large = try tableWidth(in: window)
 
                     window.setContentSize(AppWindowSize.minimum)
-                    try await expectSettled(window) {
-                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
-                    }
+                    try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                    let scrollView = try #require(tableScrollView(in: window))
+                    let least = InvoiceTableColumns().minimumWidth
+                    #expect(least == 972)
                     #expect(try tableWidth(in: window) < large)
+                    #expect((try tableWidth(in: window) - least).magnitude < 0.5)
+                    #expect((scrollView.contentView.bounds.width - 938).magnitude <= 1)
+                    #expect(try tableWidth(in: window) > scrollView.contentView.bounds.width + 0.5)
+                    #expect(scrollView.horizontalScroller?.isHidden == false)
+                    // The sideways scroll reaches the end of the table, where Odvod and Stav are.
+                    let clip = scrollView.contentView
+                    clip.scroll(to: NSPoint(x: try tableWidth(in: window) - clip.bounds.width, y: 0))
+                    scrollView.reflectScrolledClipView(clip)
+                    #expect((clip.bounds.maxX - (try tableWidth(in: window))).magnitude < 0.5)
 
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
@@ -499,13 +511,12 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// The widest table that Faktury can show, 916 points where the day of a payment prints its year (the days of
-    /// issue of the invoices of the year shown print none), fills the card of the least window, which is 938 points
-    /// wide while the detail is closed, with nothing to scroll sideways. A table of 900 points would fill that card
-    /// too, so the width of the table on the screen is read with the detail of that invoice open: the card of 582
-    /// points is narrower than any table, and the table keeps its least width, 916 points with the widened column of
-    /// Zaplaceno.
-    @Test func theWidestTableThatCanOccurFillsItsCardInTheLeastWindow() async throws {
+    /// The widest table that Faktury can show, 988 points where the day of a payment prints its year (the days of
+    /// issue of the invoices of the year shown print none), is wider than the card of the least window, which is 938
+    /// points wide while the detail is closed, and scrolls sideways in it. The width of the table on the screen is read
+    /// with the detail of that invoice open as well: the card of 582 points is narrower than any table, and the table
+    /// keeps its least width, 988 points with the widened column of Zaplaceno.
+    @Test func theWidestTableThatCanOccurKeepsItsLeastWidthInTheLeastWindow() async throws {
         try await EditorFixture.with { f in
             // Issued in the year shown and paid in the next, on a day after that of the fixture.
             var invoice = Invoice.fixture(
@@ -525,25 +536,24 @@ struct AppWindowLayoutTests {
                     #expect(labels.contains { $0.hasPrefix("20261003,") && $0.contains(paidWithItsYear) })
 
                     let widest = InvoiceTableColumns(issueDatesShowYear: false, paymentDatesShowYear: true)
-                    #expect(widest.minimumWidth == 916)
-                    try await expectSettled(window) {
-                        problems(of: window, detailOpen: false) + problems(ofTheTableFillingItsCardIn: window)
-                    }
+                    #expect(widest.minimumWidth == 988)
+                    try await expectSettled(window) { problems(of: window, detailOpen: false) }
+                    #expect((try tableWidth(in: window) - 988).magnitude < 0.5)
 
                     // The detail of that invoice open: the card of 582 points is narrower than the table, which keeps
-                    // its least width, as the table of 900 points does in `aTableBelowItsMinimumScrollsSideways`.
+                    // its least width, as the table of 972 points does in `aTableBelowItsMinimumScrollsSideways`.
                     f.app.openInvoice(id)
                     try await waitUntil { detailCardFrame(in: window) != nil }
                     try await expectSettled(window) { problems(of: window, detailOpen: true) }
-                    #expect((try tableWidth(in: window) - 916).magnitude < 0.5)
+                    #expect((try tableWidth(in: window) - 988).magnitude < 0.5)
                 }
             }
         }
     }
 
     /// Below its least width the table keeps that width and scrolls sideways in its card, with the detail beside the
-    /// card. In the least window with the detail open it is that wide, the least widths of its columns (804 points)
-    /// with 8 points between each two and 16 at either end, 900 points, which is more than its card of 582 points
+    /// card. In the least window with the detail open it is that wide, the least widths of its columns (868 points)
+    /// with 8 points between each two and 16 at either end, 972 points, which is more than its card of 582 points
     /// shows, and the card has a horizontal scroller.
     @Test func aTableBelowItsMinimumScrollsSideways() async throws {
         try await EditorFixture.with { f in
@@ -555,8 +565,8 @@ struct AppWindowLayoutTests {
 
                     let scrollView = try #require(tableScrollView(in: window))
                     let table = try tableWidth(in: window)
-                    #expect(InvoiceTableColumns().minimumWidth == 900)
-                    #expect((table - 900).magnitude < 0.5)
+                    #expect(InvoiceTableColumns().minimumWidth == 972)
+                    #expect((table - 972).magnitude < 0.5)
                     #expect(table > scrollView.contentView.bounds.width + 0.5)
                     #expect(scrollView.hasHorizontalScroller)
                     #expect(scrollView.horizontalScroller?.isHidden == false)
@@ -1753,13 +1763,12 @@ struct AppWindowLayoutTests {
     }
 
     /// The page fits the window with the card of the estimate, and the card holds its parts: the title (with no pill)
-    /// and the line under it, the button to the right of them, under them the four figures (the income, the levies,
-    /// the settlement and the net income) 40 points apart and none of them more than 240 wide or beyond the card or on
-    /// another, and under the figures the chart of the year, whose months VoiceOver reads within the card. At the
-    /// least room (938 points of page) and in a large window all four stand side by side in one row; with the sidebar
-    /// as wide as it goes (850 points of page) the figures stand in two rows, the first three side by side and the net
-    /// income under the income, and in a large window with that sidebar they stand in one row again. No sign of an
-    /// estimate is read anywhere in the card.
+    /// and the line under it, the button to the right of them, under them the five figures (the income, the levies,
+    /// the settlement, the net income and what to set aside) 40 points apart and none of them more than 240 wide or
+    /// beyond the card or on another, and under the figures the chart of the year, whose months VoiceOver reads within
+    /// the card. The figures stand in two rows by meaning, the year's three and the two per month, at the least room
+    /// (938 points of page), in a large window, with the sidebar as wide as it goes (850 points of page) and in a large
+    /// window with that sidebar: no figure wraps alone. No sign of an estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -1767,7 +1776,7 @@ struct AppWindowLayoutTests {
                     try await showOverviewWithTheEstimate(of: app, in: window)
 
                     for (size, figureRows) in [
-                        (AppWindowSize.minimum, [4]), (AppWindowSize.large, [4]), (AppWindowSize.minimum, [4]),
+                        (AppWindowSize.minimum, [3, 2]), (AppWindowSize.large, [3, 2]), (AppWindowSize.minimum, [3, 2]),
                     ] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
@@ -1780,15 +1789,14 @@ struct AppWindowLayoutTests {
                     widenSidebar(of: window)
                     try await expectSettled(window) {
                         problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 1])
+                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
                     }
 
-                    // A large window again, the sidebar still as wide as it goes: the figures, two rows in the least
-                    // window, stand in one row again.
+                    // A large window again, the sidebar still as wide as it goes: the same two rows.
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
                         problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [4])
+                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
                     }
                 }
             }
@@ -1879,13 +1887,13 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the line under the
-    /// title, the four figures, the button or the months of the chart are not there, are beyond the card, lie on one
+    /// title, the five figures, the button or the months of the chart are not there, are beyond the card, lie on one
     /// another, or are not arranged as the card arranges them; the card has a pill "odhad" or a sign "≈" among
     /// what VoiceOver reads. The button stands to the right of the title and the line, in a row level with the title's:
     /// its middle is within the height of the title and the line. The figures stand under the title and the button, in
     /// rows of `figureRows` figures from the top; the figures of a row are level, side by side in the order income,
-    /// levies, settlement, net income, 40 points apart and at most 240 points wide, and each row is under the one
-    /// before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
+    /// levies, settlement, net income, set-aside, 40 points apart and at most 240 points wide, and each row is under
+    /// the one before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
     /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
     /// has the smaller y. Needs the accessibility elements.
     private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
@@ -1900,6 +1908,7 @@ struct AppWindowLayoutTests {
             (name: "the line under the title", reading: "z faktur do "), (name: "the income", reading: "Příjmy za rok"),
             (name: "the levies", reading: "Odvody, "), (name: "the settlement", reading: "Doplatek, "),
             (name: "the net income", reading: "Čistý příjem průměrně za měsíc"),
+            (name: "the set-aside", reading: "Odkládat průměrně za měsíc"),
             (name: "the button", reading: "Odhad odvodů"),
         ]
         let children = (card.accessibilityChildren?() ?? []).map { $0 as AnyObject }
@@ -1934,7 +1943,9 @@ struct AppWindowLayoutTests {
             return found
         }
         // The figures in the order they stand in.
-        let figures = ["the income", "the levies", "the settlement", "the net income"].compactMap { frames[$0] }
+        let figures = [
+            "the income", "the levies", "the settlement", "the net income", "the set-aside",
+        ].compactMap { frames[$0] }
         let names = parts.map(\.name)
         for (index, name) in names.enumerated() {
             for other in names[(index + 1)...] {
@@ -4283,10 +4294,13 @@ struct AppWindowLayoutTests {
     /// column where the page has less than the 856 points that two columns need (850 at the least room with the wide
     /// sidebar) and in two columns where it has more (938 in the least window, and a large window; the cards of
     /// Výpočet, with the same headings), the key figure and the bar of the result card stand as the width says and the
-    /// figure of what is left to settle under them, the net income is read as one phrase in the card Příjmy, beside the
-    /// income and above the bar, the legend and the note of the money of next year, and no text of a cell is cut. Where
-    /// the months stand in rows of six, in cells of more than 100 points (810 points for the months at the least room
-    /// with the wide sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
+    /// figure of what is left to settle under them, the net income and what to set aside are read as one phrase each
+    /// in the card Příjmy, beside the income (what to set aside wraps under them where the card is too narrow for
+    /// three figures: at the least room with the widest sidebar and in the narrowest window for twelve months in a
+    /// row with the wide sidebar, whose 836 points inside are less than the 874 that the three need) and above the
+    /// bar, the legend and the note of the money of next year, and no text of a cell is cut. Where the months stand in
+    /// rows of six, in cells of more than 100 points (810 points for the months at the least room with the wide
+    /// sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
     /// in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the least window, whose
     /// 898 points for the months give the cells 69, and in the narrowest window that holds them so, in cells of 64.
     @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
@@ -4445,23 +4459,33 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card Příjmy of Odhad odvodů for `page` in `window`, in words: it is missing; VoiceOver
-    /// does not read the income and the net income each as one phrase; the two do not stand side by side, 48 points
-    /// apart and level at the top, in the card; the bar of the income (14 points high) is not 14 points under the
-    /// lower of them; an item of the legend is not under the bar; or the note of the money of next year (which only a
-    /// year with such money has) is not under the legend. The origin of the screen is at the bottom left, so what is
-    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
+    /// does not read the income, the net income and what to set aside each as one phrase; the income and the net
+    /// income do not stand side by side, 48 points apart and level at the top, in the card; what to set aside does not
+    /// stand beside the net income, level at the top and 48 points from it, or, where the card is too narrow for three
+    /// figures in a row (the three and the two gaps are wider than the card inside its padding of 20, as at the
+    /// least room with the widest sidebar), at the left edge of the figures on the next row, 12 points under the
+    /// lower of the income and the net income, and only then; the bar of the income (14 points high) is
+    /// not 14 points under the lowest of the three; an item of the legend is not under the bar; or the note of the
+    /// money of next year (which only a year with such money has) is not under the legend. The origin of the screen is
+    /// at the bottom left, so what is above has the larger y. Empty when it stands so. Needs the accessibility
+    /// elements.
     private func problems(ofTheCardPrijmyOf page: PredictionPage, in window: NSWindow) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
         }
         let net = page.netIncome
         let incomePhrase = [page.incomeHead, page.incomeTotal, page.incomeNote].joined(separator: ", ")
-        let netPhrase = [net.label, net.amount, net.sub].joined(separator: ", ")
+        let netPhrase = [net.label, net.amount, net.sub].compactMap { $0 }.joined(separator: ", ")
         guard let income = frameOfText(startingWith: incomePhrase, in: window) else {
             return ["The income is not read as one phrase: \(incomePhrase)"]
         }
         guard let netIncome = frameOfText(startingWith: netPhrase, in: window) else {
             return ["The net income is not read as one phrase: \(netPhrase)"]
+        }
+        let setAsideParts = [page.setAside.label, page.setAside.amount, page.setAside.sub]
+        let setAsidePhrase = setAsideParts.compactMap { $0 }.joined(separator: ", ")
+        guard let setAside = frameOfText(startingWith: setAsidePhrase, in: window) else {
+            return ["What to set aside is not read as one phrase: \(setAsidePhrase)"]
         }
         guard let bar = accessibilityElement(labelled: "\(page.incomeHead): \(page.incomeTotal)", in: window)?
             .accessibilityFrame?()
@@ -4470,18 +4494,31 @@ struct AppWindowLayoutTests {
         }
         var found: [String] = []
         let inside = card.insetBy(dx: -0.5, dy: -0.5)
-        for (name, frame) in [("The income", income), ("The net income", netIncome), ("The bar", bar)]
+        for (name, frame) in [
+            ("The income", income), ("The net income", netIncome), ("What to set aside", setAside), ("The bar", bar),
+        ]
         where !inside.contains(frame) {
             found.append("\(name) is not within the card Příjmy: \(frame), the card \(card)")
         }
         if (income.maxY - netIncome.maxY).magnitude > 1 || (netIncome.minX - income.maxX - 48).magnitude > 1 {
             found.append("The net income is not beside the income, 48 points from it: \(netIncome), \(income)")
         }
+        let needsTwoRows = income.width + netIncome.width + setAside.width + 96 > card.width - 40 + 0.5
+        let isBesideNet =
+            (netIncome.maxY - setAside.maxY).magnitude <= 1 && (setAside.minX - netIncome.maxX - 48).magnitude <= 1
+        let isOnNextRow =
+            (setAside.minX - income.minX).magnitude <= 1
+            && (min(income.minY, netIncome.minY) - 12 - setAside.maxY).magnitude <= 1
+        if needsTwoRows ? !isOnNextRow : !isBesideNet {
+            let place =
+                needsTwoRows ? "under both, 12 points under the lower" : "beside the net income, 48 points from it"
+            found.append("What to set aside is not \(place): \(setAside), \(netIncome), \(income), the card \(card)")
+        }
         if (bar.height - 14).magnitude > 0.5 {
             found.append("The bar of the income is \(bar.height) points high, not 14")
         }
-        if (min(income.minY, netIncome.minY) - 14 - bar.maxY).magnitude > 1.5 {
-            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome)")
+        if (min(income.minY, netIncome.minY, setAside.minY) - 14 - bar.maxY).magnitude > 1.5 {
+            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome), \(setAside)")
         }
         var legendBottom = bar.minY
         for part in page.parts {

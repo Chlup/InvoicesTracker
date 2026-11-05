@@ -16,15 +16,16 @@ import Foundation
 /// front of a figure that is a lone estimate among actual figures. In a year in progress these are the amounts expected
 /// of the clients, in their rows, in their notes and in the cells of their months. The result card and the card Příjmy
 /// are areas of estimates as a whole in a year in progress, as their eyebrow, their heads and their subtitle say, so no
-/// figure in them has the sign: not the levies, what is left to settle, the net income or the sum that is paid only in
-/// the next year, and not the income, whose head says that it is an estimate. A year that is over has no estimate: it
-/// is what it was, and none of its texts has the sign, even when a payment is converted at a provisional rate; only the
-/// banner takes account of that (`page(_:hasProvisionalIncome:)`). The one exception is the levies of a year that is
-/// over and that the engine worked out with the rules of another year (`TaxResult.rulesAreEstimate`): they are an
-/// estimate among figures that are not, so the sum of them, each of them in the legend of the bar and in the rows of
-/// its popover that follow from the levy, the amount of what is left to settle and the net income, which is the income
-/// less them, have the sign. The advances never have it. The sums are in whole Kč, rounded half up from haléře, and the
-/// dates are written as everywhere in the app (`CzechFormat`).
+/// figure in them has the sign: not the levies, what is left to settle, the net income, what to set aside or the sum
+/// that is paid only in the next year, and not the income, whose head says that it is an estimate. A year that is
+/// over has no estimate: it is what it was, and none of its texts has the sign, even when a payment is converted at a
+/// provisional rate; only the banner takes account of that (`page(_:hasProvisionalIncome:)`). The one exception is the
+/// levies of a year that is over and that the engine worked out with the rules of another year
+/// (`TaxResult.rulesAreEstimate`): they are an estimate among figures that are not, so the sum of them, each of them
+/// in the legend of the bar and in the rows of its popover that follow from the levy, the amount of what is left to
+/// settle, the net income, which is the income less them, and what to set aside, which is made of them, have the
+/// sign. The advances never have it. The sums are in whole Kč, rounded half up from haléře, and the dates are written
+/// as everywhere in the app (`CzechFormat`).
 nonisolated enum PredictionBuilder {
     // MARK: Texts
 
@@ -70,7 +71,11 @@ nonisolated enum PredictionBuilder {
             parts: parts(prediction), netIncome: prediction.isComplete
                 ? netIncome(outcome)
                 : PredictionNetIncome(
-                    label: "Čistý příjem průměrně za měsíc (odhad)", amount: "—", sub: incompleteText),
+                    label: "Čistý příjem průměrně za měsíc (odhad)", amount: unknownAmount, sub: nil),
+            setAside: prediction.isComplete
+                ? setAside(outcome)
+                : PredictionSetAside(
+                    label: "Odkládat průměrně za měsíc (odhad)", amount: unknownAmount, sub: nil),
             nextYearNote: nextYearNote(prediction),
             banner: banner(
                 prediction, rulesAreEstimate: rulesAreEstimate, hasProvisionalIncome: hasProvisionalIncome),
@@ -279,6 +284,27 @@ nonisolated enum PredictionBuilder {
                 ? "Čistý příjem průměrně za měsíc" : "Čistý příjem průměrně za měsíc (odhad)",
             amount: estimate(CzechFormat.wholeKc(net.monthlyKc), when: sign),
             sub: "za celý rok " + estimate(CzechFormat.wholeKc(net.yearKc), when: sign) + share)
+    }
+
+    /// What to put aside each month for the irregular levy payments (`PredictionOutcome.setAsideTotal`): the average
+    /// per month as the amount, and under it the sum of the whole year. The result is of 31 December, so the average is
+    /// over all twelve months. The caption says that the figure is an estimate in a year in progress, as the head of
+    /// the income does, and the two figures have the sign of an estimate only where the net income's have it.
+    private static func setAside(_ outcome: PredictionOutcome) -> PredictionSetAside {
+        let sign = marksLevies(outcome)
+        return PredictionSetAside(
+            label: outcome.prediction.isClosed ? "Odkládat průměrně za měsíc" : "Odkládat průměrně za měsíc (odhad)",
+            amount: estimate(CzechFormat.wholeKc(outcome.setAsideMonthly), when: sign),
+            sub: setAsideNote(outcome, total: estimate(CzechFormat.wholeKc(outcome.setAsideTotal), when: sign)))
+    }
+
+    /// The note under what to set aside, on Odhad odvodů and on Přehled: the sum of the whole year, made of the year's
+    /// tax advances and the doplatek, or, in a year without tax advances, only that it is the doplatek. That one has no
+    /// sum, as the sum would repeat the doplatek. `total` is the sum as the screen writes it, with or without the sign
+    /// of an estimate.
+    static func setAsideNote(_ outcome: PredictionOutcome, total: String) -> String {
+        outcome.result.balance(.tax).advancesPaid == 0
+            ? "jen doplatek, bez záloh na daň" : "za celý rok " + total + " · doplatek a zálohy na daň"
     }
 
     /// The sum that is paid only in the next year, which is that year's income, or nil when there is none. The note

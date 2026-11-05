@@ -30,6 +30,20 @@ nonisolated struct PredictionOutcome: Sendable, Hashable {
         Authority.allCases.reduce(0) { $0 + result.balance($1).remaining }
     }
 
+    /// What the year's irregular levy payments come to, in whole Kč: the tax advances paid through the year and what is
+    /// left to pay with the returns (`owedTotal`). The result is as of 31 December, so the tax advances are the whole
+    /// year's. The social and health advances are paid by the month and are not set aside. An overpayment never lowers
+    /// it, and neither does a tax bonus: the tax advances are still paid.
+    var setAsideTotal: Int64 {
+        result.balance(.tax).advancesPaid + owedTotal
+    }
+
+    /// What to put aside each month for the irregular levy payments, in whole Kč: the twelfth of `setAsideTotal`,
+    /// rounded half up.
+    var setAsideMonthly: Int64 {
+        DecimalMath.halfUp(Decimal(setAsideTotal) / 12)
+    }
+
     /// What the year's advances pay beyond the levies, at each authority, together, in whole Kč.
     var overpaidTotal: Int64 {
         Authority.allCases.reduce(0) { $0 + result.balance($1).overpayment }

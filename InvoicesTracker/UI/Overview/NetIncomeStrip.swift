@@ -12,9 +12,9 @@ private nonisolated enum NetIncomeStripMetrics {
 /// The strip above the chart of the card "Příjmy": between two hairlines, the net income of the year so far and its
 /// average per month, two figure tiles side by side 48 points apart, each as wide as its words and never stretched. A
 /// tile is the words that say what the figure is, the figure in bold and a line that says what it is of; the words of
-/// the first one start with a short line in the colour of the net income, like the key of the net income in the legend
-/// of the chart. Where the card has no room for both side by side the second goes under the first. VoiceOver reads each
-/// tile with its words as one phrase.
+/// the average per month start with the green dot that marks the net income, as on the card of the estimate. Where the
+/// card has no room for both side by side the second goes under the first. VoiceOver reads each tile with its words as
+/// one phrase.
 struct NetIncomeStrip: View {
     let netIncome: OverviewNetIncome
 
@@ -24,10 +24,11 @@ struct NetIncomeStrip: View {
             FigureRow(spacing: NetIncomeStripMetrics.figureSpacing) {
                 FigureTile(
                     FigureTileData(
-                        label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub,
-                        marksNetIncome: true, marker: .line))
+                        label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub))
                 FigureTile(
-                    FigureTileData(label: netIncome.monthLabel, figure: netIncome.monthValue, note: netIncome.monthSub))
+                    FigureTileData(
+                        label: netIncome.monthLabel, figure: netIncome.monthValue, note: netIncome.monthSub,
+                        marksNetIncome: true))
             }
             .padding(.vertical, NetIncomeStripMetrics.padding)
             Hairline()

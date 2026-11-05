@@ -1058,11 +1058,42 @@ struct InvoiceListBuilderTests {
         #expect(byID.map(\.netIncomeKind) == [NetIncomeKind](repeating: .paid, count: 11) + [.estimate])
     }
 
+    /// The share of its income that each payment adds to the levies, as the detail says it: the levies of the payment
+    /// (income less what it left, in whole Kč) over the income without VAT. The first payment brought a tax bonus, so
+    /// its levies fell and its share is negative, with the minus sign, never clamped to nothing.
+    @Test func theLevyShareOfEachInvoiceIsWhatItsPaymentAddsToTheLeviesOverItsIncome() throws {
+        let invoices = (1...12).map { sample(Int64($0)) }
+        let worked = netIncomes(of: invoices)
+
+        let data = build(input(invoices: invoices, netIncomes: worked))
+
+        let byID = data.rows.sorted { $0.id < $1.id }
+        for row in byID {
+            let net = try #require(worked[row.id])
+            let share = try #require(InvoiceDetailBuilder.share(of: net.effect, income: net.incomeHalere))
+            let sign = row.id == 12 ? PredictionBuilder.estimateSign : ""
+            #expect(row.levyShare == sign + share, "the invoice \(row.id)")
+        }
+        #expect(byID.map(\.levyShareKind) == [NetIncomeKind](repeating: .paid, count: 11) + [.estimate])
+
+        // The first payment: 176 h at 1 250 Kč is an income of 220 000 Kč, and it left 253 401 Kč, so the levies are
+        // 220 000 − 253 401 = −33 401 Kč, a bonus: −33 401 ÷ 220 000 = −0,151822, which is −15,2 %.
+        let first = try rowOfInvoice(1, in: data)
+        #expect(first.levyShare == "−15,2\u{00A0}%")
+        #expect(first.levyShare.hasPrefix("−"))
+        // The eleventh: 7,5 h at 600 Kč is an income of 4 500 Kč, and it left 2 798 Kč, so the levies are
+        // 4 500 − 2 798 = 1 702 Kč: 1 702 ÷ 4 500 = 0,378222, which is 37,8 %.
+        let eleventh = try rowOfInvoice(11, in: data)
+        #expect(eleventh.levyShare == "37,8\u{00A0}%")
+    }
+
     @Test func anInvoiceWithoutANetShowsADash() throws {
         let row = try #require(build(input(invoices: [crownInvoice(id: 1)])).rows.first)
 
         #expect(row.netIncome == "—")
         #expect(row.netIncomeKind == .none)
+        #expect(row.levyShare == "—")
+        #expect(row.levyShareKind == .none)
     }
 
     @Test func aPaymentWaitingForItsRateShowsTheSignOfAnEstimateInGreen() throws {
@@ -1075,6 +1106,8 @@ struct InvoiceListBuilderTests {
         let row = try rowOfInvoice(10, in: data)
         #expect(row.netIncome == "≈\u{00A0}217\u{00A0}013\u{00A0}Kč")
         #expect(row.netIncomeKind == .paid)
+        #expect(row.levyShare.hasPrefix(PredictionBuilder.estimateSign))
+        #expect(row.levyShareKind == .paid)
     }
 
     @Test func aRowPaidAfterTheDayShownShowsItsNet() throws {

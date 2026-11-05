@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The sizes and gaps of the card of the estimate.
 private nonisolated enum PredictionCardMetrics {
-    /// The space between the parts of the card: the head, the figures under their hairline and the chart under its.
+    /// The space between the parts of the card: the head, each row of figures under its hairline and the chart under
+    /// its.
     static let spacing: CGFloat = 14
 
     /// The space between a hairline and the part under it.
@@ -30,10 +31,12 @@ private nonisolated enum PredictionCardMetrics {
 /// The card of Přehled with the estimate of the whole year. Its head is the title and the line that says what the
 /// estimate counts, with no pill: the title says it is an estimate, and no figure of the card carries the sign "≈". At
 /// the right end of the head stands the button that opens Odhad odvodů for the rest; where the head has not the room
-/// for both, the button stands under the title. Under a hairline stand the four figures (the year's income, its levies
-/// with their share of the income, what is left to settle with the returns, and the net income per month), side by
-/// side 40 points apart, each as wide as its words and at most 240 points, and on to further rows where they do not
-/// fit. Under a second hairline stands the chart of the year's months (`PredictionChart`), when the card has them.
+/// for both, the button stands under the title. The five figures stand in two rows by meaning, each under a hairline,
+/// so that no figure wraps alone: the year's (its income, its levies with their share of the income, and what is left
+/// to settle with the returns), then the ones per month (the net income, with the green dot, and what to set aside).
+/// The figures of a row are side by side 40 points apart, each as wide as its words and at most 240 points, and go on
+/// to further rows only where the card is too narrow for the row. Under a third hairline stands the chart of the
+/// year's months (`PredictionChart`), when the card has them.
 struct PredictionCard: View {
     let card: PredictionCardData
 
@@ -44,15 +47,10 @@ struct PredictionCard: View {
         Card(spacing: PredictionCardMetrics.spacing, label: "Odhad za celý rok") {
             header
             part {
-                FigureRow(
-                    spacing: PredictionCardMetrics.figureSpacing,
-                    maxTileWidth: PredictionCardMetrics.figureMaximumWidth
-                ) {
-                    ForEach(card.stats) { stat in
-                        FigureTile(
-                            FigureTileData(label: stat.label, figure: stat.value, share: stat.share, note: stat.sub))
-                    }
-                }
+                figureRow(card.stats)
+            }
+            part {
+                figureRow(card.monthStats)
             }
             if !card.chart.isEmpty {
                 part {
@@ -69,6 +67,20 @@ struct PredictionCard: View {
         VStack(alignment: .leading, spacing: PredictionCardMetrics.hairlineGap) {
             Hairline()
             content()
+        }
+    }
+
+    /// A row of figure tiles, one for each of `stats`, side by side 40 points apart, each at most 240 points wide.
+    private func figureRow(_ stats: [PredictionMini]) -> some View {
+        FigureRow(
+            spacing: PredictionCardMetrics.figureSpacing, maxTileWidth: PredictionCardMetrics.figureMaximumWidth
+        ) {
+            ForEach(stats) { stat in
+                FigureTile(
+                    FigureTileData(
+                        label: stat.label, figure: stat.value, share: stat.share, note: stat.sub,
+                        marksNetIncome: stat.marksNetIncome))
+            }
         }
     }
 

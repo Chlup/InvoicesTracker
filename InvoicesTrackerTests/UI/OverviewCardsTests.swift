@@ -39,9 +39,12 @@ struct OverviewCardsTests {
         window.contentRect(forFrameRect: window.frame)
     }
 
-    /// The figures of the card of the estimate as tiles, the way the card makes them.
-    private func tiles(of card: PredictionCardData) -> [FigureTileData] {
-        card.stats.map { FigureTileData(label: $0.label, figure: $0.value, share: $0.share, note: $0.sub) }
+    /// The figures of a row of the card of the estimate as tiles, the way the card makes them.
+    private func tiles(of stats: [PredictionMini]) -> [FigureTileData] {
+        stats.map {
+            FigureTileData(
+                label: $0.label, figure: $0.value, share: $0.share, note: $0.sub, marksNetIncome: $0.marksNetIncome)
+        }
     }
 
     /// The card of the estimate of the prediction sample's 2026 as of 17. 10. 2026, without the chart of its months.
@@ -66,8 +69,7 @@ struct OverviewCardsTests {
         #expect(found[1].bottom > picture.size.height - 1.5, "The second is at \(found[1]) in \(picture.size)")
         let tile = FigureTile(
             FigureTileData(
-                label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub,
-                marksNetIncome: true, marker: .line))
+                label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub))
         let tileHeight = NSHostingView(rootView: tile).fittingSize.height
         // The height that a hosting view fits is rounded up to a whole point, so the tiles are up to a point lower.
         let expected = 1 + 12 + tileHeight + 12 + 1
@@ -104,13 +106,34 @@ struct OverviewCardsTests {
         }
     }
 
+    /// The green dot marks the average per month, and not the net income of the year so far, and there is no green line
+    /// anywhere in the strip: the green pixels fit a square of 8 points, in front of the words of the average.
+    @Test func onlyTheMonthlyTileOfTheStripHasTheGreenDotOf8Points() throws {
+        let green = try OffscreenPicture.bytes(of: Palette.green, in: .light)
+        let picture = try OffscreenPicture(
+            of: NetIncomeStrip(netIncome: netIncome).frame(width: 700, alignment: .leading).background(Palette.bgCard),
+            in: .light)
+
+        let extent = try #require(picture.extent(near: green, by: 6))
+
+        #expect((extent.width - 8).magnitude <= 1, "The mark is \(extent.width) points wide")
+        #expect((extent.height - 8).magnitude <= 1, "The mark is \(extent.height) points high")
+        let year = NSHostingView(
+            rootView: FigureTile(
+                FigureTileData(label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub))
+        ).fittingSize.width
+        // The dot is left of the words of the average, which stand after the year's tile and the gap of 48.
+        #expect(extent.minX > year + 48 - 1, "The dot is at \(extent), the year's tile is \(year) wide")
+    }
+
     // MARK: The estimate of the whole year
 
-    /// The card has no pill "odhad" and no sign "≈" anywhere in what VoiceOver reads; its four figures stand in one row
-    /// 40 points apart, level at the top, none of them more than 240 points wide, and the long line under the levies
-    /// wraps in its tile; the button Odhad odvodů, a button inside a card, is 28 points tall at the end of the head, 20
-    /// points from the edge.
-    @Test func theEstimateCardHasNoPillAndItsFourFiguresStand40PointsApartAtMost240Wide() async throws {
+    /// The card has no pill "odhad" and no sign "≈" anywhere in what VoiceOver reads; its three figures of the year
+    /// stand in one row 40 points apart, level at the top, none of them more than 240 points wide, and the long line
+    /// under the levies wraps in its tile; the two figures per month stand in a row of their own, 40 points apart,
+    /// level, and under the first row; the button Odhad odvodů, a button inside a card, is 28 points tall at the end of
+    /// the head, 20 points from the edge.
+    @Test func theEstimateCardHasNoPillAndItsFiguresStandInTwoRowsOf40PointsApartAtMost240Wide() async throws {
         let card = try estimateCard()
         var opened = 0
         let view = PredictionCard(card: card, showPrediction: { opened += 1 }).frame(width: 1_000).padding(24)
@@ -123,21 +146,31 @@ struct OverviewCardsTests {
                 #expect(!readings.contains("odhad"), "The pill is read: \(readings)")
                 #expect(readings.allSatisfy { !$0.contains("≈") }, "A sign of an estimate is read: \(readings)")
 
-                let starts = ["Příjmy za rok, ", "Odvody, ", "Doplatek, ", "Čistý příjem průměrně za měsíc, "]
-                let frames = try starts.map { start in
-                    try #require(frameOfText(startingWith: start, in: window), "No figure \(start)")
+                @MainActor func frames(_ starts: [String]) throws -> [CGRect] {
+                    try starts.map { start in
+                        try #require(frameOfText(startingWith: start, in: window), "No figure \(start)")
+                    }
                 }
-                #expect(abs(frames[0].minX - groupFrame.minX - 20) < 1, "The first figure is at \(frames[0])")
-                for index in frames.indices.dropFirst() {
-                    let (before, after) = (frames[index - 1], frames[index])
-                    #expect(abs(after.minX - before.maxX - 40) < 1, "The figures are \(before) and \(after)")
-                    #expect(abs(after.maxY - before.maxY) < 1, "The figures are not level: \(before), \(after)")
+                let year = try frames(["Příjmy za rok, ", "Odvody, ", "Doplatek, "])
+                let month = try frames(["Čistý příjem průměrně za měsíc, ", "Odkládat průměrně za měsíc, "])
+                #expect(abs(year[0].minX - groupFrame.minX - 20) < 1, "The first figure is at \(year[0])")
+                #expect(abs(month[0].minX - groupFrame.minX - 20) < 1, "The first of the month is at \(month[0])")
+                for row in [year, month] {
+                    for index in row.indices.dropFirst() {
+                        let (before, after) = (row[index - 1], row[index])
+                        #expect(abs(after.minX - before.maxX - 40) < 1, "The figures are \(before) and \(after)")
+                        #expect(abs(after.maxY - before.maxY) < 1, "The figures are not level: \(before), \(after)")
+                    }
                 }
-                for frame in frames {
+                for frame in year + month {
                     #expect(frame.width <= 240.5, "A figure is \(frame.width) points wide")
                 }
                 // The line under the levies is wider than 240 points, so it wraps there and the tile is taller.
-                #expect(frames[1].height > frames[0].height + 10, "The levies are \(frames[1]), income \(frames[0])")
+                #expect(year[1].height > year[0].height + 10, "The levies are \(year[1]), income \(year[0])")
+                // The figures per month are a row under the year's, with a hairline and 14 points on each side of it.
+                let yearBottom = year.map(\.minY).min() ?? 0
+                let monthTop = month.map(\.maxY).max() ?? 0
+                #expect(abs(yearBottom - monthTop - (14 + 1 + 14)) < 2, "The rows are \(year) and \(month)")
 
                 let button = try #require(accessibilityButton(labelled: "Odhad odvodů", in: window))
                 let buttonFrame = try #require(button.accessibilityFrame?())
@@ -149,15 +182,15 @@ struct OverviewCardsTests {
         }
     }
 
-    /// Where the card is too narrow for the four figures they go on to the next row, 12 points lower, each of them
-    /// still at most 240 points wide and at the left edge of the card.
+    /// Where the card is too narrow for the year's three figures they go on to the next row, 12 points lower, each of
+    /// them still at most 240 points wide and at the left edge of the card.
     @Test func theFiguresOfTheEstimateGoOnToRowsOf12PointsWhereTheCardIsNarrow() async throws {
         let card = try estimateCard()
         let view = PredictionCard(card: card, showPrediction: {}).frame(width: 560).padding(24)
-        try await withHostedView(view, size: CGSize(width: 608, height: 500)) { window in
+        try await withHostedView(view, size: CGSize(width: 608, height: 700)) { window in
             try await withAccessibilityElements {
                 try await waitUntil { frameOfText(startingWith: "Příjmy za rok, ", in: window) != nil }
-                let starts = ["Příjmy za rok, ", "Odvody, ", "Doplatek, ", "Čistý příjem průměrně za měsíc, "]
+                let starts = ["Příjmy za rok, ", "Odvody, ", "Doplatek, "]
                 let frames = try starts.map { start in
                     try #require(frameOfText(startingWith: start, in: window), "No figure \(start)")
                 }
@@ -184,29 +217,51 @@ struct OverviewCardsTests {
         }
     }
 
-    /// The figures stand under a hairline that runs the width of the card inside its padding, 14 points above them,
-    /// and nothing else is a line across the card (the card has no chart here).
-    @Test func theFiguresOfTheEstimateStandUnderOneHairline() throws {
+    /// The figures stand in two rows, each under a hairline that runs the width of the card inside its padding, 14
+    /// points above them, and nothing else is a line across the card (the card has no chart here).
+    @Test func theFiguresOfTheEstimateStandInTwoRowsUnderTwoHairlines() throws {
         let card = try estimateCard()
         let separator = try OffscreenPicture.bytes(of: Palette.sep, in: .light)
         let picture = try OffscreenPicture(
             of: PredictionCard(card: card, showPrediction: {}).frame(width: 1_000), in: .light)
         let found = lines(in: picture.rows(near: separator, from: 24, to: 976, by: 3))
 
-        #expect(found.count == 1, "The lines across the card are \(found)")
-        guard let line = found.first else { return }
-        let figures = NSHostingView(
-            rootView: FigureRow(spacing: 40, maxTileWidth: 240) {
-                ForEach(Array(tiles(of: card).enumerated()), id: \.offset) { _, tile in
-                    FigureTile(tile)
+        #expect(found.count == 2, "The lines across the card are \(found)")
+        guard found.count == 2 else { return }
+        func height(of stats: [PredictionMini]) -> CGFloat {
+            NSHostingView(
+                rootView: FigureRow(spacing: 40, maxTileWidth: 240) {
+                    ForEach(Array(tiles(of: stats).enumerated()), id: \.offset) { _, tile in
+                        FigureTile(tile)
+                    }
                 }
-            }
-            .frame(width: 960, alignment: .leading)
-        ).fittingSize.height
-        // Under the line: 14 points, the figures, and the padding of 20.
+                .frame(width: 960, alignment: .leading)
+            ).fittingSize.height
+        }
+        let (year, month) = (height(of: card.stats), height(of: card.monthStats))
+        // Between the lines: 14 points, the year's figures and 14 points. Under the second: 14 points, the figures per
+        // month and the padding of 20.
         #expect(
-            abs(picture.size.height - line.bottom - (14 + figures + 20)) < 1.5,
-            "The card is \(picture.size.height) points tall, the line ends at \(line.bottom), the figures \(figures)")
+            abs(found[1].top - found[0].bottom - (14 + year + 14)) < 1.5,
+            "The lines are \(found), the year's figures \(year) tall")
+        #expect(
+            abs(picture.size.height - found[1].bottom - (14 + month + 20)) < 1.5,
+            "The card is \(picture.size.height) points tall, the second line ends at \(found[1].bottom)")
+    }
+
+    /// The net income of the card is marked by the green dot of 8 points, and nothing else in the card is green: the
+    /// green pixels of the card fit a square of 8 points, in a light and in a dark window.
+    @Test(arguments: [ColorScheme.light, ColorScheme.dark])
+    func theNetIncomeOfTheEstimateCardIsMarkedByADotOf8Points(scheme: ColorScheme) throws {
+        let card = try estimateCard()
+        let green = try OffscreenPicture.bytes(of: Palette.green, in: scheme)
+        let view = PredictionCard(card: card, showPrediction: {}).frame(width: 1_000).background(Palette.bgCard)
+        let picture = try OffscreenPicture(of: view, in: scheme)
+
+        let extent = try #require(picture.extent(near: green, by: 6))
+
+        #expect((extent.width - 8).magnitude <= 1, "The mark is \(extent.width) points wide")
+        #expect((extent.height - 8).magnitude <= 1, "The mark is \(extent.height) points high")
     }
 
     // MARK: The two lists
