@@ -61,9 +61,6 @@
     "Bankovní účet" : {
 
     },
-    "bez DPH" : {
-
-    },
     "Bez DPH" : {
 
     },
@@ -401,6 +398,9 @@
     "Odstranit…" : {
 
     },
+    "Odvod" : {
+
+    },
     "Odvody podle úřadů" : {
 
     },
@@ -564,12 +564,6 @@
 
     },
     "Rozpis výpočtu simulace" : {
-
-    },
-    "s DPH" : {
-
-    },
-    "S DPH" : {
 
     },
     "Šablona" : {
