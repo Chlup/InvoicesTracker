@@ -2,56 +2,10 @@ import Foundation
 
 // MARK: - The sections
 
-/// The sign in front of a row of the breakdown, which says how its value goes into the calculation: it is taken from
-/// the rows above it, added to them, multiplied by a rate, divided by a number, or it is their result.
-nonisolated enum ComputationSign: String, Sendable, Hashable {
-    /// The row stands on its own or starts a calculation.
-    case blank = ""
-    case minus = "\u{2212}"
-    case plus = "+"
-    case equals = "="
-    case times = "×"
-    case divided = "÷"
-}
-
-/// How a row of the breakdown is set.
-nonisolated enum ComputationRowStyle: Sendable, Hashable {
-    case plain
-
-    /// A result of the rows above it: bold.
-    case strong
-
-    /// What a section leads to: larger, with a rule above it.
-    case total
-}
-
-/// A line of the breakdown: what it is, its value as it is shown, and under it, where there is something to explain (a
-/// cap, a rounding, a convention), a note.
-nonisolated struct ComputationRow: Identifiable, Sendable, Hashable {
-    var label: String
-    var value: String
-    var note: String?
-    var sign = ComputationSign.blank
-    var style = ComputationRowStyle.plain
-
-    /// The label: no two rows of a section have the same one.
-    var id: String {
-        label
-    }
-
-    /// What VoiceOver reads for the row: the label, the value with its sign, as "−126 260", and the note. The sign in
-    /// front of the row is only for the eyes; a subtracted value carries its minus.
-    var spokenText: String {
-        let spoken = "\(label): \(value)"
-        guard let note else { return spoken }
-        return "\(spoken). \(note)"
-    }
-}
-
 /// A part of the breakdown, a card of the screen.
 nonisolated struct ComputationSection: Identifiable, Sendable, Hashable {
     var title: String
-    var rows: [ComputationRow]
+    var rows: [BillRow]
 
     /// The authority the section is about, whose colour marks it. Nil for a section that is about none.
     var authority: Authority?

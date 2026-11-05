@@ -303,10 +303,10 @@ struct ComputationViewsTests {
         ComputationSection(
             title: "Daň z příjmů",
             rows: [
-                ComputationRow(label: "Zisk", value: "991\u{00A0}771,00"),
-                ComputationRow(label: "Nezdanitelné části základu", value: "\u{2212}156\u{00A0}480,00", sign: .minus),
-                ComputationRow(label: "Základ daně", value: "835\u{00A0}200", sign: .equals, style: .strong),
-                ComputationRow(label: "Zbývá", value: "71\u{00A0}440\u{00A0}Kč", sign: .equals, style: .total),
+                BillRow(label: "Zisk", value: "991\u{00A0}771,00"),
+                BillRow(label: "Nezdanitelné části základu", value: "\u{2212}156\u{00A0}480,00", sign: .minus),
+                BillRow(label: "Základ daně", value: "835\u{00A0}200", sign: .equals, style: .strong),
+                BillRow(label: "Zbývá", value: "71\u{00A0}440\u{00A0}Kč", sign: .equals, style: .total),
             ],
             authority: authority, tag: tag, isNetIncome: isNetIncome)
     }
@@ -381,7 +381,7 @@ struct ComputationViewsTests {
 
     @Test func theCardIsPaddedBy20AboveAndBesideTheHeaderBy10UnderItBy8AboveAndBelowARowAndBy12AtItsFoot() {
         let section = ComputationSection(
-            title: "Daň z příjmů", rows: [ComputationRow(label: "Zisk", value: "991\u{00A0}771,00", sign: .minus)],
+            title: "Daň z příjmů", rows: [BillRow(label: "Zisk", value: "991\u{00A0}771,00", sign: .minus)],
             authority: .tax, tag: "Finanční úřad")
         let height = fittingSize(of: ComputationCard(section: section), width: 400).height
 
@@ -392,14 +392,14 @@ struct ComputationViewsTests {
     }
 
     @Test func theValueOfATotalIsSetInTitle2AndTheValueOfAnotherRowInBody() {
-        func height(of row: ComputationRow) -> CGFloat {
+        func height(of row: BillRow) -> CGFloat {
             let section = ComputationSection(title: "Daň", rows: [row], authority: .tax)
             return fittingSize(of: ComputationCard(section: section), width: 400).height
         }
 
-        let plain = height(of: ComputationRow(label: "Zisk", value: "71\u{00A0}440", sign: .minus))
+        let plain = height(of: BillRow(label: "Zisk", value: "71\u{00A0}440", sign: .minus))
         let total = height(
-            of: ComputationRow(label: "Zbývá", value: "71\u{00A0}440\u{00A0}Kč", sign: .equals, style: .total))
+            of: BillRow(label: "Zbývá", value: "71\u{00A0}440\u{00A0}Kč", sign: .equals, style: .total))
 
         // The row of a line is as high as its tallest text: the value, in title 2 on the total, in body on the others.
         // The rule above the total is half a point thicker. A hosted view is as high as a whole number of points.

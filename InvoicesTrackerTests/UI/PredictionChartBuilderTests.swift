@@ -116,7 +116,7 @@ struct PredictionChartBuilderTests {
         let overview = OverviewBuilder.build(
             OverviewInput(
                 year: 2026, asOf: civilDate("2026-10-31"), today: today, result: outcome.result,
-                advances: AdvancePlan.empty, latestReceipts: [], chartMode: .months, chartWithVAT: false,
+                advances: AdvancePlan.empty, latestReceipts: [], chartMode: .months,
                 chartRows: rows, chartYears: [2026], vatByMonth: [Int64](repeating: 0, count: 12),
                 vatToCheckMonths: [], foreignCurrencies: [.usd], uniformRates: [], yearsAtUniformRate: []))
         #expect(overview.columns[9].issuedNetHalere == 200_000)

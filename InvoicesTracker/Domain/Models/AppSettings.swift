@@ -82,9 +82,6 @@ nonisolated struct AppSettings: Sendable, Hashable, Codable {
     var localBackupPendingSince: Date?
     var chartMode = ChartMode.months
 
-    /// Whether the chart shows amounts with VAT.
-    var chartWithVAT = false
-
     /// The label of the recovery code that the code in force replaced, such as "kód č. 1 z 17. 10. 2026": the backups
     /// made before the change, Time Machine's too, still need it. Nil while the first code is in force. It names the
     /// code, and nothing of it is derived from the code.
@@ -117,7 +114,6 @@ nonisolated extension AppSettings {
         lastOffMacBackup = try values.decodeIfPresent(Date.self, forKey: .lastOffMacBackup)
         localBackupPendingSince = try values.decodeIfPresent(Date.self, forKey: .localBackupPendingSince)
         chartMode = try values.decodeIfPresent(ChartMode.self, forKey: .chartMode) ?? chartMode
-        chartWithVAT = try values.decodeIfPresent(Bool.self, forKey: .chartWithVAT) ?? chartWithVAT
         replacedRecoveryCodeLabel = try values.decodeIfPresent(String.self, forKey: .replacedRecoveryCodeLabel)
         replacedRecoveryCodeNumber = try values.decodeIfPresent(Int.self, forKey: .replacedRecoveryCodeNumber)
         backupFolderChosen = try values.decodeIfPresent(Date.self, forKey: .backupFolderChosen)

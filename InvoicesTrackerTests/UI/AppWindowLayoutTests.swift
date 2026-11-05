@@ -1763,40 +1763,35 @@ struct AppWindowLayoutTests {
     }
 
     /// The page fits the window with the card of the estimate, and the card holds its parts: the title (with no pill)
-    /// and the line under it, the button to the right of them, under them the five figures (the income, the levies,
-    /// the settlement, the net income and what to set aside) 40 points apart and none of them more than 240 wide or
-    /// beyond the card or on another, and under the figures the chart of the year, whose months VoiceOver reads within
-    /// the card. The figures stand in two rows by meaning, the year's three and the two per month, at the least room
-    /// (938 points of page), in a large window, with the sidebar as wide as it goes (850 points of page) and in a large
-    /// window with that sidebar: no figure wraps alone. No sign of an estimate is read anywhere in the card.
+    /// and the line under it, the button to the right of them, under them the calculation of the year and, beside it,
+    /// the panel of how its levies are paid, each row whole within its column and the card, and under them the chart
+    /// of the year, whose months VoiceOver reads within the card. The two blocks stand side by side at the least room
+    /// (938 points of page), in a large window, with the sidebar as wide as it goes (850 points of page, 810 inside
+    /// the padding of the card, more than the 712 the two need) and in a large window with that sidebar. No sign of an
+    /// estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     try await showOverviewWithTheEstimate(of: app, in: window)
 
-                    for (size, figureRows) in [
-                        (AppWindowSize.minimum, [3, 2]), (AppWindowSize.large, [3, 2]), (AppWindowSize.minimum, [3, 2]),
-                    ] {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
-                            problems(ofPageIn: window)
-                                + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: figureRows)
+                            problems(ofPageIn: window) + problems(ofThePartsOfTheEstimateCardIn: window)
                         }
                     }
 
                     // The detail of the least window with the sidebar as wide as it goes: 890 points.
                     widenSidebar(of: window)
                     try await expectSettled(window) {
-                        problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
+                        problems(ofPageIn: window) + problems(ofThePartsOfTheEstimateCardIn: window)
                     }
 
-                    // A large window again, the sidebar still as wide as it goes: the same two rows.
+                    // A large window again, the sidebar still as wide as it goes: the blocks side by side again.
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
-                        problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
+                        problems(ofPageIn: window) + problems(ofThePartsOfTheEstimateCardIn: window)
                     }
                 }
             }
@@ -1887,37 +1882,47 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the line under the
-    /// title, the five figures, the button or the months of the chart are not there, are beyond the card, lie on one
-    /// another, or are not arranged as the card arranges them; the card has a pill "odhad" or a sign "≈" among
-    /// what VoiceOver reads. The button stands to the right of the title and the line, in a row level with the title's:
-    /// its middle is within the height of the title and the line. The figures stand under the title and the button, in
-    /// rows of `figureRows` figures from the top; the figures of a row are level, side by side in the order income,
-    /// levies, settlement, net income, set-aside, 40 points apart and at most 240 points wide, and each row is under
-    /// the one before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
-    /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
-    /// has the smaller y. Needs the accessibility elements.
-    private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
+    /// title, the button, a row of the calculation of the year, the title of the panel of how its levies are paid or a
+    /// row of the panel is not there, is beyond the card, or lies on another part; or the card has a pill "odhad" or a
+    /// sign "≈" among what VoiceOver reads. The button stands to the right of the title and the line, in a row level
+    /// with the title's: its middle is within the height of the title and the line. The calculation and the panel
+    /// stand under the title and the button, side by side, as the card is wider than the 712 points they need inside
+    /// its padding in every window the tests show it in, in two columns of one width 32 points apart: the rows of the
+    /// calculation one under the other in the first, and the panel's title and rows in the second, 14 points inside
+    /// the panel. VoiceOver frames a row by its texts, which end with the value at the right edge of its column (of
+    /// the panel's padding in the panel), so that no value is cut or pushed out. The chart stands under both: the
+    /// elements VoiceOver reads for its months of September, October and November are under every row. The origin of
+    /// the screen is at the bottom left, so what is under has the smaller y. Needs the accessibility elements.
+    private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow) -> [String] {
         guard let card = accessibilityElement(labelled: "Odhad za celý rok", in: window),
             let cardFrame = card.accessibilityFrame?()
         else {
             return ["No card Odhad za celý rok"]
         }
         // What VoiceOver reads for each part of the card, which starts with the words that find it.
-        let parts = [
+        let head = [
             (name: "the title", reading: "Odhad za celý rok 2026"),
-            (name: "the line under the title", reading: "z faktur do "), (name: "the income", reading: "Příjmy za rok"),
-            (name: "the levies", reading: "Odvody, "), (name: "the settlement", reading: "Doplatek, "),
-            (name: "the net income", reading: "Čistý příjem průměrně za měsíc"),
-            (name: "the set-aside", reading: "Odkládat průměrně za měsíc"),
-            (name: "the button", reading: "Odhad odvodů"),
+            (name: "the line under the title", reading: "z faktur do "), (name: "the button", reading: "Odhad odvodů"),
         ]
-        let children = (card.accessibilityChildren?() ?? []).map { $0 as AnyObject }
+        let calculation = [
+            (name: "the income", reading: "Příjmy za rok: "), (name: "the levies", reading: "Odvody 17,0\u{00A0}%: "),
+            (name: "the net income", reading: "Čistý příjem 83,0\u{00A0}%: "),
+            (name: "the average", reading: "Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: "),
+        ]
+        let panel = [
+            (name: "the title of the panel", reading: "Jak odvody zaplatíte"),
+            (name: "the advances to the insurances", reading: "Zálohy sociální a zdravotní: "),
+            (name: "the tax advances", reading: "Zálohy na daň: "), (name: "the doplatek", reading: "Doplatek: "),
+            (name: "the set-aside", reading: "Odkládat průměrně za měsíc: "),
+        ]
+        let parts = head + calculation + panel
+        let elements = descendants(of: card)
         var frames: [String: CGRect] = [:]
         var found: [String] = []
         for (name, reading) in parts {
-            let part = children.first { child in
-                let value: (() -> Any?)? = child.accessibilityValue
-                let words = (value?() ?? nil) as? String ?? child.accessibilityLabel?() ?? ""
+            let part = elements.first { element in
+                let value: (() -> Any?)? = element.accessibilityValue
+                let words = (value?() ?? nil) as? String ?? element.accessibilityLabel?() ?? ""
                 return words.hasPrefix(reading)
             }
             guard let frame = part?.accessibilityFrame?() else {
@@ -1942,10 +1947,6 @@ struct AppWindowLayoutTests {
         else {
             return found
         }
-        // The figures in the order they stand in.
-        let figures = [
-            "the income", "the levies", "the settlement", "the net income", "the set-aside",
-        ].compactMap { frames[$0] }
         let names = parts.map(\.name)
         for (index, name) in names.enumerated() {
             for other in names[(index + 1)...] {
@@ -1966,44 +1967,45 @@ struct AppWindowLayoutTests {
             found.append(
                 "The button is not level with the title: \(button), the title spans \(titleBottom)–\(titleTop)")
         }
-        // Every figure is under the title and the button.
+        let rows = calculation.compactMap { frames[$0.name] }
+        let panelParts = panel.compactMap { frames[$0.name] }
         let headBottom = min(titleBottom, button.minY)
-        if figures.contains(where: { $0.maxY > headBottom + 0.5 }) {
-            found.append("The figures are not under the title and the button: \(figures), they end at \(headBottom)")
+        if (rows + panelParts).contains(where: { $0.maxY > headBottom + 0.5 }) {
+            found.append("The calculation and the panel are not under the head: they start above \(headBottom)")
         }
-        // The figures of a row share their top, the largest y.
-        var rows: [[CGRect]] = []
-        for figure in figures {
-            if let top = rows.last?.first?.maxY, (top - figure.maxY).magnitude < 0.5 {
-                rows[rows.count - 1].append(figure)
-            } else {
-                rows.append([figure])
-            }
-        }
-        if rows.map(\.count) != figureRows {
-            found.append("The figures are in rows of \(rows.map(\.count)), not of \(figureRows): \(figures)")
-        }
+        // Two columns of one width, 32 points apart, inside the padding of 20.
+        let column = (cardFrame.width - 40 - 32) / 2
+        let left = cardFrame.minX + 20
+        let panelLeft = left + column + 32
         for row in rows {
-            for (left, right) in zip(row, row.dropFirst()) where left.maxX > right.minX + 0.5 {
-                found.append("The figures of a row are not side by side in their order: \(row)")
+            if row.minX < left - 0.5 {
+                found.append("A row of the calculation starts before the padding of the card: \(row), \(cardFrame)")
             }
-            for (left, right) in zip(row, row.dropFirst()) where (right.minX - left.maxX - 40).magnitude > 1 {
-                found.append("The figures of a row are not 40 points apart: \(left), \(right)")
+            if (row.maxX - (left + column)).magnitude > 1 {
+                found.append("A row of the calculation does not end at its column, \(left + column): \(row)")
             }
         }
-        for figure in figures where figure.width > 240.5 {
-            found.append("A figure is \(figure.width) points wide, not at most 240: \(figure)")
+        if let title = panelParts.first, (title.minX - (panelLeft + 14)).magnitude > 1 {
+            found.append("The title of the panel is not 14 points inside the second column: \(title), \(cardFrame)")
         }
-        for (above, below) in zip(rows, rows.dropFirst()) {
-            if let bottom = above.map(\.minY).min(), let top = below.map(\.maxY).max(), top > bottom + 0.5 {
-                found.append("A row of figures is not under the row before it: \(below), \(above)")
+        for part in panelParts.dropFirst() {
+            if part.minX < panelLeft + 14 - 0.5 {
+                found.append("A row of the panel is not in the second column, inside the panel: \(part), \(cardFrame)")
             }
+            if (part.maxX - (panelLeft + column - 14)).magnitude > 1 {
+                found.append("A row of the panel does not end at its padding, \(panelLeft + column - 14): \(part)")
+            }
+        }
+        for (above, below) in zip(rows, rows.dropFirst()) where below.maxY > above.minY + 0.5 {
+            found.append("The rows of the calculation are not one under the other: \(above), \(below)")
+        }
+        for (above, below) in zip(panelParts, panelParts.dropFirst()) where below.maxY > above.minY + 0.5 {
+            found.append("The parts of the panel are not one under the other: \(above), \(below)")
         }
         // A month of the chart, found by the words VoiceOver starts it with: a past one, the one of today and one to
         // come. The chart of Příjmy reads its months as well, and September with the same words, so they are looked
         // for in the card.
-        let figuresBottom = figures.map(\.minY).min() ?? cardFrame.maxY
-        let elements = descendants(of: card)
+        let blocksBottom = (rows + panelParts).map(\.minY).min() ?? cardFrame.maxY
         for start in ["Září 2026:", "Říjen 2026 · do", "Listopad 2026 · odhad:"] {
             let month = elements.first { ($0.accessibilityLabel?() ?? "").hasPrefix(start) }
             guard let frame = month?.accessibilityFrame?() else {
@@ -2013,20 +2015,31 @@ struct AppWindowLayoutTests {
             if !cardFrame.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
                 found.append("The month '\(start)' is not within the card: \(frame), the card \(cardFrame)")
             }
-            if frame.maxY > figuresBottom + 0.5 {
-                found.append("The month '\(start)' is not under the figures: \(frame), they end at \(figuresBottom)")
+            if frame.maxY > blocksBottom + 0.5 {
+                found.append("The month '\(start)' is not under the calculation: \(frame), it ends at \(blocksBottom)")
             }
         }
         return found
     }
 
-    // MARK: The net income above the chart on Přehled
+    // MARK: The calculation above the chart on Přehled
 
-    /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today: the strip of the net income stands in the
-    /// card "Příjmy" above the legend of the chart, the net income of the year so far and its average per month side by
-    /// side, level and 48 points apart, at the least room, at a large size and at the least room again, with the page
-    /// fitting the window.
-    @Test func theNetIncomeStripStandsInThePrijmyCardAboveTheChart() async throws {
+    /// What VoiceOver reads for the rows of the calculation in the card "Příjmy" of Přehled on the prediction sample as
+    /// of Saturday 17. 10. 2026, today: the income of the year so far, the levies with their share and their parts, the
+    /// net income with its share, and the average per month over the ten months.
+    private static let calculationReadings = [
+        "Příjmy od 1.\u{00A0}1. do 17.\u{00A0}10.: 2\u{00A0}191\u{00A0}771\u{00A0}Kč",
+        "Odvody 11,8\u{00A0}%: 258\u{00A0}300\u{00A0}Kč."
+            + " daň 32\u{00A0}076 · sociální 159\u{00A0}279 · zdravotní 66\u{00A0}945",
+        "Čistý příjem 88,2\u{00A0}%: 1\u{00A0}933\u{00A0}471\u{00A0}Kč",
+        "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč",
+    ]
+
+    /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today: the calculation of the net income stands in
+    /// the card "Příjmy" under its head and above the legend of the chart, its four rows one under the other, each read
+    /// as one phrase, whole within the card and at most 420 points wide, at the least room, at a large size and at the
+    /// least room again, with the page fitting the window.
+    @Test func theCalculationStandsInThePrijmyCardUnderItsHeadAndAboveTheChart() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
@@ -2035,7 +2048,8 @@ struct AppWindowLayoutTests {
                     for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
-                            problems(ofPageIn: window) + problems(ofTheNetIncomeStripIn: window)
+                            problems(ofPageIn: window)
+                                + problems(ofTheCalculationIn: window, readings: Self.calculationReadings)
                         }
                     }
                 }
@@ -2043,70 +2057,52 @@ struct AppWindowLayoutTests {
         }
     }
 
-    /// What is wrong with the strip of the net income in the card "Příjmy" of Přehled in `window`, in words: the net
-    /// income of the year so far, its average per month or the legend of the chart is not there or is beyond the card,
-    /// VoiceOver does not read a figure as one phrase with its words and the line under it, the two figures do not
-    /// stand level side by side in that order, they are not above the legend, or the legend of the chart by months has
-    /// the key of the net income line of the chart by years. The origin of the screen is at the bottom left, so what is
-    /// above has the larger y. Needs the accessibility elements.
-    private func problems(ofTheNetIncomeStripIn window: NSWindow) -> [String] {
+    /// What is wrong with the calculation in the card "Příjmy" of Přehled in `window`, in words: a row that VoiceOver
+    /// reads as one of `readings` is not there or is beyond the card; its texts, which VoiceOver frames it by, do not
+    /// start inside the padding of 20 of the card or do not end, with the value, at the right edge of the 420 points
+    /// the rows have, so that a value would be cut or pushed out; the rows do not stand one under the other in their
+    /// order; they are not under the head of the card (its line, which stands under its title) or not above the legend
+    /// of the chart; or the legend of the chart by months has the key of the net income line of the chart by years.
+    /// The origin of the screen is at the bottom left, so what is above has the larger y. Needs the accessibility
+    /// elements.
+    private func problems(ofTheCalculationIn window: NSWindow, readings: [String]) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
         }
-        var found: [String] = []
-        // Each figure is one element that VoiceOver reads as one phrase: its words, the figure and the line under it.
-        let phrases = [
-            (
-                words: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.", figure: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-                line: "88,2\u{00A0}% příjmů bez DPH po odvodech"
-            ),
-            (
-                words: "Čistý příjem průměrně za měsíc", figure: "193\u{00A0}347\u{00A0}Kč",
-                line: "průměr za leden–říjen"
-            ),
-        ]
-        // The card of the estimate below it has a figure with the words of the average per month, so a phrase is found
-        // by its words and its figure, which VoiceOver reads one after the other with a comma between them.
-        let readings = accessibilityReadings(in: window)
-        for (words, figure, line) in phrases {
-            let reading = readings.first { $0.hasPrefix(words + ", " + figure) } ?? ""
-            if !reading.contains(figure) || !reading.hasSuffix(line) {
-                found.append("'\(words)' is not read with its figure and its line as one phrase: '\(reading)'")
-            }
+        guard let head = frameOfText(startingWith: "Rok 2026 po měsících", in: window) else {
+            return ["Cannot find the line under the title of the card Příjmy"]
         }
-        // What VoiceOver reads for each part, which starts with the words that find it.
-        let parts = [
-            (name: "the net income of the year", reading: phrases[0].words),
-            (name: "the average per month", reading: phrases[1].words + ", " + phrases[1].figure),
-            (name: "the legend of the chart", reading: "Vystaveno (podle data vystavení)"),
-        ]
-        var frames: [CGRect] = []
-        for (name, reading) in parts {
-            guard let frame = frameOfText(startingWith: reading, in: window) else {
-                found.append("Cannot find \(name) in the window")
+        guard let legend = frameOfText(startingWith: "Vystaveno (podle data vystavení)", in: window) else {
+            return ["Cannot find the legend of the chart"]
+        }
+        var found: [String] = []
+        var rows: [CGRect] = []
+        for reading in readings {
+            guard let row = accessibilityElement(labelled: reading, in: window)?.accessibilityFrame?() else {
+                found.append("No row of the calculation is read as '\(reading)'")
                 continue
             }
-            frames.append(frame)
-            if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
-                found.append("\(name) is not within the card: \(frame), the card \(card)")
+            rows.append(row)
+            if !card.insetBy(dx: -0.5, dy: -0.5).contains(row) {
+                found.append("'\(reading)' is not within the card: \(row), the card \(card)")
+            }
+            let right = card.minX + 20 + min(420, card.width - 40)
+            if (row.maxX - right).magnitude > 1 {
+                found.append("'\(reading)' does not end at \(right), 420 points inside the padding: \(row)")
+            }
+            if row.minX < card.minX + 20 - 0.5 {
+                found.append("'\(reading)' starts before the padding of 20 of the card: \(row), the card \(card)")
             }
         }
-        guard frames.count == parts.count else { return found }
-        let (year, average, legend) = (frames[0], frames[1], frames[2])
-        if (year.maxY - average.maxY).magnitude > 1 {
-            found.append("The net income and its average are not level: \(year), \(average)")
+        guard rows.count == readings.count, let first = rows.first, let last = rows.last else { return found }
+        for (above, below) in zip(rows, rows.dropFirst()) where below.maxY > above.minY + 0.5 {
+            found.append("The rows of the calculation are not one under the other in their order: \(above), \(below)")
         }
-        if year.maxX > average.minX + 0.5 {
-            found.append("The net income is not to the left of its average: \(year), \(average)")
+        if first.maxY > head.minY - 0.5 {
+            found.append("The calculation is not under the head of the card: \(first), the head \(head)")
         }
-        if (average.minX - year.maxX - 48).magnitude > 1 {
-            found.append("The net income and its average are not 48 points apart: \(year), \(average)")
-        }
-        if (year.minX - card.minX - 20).magnitude > 1 {
-            found.append("The net income is not 20 points from the edge of the card: \(year), the card \(card)")
-        }
-        if min(year.minY, average.minY) < legend.maxY - 0.5 {
-            found.append("The net income and its average are not above the legend: \(year), \(average), \(legend)")
+        if last.minY < legend.maxY + 0.5 {
+            found.append("The calculation is not above the legend of the chart: \(last), the legend \(legend)")
         }
         // The net income line of the chart by months is not that of the chart by years, so its key is another.
         if frameOfText(startingWith: Self.netIncomeKeyByYears, in: window) != nil {
@@ -2116,12 +2112,12 @@ struct AppWindowLayoutTests {
     }
 
     /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today, with an unpaid invoice of 50 000,00 Kč
-    /// without VAT, issued on 5. 10. and due on 25. 10., stored: the average per month counts it, so the strip tells it
-    /// with the sign of an estimate and the line under it goes on after the months, "průměr za leden–říjen, včetně
-    /// nezaplacených faktur splatných do 31. 10.". At the least room, at a large size and at the least room again, the
-    /// net income of the year so far, the average and the legend of the chart stand wholly within the card "Příjmy",
-    /// the two figures do not lie on one another and the page fits the window.
-    @Test func theNetIncomeStripThatCountsTheInvoicesDueStaysWithinTheCardAtBothSizes() async throws {
+    /// without VAT, issued on 5. 10. and due on 25. 10., stored: the average per month counts it, so the last row of
+    /// the calculation tells it with the sign of an estimate and the note under it, "včetně nezaplacených faktur
+    /// splatných do 31. 10.". The rows above it are what has been received, as without the invoice. At the least room,
+    /// at a large size and at the least room again, the rows stand wholly within the card "Příjmy", under its head and
+    /// above the chart, and the page fits the window.
+    @Test func theCalculationThatCountsTheInvoicesDueStaysWithinTheCardAtBothSizes() async throws {
         try await PredictionSample.withStoredSample { app in
             let database = try #require(app.database)
             var invoice = Invoice.fixture(
@@ -2137,6 +2133,9 @@ struct AppWindowLayoutTests {
                 Receipt(day: app.today, czkNetHalere: 5_000_000, czkVatHalere: 1_050_000, source: .synthetic))
             let average = try AppModel.compute(year, asOf: app.today)
             let figure = PredictionBuilder.estimateSign + CzechFormat.wholeKc(NetIncome(average).monthlyKc)
+            let averageReading = "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: " + figure
+                + ". včetně nezaplacených faktur splatných do 31.\u{00A0}10."
+            let readings = Array(Self.calculationReadings.dropLast()) + [averageReading]
 
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
@@ -2145,62 +2144,12 @@ struct AppWindowLayoutTests {
                     for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
-                            problems(ofPageIn: window)
-                                + problems(ofTheStripThatCountsTheInvoicesDueIn: window, figure: figure)
+                            problems(ofPageIn: window) + problems(ofTheCalculationIn: window, readings: readings)
                         }
                     }
                 }
             }
         }
-    }
-
-    /// What is wrong with the strip of the net income in the card "Příjmy" of Přehled in `window` where its average per
-    /// month counts the unpaid invoices due this month, in words: VoiceOver does not read the average as one phrase
-    /// with `figure` (the sign of an estimate and the amount) and the whole line "průměr za leden–říjen, včetně
-    /// nezaplacených faktur splatných do 31. 10." under it; the net income of the year so far, the average or the
-    /// legend of the chart is not there or is beyond the card; the two figures lie on one another; or they are not
-    /// above the legend. The figures stand side by side or, where the card has not the room, the second under the
-    /// first. The origin of the screen is at the bottom left, so what is above has the larger y. Needs the
-    /// accessibility elements.
-    private func problems(ofTheStripThatCountsTheInvoicesDueIn window: NSWindow, figure: String) -> [String] {
-        guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
-            return ["No card Příjmy"]
-        }
-        var found: [String] = []
-        let words = "Čistý příjem průměrně za měsíc"
-        let line = "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10."
-        // The card of the estimate below the chart has a figure with the same words, so the phrase is found by its
-        // words and its figure, which VoiceOver reads one after the other with a comma between them.
-        let reading = accessibilityReadings(in: window).first { $0.hasPrefix(words + ", " + figure) } ?? ""
-        if !reading.hasSuffix(line) {
-            found.append("The average is not read with its figure and the whole line as one phrase: '\(reading)'")
-        }
-        let parts = [
-            (name: "the net income of the year", reading: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10."),
-            (name: "the average per month", reading: words + ", " + figure),
-            (name: "the legend of the chart", reading: "Vystaveno (podle data vystavení)"),
-        ]
-        var frames: [CGRect] = []
-        for (name, reading) in parts {
-            guard let frame = frameOfText(startingWith: reading, in: window) else {
-                found.append("Cannot find \(name) in the window")
-                continue
-            }
-            frames.append(frame)
-            if !card.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
-                found.append("\(name) is not within the card: \(frame), the card \(card)")
-            }
-        }
-        guard frames.count == parts.count else { return found }
-        let (year, average, legend) = (frames[0], frames[1], frames[2])
-        let overlap = year.intersection(average)
-        if overlap.width > 0.5 && overlap.height > 0.5 {
-            found.append("The net income and its average lie on one another: \(year), \(average)")
-        }
-        if min(year.minY, average.minY) < legend.maxY - 0.5 {
-            found.append("The net income and its average are not above the legend: \(year), \(average), \(legend)")
-        }
-        return found
     }
 
     /// What the legend of the chart by years says of the line of the net income, the third key of the legend.
@@ -2210,9 +2159,9 @@ struct AppWindowLayoutTests {
     private static let netIncomeKeyByMonths = "Čistý příjem (součet za faktury zaplacené v měsíci, bez DPH)"
 
     /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today, with the chart by years: the legend has the
-    /// key of the net income line, which stands in the card "Příjmy" below the strip of the net income, the columns of
-    /// the chart tell the net income of their years, and the page fits the window, at the least room, at a large size
-    /// and at the least room again.
+    /// key of the net income line, which stands in the card "Příjmy" below the calculation of the net income, the
+    /// columns of the chart tell the net income of their years, and the page fits the window, at the least room, at a
+    /// large size and at the least room again.
     @Test func theChartByYearsShowsTheNetIncomeKeyAndFitsTheWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             await app.updateAppSettings { $0.chartMode = .years }
@@ -2233,10 +2182,10 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the net income in the chart by years of Přehled in `window`, in words: the key of its line in
-    /// the legend is not there, is beyond the card "Příjmy" or does not stand below the average per month of the strip
-    /// above the chart; or a column of the chart for 2025 or 2026 does not read out the net income of its year and its
-    /// average per month, as the engine works them out for the prediction sample. The origin of the screen is at the
-    /// bottom left, so what is below has the smaller y. Needs the accessibility elements.
+    /// the legend is not there, is beyond the card "Příjmy" or does not stand below the average per month of the
+    /// calculation above the chart; or a column of the chart for 2025 or 2026 does not read out the net income of its
+    /// year and its average per month, as the engine works them out for the prediction sample. The origin of the screen
+    /// is at the bottom left, so what is below has the smaller y. Needs the accessibility elements.
     private func problems(ofTheNetIncomeInTheChartByYearsIn window: NSWindow) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
@@ -2244,18 +2193,19 @@ struct AppWindowLayoutTests {
         guard let key = frameOfText(startingWith: Self.netIncomeKeyByYears, in: window) else {
             return ["Cannot find the key of the net income line in the window"]
         }
-        // The card of the estimate below it has a figure with the same words, so the average of the strip is found by
-        // its figure as well.
-        let averageStart = "Čistý příjem průměrně za měsíc, 193\u{00A0}347\u{00A0}Kč"
-        guard let average = frameOfText(startingWith: averageStart, in: window) else {
-            return ["Cannot find the average per month of the strip in the window"]
+        // The card of the estimate below it has a row with the same words, over twelve months, so the average of the
+        // calculation is found by its months and its figure as well.
+        let averageStart = "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč"
+        guard let average = accessibilityElement(labelStartingWith: averageStart, in: window)?.accessibilityFrame?()
+        else {
+            return ["Cannot find the average per month of the calculation in the window"]
         }
         var found: [String] = []
         if !card.insetBy(dx: -0.5, dy: -0.5).contains(key) {
             found.append("The key of the net income line is not within the card: \(key), the card \(card)")
         }
         if key.maxY > average.minY + 0.5 {
-            found.append("The key of the net income line is not below the strip: \(key), the average \(average)")
+            found.append("The key of the net income line is not below the calculation: \(key), the average \(average)")
         }
         // Each column is one element that VoiceOver reads from the title of the year to the end of its average.
         let readings = accessibilityReadings(in: window)
@@ -2279,9 +2229,9 @@ struct AppWindowLayoutTests {
     }
 
     /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today, with the chart by months, which the app
-    /// starts with: the legend has the key of the net income line, which stands in the card "Příjmy" below the strip of
-    /// the net income, the columns of the chart tell the net income of their months, and the page fits the window, at
-    /// the least room, at a large size and at the least room again.
+    /// starts with: the legend has the key of the net income line, which stands in the card "Příjmy" below the
+    /// calculation of the net income, the columns of the chart tell the net income of their months, and the page fits
+    /// the window, at the least room, at a large size and at the least room again.
     @Test func theChartByMonthsShowsTheNetIncomeKeyAndFitsTheWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -2302,10 +2252,10 @@ struct AppWindowLayoutTests {
 
     /// What is wrong with the net income in the chart by months of Přehled in `window`, in words: the key of its line
     /// in the legend is not there, is beyond the card "Příjmy" or does not stand below the average per month of the
-    /// strip above the chart; or a column of the chart for February, October or November does not read out the net
-    /// income of the invoices paid in its month and the average per month of the year, as the engine works them out for
-    /// the prediction sample (November is after the day shown, so it has nothing). The origin of the screen is at the
-    /// bottom left, so what is below has the smaller y. Needs the accessibility elements.
+    /// calculation above the chart; or a column of the chart for February, October or November does not read out the
+    /// net income of the invoices paid in its month and the average per month of the year, as the engine works them out
+    /// for the prediction sample (November is after the day shown, so it has nothing). The origin of the screen is at
+    /// the bottom left, so what is below has the smaller y. Needs the accessibility elements.
     private func problems(ofTheNetIncomeInTheChartByMonthsIn window: NSWindow) -> [String] {
         guard let cardElement = accessibilityElement(labelled: "Příjmy", in: window),
             let card = cardElement.accessibilityFrame?()
@@ -2315,18 +2265,19 @@ struct AppWindowLayoutTests {
         guard let key = frameOfText(startingWith: Self.netIncomeKeyByMonths, in: window) else {
             return ["Cannot find the key of the net income line in the window"]
         }
-        // The card of the estimate below it has a figure with the same words, so the average of the strip is found by
-        // its figure as well.
-        let averageStart = "Čistý příjem průměrně za měsíc, 193\u{00A0}347\u{00A0}Kč"
-        guard let average = frameOfText(startingWith: averageStart, in: window) else {
-            return ["Cannot find the average per month of the strip in the window"]
+        // The card of the estimate below it has a row with the same words, over twelve months, so the average of the
+        // calculation is found by its months and its figure as well.
+        let averageStart = "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč"
+        guard let average = accessibilityElement(labelStartingWith: averageStart, in: window)?.accessibilityFrame?()
+        else {
+            return ["Cannot find the average per month of the calculation in the window"]
         }
         var found: [String] = []
         if !card.insetBy(dx: -0.5, dy: -0.5).contains(key) {
             found.append("The key of the net income line is not within the card: \(key), the card \(card)")
         }
         if key.maxY > average.minY + 0.5 {
-            found.append("The key of the net income line is not below the strip: \(key), the average \(average)")
+            found.append("The key of the net income line is not below the calculation: \(key), the average \(average)")
         }
         // Each column is one element that VoiceOver reads from the title of the month to the end of its average. The
         // chart of the card of the estimate has an element for each month too, and a past month there starts with the
@@ -2368,6 +2319,8 @@ struct AppWindowLayoutTests {
                     #expect(months.isAccessibilitySelected?() == true)
                     #expect(accessibilityButton(labelled: "Roky", in: window)?.isAccessibilitySelected?() != true)
                     #expect(app.appSettings.chartMode == .months)
+                    // The chart is about money without VAT alone, so the card has no checkbox "S DPH".
+                    #expect(accessibilityElement(labelled: "S DPH", in: window) == nil)
 
                     let years = try #require(accessibilityButton(labelled: "Roky", in: window))
                     #expect(years.accessibilityPerformPress?() == true)
@@ -3878,7 +3831,7 @@ struct AppWindowLayoutTests {
 
     /// Waits until Výpočet in `window` shows `rows`, then checks them and the page at the least room, at a large size
     /// and at the least room again.
-    private func expectFamilyRowsFit(_ rows: [ComputationRow], in window: NSWindow) async throws {
+    private func expectFamilyRowsFit(_ rows: [BillRow], in window: NSWindow) async throws {
         try await waitUntil { rows.allSatisfy { accessibilityElement(labelled: $0.spokenText, in: window) != nil } }
         for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
             window.setContentSize(size)
@@ -3904,25 +3857,25 @@ struct AppWindowLayoutTests {
     /// The rows of the tax card of the sample year with the sample family as of 28. 2. 2026: the income of 220 000 Kč
     /// is past six minimum wages, the deductions take the whole profit, and the children's 37 524 Kč are a bonus.
     private static let familyRowsWithABonus = [
-        ComputationRow(
+        BillRow(
             label: "Sleva na manžela / manželku", value: "0",
             note: "12\u{00A0}měsíců s dítětem do 3 let · daň už je nulová, sleva se neprojeví", sign: .minus),
-        ComputationRow(
+        BillRow(
             label: "Daň po slevách", value: "0", note: "slevy snižují daň nejvýš na nulu", sign: .equals,
             style: .strong),
-        ComputationRow(
+        BillRow(
             label: "Daňové zvýhodnění na děti", value: "\u{2212}37\u{00A0}524",
             note: "Anna 15\u{00A0}204 · Tomáš 22\u{00A0}320 · z toho daňový bonus 37\u{00A0}524", sign: .minus),
-        ComputationRow(
+        BillRow(
             label: "Daň z dosavadních příjmů", value: "\u{2212}37\u{00A0}524",
             note: "záporná daň je daňový bonus – vyplatí ho finanční úřad", sign: .equals, style: .strong),
-        ComputationRow(
+        BillRow(
             label: "Zbývá", value: "vrátí se 37\u{00A0}524\u{00A0}Kč", note: "vrací se po podání přiznání, na žádost",
             sign: .equals, style: .total),
     ]
 
     /// The row of the children as of 31. 1. 2026, before any income has come: the benefit is not paid as a bonus yet.
-    private static let childRowBeforeTheBonus = ComputationRow(
+    private static let childRowBeforeTheBonus = BillRow(
         label: "Daňové zvýhodnění na děti", value: "0",
         note: "Anna 15\u{00A0}204 · Tomáš 22\u{00A0}320 · bonus 37\u{00A0}524 se nevyplatí:"
             + " příjmy pod 6× minimální mzdu (134\u{00A0}400)",
@@ -3942,7 +3895,7 @@ struct AppWindowLayoutTests {
     /// What is wrong with `row` of a card of Výpočet in `window`, in words: VoiceOver does not find it, it is not
     /// within the margins of the page, or it is lower than its label and its note need at the width they have beside
     /// the sign and the value, as a text cut short would be. Empty when the row fits. Needs the accessibility elements.
-    private func problems(ofRow row: ComputationRow, in window: NSWindow) -> [String] {
+    private func problems(ofRow row: BillRow, in window: NSWindow) -> [String] {
         guard let frame = accessibilityElement(labelled: row.spokenText, in: window)?.accessibilityFrame?() else {
             return ["No row \(row.label)"]
         }
@@ -4294,15 +4247,15 @@ struct AppWindowLayoutTests {
     /// column where the page has less than the 856 points that two columns need (850 at the least room with the wide
     /// sidebar) and in two columns where it has more (938 in the least window, and a large window; the cards of
     /// Výpočet, with the same headings), the key figure and the bar of the result card stand as the width says and the
-    /// figure of what is left to settle under them, the net income and what to set aside are read as one phrase each
-    /// in the card Příjmy, beside the income (what to set aside wraps under them where the card is too narrow for
-    /// three figures: at the least room with the widest sidebar and in the narrowest window for twelve months in a
-    /// row with the wide sidebar, whose 836 points inside are less than the 874 that the three need) and above the
-    /// bar, the legend and the note of the money of next year, and no text of a cell is cut. Where the months stand in
-    /// rows of six, in cells of more than 100 points (810 points for the months at the least room with the wide
-    /// sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
-    /// in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the least window, whose
-    /// 898 points for the months give the cells 69, and in the narrowest window that holds them so, in cells of 64.
+    /// figure of what is left to settle under them, each row of the calculation and of the panel of how the levies
+    /// are paid is read as one phrase in the card Příjmy, whose two blocks stand side by side where the card has the
+    /// 712 points they need inside its padding (810 at the least room with the widest sidebar) and one under the other
+    /// where it has less, above the bar, the legend and the note of the money of next year, and no text of a cell is
+    /// cut. Where the months stand in rows of six, in cells of more than 100 points (810 points for the months at the
+    /// least room with the wide sidebar), and in a large window no text of a cell is even shrunk. Where all twelve
+    /// stand in a row in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the
+    /// least window, whose 898 points for the months give the cells 69, and in the narrowest window that holds them so,
+    /// in cells of 64.
     @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -4459,66 +4412,89 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card Příjmy of Odhad odvodů for `page` in `window`, in words: it is missing; VoiceOver
-    /// does not read the income, the net income and what to set aside each as one phrase; the income and the net
-    /// income do not stand side by side, 48 points apart and level at the top, in the card; what to set aside does not
-    /// stand beside the net income, level at the top and 48 points from it, or, where the card is too narrow for three
-    /// figures in a row (the three and the two gaps are wider than the card inside its padding of 20, as at the
-    /// least room with the widest sidebar), at the left edge of the figures on the next row, 12 points under the
-    /// lower of the income and the net income, and only then; the bar of the income (14 points high) is
-    /// not 14 points under the lowest of the three; an item of the legend is not under the bar; or the note of the
-    /// money of next year (which only a year with such money has) is not under the legend. The origin of the screen is
-    /// at the bottom left, so what is above has the larger y. Empty when it stands so. Needs the accessibility
-    /// elements.
+    /// does not read a row of the calculation or of the panel of how the levies are paid as the one phrase of the row,
+    /// or the title of the panel as a heading; a row or the bar of the income (14 points high) is not within the card;
+    /// the calculation and the panel do not stand side by side in two columns of one width 32 points apart where the
+    /// card has the 712 points they need inside its padding of 20 (as it has 810 at the least room with the widest
+    /// sidebar), or the panel not 16 points under the calculation in the whole width where it has less, the texts of
+    /// each row ending with the value at the right edge of its column (of the panel's padding of 14 in the panel), so
+    /// that no value is cut or pushed out; the heading of the composition of the income is not under both, or the bar
+    /// not 10 points under the heading; an item of the legend is not under the bar; or the note of the money of next
+    /// year (which only a year with such money has) is not under the legend. VoiceOver frames a row by its texts: the
+    /// space of 8 points above and below them is not in it. The origin of the screen is at the bottom left, so what is
+    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
     private func problems(ofTheCardPrijmyOf page: PredictionPage, in window: NSWindow) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
         }
-        let net = page.netIncome
-        let incomePhrase = [page.incomeHead, page.incomeTotal, page.incomeNote].joined(separator: ", ")
-        let netPhrase = [net.label, net.amount, net.sub].compactMap { $0 }.joined(separator: ", ")
-        guard let income = frameOfText(startingWith: incomePhrase, in: window) else {
-            return ["The income is not read as one phrase: \(incomePhrase)"]
+        var found: [String] = []
+        func frames(of rows: [BillRow]) -> [CGRect] {
+            rows.compactMap { row in
+                guard let frame = accessibilityElement(labelled: row.spokenText, in: window)?.accessibilityFrame?()
+                else {
+                    found.append("No row is read as '\(row.spokenText)'")
+                    return nil
+                }
+                return frame
+            }
         }
-        guard let netIncome = frameOfText(startingWith: netPhrase, in: window) else {
-            return ["The net income is not read as one phrase: \(netPhrase)"]
+        let rows = frames(of: page.calculation.rows)
+        let payments = frames(of: page.calculation.payRows)
+        guard let titleElement = accessibilityElement(labelled: page.calculation.payTitle, in: window),
+            let title = titleElement.accessibilityFrame?()
+        else {
+            return found + ["No title of the panel"]
         }
-        let setAsideParts = [page.setAside.label, page.setAside.amount, page.setAside.sub]
-        let setAsidePhrase = setAsideParts.compactMap { $0 }.joined(separator: ", ")
-        guard let setAside = frameOfText(startingWith: setAsidePhrase, in: window) else {
-            return ["What to set aside is not read as one phrase: \(setAsidePhrase)"]
+        if titleElement.accessibilityRole?()?.rawValue != "AXHeading" {
+            found.append("The title of the panel is not a heading")
+        }
+        guard let heading = frameOfText(startingWith: "Z čeho se příjmy roku skládají", in: window) else {
+            return found + ["No heading of the composition of the income"]
         }
         guard let bar = accessibilityElement(labelled: "\(page.incomeHead): \(page.incomeTotal)", in: window)?
             .accessibilityFrame?()
         else {
-            return ["No bar of the income"]
+            return found + ["No bar of the income"]
         }
-        var found: [String] = []
+        guard found.isEmpty, let lastRow = rows.last, let lastPayment = payments.last else { return found }
         let inside = card.insetBy(dx: -0.5, dy: -0.5)
-        for (name, frame) in [
-            ("The income", income), ("The net income", netIncome), ("What to set aside", setAside), ("The bar", bar),
-        ]
-        where !inside.contains(frame) {
-            found.append("\(name) is not within the card Příjmy: \(frame), the card \(card)")
+        for frame in rows + payments + [title, heading, bar] where !inside.contains(frame) {
+            found.append("A part is not within the card Příjmy: \(frame), the card \(card)")
         }
-        if (income.maxY - netIncome.maxY).magnitude > 1 || (netIncome.minX - income.maxX - 48).magnitude > 1 {
-            found.append("The net income is not beside the income, 48 points from it: \(netIncome), \(income)")
+        let left = card.minX + 20
+        let inner = card.width - 40
+        let beside = inner >= 712
+        let column = beside ? (inner - 32) / 2 : inner
+        let panelLeft = beside ? left + column + 32 : left
+        for row in rows {
+            if row.minX < left - 0.5 || (row.maxX - (left + column)).magnitude > 1 {
+                found.append("A row of the calculation is not in its column, \(left)–\(left + column): \(row)")
+            }
         }
-        let needsTwoRows = income.width + netIncome.width + setAside.width + 96 > card.width - 40 + 0.5
-        let isBesideNet =
-            (netIncome.maxY - setAside.maxY).magnitude <= 1 && (setAside.minX - netIncome.maxX - 48).magnitude <= 1
-        let isOnNextRow =
-            (setAside.minX - income.minX).magnitude <= 1
-            && (min(income.minY, netIncome.minY) - 12 - setAside.maxY).magnitude <= 1
-        if needsTwoRows ? !isOnNextRow : !isBesideNet {
-            let place =
-                needsTwoRows ? "under both, 12 points under the lower" : "beside the net income, 48 points from it"
-            found.append("What to set aside is not \(place): \(setAside), \(netIncome), \(income), the card \(card)")
+        if (title.minX - (panelLeft + 14)).magnitude > 1 {
+            found.append("The title of the panel is not 14 points inside it, at \(panelLeft + 14): \(title)")
+        }
+        for row in payments {
+            if row.minX < panelLeft + 14 - 0.5 || (row.maxX - (panelLeft + column - 14)).magnitude > 1 {
+                found.append("A row of the panel is not inside it from \(panelLeft + 14): \(row), \(card)")
+            }
+        }
+        // Side by side, the texts of the first row are 8 points under the top of the blocks, and the title of the
+        // panel 10; one under the other, the title is 10 points inside the panel, which is 16 points under the last
+        // row, which has 8 points of its own under its texts.
+        let titleTop: CGFloat = beside ? rows[0].maxY - 2 : lastRow.minY - 34
+        if (title.maxY - titleTop).magnitude > 1.5 {
+            let place = beside ? "level with the calculation" : "16 points under the calculation"
+            found.append("The panel is not \(place): \(title), \(rows[0]), \(lastRow)")
+        }
+        if heading.maxY > min(lastRow.minY, lastPayment.minY) - 0.5 {
+            found.append("The heading of the composition is not under the calculation and the panel: \(heading)")
         }
         if (bar.height - 14).magnitude > 0.5 {
             found.append("The bar of the income is \(bar.height) points high, not 14")
         }
-        if (min(income.minY, netIncome.minY, setAside.minY) - 14 - bar.maxY).magnitude > 1.5 {
-            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome), \(setAside)")
+        if (heading.minY - 10 - bar.maxY).magnitude > 1.5 {
+            found.append("The bar is not 10 points under the heading: \(bar), \(heading)")
         }
         var legendBottom = bar.minY
         for part in page.parts {
@@ -4526,7 +4502,7 @@ struct AppWindowLayoutTests {
                 found.append("No item of the legend for \(part.text)")
                 continue
             }
-            if item.maxY > bar.minY - 11 {
+            if item.maxY > bar.minY - 9.5 {
                 found.append("The item \(part.text) is not under the bar: \(item), \(bar)")
             }
             legendBottom = min(legendBottom, item.minY)

@@ -5,8 +5,7 @@ import SwiftUI
 /// between rows is the one between the subviews of a row (`spacing`), unless `lineSpacing` gives another.
 ///
 /// The subviews of a row line up at their middle, or by `alignment` where it is another: at the top, as the figures of
-/// a row of tiles do, when the tiles differ in height. A subview that is flexible in its width, such as text that
-/// breaks its lines, is asked for the width it wants, or for no more than `maximumSubviewWidth` where that is given.
+/// a row of tiles do, when the tiles differ in height.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
@@ -16,10 +15,6 @@ struct FlowLayout: Layout {
     /// How the subviews of a row line up against each other.
     var alignment = VerticalAlignment.center
 
-    /// The greatest width a subview is asked for, or nil for the width it wants. A subview is never asked for more than
-    /// the width of the layout either, so one that is flexible has the room there is where there is less than this.
-    var maximumSubviewWidth: CGFloat?
-
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = rows(for: subviews, width: proposal.width ?? .infinity)
         let width = rows.map(\.width).max() ?? 0
@@ -28,12 +23,11 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let request = request(width: bounds.width)
         var top = bounds.minY
         for row in rows(for: subviews, width: bounds.width) {
             var left = bounds.minX
             for index in row.indices {
-                let dimensions = subviews[index].dimensions(in: request)
+                let dimensions = subviews[index].dimensions(in: .unspecified)
                 subviews[index].place(
                     at: CGPoint(x: left, y: top + row.above - dimensions[alignment]), anchor: .topLeading,
                     proposal: ProposedViewSize(width: dimensions.width, height: dimensions.height))
@@ -57,21 +51,13 @@ struct FlowLayout: Layout {
         }
     }
 
-    /// The size every subview is asked for in a layout of `width` points: none, or no more than the greatest width. A
-    /// layout asked for the least room it needs, a width of nothing, holds a subview to the greatest width alone.
-    private func request(width: CGFloat) -> ProposedViewSize {
-        guard let maximumSubviewWidth else { return .unspecified }
-        return ProposedViewSize(width: width > 0 ? min(maximumSubviewWidth, width) : maximumSubviewWidth, height: nil)
-    }
-
     /// The rows the subviews fall into in a layout of `width` points: a subview goes on to the next row where the row
     /// it would stand in has no room left for it, and every row has at least one.
     private func rows(for subviews: Subviews, width: CGFloat) -> [Row] {
-        let request = request(width: width)
         var rows: [Row] = []
         var current = Row()
         for index in subviews.indices {
-            let dimensions = subviews[index].dimensions(in: request)
+            let dimensions = subviews[index].dimensions(in: .unspecified)
             let needed = current.indices.isEmpty ? dimensions.width : current.width + spacing + dimensions.width
             if needed > width, !current.indices.isEmpty {
                 rows.append(current)

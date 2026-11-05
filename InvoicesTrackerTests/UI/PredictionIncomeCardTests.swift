@@ -5,8 +5,9 @@ import Testing
 /// The card Příjmy of Odhad odvodů, drawn off-screen in a light and in a dark window: the bar of the income and the
 /// swatches of its legend (the money received is the grey of secondary text, what waits for its payment is the accent,
 /// and what is only expected is hatched (`Hatching`); the track under the parts is the fill of a bar, the bar is 14
-/// points high and its corners are rounded by 5, and the swatch of a part is a square of 10 points rounded by 3), and
-/// the green dot that marks the net income.
+/// points high and its corners are rounded by 5, and the swatch of a part is a square of 10 points rounded by 3), the
+/// two hairlines that part the calculation and the composition of the income from what is above them, and the green
+/// dot that marks the net income.
 @Suite
 @MainActor
 struct PredictionIncomeCardTests {
@@ -90,6 +91,24 @@ struct PredictionIncomeCardTests {
             let found = picture.count(near: magenta, in: corner, by: 6)
             #expect((found - expected).magnitude <= 2, "\(corner) shows \(found) pixels of ground, not \(expected)")
         }
+    }
+
+    // MARK: The parts of the card
+
+    /// Under its head the card has a hairline above the calculation and the panel of how the levies are paid, and
+    /// another above the heading of the composition of the income: two lines across the card inside its padding, and no
+    /// other, as the rules of the calculation are as wide as its column.
+    @Test func theCardHasAHairlineAboveItsCalculationAndOneAboveTheCompositionOfTheIncome() throws {
+        let page = try PredictionSample.page(year: 2026)
+        let separator = try OffscreenPicture.bytes(of: Palette.sep, in: .light)
+        let picture = try OffscreenPicture(
+            of: PredictionIncomeCard(page: page).frame(width: 800).background(Palette.bgWindow), in: .light)
+
+        // The pixel rows that run across the card inside its padding, half a point apart where they are one line.
+        let rows = picture.rows(near: separator, from: 24, to: 776, by: 3)
+        let lines = rows.enumerated().filter { index, row in index == 0 || row - rows[index - 1] > 0.5 + 0.01 }
+
+        #expect(lines.count == 2, "The lines across the card start at \(lines.map(\.element))")
     }
 
     // MARK: The net income

@@ -131,13 +131,13 @@ struct OverviewViewTextTests {
     // MARK: The size of the tooltip
 
     @Test @MainActor func aMonthTooltipKeepsEveryLineOnOneLine() {
-        // The four amounts of a month: 1 Kč each, and the most the columns of the chart hold, 99 999 999,99 Kč, which
+        // The two amounts of a month: 1 Kč each, and the most the columns of the chart hold, 99 999 999,99 Kč, which
         // are 100 000 000 Kč in whole Kč.
         func tooltip(allAmountsHalere halere: Int64) -> ChartTooltip {
             ChartTooltip(
                 column: ChartColumn(
-                    label: "zář", title: "Září 2026", issuedNetHalere: halere, issuedGrossHalere: halere,
-                    receivedNetHalere: halere, receivedGrossHalere: halere, isFuture: false, isCurrent: false,
+                    label: "zář", title: "Září 2026", issuedNetHalere: halere,
+                    receivedNetHalere: halere, isFuture: false, isCurrent: false,
                     hasLinePoint: true))
         }
         let small = NSHostingView(rootView: tooltip(allAmountsHalere: 100)).fittingSize
@@ -148,15 +148,32 @@ struct OverviewViewTextTests {
         #expect(large.width > small.width, "\(large.width) points against \(small.width)")
     }
 
+    /// The hover box of a month has one amount for what was issued and one for what was received, in whole Kč and
+    /// without a header row of "bez DPH" and "s DPH".
+    @Test @MainActor func theTooltipShowsOneAmountPerRowWithoutVAT() async throws {
+        let column = ChartColumn(
+            label: "zář", title: "Září 2026", issuedNetHalere: 31_022_675, receivedNetHalere: 27_943_300,
+            isFuture: false, isCurrent: false, hasLinePoint: true)
+
+        try await withHostedView(ChartTooltip(column: column), size: CGSize(width: 400, height: 300)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { frameOfText(startingWith: "310\u{00A0}227\u{00A0}Kč", in: window) != nil }
+                #expect(frameOfText(startingWith: "279\u{00A0}433\u{00A0}Kč", in: window) != nil)
+                #expect(frameOfText(startingWith: "s DPH", in: window) == nil)
+                #expect(frameOfText(startingWith: "bez DPH", in: window) == nil)
+            }
+        }
+    }
+
     @Test @MainActor func aYearTooltipKeepsItsRowsOnOneLineAndWrapsOnlyItsFooter() {
-        // A year with its four amounts and its net income all at 1 Kč, or all at the most the columns of the chart
+        // A year with its two amounts and its net income all at 1 Kč, or all at the most the columns of the chart
         // hold, 99 999 999,99 Kč (100 000 000 Kč in whole Kč), with the average of 2026 so far at 1 Kč, or at a figure
         // of nine digits.
         func tooltip(allAmountsHalere halere: Int64, average: String) -> ChartTooltip {
             ChartTooltip(
                 column: ChartColumn(
-                    label: "2026", title: "Rok 2026", issuedNetHalere: halere, issuedGrossHalere: halere,
-                    receivedNetHalere: halere, receivedGrossHalere: halere, isFuture: false, isCurrent: true,
+                    label: "2026", title: "Rok 2026", issuedNetHalere: halere,
+                    receivedNetHalere: halere, isFuture: false, isCurrent: true,
                     hasLinePoint: true, netIncomeHalere: halere,
                     netAverage: ChartNetAverage(
                         label: "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen)", value: average),
@@ -175,15 +192,15 @@ struct OverviewViewTextTests {
     }
 
     @Test @MainActor func aYearTooltipWithTheRulesSentenceKeepsItsRowsOnOneLine() {
-        // A year that the engine works out with the rules of another year, 2021, with its four amounts and its net
+        // A year that the engine works out with the rules of another year, 2021, with its two amounts and its net
         // income all at 1 Kč, or all at the most the columns of the chart hold, 99 999 999,99 Kč (100 000 000 Kč in
         // whole Kč), the net income and the average marked as estimates, with the sentence about the rules under the
         // footer or without it.
         func size(allAmountsHalere halere: Int64, average: String, note: String?) -> CGSize {
             let tooltip = ChartTooltip(
                 column: ChartColumn(
-                    label: "2021", title: "Rok 2021", issuedNetHalere: halere, issuedGrossHalere: halere,
-                    receivedNetHalere: halere, receivedGrossHalere: halere, isFuture: false, isCurrent: false,
+                    label: "2021", title: "Rok 2021", issuedNetHalere: halere,
+                    receivedNetHalere: halere, isFuture: false, isCurrent: false,
                     hasLinePoint: true, netIncomeHalere: halere,
                     netAverage: ChartNetAverage(
                         label: "Průměrný čistý příjem za měsíc v roce 2021", value: average, note: note),
@@ -212,14 +229,14 @@ struct OverviewViewTextTests {
     }
 
     @Test @MainActor func aNoteUnderTheNetIncomeKeepsEveryRowOnOneLineAndMakesTheTooltipNoWider() {
-        // A month with its four amounts and its net income all at 1 Kč, or all at the most the columns of the chart
+        // A month with its two amounts and its net income all at 1 Kč, or all at the most the columns of the chart
         // hold, 99 999 999,99 Kč (100 000 000 Kč in whole Kč), with the average of 2026 so far, and with a note under
         // the net income row or without one: the note of a month, which is a line, and a longer one, which wraps.
         func size(allAmountsHalere halere: Int64, note: String?) -> CGSize {
             let tooltip = ChartTooltip(
                 column: ChartColumn(
-                    label: "úno", title: "Únor 2026", issuedNetHalere: halere, issuedGrossHalere: halere,
-                    receivedNetHalere: halere, receivedGrossHalere: halere, isFuture: false, isCurrent: false,
+                    label: "úno", title: "Únor 2026", issuedNetHalere: halere,
+                    receivedNetHalere: halere, isFuture: false, isCurrent: false,
                     hasLinePoint: true, netIncomeHalere: halere,
                     netAverage: ChartNetAverage(
                         label: "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen)",
@@ -237,9 +254,9 @@ struct OverviewViewTextTests {
 
         // The rows are as wide as their amounts, so that none of them wraps: the tooltip is no taller for large
         // amounts. The note is a line of its own, which makes the tooltip taller and no wider, and a longer note wraps
-        // at the width of the words of the footer, so it only grows taller.
+        // at the width of the words of the footer, so it only grows taller. With one column of amounts the rows are
+        // narrower than the footer, so the width does not follow the amounts here.
         #expect((large.height - small.height).magnitude < 0.5, "\(large.height) points against \(small.height)")
-        #expect(large.width > small.width, "\(large.width) points against \(small.width)")
         #expect(small.height > smallWithout.height + 10, "\(small.height) points against \(smallWithout.height)")
         #expect(large.height > largeWithout.height + 10, "\(large.height) points against \(largeWithout.height)")
         #expect(
@@ -260,8 +277,8 @@ struct OverviewViewTextTests {
                 : nil
             let tooltip = ChartTooltip(
                 column: ChartColumn(
-                    label: "2026", title: "Rok 2026", issuedNetHalere: 100, issuedGrossHalere: 100,
-                    receivedNetHalere: 100, receivedGrossHalere: 100, isFuture: false, isCurrent: true,
+                    label: "2026", title: "Rok 2026", issuedNetHalere: 100,
+                    receivedNetHalere: 100, isFuture: false, isCurrent: true,
                     hasLinePoint: true, netIncomeHalere: netIncomeHalere, netAverage: average,
                     netIncomeText: netIncomeHalere.map { PredictionBuilder.kc(ofHalere: $0) }))
             return NSHostingView(rootView: tooltip).fittingSize.height
@@ -288,19 +305,21 @@ struct OverviewViewTextTests {
     private static func yearsChart(width: CGFloat) -> some View {
         func year(_ year: Int, isCurrent: Bool) -> ChartColumn {
             ChartColumn(
-                label: String(year), title: "Rok \(year)", issuedNetHalere: 100_000_000, issuedGrossHalere: 121_000_000,
-                receivedNetHalere: 90_000_000, receivedGrossHalere: 108_900_000, isFuture: false,
+                label: String(year), title: "Rok \(year)", issuedNetHalere: 100_000_000,
+                receivedNetHalere: 90_000_000, isFuture: false,
                 isCurrent: isCurrent, hasLinePoint: true)
         }
         return IncomeChart(
             columns: [year(2025, isCurrent: false), year(2026, isCurrent: true)], subtitle: "Po letech · v Kč bez DPH",
-            netIncome: OverviewNetIncome(
-                yearLabel: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.",
-                yearValue: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-                yearSub: "88,2\u{00A0}% příjmů bez DPH po odvodech",
-                monthLabel: "Čistý příjem průměrně za měsíc", monthValue: "193\u{00A0}347\u{00A0}Kč",
-                monthSub: "průměr za leden–říjen"),
-            uniformLine: nil, mode: .years, withVAT: false, setMode: { _ in }, setWithVAT: { _ in }
+            calculation: [
+                BillRow(
+                    label: "Příjmy od 1.\u{00A0}1. do 17.\u{00A0}10.", value: "2\u{00A0}191\u{00A0}771\u{00A0}Kč",
+                    valueStyle: .semibold),
+                BillRow(
+                    label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided,
+                    period: "·\u{00A0}10\u{00A0}měsíců", marksNetIncome: true, valueStyle: .title2Bold),
+            ],
+            uniformLine: nil, mode: .years, setMode: { _ in }
         )
         .frame(width: width)
     }

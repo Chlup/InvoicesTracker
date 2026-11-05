@@ -22,15 +22,12 @@ nonisolated enum IncomeChartLayout {
     /// The widest a bar is drawn, in points.
     private static let maximumBarWidth: CGFloat = 46
 
-    /// The largest amount the chart has to hold, in haléře: of what was issued and what was received, with VAT or
-    /// without as the chart is drawn, and of the net income, which is always without VAT. The line of the net income is
-    /// drawn from zero, like the axis, so a net income below zero is drawn at zero and does not make the chart taller.
-    /// A chart without columns holds nothing, 0.
-    static func largestAmount(in columns: [ChartColumn], withVAT: Bool) -> Int64 {
+    /// The largest amount the chart has to hold, in haléře: of what was issued and what was received, and of the net
+    /// income. The line of the net income is drawn from zero, like the axis, so a net income below zero is drawn at
+    /// zero and does not make the chart taller. A chart without columns holds nothing, 0.
+    static func largestAmount(in columns: [ChartColumn]) -> Int64 {
         columns.map { column in
-            let issued = withVAT ? column.issuedGrossHalere : column.issuedNetHalere
-            let received = withVAT ? column.receivedGrossHalere : column.receivedNetHalere
-            return max(issued, received, column.netIncomeHalere.map { max(0, $0) } ?? 0)
+            max(column.issuedNetHalere, column.receivedNetHalere, column.netIncomeHalere.map { max(0, $0) } ?? 0)
         }.max() ?? 0
     }
 
@@ -107,35 +104,59 @@ nonisolated enum IncomeChartLayout {
     }
 }
 
+// MARK: - The calculation
+
+/// The sizes and gaps of the calculation of the card "Příjmy", in points.
+private nonisolated enum IncomeCalculationMetrics {
+    /// The widest the rows are, so that a value stays near its label in a wide card.
+    static let maximumWidth: CGFloat = 420
+
+    /// The space between a hairline and the rows.
+    static let padding: CGFloat = 14
+}
+
+/// The calculation of the card "Příjmy" between two hairlines that run the width of the card, 14 points from each:
+/// the income of the year so far less its levies, what that leaves and that per month, in the rows of a bill
+/// (`BillRows`, `OverviewBuilder.calculation(_:shares:)`), at most 420 points wide from the leading edge. VoiceOver
+/// reads each row as one phrase.
+struct IncomeCalculation: View {
+    let rows: [BillRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Hairline()
+            BillRows(rows: rows)
+                .frame(maxWidth: IncomeCalculationMetrics.maximumWidth, alignment: .leading)
+                .padding(.vertical, IncomeCalculationMetrics.padding)
+            Hairline()
+        }
+    }
+}
+
 // MARK: - The chart
 
-/// The card "Příjmy": under its header, with the segmented control that groups the chart by months or by years and the
-/// checkbox for VAT, the strip with the net income of the year up to the day shown and its average per month, then
+/// The card "Příjmy": under its header, with the segmented control that groups the chart by months or by years, the
+/// calculation of the net income of the year up to the day shown and its average per month (`IncomeCalculation`), then
 /// what was issued (bars, by the day of issue) and what was received (a line with points, by the day of payment) by
-/// month or by year, with or without VAT, and under it the uniform rate of the year. The chart also has a green line
-/// with points for the net income, always without VAT: by month that of the invoices paid in each month up to the day
-/// shown, by year that of each year that has been worked out. Hovering over a column highlights it and shows a tooltip
-/// with the series with and without VAT, all in whole Kč, the net income of the column where it has it, with the words
-/// that say what it covers, and, under a hairline, the average net income per month. A year that the engine worked
-/// out with the rules of another year is marked as an estimate there, with the sentence that says so, while its point
-/// stays in the chart. VoiceOver reads each column in the words of the tooltip, but for the words under the net
-/// income.
+/// month or by year, all without VAT, and under it the uniform rate of the year. The chart also has a green line with
+/// points for the net income: by month that of the invoices paid in each month up to the day shown, by year that of
+/// each year that has been worked out. Hovering over a column highlights it and shows a tooltip with the amounts
+/// issued and received, in whole Kč, the net income of the column where it has it, with the words that say what it
+/// covers, and, under a hairline, the average net income per month. A year that the engine worked out with the rules
+/// of another year is marked as an estimate there, with the sentence that says so, while its point stays in the
+/// chart. VoiceOver reads each column in the words of the tooltip, but for the words under the net income.
 struct IncomeChart: View {
     let columns: [ChartColumn]
     let subtitle: String
 
-    /// The net income of the year up to the day shown and its average per month, which the strip under the header
-    /// tells. They do not depend on the way the chart is grouped or drawn.
-    let netIncome: OverviewNetIncome
+    /// The rows of the calculation under the header: the income of the year up to the day shown less its levies, what
+    /// that leaves and that per month. They do not depend on the way the chart is grouped or drawn.
+    let calculation: [BillRow]
     let uniformLine: UniformLine?
     let mode: ChartMode
-    let withVAT: Bool
 
     /// Měsíce or Roky was chosen.
     let setMode: (ChartMode) -> Void
-
-    /// S DPH was ticked or cleared.
-    let setWithVAT: (Bool) -> Void
 
     /// The column the pointer is over.
     @State private var hovered: Int?
@@ -149,7 +170,7 @@ struct IncomeChart: View {
     var body: some View {
         Card(label: "Příjmy") {
             header
-            NetIncomeStrip(netIncome: netIncome)
+            IncomeCalculation(rows: calculation)
             legend
             chart
             if let uniformLine {
@@ -173,24 +194,16 @@ struct IncomeChart: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 12) {
-                SegmentedControl(
-                    "Seskupit", selection: modeSelection,
-                    segments: [(value: ChartMode.months, title: "Měsíce"), (value: ChartMode.years, title: "Roky")]
-                )
-                .fixedSize()
-                Toggle("S DPH", isOn: vatSelection)
-                    .toggleStyle(.checkbox)
-            }
+            SegmentedControl(
+                "Seskupit", selection: modeSelection,
+                segments: [(value: ChartMode.months, title: "Měsíce"), (value: ChartMode.years, title: "Roky")]
+            )
+            .fixedSize()
         }
     }
 
     private var modeSelection: Binding<ChartMode> {
         Binding(get: { mode }, set: { setMode($0) })
-    }
-
-    private var vatSelection: Binding<Bool> {
-        Binding(get: { withVAT }, set: { setWithVAT($0) })
     }
 
     /// What the bars and the lines are, a key for each: side by side where the card has room for them and on a second
@@ -232,7 +245,7 @@ struct IncomeChart: View {
     // MARK: The plot
 
     private var chart: some View {
-        let top = IncomeChartLayout.top(forLargest: IncomeChartLayout.largestAmount(in: columns, withVAT: withVAT))
+        let top = IncomeChartLayout.top(forLargest: IncomeChartLayout.largestAmount(in: columns))
         let step = Double(top) / 400
         return Chart {
             highlight
@@ -366,11 +379,11 @@ struct IncomeChart: View {
     }
 
     private func issued(_ column: ChartColumn) -> Int64 {
-        withVAT ? column.issuedGrossHalere : column.issuedNetHalere
+        column.issuedNetHalere
     }
 
     private func received(_ column: ChartColumn) -> Int64 {
-        withVAT ? column.receivedGrossHalere : column.receivedNetHalere
+        column.receivedNetHalere
     }
 
     /// Haléře as crowns to be drawn.
@@ -393,6 +406,8 @@ struct IncomeChart: View {
                 if let hoveredColumn {
                     TooltipPlacement(column: hoveredColumn, count: columns.count) {
                         ChartTooltip(column: columns[hoveredColumn])
+                            // The column itself speaks the same words for VoiceOver.
+                            .accessibilityHidden(true)
                     }
                     .frame(width: plot.width, height: plot.height)
                     .offset(x: plot.minX, y: plot.minY)
@@ -439,15 +454,15 @@ struct ChartRing: View {
     }
 }
 
-/// The popover of a column: its title, and what was issued and received without and with VAT, all in whole Kč, the
-/// values without VAT in semibold. A column that has a net income also has a row for it, in the text the column gives
-/// (`netIncomeText`): the net income is always without VAT, so the column with VAT has a dash. Under the row stand the
-/// words that say what the figure covers (`netIncomeNote`), across the grid in a smaller grey type. A column that has
-/// an average net income per month ends with it, under a hairline, and when the year is computed with the rules of
-/// another year, with the sentence that says so under it, in the orange of the warnings. The rows are as wide as their
-/// amounts are long, so that none of them wraps; only the words under the net income, the words of the footer and
-/// that sentence wrap, at a fixed width, and the amount of the footer does not. It is a panel of the colour of a card,
-/// raised off the chart as a popover is.
+/// The popover of a column: its title, and what was issued and received without VAT, in whole Kč and in semibold, in
+/// one column of amounts with no header row. A column that has a net income also has a row for it, in the text the
+/// column gives (`netIncomeText`). Under the row stand the words that say what the figure covers (`netIncomeNote`),
+/// across the grid in a smaller grey type. A column that has an average net income per month ends with it, under a
+/// hairline, and when the year is computed with the rules of another year, with the sentence that says so under it,
+/// in the orange of the warnings. The rows are as wide as their amounts are long, so that none of them wraps; only the
+/// words under the net income, the words of the footer and that sentence wrap, at a fixed width, and the amount of
+/// the footer does not. It is a panel of the colour of a card, raised off the chart as a popover is. The chart hides
+/// it from VoiceOver at its call site, because the label of the column reads the same words.
 struct ChartTooltip: View {
     /// The width of the words under the net income row, of the words of the footer and of the sentence under it, in
     /// points. The note, the label and the sentence are long, so they wrap at this width and the tooltip does not grow
@@ -462,14 +477,6 @@ struct ChartTooltip: View {
                 .font(Typography.bodyBold)
             Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 5) {
                 GridRow {
-                    Color.clear
-                        .frame(width: 0, height: 0)
-                    Text("bez DPH")
-                    Text("s DPH")
-                }
-                .font(Typography.subheadline)
-                .foregroundStyle(Palette.text3)
-                GridRow {
                     HStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Palette.accent)
@@ -480,7 +487,6 @@ struct ChartTooltip: View {
                     .gridColumnAlignment(.leading)
                     Text(verbatim: column.issuedNetText)
                         .font(Typography.bodySemibold)
-                    Text(verbatim: column.issuedGrossText)
                 }
                 if column.issuedIsApproximate {
                     GridRow {
@@ -495,7 +501,6 @@ struct ChartTooltip: View {
                     }
                     Text(verbatim: column.receivedNetText)
                         .font(Typography.bodySemibold)
-                    Text(verbatim: column.receivedGrossText)
                 }
                 if let netIncomeText = column.netIncomeText {
                     GridRow {
@@ -506,8 +511,6 @@ struct ChartTooltip: View {
                         }
                         Text(verbatim: netIncomeText)
                             .font(Typography.bodySemibold)
-                        Text(verbatim: "—")
-                            .foregroundStyle(Palette.text4)
                     }
                     if let netIncomeNote = column.netIncomeNote {
                         GridRow {
@@ -530,11 +533,9 @@ struct ChartTooltip: View {
             }
         }
         .popPanel()
-        // The column itself speaks the same words for VoiceOver.
-        .accessibilityHidden(true)
     }
 
-    /// `text` across the three columns of the grid, in the small grey type of a note, wrapping at the width of the
+    /// `text` across the two columns of the grid, in the small grey type of a note, wrapping at the width of the
     /// words of the footer.
     private func note(_ text: String) -> some View {
         Text(verbatim: text)
@@ -542,7 +543,7 @@ struct ChartTooltip: View {
             .foregroundStyle(Palette.text3)
             .frame(width: Self.footerWordsWidth, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .gridCellColumns(3)
+            .gridCellColumns(2)
             .gridCellAnchor(.leading)
     }
 

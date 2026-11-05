@@ -18,12 +18,12 @@ struct SimulatorBuilderTests {
         var label: String
         var value: String
         var note: String?
-        var sign: ComputationSign
-        var style: ComputationRowStyle
+        var sign: BillSign
+        var style: BillRowStyle
 
         init(
-            _ label: String, _ value: String, _ note: String? = nil, _ sign: ComputationSign = .blank,
-            _ style: ComputationRowStyle = .plain
+            _ label: String, _ value: String, _ note: String? = nil, _ sign: BillSign = .blank,
+            _ style: BillRowStyle = .plain
         ) {
             self.label = label
             self.value = value
@@ -37,7 +37,7 @@ struct SimulatorBuilderTests {
         section.rows.map { Shown($0.label, $0.value, $0.note, $0.sign, $0.style) }
     }
 
-    private func row(_ label: String, in section: ComputationSection) throws -> ComputationRow {
+    private func row(_ label: String, in section: ComputationSection) throws -> BillRow {
         try #require(section.rows.first { $0.label == label }, "No row \(label) in \(section.title)")
     }
 
@@ -855,7 +855,7 @@ struct SimulatorBuilderTests {
             ])
         #expect(
             card.rows[1]
-                == ComputationRow(
+                == BillRow(
                     label: "Daňový bonus", value: "37\u{00A0}524", note: "vyplatí ho finanční úřad", sign: .plus))
         #expect(try row("Čistý příjem za rok", in: card).value == "87\u{00A0}804")
         let vypocet = ComputationBuilder.build(

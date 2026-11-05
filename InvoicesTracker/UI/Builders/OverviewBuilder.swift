@@ -28,9 +28,6 @@ nonisolated struct OverviewInput: Sendable {
     var latestReceipts: [(invoice: Invoice, effect: ReceiptEffect)]
     var chartMode: ChartMode
 
-    /// Whether the chart is drawn with VAT. Both series are in the columns either way.
-    var chartWithVAT: Bool
-
     /// The invoices of the chart: those issued in the years shown, and those issued outside them that have a payment
     /// in them. The chart of the estimate card counts the months of `year` up to today from them as well.
     var chartRows: [InvoiceChartRow]
@@ -79,9 +76,10 @@ nonisolated struct OverviewInput: Sendable {
     /// The levies of the current year as of today with the unpaid invoices due by the end of its month counted as paid,
     /// or nil where there is no such figure: the screen leaves it out unless the year is the current one and there is
     /// an invoice to count. The builder takes the average per month from it, with the sign of an estimate and a note,
-    /// for the year it is of and for no other: in the strip above the chart when that year is the one shown, in the
-    /// tooltip of every month of the chart by months of that year, and in the tooltip of the column of that year in the
-    /// chart by years, whichever year is shown. Nothing else of the page is worked out from it.
+    /// for the year it is of and for no other: in the last row of the calculation above the chart when that year is
+    /// the one shown, in the tooltip of every month of the chart by months of that year, and in the tooltip of the
+    /// column of that year in the chart by years, whichever year is shown. Nothing else of the page is worked out from
+    /// it.
     var dueNetIncome: DueNetIncome? = nil
 
     /// How `year` converts its income in other currencies.
@@ -108,37 +106,6 @@ nonisolated struct DueNetIncome: Sendable {
 
 // MARK: - Output
 
-/// The strip above the chart of the card "Příjmy": what the income of the year so far leaves after the tax and the
-/// insurance, and the average of that per month, each with the words that say what the figure is. The figures are in
-/// whole Kč. The average of the current year can count the unpaid invoices due this month as paid
-/// (`OverviewInput.dueNetIncome`); then it is an estimate and says which invoices it counts, while the first figure
-/// stays what has been received.
-nonisolated struct OverviewNetIncome: Sendable, Hashable {
-    /// What the first figure is: "Čistý příjem za rok 2025" for a year shown as of its last day, otherwise "Čistý
-    /// příjem od 1. 1. do 17. 10.".
-    var yearLabel: String
-
-    /// The net income of the year so far: "1 933 471 Kč", or "−12 345 Kč" where the levies are more than the income.
-    var yearValue: String
-
-    /// What the net income is a part of: "88,2 % příjmů bez DPH po odvodech", or while the income is not above zero,
-    /// as there is nothing to take a part of, "příjmy bez DPH po odvodech".
-    var yearSub: String
-
-    /// What the second figure is: "Čistý příjem průměrně za měsíc".
-    var monthLabel: String
-
-    /// The net income over the months so far, per month: "193 347 Kč". Where the unpaid invoices due this month count
-    /// in it (`OverviewInput.dueNetIncome`) it is the average with them, with the sign of an estimate in front of it:
-    /// "≈ 199 566 Kč".
-    var monthValue: String
-
-    /// The months the average is over: "průměr za celý rok", "průměr za leden" or "průměr za leden–říjen". Where the
-    /// unpaid invoices due this month count in the average, the words that say so follow after a comma, with the last
-    /// day they are counted to: "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31. 10.".
-    var monthSub: String
-}
-
 /// The average net income per month of a year as the footer of the tooltip of a column of the chart tells it: the words
 /// that say which year and which months it is over, and the figure. When the engine worked the year out with the rules
 /// of another year (`TaxResult.rulesAreEstimate`), or the current year's average counts the unpaid invoices due this
@@ -163,8 +130,8 @@ nonisolated struct ChartNetAverage: Sendable, Hashable {
 }
 
 /// A column of the income chart: a month or a year, with what was issued (the bars) and what was received (the line),
-/// each without and with VAT, in haléře, which the chart is drawn from; the hover box and VoiceOver tell them in whole
-/// Kč (`issuedNetText` and its like). Where the levies of its year are known it also tells what is left of the
+/// both without VAT, in haléře, which the chart is drawn from; the hover box and VoiceOver tell them in whole Kč
+/// (`issuedNetText` and its like). Where the levies of its year are known it also tells what is left of the
 /// income after them (the green line). A month has the net income of the invoices paid in it, and the average per
 /// month of the selected year; a year of the years chart that has been worked out has the net income of the year and
 /// its average. Where the engine worked the year out with the rules of another year, the net income and the average
@@ -176,9 +143,7 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// "Září 2026" or "Rok 2026".
     var title: String
     var issuedNetHalere: Int64
-    var issuedGrossHalere: Int64
     var receivedNetHalere: Int64
-    var receivedGrossHalere: Int64
 
     /// Whether an issued amount of the column is approximate: an invoice in a foreign currency, not paid, whose ČNB
     /// rate of the day of issue is not declared yet is worth what the latest declared rate makes of it. The tooltip
@@ -195,8 +160,8 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// Whether the lines of what was received and of the net income have a point in this column.
     var hasLinePoint: Bool
 
-    /// The net income of the column in haléře, always without VAT: the point of the green line. It is negative where
-    /// the levies are more than the income.
+    /// The net income of the column in haléře: the point of the green line. It is negative where the levies are more
+    /// than the income.
     ///
     /// A month has what the invoices paid in it leave after the levies their payments added, each as of its own day
     /// (`ReceiptEffect.netHalere`), up to the day the chart is cut at: 0 for a month with no such payment, also for a
@@ -229,8 +194,8 @@ nonisolated struct ChartColumn: Sendable, Hashable {
     /// where the column has them, and after the average its note where it has one: that the average counts the unpaid
     /// invoices due this month, and that the year is computed with the rules of another year.
     var accessibilityLabel: String {
-        let issued = issuedNetText + " bez DPH, " + issuedGrossText + " s DPH"
-        let received = receivedNetText + " bez DPH, " + receivedGrossText + " s DPH"
+        let issued = issuedNetText + " bez DPH"
+        let received = receivedNetText + " bez DPH"
         var label = "\(title): vystaveno \(issued); přijato \(received)"
         if issuedIsApproximate {
             label += "; " + Self.approximateIssuedNote
@@ -256,19 +221,9 @@ nonisolated extension ChartColumn {
         issuedSign + PredictionBuilder.kc(ofHalere: issuedNetHalere)
     }
 
-    /// What was issued with VAT, in whole Kč (`issuedNetText`).
-    var issuedGrossText: String {
-        issuedSign + PredictionBuilder.kc(ofHalere: issuedGrossHalere)
-    }
-
     /// What was received without VAT, in whole Kč, "279 433 Kč".
     var receivedNetText: String {
         PredictionBuilder.kc(ofHalere: receivedNetHalere)
-    }
-
-    /// What was received with VAT, in whole Kč.
-    var receivedGrossText: String {
-        PredictionBuilder.kc(ofHalere: receivedGrossHalere)
     }
 
     /// The sign "≈", with its no-break space, before the issued amounts of a column whose amounts are approximate,
@@ -347,8 +302,9 @@ nonisolated struct OverviewData: Sendable, Hashable {
     var columns: [ChartColumn]
     var chartSubtitle: String
 
-    /// The strip above the chart: the net income of the year so far and its average per month.
-    var netIncome: OverviewNetIncome
+    /// The calculation above the chart: the income of the year so far less its levies, what that leaves, and that per
+    /// month (`OverviewBuilder.calculation(_:shares:)`).
+    var calculation: [BillRow]
     var uniformLine: UniformLine?
     var latestReceipts: [LatestReceipt]
     var upcoming: [UpcomingItem]
@@ -373,8 +329,8 @@ nonisolated enum OverviewBuilder {
         // A year is over when it is before the current one and shown as of its last day. Any other day of it is the
         // year as it was on that day, worded like a year in progress, with the advances after it still to come.
         let isOver = AsOfState.isFinishedYear(asOf: input.asOf, today: input.today)
-        // The part of the income that the levies take, which the strip of the net income tells. There is none while the
-        // income is not above zero.
+        // The part of the income that the levies take, which the calculation of the net income tells. There is none
+        // while the income is not above zero.
         let shares = IncomeShares(input.result)
         return OverviewData(
             keyFigure: keyFigure(input, isOver: isOver),
@@ -382,7 +338,7 @@ nonisolated enum OverviewBuilder {
             tiles: tiles(input, isOver: isOver),
             columns: columns(input, isOver: isOver),
             chartSubtitle: chartSubtitle(input),
-            netIncome: netIncome(input, shares: shares),
+            calculation: calculation(input, shares: shares),
             uniformLine: uniformLine(input),
             latestReceipts: latestReceipts(input),
             upcoming: isOver ? [] : upcoming(input),
@@ -508,37 +464,40 @@ nonisolated enum OverviewBuilder {
 
     // MARK: The net income
 
-    /// The strip above the chart: what the income of the year so far leaves after the tax and the insurance
-    /// (`NetIncome`), and the average of that per month. A year shown as of its last day is named as a whole; any other
-    /// day is the span from the first of January through it, and the average is over the months so far. The part of the
-    /// income that the net income is comes from `shares`; with none, the strip only says what the figure is. It is a
-    /// figure of the levies, not of the chart, so the chart's grouping and VAT do not change it.
+    /// The calculation above the chart, in the rows of a bill: the income of the year so far without VAT, less the
+    /// levies (`NetIncome`), with the share of the income they take beside them and what each authority takes of them
+    /// under them (`BuilderText.leviesSplit(of:)`), what that leaves, "Čistý příjem", with its share, and that over
+    /// the months so far, "Průměrně za měsíc", with the green dot of the net income. The figures are in whole Kč and
+    /// all come from one result, so the income less the levies is the net income shown. A year shown as of its last
+    /// day is named as a whole, "Příjmy za rok 2025", and its average is over twelve months; any other day is the span
+    /// from the first of January through the day the money is received by, "Příjmy od 1. 1. do 17. 10.", and the
+    /// average is over the months through the month of the day the levies were worked out for. The shares come from
+    /// `shares`, and are left out where there are none, while the income is not above zero. It is a figure of the
+    /// levies, not of the chart, so the chart's grouping does not change it.
     ///
     /// Where the input has the figure with the unpaid invoices due by the end of the month counted
-    /// (`OverviewInput.dueNetIncome`) for the year shown, the average is that one and the first figure is still what
-    /// has been received. The average has the sign of an estimate in front of it, and the line under it goes on after
-    /// the months, which are those of the day both were worked out for, with the words that say which invoices it
-    /// counts: "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31. 10.". For any other year the strip
-    /// is as it is.
-    private static func netIncome(_ input: OverviewInput, shares: IncomeShares?) -> OverviewNetIncome {
+    /// (`OverviewInput.dueNetIncome`) for the year shown, the average is that one, with the sign of an estimate in
+    /// front of it, and the words that say which invoices it counts stand under it: "včetně nezaplacených faktur
+    /// splatných do 31. 10.". It is then no longer the net income above it over the months, which the words say; the
+    /// rows above it are still what has been received. For any other year the calculation is as it is.
+    static func calculation(_ input: OverviewInput, shares: IncomeShares?) -> [BillRow] {
         let net = NetIncome(input.result)
-        let yearLabel =
+        let incomeLabel =
             net.isWholeYear
-            ? "Čistý příjem za rok \(input.year)"
-            : "Čistý příjem od 1.\u{00A0}1. do " + BuilderText.date(input.receivedThrough, omittingYear: input.year)
-        let yearSub =
-            shares.map { BuilderText.share(tenths: $0.netTenths) + " příjmů bez DPH po odvodech" }
-            ?? "příjmy bez DPH po odvodech"
-        var monthValue = CzechFormat.wholeKc(net.monthlyKc)
-        var monthSub = "průměr za " + BuilderText.months(of: net)
+            ? "Příjmy za rok \(input.year)"
+            : "Příjmy od 1.\u{00A0}1. do " + BuilderText.date(input.receivedThrough, omittingYear: input.year)
+        var average = CzechFormat.wholeKc(net.monthlyKc)
+        var averageNote: String?
         if let due = dueNetIncome(input, matching: input.result) {
-            monthValue = dueAverage(due)
-            monthSub += ", " + includingDueInvoices(due)
+            average = dueAverage(due)
+            averageNote = includingDueInvoices(due)
         }
-        return OverviewNetIncome(
-            yearLabel: yearLabel, yearValue: CzechFormat.wholeKc(net.yearKc), yearSub: yearSub,
-            monthLabel: "Čistý příjem průměrně za měsíc", monthValue: monthValue, monthSub: monthSub
-        )
+        return BuilderText.netIncomeRows(
+            incomeLabel: incomeLabel, income: CzechFormat.wholeKc(net.incomeKc), incomeNote: nil,
+            levies: CzechFormat.wholeKc(net.leviesKc), leviesNote: BuilderText.leviesSplit(of: input.result),
+            leviesShare: shares.map { BuilderText.share(tenths: $0.leviesTenths) },
+            net: CzechFormat.wholeKc(net.yearKc), netShare: shares.map { BuilderText.share(tenths: $0.netTenths) },
+            average: average, averageNote: averageNote, period: BuilderText.period(of: net))
     }
 
     /// The figure with the unpaid invoices due by the end of the month counted (`OverviewInput.dueNetIncome`) when it
@@ -558,7 +517,7 @@ nonisolated enum OverviewBuilder {
 
     /// The words that say an average counts the unpaid invoices due by the end of the month, with the last day they are
     /// counted to, written without the year as the figure is of the current one: "včetně nezaplacených faktur
-    /// splatných do 31. 10.". The strip goes on with them after the months, and the tooltip makes a sentence of them
+    /// splatných do 31. 10.". The calculation has them under its average, and the tooltip makes a sentence of them
     /// by a capital letter: the day ends with its dot, which is the full stop.
     static func includingDueInvoices(_ due: DueNetIncome) -> String {
         "včetně nezaplacených faktur splatných do " + BuilderText.date(due.dueThrough, omittingYear: due.result.year)
@@ -584,17 +543,15 @@ nonisolated enum OverviewBuilder {
                 input.yearsAtUniformRate.isDisjoint(with: input.chartYears)
                 ? "cizí měny kurzem ČNB ke dni platby" : "přijaté v cizí měně přepočtem zvoleným pro svůj rok"
         }
-        return scope + " · v Kč " + (input.chartWithVAT ? "s DPH" : "bez DPH") + " · " + received
+        return scope + " · v Kč bez DPH · " + received
             + ", nezaplacené kurzem ČNB ke dni vystavení · podrobnosti po najetí myší"
     }
 
-    /// The four sums of a column of the chart.
+    /// The sums of a column of the chart, without VAT.
     private nonisolated struct ColumnSums {
         var issuedNet: Int64 = 0
-        var issuedGross: Int64 = 0
         var issuedIsApproximate = false
         var receivedNet: Int64 = 0
-        var receivedGross: Int64 = 0
     }
 
     /// The day after which no invoice counts as issued in the chart: the reporting cutoff, but today for the years
@@ -675,8 +632,8 @@ nonisolated enum OverviewBuilder {
     /// day of issue, or, while that is not declared, the latest declared one, and the column says it is approximate.
     ///
     /// The net income is a figure of the levies, not of the chart's amounts. Every month has the average of the
-    /// selected year, the one the strip above the chart tells, and the net income of the invoices paid in it: the sum
-    /// of what each such payment leaves after the levies it added on its own day
+    /// selected year, the one the calculation above the chart tells, and the net income of the invoices paid in it: the
+    /// sum of what each such payment leaves after the levies it added on its own day
     /// (`OverviewInput.invoicePaymentEffects`, up to the cut), 0 for a month with none and for every month after the
     /// day shown. A year of the years chart has its net income and its average when the input has its levies
     /// (`OverviewInput.netIncomeResults`), and neither otherwise. A year that the engine worked out with the rules of
@@ -712,14 +669,12 @@ nonisolated enum OverviewBuilder {
             if row.issueDate <= cut, let index = column(of: row.issueDate) {
                 let issued = issuedValue(of: row, receivedThrough: receivedCut)
                 sums[index].issuedNet += issued.net
-                sums[index].issuedGross += issued.gross
                 sums[index].issuedIsApproximate = sums[index].issuedIsApproximate || issued.isApproximate
             }
             if let day = row.paymentDate, day <= receivedCut, let net = row.paymentNetHalere,
                 let index = column(of: day)
             {
                 sums[index].receivedNet += net
-                sums[index].receivedGross += net + (row.paymentVatHalere ?? 0)
             }
         }
 
@@ -734,8 +689,7 @@ nonisolated enum OverviewBuilder {
                 return ChartColumn(
                     label: CzechFormat.monthShort[index],
                     title: BuilderText.capitalized(CzechFormat.monthNames[index]) + " \(input.year)",
-                    issuedNetHalere: sum.issuedNet, issuedGrossHalere: sum.issuedGross,
-                    receivedNetHalere: sum.receivedNet, receivedGrossHalere: sum.receivedGross,
+                    issuedNetHalere: sum.issuedNet, receivedNetHalere: sum.receivedNet,
                     issuedIsApproximate: sum.issuedIsApproximate,
                     isFuture: !isOver && index > currentMonth, isCurrent: !isOver && index == currentMonth,
                     hasLinePoint: isOver || index <= currentMonth, netIncomeHalere: monthNets[index],
@@ -748,8 +702,7 @@ nonisolated enum OverviewBuilder {
                 let result = input.netIncomeResults[year]
                 return ChartColumn(
                     label: String(year), title: "Rok \(year)",
-                    issuedNetHalere: sum.issuedNet, issuedGrossHalere: sum.issuedGross,
-                    receivedNetHalere: sum.receivedNet, receivedGrossHalere: sum.receivedGross,
+                    issuedNetHalere: sum.issuedNet, receivedNetHalere: sum.receivedNet,
                     issuedIsApproximate: sum.issuedIsApproximate,
                     isFuture: false, isCurrent: year == input.year, hasLinePoint: true,
                     netIncomeHalere: result.map { NetIncome($0).yearKc * 100 },
@@ -775,7 +728,8 @@ nonisolated enum OverviewBuilder {
         return nets
     }
 
-    /// What an issued invoice is worth in the charts, in haléře without and with VAT, and whether that is approximate.
+    /// What an issued invoice is worth in haléře, without and with VAT, and whether that is approximate. The chart
+    /// uses `net`; `gross` serves the VAT of the receipts of the due invoices (`DueInvoices.receipts(of:on:)`).
     nonisolated struct IssuedValue: Sendable, Hashable {
         var net: Int64
         var gross: Int64

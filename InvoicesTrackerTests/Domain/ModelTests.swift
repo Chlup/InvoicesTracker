@@ -173,7 +173,6 @@ struct ModelTests {
         #expect(settings.lastOffMacBackup == nil)
         #expect(settings.localBackupPendingSince == nil)
         #expect(settings.chartMode == .months)
-        #expect(!settings.chartWithVAT)
         #expect(settings.idleLock == .tenMinutes)
 
         let payment = Payment(date: civilDate("2026-10-02"), conversion: .czk, czkNetHalere: 100, czkVatHalere: 21)
@@ -376,7 +375,7 @@ struct ModelTests {
             appearance: .dark, touchIDUnlock: false, idleLock: .oneHour, backupFolderBookmark: Data([0, 1, 2, 255]),
             backupFolderName: "Záloha – disk", lastLocalBackup: Date(timeIntervalSince1970: 1_800_000_000.25),
             lastOffMacBackup: Date(timeIntervalSince1970: 1_700_000_000),
-            localBackupPendingSince: Date(timeIntervalSince1970: 1_800_000_600), chartMode: .years, chartWithVAT: true,
+            localBackupPendingSince: Date(timeIntervalSince1970: 1_800_000_600), chartMode: .years,
             replacedRecoveryCodeLabel: "kód č. 1 z 17.\u{00A0}10.\u{00A0}2026", replacedRecoveryCodeNumber: 1,
             backupFolderChosen: Date(timeIntervalSince1970: 1_799_000_000)
         )
@@ -402,10 +401,21 @@ struct ModelTests {
         let settings = try JSONDecoder().decode(AppSettings.self, from: older)
 
         #expect(settings.idleLock == .tenMinutes)
-        #expect(
-            settings == AppSettings(appearance: .dark, touchIDUnlock: true, chartMode: .years, chartWithVAT: true))
+        #expect(settings == AppSettings(appearance: .dark, touchIDUnlock: true, chartMode: .years))
         let stored = try JSONEncoder().encode(AppSettings(idleLock: .never))
         #expect(try JSONDecoder().decode(AppSettings.self, from: stored).idleLock == .never)
+    }
+
+    /// Settings stored while the chart had a VAT switch load with the other settings kept, and saving them again
+    /// drops the switch.
+    @Test func aSettingStoredWithTheOldVATSwitchLoadsWithTheOtherSettingsKept() throws {
+        let stored = Data(#"{"appearance":"dark","touchIDUnlock":true,"chartMode":"years","chartWithVAT":true}"#.utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: stored)
+
+        #expect(settings == AppSettings(appearance: .dark, touchIDUnlock: true, chartMode: .years))
+        let written = try #require(String(data: try JSONEncoder().encode(settings), encoding: .utf8))
+        #expect(!written.contains("chartWithVAT"))
     }
 
     /// Settings stored before the budget existed read an empty budget and keep everything else they say.
@@ -418,13 +428,13 @@ struct ModelTests {
 
     /// One malformed budget must not make the whole settings row unreadable: the budget alone falls back.
     @Test func aMalformedBudgetFallsBackAloneAndTheOtherSettingsSurvive() throws {
-        let stored = Data(#"{"appearance":"dark","chartWithVAT":true,"budget":{"source":"nonsense"}}"#.utf8)
+        let stored = Data(#"{"appearance":"dark","chartMode":"years","budget":{"source":"nonsense"}}"#.utf8)
 
         let settings = try JSONDecoder().decode(AppSettings.self, from: stored)
 
         #expect(settings.budget == BudgetSettings())
         #expect(settings.appearance == .dark)
-        #expect(settings.chartWithVAT == true)
+        #expect(settings.chartMode == .years)
     }
 
     /// A source this version does not know, such as one a newer version saved, falls back to Skutečnost alone: the

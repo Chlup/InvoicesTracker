@@ -17,16 +17,16 @@ nonisolated extension ComputationBuilder {
         let minimumMonths = months(health.minimumMonths) + (health.minimumMonths == activeMonths ? "" : " s minimem")
         let share = percent(TaxRules.healthAssessmentPercent, fractionDigits: 0)
         var rows = [
-            ComputationRow(
+            BillRow(
                 label: "Vypočtený základ", value: CzechFormat.amount(health.computedBaseHalere),
                 note: "\(share) zisku"),
-            ComputationRow(
+            BillRow(
                 label: "Vyměřovací základ", value: CzechFormat.amount(health.baseHalere),
                 note:
                     "\(share) zisku · min. \(CzechFormat.amount(health.minimumBaseHalere))"
                     + " (\(CzechFormat.amount(monthlyMinimum)) × \(minimumMonths))"
                     + " · bez maxima, nezaokrouhluje se"),
-            ComputationRow(
+            BillRow(
                 label: "Sazba " + percent(TaxRules.healthRate, fractionDigits: 1),
                 value: CzechFormat.grouped(health.insurance), note: roundedUp, sign: .times),
         ]
@@ -38,15 +38,15 @@ nonisolated extension ComputationBuilder {
 
     /// The advances paid to an authority, taken off its levy, and what is left (`leftValue(_:)`): a Zbývá as of the day
     /// shown, or for a year that is over the Doplatek. An overpayment says how it comes back.
-    static func tailRows(of authority: Authority, _ facts: Facts) -> [ComputationRow] {
+    static func tailRows(of authority: Authority, _ facts: Facts) -> [BillRow] {
         let result = facts.result
         let balance = result.balance(authority)
         return [
-            ComputationRow(
+            BillRow(
                 label: "Zálohy", value: CzechFormat.grouped(-balance.advancesPaid),
                 note: advancesNote(plan(of: authority, facts.input.advances), throughMonth: result.asOf.month),
                 sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: facts.isOver ? "Doplatek" : "Zbývá", value: leftValue(balance), note: leftNote(balance, facts),
                 sign: .equals, style: .total),
         ]

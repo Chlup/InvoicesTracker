@@ -33,18 +33,18 @@ nonisolated extension ComputationBuilder {
     static func netIncomeSection(_ result: TaxResult, wording: NetIncomeWording) -> ComputationSection {
         let net = NetIncome(result)
         let rows = [
-            ComputationRow(label: wording.incomeLabel, value: crowns(result.P), note: "bez DPH"),
+            BillRow(label: wording.incomeLabel, value: crowns(result.P), note: "bez DPH"),
             taxRow(of: result),
-            ComputationRow(
+            BillRow(
                 label: "Sociální pojištění", value: CzechFormat.grouped(-result.social.insurance), sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: "Zdravotní pojištění", value: CzechFormat.grouped(-result.health.insurance), sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: wording.resultLabel, value: CzechFormat.grouped(net.yearKc),
                 note: resultNote(of: result, wording: wording), sign: .equals, style: .strong),
-            ComputationRow(
+            BillRow(
                 label: months(net.months), value: String(net.months), note: wording.divisorNote, sign: .divided),
-            ComputationRow(
+            BillRow(
                 label: "Průměrně za měsíc", value: CzechFormat.wholeKc(net.monthlyKc),
                 note: "čistý příjem na jeden měsíc", sign: .equals, style: .total),
         ]
@@ -53,11 +53,11 @@ nonisolated extension ComputationBuilder {
 
     /// The row of the tax: taken off the income, or, where the tax is negative because a tax bonus is paid, added to
     /// it.
-    private static func taxRow(of result: TaxResult) -> ComputationRow {
+    private static func taxRow(of result: TaxResult) -> BillRow {
         guard result.netTax < 0 else {
-            return ComputationRow(label: "Daň z příjmů", value: CzechFormat.grouped(-result.netTax), sign: .minus)
+            return BillRow(label: "Daň z příjmů", value: CzechFormat.grouped(-result.netTax), sign: .minus)
         }
-        return ComputationRow(
+        return BillRow(
             label: "Daňový bonus", value: CzechFormat.grouped(-result.netTax), note: "vyplatí ho finanční úřad",
             sign: .plus)
     }

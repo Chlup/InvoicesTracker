@@ -36,25 +36,25 @@ nonisolated extension PredictionBuilder {
         let payments = CzechCount.counted(
             prediction.receivedCount, one: "platba", few: "platby", many: "plateb", separator: CzechFormat.noBreakSpace)
         var rows = [
-            ComputationRow(
+            BillRow(
                 label: "Přijaté platby", value: CzechFormat.amount(prediction.receivedHalere),
                 note: "1.\u{00A0}1. – " + CzechFormat.dayMonth(prediction.now) + " · " + payments
                     + (prediction.includesAdjustments ? " · včetně úprav příjmů" : ""))
         ]
         if prediction.waitingHalere != 0 {
             rows.append(
-                ComputationRow(
+                BillRow(
                     label: "Vystavené faktury", value: CzechFormat.amount(prediction.waitingHalere),
                     note: "zaplatí se do 31.\u{00A0}12. podle obvyklé doby placení odběratele", sign: .plus))
         }
         if prediction.expectedHalere != 0 {
             rows.append(
-                ComputationRow(
+                BillRow(
                     label: "Koncepty a očekávané faktury", value: CzechFormat.amount(prediction.expectedHalere),
                     note: expectedNote(prediction), sign: .plus))
         }
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: prediction.isClosed ? "Příjmy za rok \(prediction.year)" : "Příjmy za rok (odhad)",
                 value: CzechFormat.amount(prediction.incomeHalere),
                 note: prediction.nextYearHalere > 0
@@ -63,7 +63,7 @@ nonisolated extension PredictionBuilder {
                 sign: .equals, style: .strong))
         // The income the engine counts, in whole crowns, from which the expenses and the profit follow.
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: "Příjmy z podnikání (§ 7)", value: ComputationBuilder.crowns(result.P),
                 note: ComputationBuilder.incomeRoundingNote, sign: .equals, style: .strong))
         rows += expenseRows(result)
@@ -95,7 +95,7 @@ nonisolated extension PredictionBuilder {
     }
 
     /// The flat-rate expenses and the profit they leave. The note of the expenses says whether the cap cut them.
-    private static func expenseRows(_ result: TaxResult) -> [ComputationRow] {
+    private static func expenseRows(_ result: TaxResult) -> [BillRow] {
         let rate = ComputationBuilder.percent(Decimal(result.expensePercent) / 100, fractionDigits: 0)
         let cap = CzechFormat.grouped(result.expenseCap)
         let note =
@@ -103,10 +103,10 @@ nonisolated extension PredictionBuilder {
             ? "\(rate) je \(ComputationBuilder.crowns(result.uncappedExpenses)) → použije se strop \(cap)"
             : "\(rate) z příjmů · strop \(cap)"
         return [
-            ComputationRow(
+            BillRow(
                 label: "Výdajový paušál \(rate)", value: ComputationBuilder.crowns(-result.V), note: note,
                 sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: "Zisk (dílčí základ daně)", value: ComputationBuilder.crowns(result.DZ), sign: .equals,
                 style: .strong),
         ]
@@ -121,27 +121,27 @@ nonisolated extension PredictionBuilder {
     ) -> ComputationSection {
         let result = outcome.result
         var rows = [
-            ComputationRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ)),
-            ComputationRow(
+            BillRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ)),
+            BillRow(
                 label: "Nezdanitelné části základu", value: ComputationBuilder.crowns(-result.deductionsTotal),
                 note: ComputationBuilder.deductionsNote(result), sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: "Základ daně", value: CzechFormat.grouped(result.B), note: "zaokrouhleno na celé stovky dolů",
                 sign: .equals, style: .strong),
-            ComputationRow(
+            BillRow(
                 label: "Sazba " + ComputationBuilder.percent(TaxRules.taxRateLow, fractionDigits: 0),
                 value: CzechFormat.grouped(result.taxBeforeCredit),
                 note: ComputationBuilder.percent(TaxRules.taxRateHigh, fractionDigits: 0)
                     + " až ze základu nad " + CzechFormat.grouped(result.rules.taxBandThreshold),
                 sign: .times),
-            ComputationRow(
+            BillRow(
                 label: "Sleva na poplatníka", value: CzechFormat.grouped(-result.creditApplied),
                 note: ComputationBuilder.creditNote(facts), sign: .minus),
         ]
         rows += ComputationBuilder.familyRows(result)
         // The net tax: a tax bonus makes it negative.
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: outcome.prediction.isClosed ? "Daň za rok \(outcome.prediction.year)" : "Daň za rok (odhad)",
                 value: CzechFormat.grouped(result.netTax),
                 note: result.netTax < 0 ? ComputationBuilder.bonusNote : nil, sign: .equals, style: .strong))
@@ -157,19 +157,19 @@ nonisolated extension PredictionBuilder {
         _ outcome: PredictionOutcome, _ facts: ComputationBuilder.Facts
     ) -> ComputationSection {
         let social = outcome.result.social
-        var rows: [ComputationRow]
+        var rows: [BillRow]
         if social.secondaryMonths > 0 {
             // Výpočet's rows without its advances and what is left, which the prediction words on its own.
             rows = ComputationBuilder.socialRows(facts)
         } else {
             let share = ComputationBuilder.percent(outcome.result.rules.socialAssessmentPercent, fractionDigits: 0)
             rows = [
-                ComputationRow(
+                BillRow(
                     label: "Vyměřovací základ", value: CzechFormat.grouped(social.base),
                     note: "\(share) zisku, nahoru · min. \(CzechFormat.grouped(social.minimumBase))"
                         + " (\(ComputationBuilder.months(social.mainMonths)) hlavní činnosti)"
                         + " · max. \(CzechFormat.grouped(social.maximumBase))"),
-                ComputationRow(
+                BillRow(
                     label: "Sazba " + ComputationBuilder.percent(TaxRules.socialRate, fractionDigits: 1),
                     value: CzechFormat.grouped(social.insurance), note: ComputationBuilder.roundedUp, sign: .times),
             ]
@@ -183,11 +183,11 @@ nonisolated extension PredictionBuilder {
         let health = outcome.result.health
         let share = ComputationBuilder.percent(TaxRules.healthAssessmentPercent, fractionDigits: 0)
         var rows = [
-            ComputationRow(
+            BillRow(
                 label: "Vyměřovací základ", value: CzechFormat.amount(health.baseHalere),
                 note: "\(share) zisku · min. \(CzechFormat.amount(health.minimumBaseHalere))"
                     + " (\(ComputationBuilder.months(health.minimumMonths)))"),
-            ComputationRow(
+            BillRow(
                 label: "Sazba " + ComputationBuilder.percent(TaxRules.healthRate, fractionDigits: 1),
                 value: CzechFormat.grouped(health.insurance), note: ComputationBuilder.roundedUp, sign: .times),
         ]
@@ -216,16 +216,16 @@ nonisolated extension PredictionBuilder {
 
     /// The advances of the whole year paid to `authority`, taken off its levy, and what is left to pay with the return
     /// or the overview, written as Výpočet writes it (`ComputationBuilder.leftValue(_:)`).
-    private static func advanceRows(of authority: Authority, _ outcome: PredictionOutcome) -> [ComputationRow] {
+    private static func advanceRows(of authority: Authority, _ outcome: PredictionOutcome) -> [BillRow] {
         let balance = outcome.result.balance(authority)
         let payments = CzechCount.counted(
             outcome.plannedCount(authority), one: "platba", few: "platby", many: "plateb",
             separator: CzechFormat.noBreakSpace)
         return [
-            ComputationRow(
+            BillRow(
                 label: "Zálohy za rok", value: CzechFormat.grouped(-balance.advancesPaid),
                 note: "podle plánu záloh · \(payments) za celý rok", sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: "Doplatek", value: ComputationBuilder.leftValue(balance), sign: .equals, style: .total),
         ]
     }

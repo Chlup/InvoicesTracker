@@ -55,7 +55,7 @@ struct ComputationModelTests {
             SpouseYear(claim: true, months: MonthRange.wholeYear, ownIncomeKc: 0, ztpp: nil), year: 2026)
     }
 
-    private func row(_ label: String, in title: String, of model: ComputationModel) throws -> ComputationRow {
+    private func row(_ label: String, in title: String, of model: ComputationModel) throws -> BillRow {
         let section = try #require(model.sections.first { $0.title == title }, "No section \(title)")
         return try #require(section.rows.first { $0.label == label }, "No row \(label) in \(title)")
     }

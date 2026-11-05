@@ -235,7 +235,7 @@ struct BudgetModelTests {
         await overview.load()
 
         #expect(budget.data?.keyFigure.figure == "187\u{00A0}111\u{00A0}Kč")
-        #expect(budget.data?.keyFigure.figure == overview.data?.netIncome.monthValue)
+        #expect(budget.data?.keyFigure.figure == overview.data?.averageRow?.value)
 
         // Issued on 5. 10. and due on 25. 10., unpaid.
         try await database.saveInvoice(
@@ -247,7 +247,7 @@ struct BudgetModelTests {
         await overview.load()
 
         #expect(budget.data?.keyFigure.figure == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
-        #expect(budget.data?.keyFigure.figure == overview.data?.netIncome.monthValue)
+        #expect(budget.data?.keyFigure.figure == overview.data?.averageRow?.value)
     }
 
     /// Only the newest load shows what it read. Here the older one, for Odhad za rok, waits for the rates of the year

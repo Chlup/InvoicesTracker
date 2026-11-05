@@ -64,7 +64,7 @@ struct OverviewBuilderTests {
         year: Int = 2026, asOf: String = "2026-10-17", today todayText: String = "2026-10-17",
         result: TaxResult? = nil, advances: AdvancePlan? = nil,
         latestReceipts: [(invoice: Invoice, effect: ReceiptEffect)] = [], chartMode: ChartMode = .months,
-        chartWithVAT: Bool = false, chartRows: [InvoiceChartRow] = [], chartYears: [Int] = [2024, 2025, 2026],
+        chartRows: [InvoiceChartRow] = [], chartYears: [Int] = [2024, 2025, 2026],
         vatByMonth: [Int64]? = nil, vatToCheckMonths: Set<Int> = [], foreignCurrencies: [CurrencyCode] = [],
         uniformRates: [UniformRate] = [], yearsAtUniformRate: Set<Int> = [], prediction: PredictionOutcome? = nil,
         netIncomeResults: [Int: TaxResult] = [:], invoicePaymentEffects: [ReceiptEffect] = [],
@@ -82,7 +82,7 @@ struct OverviewBuilderTests {
         return OverviewInput(
             year: year, asOf: civilDate(asOf), today: civilDate(todayText), result: computed,
             advances: advances ?? (isSampleYear ? TaxEngineRegressionTests.sampleYear2026.advances : .empty),
-            latestReceipts: latestReceipts, chartMode: chartMode, chartWithVAT: chartWithVAT, chartRows: chartRows,
+            latestReceipts: latestReceipts, chartMode: chartMode, chartRows: chartRows,
             chartYears: chartYears, vatByMonth: vatByMonth ?? sampleVAT, vatToCheckMonths: vatToCheckMonths,
             foreignCurrencies: foreignCurrencies, uniformRates: uniformRates, yearsAtUniformRate: yearsAtUniformRate,
             prediction: prediction, netIncomeResults: netIncomeResults, invoicePaymentEffects: invoicePaymentEffects,
@@ -716,102 +716,145 @@ struct OverviewBuilderTests {
         #expect(advanceItems[0].amount == "12\u{00A0}000\u{00A0}Kč")
     }
 
-    // MARK: The net income above the chart
+    // MARK: The calculation above the chart
 
-    /// The sample year of the prediction as of 17. 10. 2026: the three levies take 11,8 % of the income, so the net
-    /// income of the year so far is 88,2 % of it, 1 933 471 Kč, which over the ten months from January through October
-    /// is 193 347 Kč a month.
-    @Test func theStripSaysTheNetIncomeOfTheYearSoFar() {
+    /// The sample year of the prediction as of 17. 10. 2026: the income of 2 191 771 Kč less the levies of 258 300 Kč
+    /// (the tax of 32 076 Kč, the social insurance of 159 279 Kč and the health insurance of 66 945 Kč), which take
+    /// 11,8 % of it, leave 1 933 471 Kč, 88,2 %, which over the ten months from January through October is 193 347 Kč a
+    /// month. The rows are set as a calculation: the income and the levies in body semibold, the net income under the
+    /// heavy line in title 3, and the average with the green dot in title 2, under no rule.
+    @Test func theCalculationTakesTheLeviesOffTheIncomeOfTheYearSoFarAndDividesWhatIsLeftByItsMonths() {
         let result = TaxEngine.compute(PredictionSample.yearInput(year: 2026), asOf: civilDate("2026-10-17"))
 
-        let strip = build(input(result: result)).netIncome
+        let rows = build(input(result: result)).calculation
 
         #expect(
-            strip
-                == OverviewNetIncome(
-                    yearLabel: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.",
-                    yearValue: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-                    yearSub: "88,2\u{00A0}% příjmů bez DPH po odvodech",
-                    monthLabel: "Čistý příjem průměrně za měsíc", monthValue: "193\u{00A0}347\u{00A0}Kč",
-                    monthSub: "průměr za leden–říjen"))
+            rows == [
+                BillRow(
+                    label: "Příjmy od 1.\u{00A0}1. do 17.\u{00A0}10.", value: "2\u{00A0}191\u{00A0}771\u{00A0}Kč",
+                    valueStyle: .semibold),
+                BillRow(
+                    label: "Odvody", value: "258\u{00A0}300\u{00A0}Kč",
+                    note: "daň 32\u{00A0}076 · sociální 159\u{00A0}279 · zdravotní 66\u{00A0}945", sign: .minus,
+                    share: "11,8\u{00A0}%", valueStyle: .semibold, rule: .hairline),
+                BillRow(
+                    label: "Čistý příjem", value: "1\u{00A0}933\u{00A0}471\u{00A0}Kč", sign: .equals, style: .strong,
+                    share: "88,2\u{00A0}%", valueStyle: .title3Bold, rule: .heavy),
+                BillRow(
+                    label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided,
+                    period: "·\u{00A0}10\u{00A0}měsíců", marksNetIncome: true, valueStyle: .title2Bold, rule: .hidden),
+            ])
     }
 
-    /// 2025 of the prediction sample shown as of its last day, from the autumn of 2026: the strip is about the whole
-    /// year, 81,7 % of its income, and the average is over its twelve months.
-    @Test func aYearShownAsOfItsLastDayHasTheNetIncomeOfTheWholeYear() {
+    /// 2025 of the prediction sample shown as of its last day, from the autumn of 2026: the calculation is of the whole
+    /// year, whose income of 2 931 160 Kč leaves 2 393 295 Kč, 81,7 % of it, after the levies of 537 865 Kč, 18,3 %,
+    /// and the average is over its twelve months.
+    @Test func aYearShownAsOfItsLastDayIsCalculatedAsAWhole() {
         let result = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
 
-        let strip = build(input(year: 2025, asOf: "2025-12-31", result: result)).netIncome
+        let rows = build(input(year: 2025, asOf: "2025-12-31", result: result)).calculation
 
-        #expect(strip.yearLabel == "Čistý příjem za rok 2025")
-        #expect(strip.yearValue == "2\u{00A0}393\u{00A0}295\u{00A0}Kč")
-        #expect(strip.yearSub == "81,7\u{00A0}% příjmů bez DPH po odvodech")
-        #expect(strip.monthLabel == "Čistý příjem průměrně za měsíc")
-        #expect(strip.monthValue == "199\u{00A0}441\u{00A0}Kč")
-        #expect(strip.monthSub == "průměr za celý rok")
+        #expect(rows.map(\.label) == ["Příjmy za rok 2025", "Odvody", "Čistý příjem", "Průměrně za měsíc"])
+        #expect(
+            rows.map(\.value) == [
+                "2\u{00A0}931\u{00A0}160\u{00A0}Kč", "537\u{00A0}865\u{00A0}Kč", "2\u{00A0}393\u{00A0}295\u{00A0}Kč",
+                "199\u{00A0}441\u{00A0}Kč",
+            ])
+        #expect(rows.map(\.share) == [nil, "18,3\u{00A0}%", "81,7\u{00A0}%", nil])
+        #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
+        #expect(rows[3].note == nil)
     }
 
     /// The current year of the prediction sample shown as of 31. 12. 2026, on that very day: the year is not over until
-    /// the day after, so the header of the bar still words it as a year in progress, but the strip is about the whole
-    /// year, as it keys on the day shown being the last of the year and not on the year being over. It counts the
-    /// 2 191 771 Kč received by 17. 10. against levies of 258 300 Kč: a net income of 1 933 471 Kč, and 161 123 Kč a
-    /// month over the twelve months.
-    @Test func theCurrentYearShownAsOfItsLastDayIsCountedAsTheWholeYear() {
+    /// the day after, so the header of the bar still words it as a year in progress, but the calculation is of the
+    /// whole year, as it keys on the day shown being the last of the year and not on the year being over. It counts
+    /// the 2 191 771 Kč received by 17. 10. against levies of 258 300 Kč: a net income of 1 933 471 Kč, and
+    /// 161 123 Kč a month over the twelve months.
+    @Test func theCurrentYearShownAsOfItsLastDayIsCalculatedAsTheWholeYear() {
         let result = TaxEngine.compute(PredictionSample.yearInput(year: 2026), asOf: civilDate("2026-12-31"))
 
         let data = build(input(year: 2026, asOf: "2026-12-31", today: "2026-12-31", result: result))
 
-        #expect(data.netIncome.yearLabel == "Čistý příjem za rok 2026")
-        #expect(data.netIncome.yearValue == "1\u{00A0}933\u{00A0}471\u{00A0}Kč")
-        #expect(data.netIncome.monthValue == "161\u{00A0}123\u{00A0}Kč")
-        #expect(data.netIncome.monthSub == "průměr za celý rok")
+        #expect(data.calculation.map(\.label).first == "Příjmy za rok 2026")
+        let net = data.calculation.map(\.value).dropFirst(2)
+        #expect(net == ["1\u{00A0}933\u{00A0}471\u{00A0}Kč", "161\u{00A0}123\u{00A0}Kč"])
+        #expect(data.calculation.last?.period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(data.levies.header == "Odvody z příjmů do 31.\u{00A0}12.")
     }
 
-    /// A year with no payment yet, as of 15. 1.: there is no income to give a share of, so the strip says only what the
-    /// figure is, and the minimum insurance of January leaves a loss, which the strip shows with the minus sign. The
-    /// average over the one month is the same figure.
-    @Test func beforeTheFirstPaymentTheStripHasNoShare() {
+    /// A year with no payment yet, as of 15. 1.: there is no income to give a share of, so the levies and the net
+    /// income have none, and the minimum insurance of January leaves a loss, which the calculation shows with the minus
+    /// sign. The average over the one month is the same figure.
+    @Test func beforeTheFirstPaymentTheCalculationHasNoShares() {
         let result = TaxEngine.compute(
             yearInput(year: 2026, receipts: [], advances: .empty), asOf: civilDate("2026-01-15"))
 
-        let strip = build(input(year: 2026, asOf: "2026-01-15", result: result)).netIncome
+        let rows = build(input(year: 2026, asOf: "2026-01-15", result: result)).calculation
 
-        #expect(strip.yearLabel == "Čistý příjem od 1.\u{00A0}1. do 15.\u{00A0}1.")
-        #expect(strip.yearSub == "příjmy bez DPH po odvodech")
-        #expect(strip.monthSub == "průměr za leden")
-        #expect(strip.yearValue.hasPrefix("\u{2212}"), "\(strip.yearValue)")
-        #expect(strip.yearValue == strip.monthValue)
+        #expect(rows.map(\.label).first == "Příjmy od 1.\u{00A0}1. do 15.\u{00A0}1.")
+        #expect(rows.map(\.value).first == "0\u{00A0}Kč")
+        #expect(rows.allSatisfy { $0.share == nil })
+        #expect(rows.last?.period == "·\u{00A0}1\u{00A0}měsíc")
+        #expect(rows[2].value.hasPrefix("\u{2212}"), "\(rows[2].value)")
+        #expect(rows[2].value == rows[3].value)
     }
 
-    /// With the bonus of `inputWithABonus()` the three levies are below zero, so the net income is more than the income
-    /// of 250 000 Kč: the levies take −5,9 % of it, and the part that is left, shown as it is, is above 100 %.
-    @Test func aTaxBonusTakesTheNetIncomeAboveTheIncome() {
-        let strip = build(inputWithABonus()).netIncome
+    /// With the bonus of `inputWithABonus()` the net tax is below zero: the levies name the bonus in place of the tax,
+    /// they take −5,9 % of the income of 250 000 Kč, and the net income, which is the income less them, is more than
+    /// the income: 105,9 % of it, shown as it is.
+    @Test func aTaxBonusIsNamedInTheLeviesAndTakesTheNetIncomeAboveTheIncome() {
+        let rows = build(inputWithABonus()).calculation
 
-        #expect(strip.yearLabel == "Čistý příjem od 1.\u{00A0}1. do 28.\u{00A0}2.")
-        #expect(strip.yearSub == "105,9\u{00A0}% příjmů bez DPH po odvodech")
-        #expect(strip.monthSub == "průměr za leden–únor")
-        #expect(!strip.yearValue.hasPrefix("\u{2212}"), "\(strip.yearValue)")
+        #expect(rows[0].label == "Příjmy od 1.\u{00A0}1. do 28.\u{00A0}2.")
+        #expect(rows[0].value == "250\u{00A0}000\u{00A0}Kč")
+        #expect(rows[1].note?.hasPrefix("daňový bonus 37\u{00A0}524 · sociální ") == true, "\(rows[1].note ?? "")")
+        #expect(rows[1].share == "\u{2212}5,9\u{00A0}%")
+        #expect(rows[2].share == "105,9\u{00A0}%")
+        #expect(!rows[2].value.hasPrefix("\u{2212}"), "\(rows[2].value)")
+        #expect(rows[3].period == "·\u{00A0}2\u{00A0}měsíce")
     }
 
-    /// The day before the last day of the year is still a year in progress, though it is in December: the label names
-    /// the days so far, and the average is said to be over the months from January through December, not over the
-    /// whole year.
+    /// The calculation adds up: the income less the levies is the net income it shows, for a year in progress, a whole
+    /// year, a year before its first payment and a year with a tax bonus.
+    @Test func theIncomeLessTheLeviesIsTheNetIncome() {
+        let inputs = [
+            input(result: TaxEngine.compute(PredictionSample.yearInput(year: 2026), asOf: civilDate("2026-10-17"))),
+            input(
+                year: 2025, asOf: "2025-12-31",
+                result: TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))),
+            input(
+                year: 2026, asOf: "2026-01-15",
+                result: TaxEngine.compute(
+                    yearInput(year: 2026, receipts: [], advances: .empty), asOf: civilDate("2026-01-15"))),
+            inputWithABonus(),
+        ]
+        for overview in inputs {
+            let net = NetIncome(overview.result)
+            let rows = build(overview).calculation
+
+            #expect(net.incomeKc - net.leviesKc == net.yearKc)
+            #expect(
+                rows.prefix(3).map(\.value)
+                    == [net.incomeKc, net.leviesKc, net.yearKc].map { CzechFormat.wholeKc($0) },
+                "\(overview.asOf)")
+        }
+    }
+
+    /// The day before the last day of the year is still a year in progress, though it is in December: the income names
+    /// the days so far, and the average is over the twelve months from January through December.
     @Test func theDayBeforeTheLastDayOfTheYearIsNotTheWholeYear() {
         let result = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-30"))
 
-        let strip = build(input(year: 2025, asOf: "2025-12-30", result: result)).netIncome
+        let rows = build(input(year: 2025, asOf: "2025-12-30", result: result)).calculation
 
-        #expect(strip.yearLabel == "Čistý příjem od 1.\u{00A0}1. do 30.\u{00A0}12.")
-        #expect(strip.monthSub == "průměr za leden–prosinec")
+        #expect(rows[0].label == "Příjmy od 1.\u{00A0}1. do 30.\u{00A0}12.")
+        #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
     }
 
-    /// The strip is about the levies, not about the chart: grouping the chart by years and drawing it with VAT leaves
-    /// it as it is.
-    @Test func theStripIsTheSameInBothViewsAndWithVAT() {
-        let months = build(input(chartMode: .months, chartWithVAT: false)).netIncome
-        let years = build(input(chartMode: .years, chartWithVAT: true)).netIncome
+    /// The calculation is about the levies, not about the chart: grouping the chart by years leaves it as it is.
+    @Test func theCalculationIsTheSameInBothViews() {
+        let months = build(input(chartMode: .months)).calculation
+        let years = build(input(chartMode: .years)).calculation
 
         #expect(years == months)
     }
@@ -821,56 +864,57 @@ struct OverviewBuilderTests {
     /// profit. It adds 15 000 Kč of tax (15 % of it), 16 060 Kč of social insurance (29,2 % of the 55 % of it that is
     /// the base) and 6 750 Kč of health insurance (13,5 % of the 50 % of it that is the base), together 37 810 Kč of
     /// levies, so the year so far leaves 62 190 Kč more: 1 995 661 Kč, which over the ten months from January through
-    /// October is 199 566 Kč a month. That average has the sign of an estimate and says which invoices it counts. The
-    /// first figure is what has been received, so it stays as it was.
+    /// October is 199 566 Kč a month. That average has the sign of an estimate and the note that says which invoices it
+    /// counts. The income, the levies and the net income above it are what has been received, so they stay as they
+    /// were, and the average is not their net income over the months, which the note says.
     @Test func theAverageCountsTheInvoicesDueThisMonthAsPaid() {
         let year = PredictionSample.yearInput(year: 2026)
         let result = TaxEngine.compute(year, asOf: civilDate("2026-10-17"))
         let due = dueNetIncome(of: year, asOf: "2026-10-17", through: "2026-10-31")
 
-        let received = build(input(result: result)).netIncome
-        let strip = build(input(result: result, dueNetIncome: due)).netIncome
+        let received = build(input(result: result)).calculation
+        let rows = build(input(result: result, dueNetIncome: due)).calculation
 
-        #expect(strip.monthLabel == "Čistý příjem průměrně za měsíc")
-        #expect(strip.monthValue == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
-        #expect(strip.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
-        #expect(received.monthValue == "193\u{00A0}347\u{00A0}Kč")
-        #expect(strip.yearLabel == received.yearLabel)
-        #expect(strip.yearValue == received.yearValue)
-        #expect(strip.yearSub == received.yearSub)
+        #expect(rows[3].label == "Průměrně za měsíc")
+        #expect(rows[3].value == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
+        #expect(rows[3].value == OverviewBuilder.dueAverage(due))
+        #expect(rows[3].note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(rows[3].period == "·\u{00A0}10\u{00A0}měsíců")
+        #expect(rows[3].marksNetIncome)
+        #expect(received[3].value == "193\u{00A0}347\u{00A0}Kč")
+        #expect(received[3].note == nil)
+        #expect(Array(rows.prefix(3)) == Array(received.prefix(3)))
     }
 
-    /// The figure with the invoices due this month is of 2026. The strip of 2025, shown as of its last day, is the
-    /// average of its own twelve months, as it was, without the sign and the words about the invoices.
-    @Test func aDueFigureOfAnotherYearLeavesTheStripAsItIs() {
+    /// The figure with the invoices due this month is of 2026. The calculation of 2025, shown as of its last day, has
+    /// the average of its own twelve months, as it was, without the sign and the words about the invoices.
+    @Test func aDueFigureOfAnotherYearLeavesTheCalculationAsItIs() {
         let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
         let due2026 = dueNetIncome(
             of: PredictionSample.yearInput(year: 2026), asOf: "2026-10-17", through: "2026-10-31")
 
-        let plain = build(input(year: 2025, asOf: "2025-12-31", result: whole2025)).netIncome
-        let strip = build(input(year: 2025, asOf: "2025-12-31", result: whole2025, dueNetIncome: due2026)).netIncome
+        let plain = build(input(year: 2025, asOf: "2025-12-31", result: whole2025)).calculation
+        let rows = build(input(year: 2025, asOf: "2025-12-31", result: whole2025, dueNetIncome: due2026)).calculation
 
-        #expect(strip == plain)
-        #expect(strip.monthValue == "199\u{00A0}441\u{00A0}Kč")
-        #expect(strip.monthSub == "průměr za celý rok")
+        #expect(rows == plain)
+        #expect(rows[3].value == "199\u{00A0}441\u{00A0}Kč")
+        #expect(rows[3].note == nil)
     }
 
-    /// The strip names the months through the month of the day it is worked out for, so the words about the invoices
-    /// follow it: through the 30th of December it reads "leden–prosinec", on the 31st "celý rok". The invoices are
-    /// counted up to 31. 12. on both days.
-    @Test func inDecemberTheNoteFollowsTheMonthsOfTheStrip() {
+    /// The average counts the invoices due up to 31. 12. on the 30th and on the 31st of December alike: both days have
+    /// the note and the sign, over the twelve months.
+    @Test func inDecemberTheAverageCountsTheInvoicesDueUpToTheLastDay() {
         let year = PredictionSample.yearInput(year: 2026)
 
-        for (day, months) in [("2026-12-30", "leden–prosinec"), ("2026-12-31", "celý rok")] {
+        for day in ["2026-12-30", "2026-12-31"] {
             let result = TaxEngine.compute(year, asOf: civilDate(day))
             let due = dueNetIncome(of: year, asOf: day, through: "2026-12-31")
 
-            let strip = build(input(asOf: day, today: day, result: result, dueNetIncome: due)).netIncome
+            let average = build(input(asOf: day, today: day, result: result, dueNetIncome: due)).calculation[3]
 
-            #expect(
-                strip.monthSub == "průměr za \(months), včetně nezaplacených faktur splatných do 31.\u{00A0}12.",
-                "\(day): \(strip.monthSub)")
-            #expect(strip.monthValue.hasPrefix("≈\u{00A0}"), "\(day): \(strip.monthValue)")
+            #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}12.", "\(day)")
+            #expect(average.period == "·\u{00A0}12\u{00A0}měsíců", "\(day)")
+            #expect(average.value.hasPrefix("≈\u{00A0}"), "\(day): \(average.value)")
         }
     }
 
@@ -889,13 +933,10 @@ struct OverviewBuilderTests {
 
         // September: the dollar invoice at what was paid for it plus the crown invoice.
         #expect(columns[8].issuedNetHalere == 31_022_675)
-        #expect(columns[8].issuedGrossHalere == 31_117_175)
         #expect(columns[8].receivedNetHalere == 0)
         // October: the money arrives; the draft of October is not issued.
         #expect(columns[9].issuedNetHalere == 0)
-        #expect(columns[9].issuedGrossHalere == 0)
         #expect(columns[9].receivedNetHalere == 31_022_675)
-        #expect(columns[9].receivedGrossHalere == 31_117_175)
     }
 
     @Test func theMonthsAfterTheChosenDayAreFutureAndHaveNoPointOnTheLine() {
@@ -940,22 +981,7 @@ struct OverviewBuilderTests {
         let october = build(input(chartRows: rows)).columns[9]
 
         #expect(october.issuedNetHalere == 26_032_888)
-        #expect(october.issuedGrossHalere == 26_032_888)
         #expect(october.receivedNetHalere == 0)
-    }
-
-    @Test func theEstimateOfAnUnpaidForeignInvoiceWithVATConvertsTheVATAtTheSameRate() {
-        // 10 000,00 USD and 2 100,00 USD VAT at 21,622: 216 220,00 Kč and 45 406,20 Kč.
-        let rows = [
-            chartRow(
-                id: 1, issued: "2026-10-05", currency: .usd, net: 1_000_000, vat: 210_000,
-                issueDayRate: usd("21.622"))
-        ]
-
-        let october = build(input(chartRows: rows)).columns[9]
-
-        #expect(october.issuedNetHalere == 21_622_000)
-        #expect(october.issuedGrossHalere == 26_162_620)
     }
 
     @Test func anUnpaidForeignInvoiceWhoseRateIsNotKnownIsWorthNothingInTheChartYet() {
@@ -974,7 +1000,6 @@ struct OverviewBuilderTests {
         // 14 350,00 USD at 21,359 (the rate of 30. 9.) is 306 501,65 Kč; the payment of 2. 10. is still to come.
         #expect(columns[8].issuedNetHalere == 30_650_165)
         #expect(columns[9].receivedNetHalere == 0)
-        #expect(columns[9].receivedGrossHalere == 0)
     }
 
     @Test func anInvoiceIssuedAfterTheChosenDayIsNotInTheChartYet() {
@@ -1021,7 +1046,6 @@ struct OverviewBuilderTests {
 
         #expect(columns.allSatisfy { $0.issuedNetHalere == 0 })
         #expect(columns[0].receivedNetHalere == 1_000_000)
-        #expect(columns[0].receivedGrossHalere == 1_210_000)
         #expect(columns[1...].allSatisfy { $0.receivedNetHalere == 0 })
     }
 
@@ -1065,7 +1089,6 @@ struct OverviewBuilderTests {
 
         #expect(columns.map(\.issuedNetHalere) == [400_000, 1_000_000, 0])
         #expect(columns.map(\.receivedNetHalere) == [400_000, 0, 1_000_000])
-        #expect(columns.map(\.receivedGrossHalere) == [400_000, 0, 1_210_000])
     }
 
     @Test func rowsOfYearsThatAreNotInTheListAreLeftOut() {
@@ -1175,7 +1198,7 @@ struct OverviewBuilderTests {
         #expect(columns[1].netIncomeNote == "součet za faktury zaplacené v měsíci")
         #expect(columns[1].accessibilityLabel.contains("; čistý příjem 253\u{00A0}401\u{00A0}Kč;"))
         #expect(columns[10].netIncomeText == "0\u{00A0}Kč" && columns[10].hasLinePoint == false)
-        #expect(IncomeChartLayout.largestAmount(in: columns, withVAT: false) >= 25_340_100)
+        #expect(IncomeChartLayout.largestAmount(in: columns) >= 25_340_100)
     }
 
     /// A reporting day after today cannot turn future payments into received net income. November and December
@@ -1224,16 +1247,15 @@ struct OverviewBuilderTests {
         #expect(columns[9].netIncomeHalere == -100_000)
         #expect(columns[9].netIncomeText == "\u{2212}1\u{00A0}000\u{00A0}Kč")
         #expect(columns[9].accessibilityLabel.contains("; čistý příjem \u{2212}1\u{00A0}000\u{00A0}Kč;"))
-        #expect(IncomeChartLayout.largestAmount(in: columns, withVAT: false) == 0)
+        #expect(IncomeChartLayout.largestAmount(in: columns) == 0)
     }
 
     /// The months chart is about the selected year alone: the results of other years that the input holds are not
-    /// read, and neither do the months follow the chart's VAT, as the net income is always without it.
-    @Test func theMonthsChartIgnoresOtherYearsAndTheChartsVATForItsNetIncome() {
+    /// read.
+    @Test func theMonthsChartIgnoresOtherYearsForItsNetIncome() {
         let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
         let plain = build(sampleMonthsInput()).columns
         var other = sampleMonthsInput()
-        other.chartWithVAT = true
         other.netIncomeResults = [2025: whole2025]
 
         let columns = build(other).columns
@@ -1267,7 +1289,7 @@ struct OverviewBuilderTests {
 
     /// 2025 as a whole year and 2026 as of 17. 10. 2026, from the autumn of 2026: each year has the net income it
     /// leaves, in haléře, and its average per month, over the months it is counted for; a year without a result, 2024,
-    /// has neither. The figures of 2026, the selected year, are those of the strip above the chart.
+    /// has neither. The figures of 2026, the selected year, are those of the calculation above the chart.
     @Test func inTheYearsChartEachYearHasItsNetIncome() {
         let whole2025 = TaxEngine.compute(PredictionSample.yearInput(year: 2025), asOf: civilDate("2025-12-31"))
         let soFar2026 = TaxEngine.compute(PredictionSample.yearInput(year: 2026), asOf: civilDate("2026-10-17"))
@@ -1436,9 +1458,9 @@ struct OverviewBuilderTests {
 
     /// The sample year of the prediction as of 17. 10. 2026 with the invoices due by 31. 10. counted, whose average is
     /// 199 566 Kč a month (`theAverageCountsTheInvoicesDueThisMonthAsPaid`): the hover box of every month tells the
-    /// average of the strip, with the sign of an estimate, and under the footer the sentence that says which invoices
-    /// it counts, which VoiceOver reads after the average. The words of the footer and the net income of the months are
-    /// as they were.
+    /// average of the calculation, with the sign of an estimate, and under the footer the sentence that says which
+    /// invoices it counts, which VoiceOver reads after the average. The words of the footer and the net income of the
+    /// months are as they were.
     @Test func inTheMonthsChartEveryColumnHasTheDueAverage() {
         let due = dueNetIncome(
             of: PredictionSample.yearInput(year: 2026), asOf: "2026-10-17", through: "2026-10-31")
@@ -1450,8 +1472,8 @@ struct OverviewBuilderTests {
 
         let note = "Včetně nezaplacených faktur splatných do 31.\u{00A0}10."
         #expect(data.columns.count == 12)
-        #expect(data.netIncome.monthValue == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
-        #expect(data.columns.allSatisfy { $0.netAverage?.value == data.netIncome.monthValue })
+        #expect(data.calculation[3].value == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
+        #expect(data.columns.allSatisfy { $0.netAverage?.value == data.calculation[3].value })
         #expect(data.columns.allSatisfy { $0.netAverage?.note == note })
         #expect(data.columns.map { $0.netAverage?.label } == plain.columns.map { $0.netAverage?.label })
         #expect(data.columns.map(\.netIncomeText) == plain.columns.map(\.netIncomeText))
@@ -1526,8 +1548,8 @@ struct OverviewBuilderTests {
     /// credit, the social insurance is 19 272 Kč (29,2 % of the 55 % of the profit) and the health insurance 8 100 Kč
     /// (13,5 % of the 50 %), together 27 372 Kč, so the 300 000 Kč leave 272 628 Kč, the average of the one month. The
     /// year is an estimate already, so the average has one sign, not two, and its note tells both: which invoices it
-    /// counts, and after one space that the rules are another year's. The strip adds no sentence about the rules: the
-    /// warning above the page says it.
+    /// counts, and after one space that the rules are another year's. The calculation adds no sentence about the rules:
+    /// the warning above the page says it.
     @Test func aDueAverageWithTheRulesOfAnotherYearHasOneSignAndBothNotes() {
         let received = Receipt(
             day: civilDate("2027-01-10"), czkNetHalere: 20_000_000, czkVatHalere: 0, source: .synthetic)
@@ -1547,8 +1569,9 @@ struct OverviewBuilderTests {
         let note =
             "Včetně nezaplacených faktur splatných do 31.\u{00A0}1. "
             + RulesWarning.message(year: 2027, rulesYear: 2026)
-        #expect(months.netIncome.monthValue == value)
-        #expect(months.netIncome.monthSub == "průměr za leden, včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
+        #expect(months.calculation[3].value == value)
+        #expect(months.calculation[3].note == "včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
+        #expect(months.calculation[3].period == "·\u{00A0}1\u{00A0}měsíc")
         #expect(months.columns.allSatisfy { $0.netAverage?.value == value })
         #expect(months.columns.allSatisfy { $0.netAverage?.note == note })
         #expect(years.columns.map { $0.netAverage?.value } == [nil, value])
@@ -1576,13 +1599,13 @@ struct OverviewBuilderTests {
             let counted = build(overview)
 
             var expected = plain
-            expected.netIncome.monthValue = counted.netIncome.monthValue
-            expected.netIncome.monthSub = counted.netIncome.monthSub
+            expected.calculation[3].value = counted.calculation[3].value
+            expected.calculation[3].note = counted.calculation[3].note
             for index in expected.columns.indices {
                 expected.columns[index].netAverage = counted.columns[index].netAverage
             }
             #expect(counted == expected, "\(mode)")
-            #expect(counted.netIncome != plain.netIncome, "\(mode)")
+            #expect(counted.calculation != plain.calculation, "\(mode)")
             #expect(counted.columns != plain.columns, "\(mode)")
         }
     }
@@ -1592,31 +1615,28 @@ struct OverviewBuilderTests {
     @Test func theScaleFitsTheNetIncomeButNotBelowZero() {
         func column(net: Int64?) -> ChartColumn {
             ChartColumn(
-                label: "2026", title: "Rok 2026", issuedNetHalere: 0, issuedGrossHalere: 0, receivedNetHalere: 1_000,
-                receivedGrossHalere: 1_000, isFuture: false, isCurrent: true, hasLinePoint: true, netIncomeHalere: net)
+                label: "2026", title: "Rok 2026", issuedNetHalere: 0, receivedNetHalere: 1_000, isFuture: false,
+                isCurrent: true, hasLinePoint: true, netIncomeHalere: net)
         }
 
-        #expect(IncomeChartLayout.largestAmount(in: [column(net: 5_000)], withVAT: false) == 5_000)
-        #expect(IncomeChartLayout.largestAmount(in: [column(net: -50_000)], withVAT: false) == 1_000)
-        #expect(IncomeChartLayout.largestAmount(in: [column(net: nil)], withVAT: false) == 1_000)
-        #expect(IncomeChartLayout.largestAmount(in: [], withVAT: false) == 0)
+        #expect(IncomeChartLayout.largestAmount(in: [column(net: 5_000)]) == 5_000)
+        #expect(IncomeChartLayout.largestAmount(in: [column(net: -50_000)]) == 1_000)
+        #expect(IncomeChartLayout.largestAmount(in: [column(net: nil)]) == 1_000)
+        #expect(IncomeChartLayout.largestAmount(in: []) == 0)
     }
 
-    /// The largest amount is that of the series drawn: what was issued and received with VAT or without, and the net
-    /// income, which is always without VAT, from the column that has the most of it.
-    @Test func theScaleFollowsTheVATOfTheChartForTheBarsAndTheLineButNotForTheNetIncome() {
+    /// The largest amount is that of the series drawn: what was issued and received, and the net income from the
+    /// column that has the most of it.
+    @Test func theScaleFollowsTheBarsAndTheNetIncomeLine() {
         let small = ChartColumn(
-            label: "2025", title: "Rok 2025", issuedNetHalere: 2_000, issuedGrossHalere: 2_420,
-            receivedNetHalere: 1_000, receivedGrossHalere: 1_210, isFuture: false, isCurrent: false,
-            hasLinePoint: true)
+            label: "2025", title: "Rok 2025", issuedNetHalere: 2_000, receivedNetHalere: 1_000, isFuture: false,
+            isCurrent: false, hasLinePoint: true)
         let bigNet = ChartColumn(
-            label: "2026", title: "Rok 2026", issuedNetHalere: 100, issuedGrossHalere: 121, receivedNetHalere: 100,
-            receivedGrossHalere: 121, isFuture: false, isCurrent: true, hasLinePoint: true, netIncomeHalere: 2_450)
+            label: "2026", title: "Rok 2026", issuedNetHalere: 100, receivedNetHalere: 100, isFuture: false,
+            isCurrent: true, hasLinePoint: true, netIncomeHalere: 2_450)
 
-        #expect(IncomeChartLayout.largestAmount(in: [small], withVAT: false) == 2_000)
-        #expect(IncomeChartLayout.largestAmount(in: [small], withVAT: true) == 2_420)
-        #expect(IncomeChartLayout.largestAmount(in: [small, bigNet], withVAT: false) == 2_450)
-        #expect(IncomeChartLayout.largestAmount(in: [small, bigNet], withVAT: true) == 2_450)
+        #expect(IncomeChartLayout.largestAmount(in: [small]) == 2_000)
+        #expect(IncomeChartLayout.largestAmount(in: [small, bigNet]) == 2_450)
     }
 
     // MARK: The sample year
@@ -1629,52 +1649,52 @@ struct OverviewBuilderTests {
 
         let readOut: [(String, String)] = [
             (
-                "Leden 2026: vystaveno 220\u{00A0}000\u{00A0}Kč bez DPH, 266\u{00A0}200\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Leden 2026: vystaveno 220\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
             (
-                "Únor 2026: vystaveno 190\u{00A0}000\u{00A0}Kč bez DPH, 229\u{00A0}900\u{00A0}Kč s DPH; ",
-                "přijato 220\u{00A0}000\u{00A0}Kč bez DPH, 266\u{00A0}200\u{00A0}Kč s DPH"
+                "Únor 2026: vystaveno 190\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 220\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Březen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH; ",
-                "přijato 190\u{00A0}000\u{00A0}Kč bez DPH, 229\u{00A0}900\u{00A0}Kč s DPH"
+                "Březen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 190\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Duben 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH; ",
-                "přijato 420\u{00A0}000\u{00A0}Kč bez DPH, 508\u{00A0}200\u{00A0}Kč s DPH"
+                "Duben 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 420\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Květen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH; ",
-                "přijato 210\u{00A0}000\u{00A0}Kč bez DPH, 254\u{00A0}100\u{00A0}Kč s DPH"
+                "Květen 2026: vystaveno 210\u{00A0}000\u{00A0}Kč bez DPH; ",
+                "přijato 210\u{00A0}000\u{00A0}Kč bez DPH"
             ),
             (
-                "Červen 2026: vystaveno 288\u{00A0}806\u{00A0}Kč bez DPH, 288\u{00A0}806\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Červen 2026: vystaveno 288\u{00A0}806\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
             (
-                "Červenec 2026: vystaveno 268\u{00A0}806\u{00A0}Kč bez DPH, 268\u{00A0}806\u{00A0}Kč s DPH; ",
-                "přijato 288\u{00A0}806\u{00A0}Kč bez DPH, 288\u{00A0}806\u{00A0}Kč s DPH"
+                "Červenec 2026: vystaveno 268\u{00A0}806\u{00A0}Kč bez DPH; ",
+                "přijato 288\u{00A0}806\u{00A0}Kč bez DPH"
             ),
             (
-                "Srpen 2026: vystaveno 283\u{00A0}933\u{00A0}Kč bez DPH, 284\u{00A0}878\u{00A0}Kč s DPH; ",
-                "přijato 273\u{00A0}306\u{00A0}Kč bez DPH, 274\u{00A0}251\u{00A0}Kč s DPH"
+                "Srpen 2026: vystaveno 283\u{00A0}933\u{00A0}Kč bez DPH; ",
+                "přijato 273\u{00A0}306\u{00A0}Kč bez DPH"
             ),
             (
-                "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH, 311\u{00A0}172\u{00A0}Kč s DPH; ",
-                "přijato 279\u{00A0}433\u{00A0}Kč bez DPH, 279\u{00A0}433\u{00A0}Kč s DPH"
+                "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH; ",
+                "přijato 279\u{00A0}433\u{00A0}Kč bez DPH"
             ),
             (
-                "Říjen 2026: vystaveno 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; ",
-                "přijato 310\u{00A0}227\u{00A0}Kč bez DPH, 311\u{00A0}172\u{00A0}Kč s DPH"
+                "Říjen 2026: vystaveno 0\u{00A0}Kč bez DPH; ",
+                "přijato 310\u{00A0}227\u{00A0}Kč bez DPH"
             ),
             (
-                "Listopad 2026: vystaveno 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Listopad 2026: vystaveno 0\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
             (
-                "Prosinec 2026: vystaveno 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; ",
-                "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH"
+                "Prosinec 2026: vystaveno 0\u{00A0}Kč bez DPH; ",
+                "přijato 0\u{00A0}Kč bez DPH"
             ),
         ]
         // Every month also reads out its net income, 0 Kč here as the input holds no payment's effect on the levies
@@ -1739,8 +1759,8 @@ struct OverviewBuilderTests {
         let hover = " · podrobnosti po najetí myší"
         #expect(build(input()).chartSubtitle == "Rok 2026 po měsících · v Kč bez DPH" + conversion + hover)
         #expect(
-            build(input(chartMode: .years, chartWithVAT: true)).chartSubtitle
-                == "Po letech · v Kč s DPH" + conversion + hover)
+            build(input(chartMode: .years)).chartSubtitle
+                == "Po letech · v Kč bez DPH" + conversion + hover)
     }
 
     /// The money received in a year that converts it at its uniform rate is in the chart at that rate, and the line
@@ -1753,8 +1773,8 @@ struct OverviewBuilderTests {
             build(input(yearsAtUniformRate: [2026])).chartSubtitle
                 == "Rok 2026 po měsících · v Kč bez DPH · přijaté v cizí měně jednotným kurzem 2026" + unpaid + hover)
         #expect(
-            build(input(chartMode: .years, chartWithVAT: true, yearsAtUniformRate: [2025])).chartSubtitle
-                == "Po letech · v Kč s DPH · přijaté v cizí měně přepočtem zvoleným pro svůj rok" + unpaid + hover)
+            build(input(chartMode: .years, yearsAtUniformRate: [2025])).chartSubtitle
+                == "Po letech · v Kč bez DPH · přijaté v cizí měně přepočtem zvoleným pro svůj rok" + unpaid + hover)
         // The months of 2026 are about 2026 alone, and the years chart about the years it has.
         #expect(
             build(input(yearsAtUniformRate: [2025])).chartSubtitle
@@ -1764,39 +1784,35 @@ struct OverviewBuilderTests {
                 == "Po letech · v Kč bez DPH · cizí měny kurzem ČNB ke dni platby" + unpaid + hover)
     }
 
-    @Test func aColumnSpeaksForVoiceOverWithBothSeriesWithAndWithoutVAT() {
+    @Test func aColumnSpeaksForVoiceOverWithBothSeriesWithoutVAT() {
         let columns = build(input(chartRows: sampleChartRows)).columns
 
         let expected =
-            "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH, 311\u{00A0}172\u{00A0}Kč s DPH; "
-            + "přijato 0\u{00A0}Kč bez DPH, 0\u{00A0}Kč s DPH; čistý příjem 0\u{00A0}Kč; "
+            "Září 2026: vystaveno 310\u{00A0}227\u{00A0}Kč bez DPH; přijato 0\u{00A0}Kč bez DPH; "
+            + "čistý příjem 0\u{00A0}Kč; "
             + "Průměrný čistý příjem za měsíc v roce 2026 (leden–říjen) 187\u{00A0}111\u{00A0}Kč"
         #expect(columns[8].accessibilityLabel == expected)
     }
 
     /// The hover box of a column and VoiceOver tell its amounts in whole Kč, rounded half up, while the column keeps
-    /// them in haléře for the chart to draw: September of the sample year issued 310 226,75 Kč without VAT and
-    /// 311 171,75 Kč with it, and received 279 433,00 Kč.
+    /// them in haléře for the chart to draw: September of the sample year issued 310 226,75 Kč and received
+    /// 279 433,00 Kč.
     @Test func aColumnTellsItsAmountsInWholeCrownsAndKeepsThemInHalereForTheChart() {
         let september = build(input(chartRows: SampleYear2026.chartRows)).columns[8]
 
-        #expect(september.issuedNetHalere == 31_022_675 && september.issuedGrossHalere == 31_117_175)
+        #expect(september.issuedNetHalere == 31_022_675)
         #expect(september.issuedNetText == "310\u{00A0}227\u{00A0}Kč")
-        #expect(september.issuedGrossText == "311\u{00A0}172\u{00A0}Kč")
         #expect(september.receivedNetText == "279\u{00A0}433\u{00A0}Kč")
-        #expect(september.receivedGrossText == "279\u{00A0}433\u{00A0}Kč")
     }
 
     /// Half a crown is rounded up, as everywhere else in whole Kč (`DecimalMath.halfUp`).
     @Test func halfACrownInAColumnIsRoundedUp() {
         let column = ChartColumn(
-            label: "zář", title: "Září 2026", issuedNetHalere: 100_050, issuedGrossHalere: 100_049,
-            receivedNetHalere: 99, receivedGrossHalere: 50, isFuture: false, isCurrent: false, hasLinePoint: true)
+            label: "zář", title: "Září 2026", issuedNetHalere: 100_050, receivedNetHalere: 99, isFuture: false,
+            isCurrent: false, hasLinePoint: true)
 
         #expect(column.issuedNetText == "1\u{00A0}001\u{00A0}Kč")
-        #expect(column.issuedGrossText == "1\u{00A0}000\u{00A0}Kč")
         #expect(column.receivedNetText == "1\u{00A0}Kč")
-        #expect(column.receivedGrossText == "1\u{00A0}Kč")
     }
 
     /// An issued amount that is only approximate keeps the sign "≈" in the hover box and for VoiceOver of the chart of
@@ -1811,11 +1827,8 @@ struct OverviewBuilderTests {
 
         #expect(october.issuedIsApproximate)
         #expect(october.issuedNetText == "≈\u{00A0}215\u{00A0}000\u{00A0}Kč")
-        #expect(october.issuedGrossText == "≈\u{00A0}215\u{00A0}000\u{00A0}Kč")
-        #expect(october.receivedNetText == "0\u{00A0}Kč" && october.receivedGrossText == "0\u{00A0}Kč")
-        #expect(
-            october.accessibilityLabel.contains(
-                "vystaveno ≈\u{00A0}215\u{00A0}000\u{00A0}Kč bez DPH, ≈\u{00A0}215\u{00A0}000\u{00A0}Kč s DPH;"))
+        #expect(october.receivedNetText == "0\u{00A0}Kč")
+        #expect(october.accessibilityLabel.contains("vystaveno ≈\u{00A0}215\u{00A0}000\u{00A0}Kč bez DPH;"))
     }
 
     // MARK: The uniform rate of the year
@@ -2111,27 +2124,34 @@ struct OverviewBuilderTests {
 
         #expect(card.head == "Odhad za celý rok 2026")
         #expect(card.sub == "z faktur do 17.\u{00A0}10.\u{00A0}2026 · co ještě do 31.\u{00A0}12. přijde")
+        let rows = card.calculation.rows
+        #expect(rows.map(\.label) == ["Příjmy za rok", "Odvody", "Čistý příjem", "Průměrně za měsíc"])
         #expect(
-            card.stats == [
-                PredictionMini(
-                    label: "Příjmy za rok", value: "2\u{00A0}743\u{00A0}157\u{00A0}Kč",
-                    sub: "z toho přišlo 2\u{00A0}191\u{00A0}771\u{00A0}Kč"),
-                PredictionMini(
-                    label: "Odvody", value: "466\u{00A0}782\u{00A0}Kč",
-                    share: "17,0\u{00A0}%",
-                    sub: "daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164"),
-                PredictionMini(
-                    label: "Doplatek", value: "198\u{00A0}702\u{00A0}Kč",
-                    sub: "po zálohách 268\u{00A0}080\u{00A0}Kč za celý rok"),
+            rows.map(\.value) == [
+                "2\u{00A0}743\u{00A0}157\u{00A0}Kč", "466\u{00A0}782\u{00A0}Kč", "2\u{00A0}276\u{00A0}375\u{00A0}Kč",
+                "189\u{00A0}698\u{00A0}Kč",
             ])
         #expect(
-            card.monthStats == [
-                PredictionMini(
-                    label: "Čistý příjem průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč",
-                    sub: "za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč", marksNetIncome: true),
-                PredictionMini(
-                    label: "Odkládat průměrně za měsíc", value: "20\u{00A0}392\u{00A0}Kč",
-                    sub: "za celý rok 244\u{00A0}702\u{00A0}Kč · doplatek a zálohy na daň"),
+            rows.map(\.note) == [
+                "z toho přišlo 2\u{00A0}191\u{00A0}771",
+                "daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164", nil, nil,
+            ])
+        #expect(rows.map(\.share) == [nil, "17,0\u{00A0}%", "83,0\u{00A0}%", nil])
+        #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
+        #expect(card.calculation.payTitle == "Jak odvody zaplatíte")
+        let pay = card.calculation.payRows
+        #expect(
+            pay.map(\.label) == [
+                "Zálohy sociální a zdravotní", "Zálohy na daň", "Doplatek", "Odkládat průměrně za měsíc",
+            ])
+        #expect(
+            pay.map(\.value) == [
+                "222\u{00A0}080\u{00A0}Kč", "46\u{00A0}000\u{00A0}Kč", "198\u{00A0}702\u{00A0}Kč",
+                "20\u{00A0}392\u{00A0}Kč",
+            ])
+        #expect(
+            pay.map(\.note) == [
+                "platí se každý měsíc", nil, "s přiznáním a přehledy", "(zálohy na daň + doplatek) ÷ 12",
             ])
     }
 
@@ -2164,24 +2184,26 @@ struct OverviewBuilderTests {
         }
     }
 
-    /// Nothing owed and something overpaid is an overpayment. Anything else is a sum to pay: also when nothing is owed
-    /// and nothing is overpaid, and when one authority is overpaid and another is owed.
+    /// Nothing owed and something overpaid is an overpayment, taken off the advances in the third row of how the levies
+    /// are paid. Anything else is a sum to pay: also when nothing is owed and nothing is overpaid, and when one
+    /// authority is overpaid and another is owed.
     @Test func theCardNamesAnOverpaymentOnlyWhereNothingIsOwed() throws {
         let overpaid = try #require(build(input(prediction: try estimateWithoutIncome())).prediction)
 
+        let rows = overpaid.calculation.rows
         #expect(
-            overpaid.stats == [
-                PredictionMini(label: "Příjmy za rok", value: "0\u{00A0}Kč", sub: "z toho přišlo 0\u{00A0}Kč"),
-                PredictionMini(
-                    label: "Odvody", value: "99\u{00A0}720\u{00A0}Kč",
-                    sub: "daň 0 · sociální 60\u{00A0}056 · zdravotní 39\u{00A0}664"),
-                PredictionMini(label: "Přeplatek", value: "168\u{00A0}360\u{00A0}Kč", sub: "zálohy převýší odvody"),
+            rows.map(\.value) == [
+                "0\u{00A0}Kč", "99\u{00A0}720\u{00A0}Kč", "\u{2212}99\u{00A0}720\u{00A0}Kč",
+                "\u{2212}8\u{00A0}310\u{00A0}Kč",
             ])
+        #expect(rows[0].note == "z toho přišlo 0")
+        #expect(rows[1].note == "daň 0 · sociální 60\u{00A0}056 · zdravotní 39\u{00A0}664")
+        #expect(rows.allSatisfy { $0.share == nil })
         #expect(
-            overpaid.monthStats.first
-                == PredictionMini(
-                    label: "Čistý příjem průměrně za měsíc", value: "\u{2212}8\u{00A0}310\u{00A0}Kč",
-                    sub: "za celý rok \u{2212}99\u{00A0}720\u{00A0}Kč", marksNetIncome: true))
+            overpaid.calculation.payRows[2]
+                == BillRow(
+                    label: "Přeplatek", value: "168\u{00A0}360\u{00A0}Kč", note: "zálohy převýší odvody, vrátí se",
+                    sign: .minus, rule: .hidden))
 
         // Advances that pay exactly the levies leave nothing to settle: that is a sum of nothing to pay.
         let none = [Int64](repeating: 0, count: 12)
@@ -2192,20 +2214,21 @@ struct OverviewBuilderTests {
         let exact = try PredictionOutcome.make(
             prediction: try estimateWithoutIncome().prediction, yearInput: taxInput)
         #expect(
-            try #require(build(input(prediction: exact)).prediction).stats[2]
-                == PredictionMini(
-                    label: "Doplatek", value: "0\u{00A0}Kč",
-                    sub: "po zálohách 99\u{00A0}720\u{00A0}Kč za celý rok"))
+            try #require(build(input(prediction: exact)).prediction).calculation.payRows[2]
+                == BillRow(
+                    label: "Doplatek", value: "0\u{00A0}Kč", note: "s přiznáním a přehledy", sign: .plus,
+                    rule: .hidden))
 
         // On 30. 12. the tax advances pay more than the tax while the insurance is owed: an overpayment at one
         // authority does not lower what another is owed, so the card names what is owed and no overpayment.
         let mixed = try PredictionSample.outcome(year: 2026, today: civilDate("2026-12-30"))
         #expect(!mixed.prediction.isClosed)
         #expect(mixed.owedTotal > 0 && mixed.overpaidTotal > 0)
-        let settlement = try #require(build(input(today: "2026-12-30", prediction: mixed)).prediction).stats[2]
+        let card = try #require(build(input(today: "2026-12-30", prediction: mixed)).prediction)
+        let settlement = card.calculation.payRows[2]
         #expect(settlement.label == "Doplatek")
         #expect(settlement.value == CzechFormat.wholeKc(mixed.owedTotal))
-        #expect(settlement.sub == "po zálohách " + CzechFormat.wholeKc(mixed.result.advancesPaidTotal) + " za celý rok")
+        #expect(settlement.sign == .plus)
     }
 
     /// A single payment of 200 000 Kč leaves the tax at nothing, and the children's 37 524 Kč are paid as a bonus: the
@@ -2225,18 +2248,19 @@ struct OverviewBuilderTests {
         single.receipts = PredictionSample.receipts(of: [invoice], year: 2026)
         let estimate = try PredictionSample.outcome(of: single)
 
-        let levies = try #require(build(input(prediction: estimate)).prediction).stats[1]
+        let levies = try #require(build(input(prediction: estimate)).prediction).calculation.rows[1]
 
         let social = CzechFormat.grouped(estimate.result.balance(.social).liability)
         let health = CzechFormat.grouped(estimate.result.balance(.health).liability)
         #expect(levies.label == "Odvody")
         #expect(levies.value == CzechFormat.wholeKc(estimate.result.liabilityTotal))
-        #expect(levies.sub == "daňový bonus 37\u{00A0}524 · sociální \(social) · zdravotní \(health)")
+        #expect(levies.note == "daňový bonus 37\u{00A0}524 · sociální \(social) · zdravotní \(health)")
     }
 
     /// The card is an area of estimates as a whole, so none of its texts carries the sign "≈": not the head, the line
-    /// under it, the labels, the figures, the share beside one of them, the lines under them, and not the months
-    /// of its chart, also a month whose issued amount is approximate: that month says so in its note alone.
+    /// under it, the labels, the values, the shares and the notes of the calculation and of how the levies are paid,
+    /// and not the months of its chart, also a month whose issued amount is approximate: that month says so in its
+    /// note alone.
     @Test func theEstimateCardHasNoApproximationSign() throws {
         // October also has an invoice in dollars that waits for its payment and for the rate of its day, so that it is
         // worth the latest declared rate: an approximate amount, which the note under the figures of the month
@@ -2249,7 +2273,9 @@ struct OverviewBuilderTests {
             let card = try #require(build(input(chartRows: rows, prediction: estimate)).prediction)
             #expect(card.chart[9].issuedActualIsApproximate)
             #expect(card.chart[9].notes.contains(ChartColumn.approximateIssuedNote))
-            let figures = (card.stats + card.monthStats).flatMap { [$0.label, $0.value, $0.share ?? "", $0.sub] }
+            let figures = (card.calculation.rows + card.calculation.payRows).flatMap {
+                [$0.label, $0.value, $0.share ?? "", $0.period ?? "", $0.note ?? ""]
+            }
             let months = card.chart.flatMap { month in
                 [
                     month.title, month.issuedActualText, month.issuedEstimateText, month.receivedActualText,
@@ -2264,25 +2290,25 @@ struct OverviewBuilderTests {
     }
 
     /// The tax and the insurance of the year are "Odvody", and the share of the income they take stands beside the
-    /// figure as its own part of the tile, "17,0 %". The sum owed beyond the advances is "Doplatek", and what the
-    /// advances overpay "Přeplatek". The old names are gone.
+    /// label, "17,0 %", as the share of the net income does beside its. The sum owed beyond the advances is
+    /// "Doplatek", and what the advances overpay "Přeplatek". The old names are gone.
     @Test func theEstimateCardNamesOdvodyWithItsShare() throws {
         let card = try #require(build(input(prediction: try sampleEstimate())).prediction)
 
-        let levies = card.stats[1]
+        let levies = card.calculation.rows[1]
         #expect(levies.label == "Odvody")
         #expect(levies.value == "466\u{00A0}782\u{00A0}Kč")
         #expect(levies.share == "17,0\u{00A0}%")
-        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek"])
-        // Only the levies have a share of the income.
-        #expect(card.stats.map { $0.share == nil } == [true, false, true])
-        #expect(card.monthStats.allSatisfy { $0.share == nil })
+        // Only the levies and the net income have a share of the income.
+        #expect(card.calculation.rows.map { $0.share == nil } == [true, false, false, true])
+        #expect(card.calculation.payRows.allSatisfy { $0.share == nil })
+        #expect(card.calculation.payRows[2].label == "Doplatek")
         let overpaid = try #require(build(input(prediction: try estimateWithoutIncome())).prediction)
-        #expect(overpaid.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Přeplatek"])
+        #expect(overpaid.calculation.payRows[2].label == "Přeplatek")
     }
 
-    /// An estimate that is not complete has dashes for its figures and says why under each, under the same labels as
-    /// the complete one; the income that has come is still told.
+    /// An estimate that is not complete has dashes for its figures under the same labels as the complete one, and the
+    /// income that has come is still told; the line under the head says why, once, and no row repeats it.
     @Test func anIncompleteEstimateHasDashesUnderTheSameLabels() throws {
         var forecast = PredictionSample.input(year: 2026)
         forecast.averageRates = [:]
@@ -2299,15 +2325,16 @@ struct OverviewBuilderTests {
 
         let card = try #require(build(input(prediction: outcome)).prediction)
 
-        #expect(card.stats.map(\.label) == ["Příjmy za rok", "Odvody", "Doplatek"])
-        #expect(card.monthStats.map(\.label) == ["Čistý příjem průměrně za měsíc", "Odkládat průměrně za měsíc"])
-        #expect((card.stats + card.monthStats).allSatisfy { $0.value == "—" && $0.share == nil })
-        #expect(card.stats[0].sub.hasPrefix("z toho přišlo "))
-        #expect(card.stats.dropFirst().allSatisfy { $0.sub.hasPrefix("Odhad je neúplný: ") })
-        #expect(card.monthStats.allSatisfy { $0.sub.hasPrefix("Odhad je neúplný: ") })
+        let complete = try #require(build(input(prediction: try sampleEstimate())).prediction).calculation
+        let rows = card.calculation.rows + card.calculation.payRows
+        #expect(card.calculation.rows.map(\.label) == complete.rows.map(\.label))
+        #expect(card.calculation.payRows.map(\.label) == complete.payRows.map(\.label))
+        #expect(rows.allSatisfy { $0.value == "—" && $0.share == nil })
+        #expect(card.calculation.rows[0].note?.hasPrefix("z toho přišlo ") == true)
+        #expect(rows.allSatisfy { !($0.note ?? "").hasPrefix("Odhad je neúplný: ") })
         #expect(card.sub.hasPrefix("Odhad je neúplný: "))
-        for stat in card.stats + card.monthStats {
-            #expect(!stat.value.contains("≈") && !stat.sub.contains("≈"))
+        for row in rows {
+            #expect(!row.value.contains("≈") && !(row.note ?? "").contains("≈"))
         }
     }
 
@@ -2355,8 +2382,8 @@ struct OverviewBuilderTests {
         let page = OverviewBuilder.build(input(chartRows: sampleChartRows, prediction: outcome))
         let card = try #require(page.prediction)
         #expect(card.chart.isEmpty)
-        #expect(card.stats[0].value == "0\u{00A0}Kč")
-        #expect(card.stats.allSatisfy { $0.value != "—" })
+        #expect(card.calculation.rows[0].value == "0\u{00A0}Kč")
+        #expect((card.calculation.rows + card.calculation.payRows).allSatisfy { $0.value != "—" })
         #expect(page.columns == OverviewBuilder.build(input(chartRows: sampleChartRows)).columns)
     }
 

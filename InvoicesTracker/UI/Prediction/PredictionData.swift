@@ -1,27 +1,5 @@
 import Foundation
 
-// MARK: - The card of Přehled
-
-/// One of the figures of the card of Přehled, with its caption and the line under it: "Doplatek", "198 702 Kč",
-/// "po zálohách 268 080 Kč za celý rok".
-nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
-    var label: String
-    var value: String
-
-    /// The share of the income that the figure takes, written beside it in smaller type: "17,0 %". Only the tax and
-    /// the insurance have one (`PredictionBuilder.leviesShare(_:)`).
-    var share: String?
-    var sub: String
-
-    /// Whether the figure is the net income per month, which a green dot in front of its label shows
-    /// (`FigureTileData.marksNetIncome`). Only the tile of the net income per month has one.
-    var marksNetIncome = false
-
-    var id: String {
-        label
-    }
-}
-
 // MARK: - The income
 
 /// What a part of the year's income is, for the bar and its legend.
@@ -48,47 +26,6 @@ nonisolated struct PredictionPart: Identifiable, Sendable, Hashable {
     var id: PredictionPartKind {
         kind
     }
-}
-
-/// The net income of the year ("čistý příjem"), what its income leaves after the levies, as the card Příjmy shows it
-/// beside the income: a caption, the average per month as the amount, and under it the sum of the whole year with the
-/// part of the income that is. The three texts are read as one.
-nonisolated struct PredictionNetIncome: Sendable, Hashable {
-    /// What the amount is: "Čistý příjem průměrně za měsíc", and "Čistý příjem průměrně za měsíc (odhad)" for a year in
-    /// progress.
-    var label: String
-
-    /// The average per month in whole Kč: "189 698 Kč", or "−8 310 Kč" where the levies are more than the income. It
-    /// has the sign of an estimate only in a year that is over and that the engine worked out with the rules of
-    /// another year, as the levies it comes from have.
-    var amount: String
-
-    /// The sum of the whole year that the amount is the average of, and its part of the income: "za celý rok 2 276 375
-    /// Kč · 83,0 % příjmů po odvodech". The sum has the sign of an estimate as the amount does. The part is left out
-    /// while the income is not above zero, as there is nothing for the levies to take a part of, and is shown as it
-    /// is otherwise, even where it is below zero. While the estimate is not complete there is no note: the sentence
-    /// that says so stands once, in the result card.
-    var sub: String?
-}
-
-/// What to put aside each month for the irregular levy payments, as the card Příjmy shows it beside the net income: a
-/// caption, the average per month as the amount, and under it the sum of the whole year. The three texts are read as
-/// one.
-nonisolated struct PredictionSetAside: Sendable, Hashable {
-    /// What the amount is: "Odkládat průměrně za měsíc", and "Odkládat průměrně za měsíc (odhad)" for a year in
-    /// progress.
-    var label: String
-
-    /// The average per month in whole Kč: "20 392 Kč", or "—" while the estimate is not complete. It has the sign of an
-    /// estimate only in a year that is over and that the engine worked out with the rules of another year, as the
-    /// levies it comes from have.
-    var amount: String
-
-    /// The sum of the whole year that the amount is the average of, and what it is made of: "za celý rok 244 702 Kč ·
-    /// doplatek a zálohy na daň", or, in a year without tax advances, "jen doplatek, bez záloh na daň". The sum has the
-    /// sign of an estimate as the amount does. While the estimate is not complete there is none: the sentence that
-    /// says so stands once, in the result card.
-    var sub: String?
 }
 
 // MARK: - The months of the clients
@@ -210,24 +147,21 @@ nonisolated struct PredictionPage: Sendable, Hashable {
     /// skutečnost" for a year that is over.
     var incomeSub: String
 
-    /// The line under the income: "bez DPH · peníze přijaté do 31. 12.".
-    var incomeNote: String
+    /// The name of the income of the year that VoiceOver reads for the bar of its parts, with its total: "Příjmy za
+    /// rok 2026 (odhad)", and "Příjmy za rok 2025" for a year that is over.
     var incomeHead: String
 
-    /// The income of the year: "2 743 157 Kč". It has no sign of an estimate in any year; the head of a year in
-    /// progress says "(odhad)".
+    /// The income of the year: "2 743 157 Kč", or "—" while the estimate is not complete. It has no sign of an
+    /// estimate in any year; the head of a year in progress says "(odhad)".
     var incomeTotal: String
+
+    /// The calculation of the year under the line of the card, and beside it how its levies are paid
+    /// (`PredictionBuilder.calculation(_:incomeLabel:incomeNote:marksEstimate:)`): the income "Příjmy za rok 2026"
+    /// with the note "bez DPH · peníze přijaté do 31. 12.".
+    var calculation: PredictionCalculation
 
     /// The parts of the income: what was received, and in a year in progress what waits and what is expected.
     var parts: [PredictionPart]
-
-    /// What the income leaves after the levies, beside the income: the average per month and the sum of the whole
-    /// year.
-    var netIncome: PredictionNetIncome
-
-    /// What to put aside each month for the tax advances and the payment that is left with the returns, beside the net
-    /// income: the average per month and the sum of the whole year.
-    var setAside: PredictionSetAside
 
     /// The sum that is paid only in the next year, or nil when there is none.
     var nextYearNote: String?

@@ -116,23 +116,23 @@ nonisolated enum ComputationBuilder {
         let conversion = facts.incomeFXMethod == .uniform ? "jednotným kurzem \(result.year)" : "ke dni přijetí"
         let period = "1.\u{00A0}1. – " + CzechFormat.dayMonth(result.asOf)
         var rows = [
-            ComputationRow(
+            BillRow(
                 label: "Přijaté platby", value: CzechFormat.amount(received),
                 note: period + " · cizí měny v Kč \(conversion)"),
-            ComputationRow(
+            BillRow(
                 label: "DPH z přijatých plateb", value: CzechFormat.amount(-result.vatHalere),
                 note: "vede se zvlášť, do příjmů nepatří", sign: .minus),
         ]
         if result.adjustmentsHalere != 0 {
             rows.append(
-                ComputationRow(
+                BillRow(
                     label: "Úpravy příjmů", value: CzechFormat.amount(result.adjustmentsHalere),
                     note: "Nastavení › Rok · dobropisy, vratky a platby mimo faktury", sign: .plus))
         }
         rows.append(
-            ComputationRow(label: "Příjmy bez DPH", value: CzechFormat.amount(result.incomeHalere), sign: .equals))
+            BillRow(label: "Příjmy bez DPH", value: CzechFormat.amount(result.incomeHalere), sign: .equals))
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: "Příjmy z podnikání (§ 7)", value: crowns(result.P),
                 note: incomeRoundingNote, sign: .equals, style: .strong))
         rows += expenseRows(facts)
@@ -141,7 +141,7 @@ nonisolated enum ComputationBuilder {
 
     /// The flat-rate expenses and the profit they leave. The note of the expenses says whether the cap cut them, and
     /// the note of the profit that the cap is used up, so that the next crown of income is all profit.
-    private static func expenseRows(_ facts: Facts) -> [ComputationRow] {
+    private static func expenseRows(_ facts: Facts) -> [BillRow] {
         let result = facts.result
         let rate = percent(Decimal(result.expensePercent) / 100, fractionDigits: 0)
         let cap = CzechFormat.grouped(result.expenseCap)
@@ -154,8 +154,8 @@ nonisolated enum ComputationBuilder {
             note = "\(rate) z příjmů, zaokrouhleno dolů · strop \(cap) \(facts.isOver ? "" : "zatím ")nedosažen"
         }
         return [
-            ComputationRow(label: "Výdajový paušál \(rate)", value: crowns(-result.V), note: note, sign: .minus),
-            ComputationRow(
+            BillRow(label: "Výdajový paušál \(rate)", value: crowns(-result.V), note: note, sign: .minus),
+            BillRow(
                 label: "Zisk (dílčí základ daně)", value: crowns(result.DZ),
                 note: facts.capIsReached ? "strop paušálu je vyčerpaný – další příjem je celý ziskem" : nil,
                 sign: .equals, style: .strong),

@@ -91,9 +91,9 @@ struct OverviewModelTests {
         Receipt(day: day, czkNetHalere: net, czkVatHalere: vat, source: .synthetic)
     }
 
-    /// The average net income per month of the current year as the strip tells it when it counts invoices that are due,
-    /// with the sign of an estimate: the year as the data of `app` holds it with `receipts` added, worked out by the
-    /// engine as of today.
+    /// The average net income per month of the current year as the calculation of Příjmy tells it when it counts
+    /// invoices that are due, with the sign of an estimate: the year as the data of `app` holds it with `receipts`
+    /// added, worked out by the engine as of today.
     private func averageCounting(_ receipts: [Receipt], in app: AppModel) async throws -> String {
         var year = try await app.yearInput(for: app.today.year).input
         year.receipts += receipts
@@ -506,30 +506,22 @@ struct OverviewModelTests {
         #expect(years.columns.count == 2)
         #expect(years.chartSubtitle == "Po letech · v Kč bez DPH" + conversion + hover)
 
-        await model.setChartWithVAT(true)
-
-        #expect(app.appSettings.chartWithVAT)
-        #expect(try await database.appSettings().chartWithVAT)
-        #expect(try #require(model.data).chartSubtitle == "Po letech · v Kč s DPH" + conversion + hover)
-
         // A screen that is opened later starts with the choices made.
         let later = await loadedModel(of: app)
         #expect(try #require(later.data).columns.count == 2)
 
         await later.setChartMode(.months)
-        await later.setChartWithVAT(false)
 
         #expect(try #require(later.data).columns.count == 12)
         #expect(try #require(later.data).chartSubtitle == "Rok 2026 po měsících · v Kč bez DPH" + conversion + hover)
         #expect(try await database.appSettings().chartMode == .months)
-        #expect(try await database.appSettings().chartWithVAT == false)
     }
 
     // MARK: The net income of each year of the chart
 
     /// The chart by years has the net income of every year it shows: the year of the page as of the day shown, which is
-    /// the figure of the strip above the chart, and any other year as the engine works it out from that year's own
-    /// data on the day its net income is counted to.
+    /// the figure of the calculation above the chart, and any other year as the engine works it out from that year's
+    /// own data on the day its net income is counted to.
     @Test func theYearsChartHasTheNetIncomeOfEveryYear() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -540,7 +532,7 @@ struct OverviewModelTests {
 
         // 2026 as of 17. 10.: the income of 2 191 771 Kč less the levies of 320 664 Kč leaves 1 871 107 Kč.
         #expect(try column(ofYear: 2026, in: model).netIncomeHalere == 187_110_700)
-        #expect(try #require(model.data).netIncome.yearValue == "1\u{00A0}871\u{00A0}107\u{00A0}Kč")
+        #expect(try #require(model.data).netIncomeRow?.value == "1\u{00A0}871\u{00A0}107\u{00A0}Kč")
         // 2025 is over, so it is counted to its last day.
         let lastYear = try AppModel.compute(try await app.yearInput(for: 2025).input, asOf: civilDate("2025-12-31"))
         #expect(try column(ofYear: 2025, in: model).netIncomeHalere == (lastYear.P - lastYear.liabilityTotal) * 100)
@@ -698,19 +690,19 @@ struct OverviewModelTests {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
-        let received = try #require(await loadedModel(of: app).data).netIncome
+        let received = try #require(await loadedModel(of: app).data).calculation
         try await store([theDueInvoice], in: app)
 
         let model = await loadedModel(of: app)
 
         let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
         let data = try #require(model.data)
-        let strip = data.netIncome
+        let average = try #require(data.averageRow)
         #expect(counted == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
-        #expect(strip.monthValue == counted)
-        #expect(strip.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
-        #expect(strip.monthLabel == received.monthLabel)
-        #expect(strip.yearValue == received.yearValue)
+        #expect(average.value == counted)
+        #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(average.period == "·\u{00A0}10\u{00A0}měsíců")
+        #expect(Array(data.calculation.prefix(3)) == Array(received.prefix(3)))
         let tooltips = data.columns.compactMap(\.netAverage)
         #expect(tooltips.count == 12)
         #expect(tooltips.allSatisfy { $0.value == counted })
@@ -735,11 +727,11 @@ struct OverviewModelTests {
         let both = try await averageCounting([receipt, receipt], in: app)
         let one = try await averageCounting([receipt], in: app)
         #expect(both != one)
-        #expect(try #require(model.data).netIncome.monthValue == both)
+        #expect(try #require(model.data).averageRow?.value == both)
     }
 
-    /// The average that other screens take from the app is the figure of the strip of Přehled.
-    @Test func theAppsAverageIsTheFigureOfTheStrip() async throws {
+    /// The average that other screens take from the app is the average per month of the calculation of Přehled.
+    @Test func theAppsAverageIsTheAverageOfTheCalculation() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
@@ -748,12 +740,12 @@ struct OverviewModelTests {
 
         #expect(CzechFormat.wholeKc(average.monthlyKc) == "187\u{00A0}111\u{00A0}Kč")
         #expect(!average.isEstimate)
-        let strip = try #require(await loadedModel(of: app).data).netIncome
-        #expect(strip.monthValue == CzechFormat.wholeKc(average.monthlyKc))
+        let row = try #require(await loadedModel(of: app).data?.averageRow)
+        #expect(row.value == CzechFormat.wholeKc(average.monthlyKc))
     }
 
-    /// The average of the app counts an unpaid invoice due this month as the strip of Přehled does.
-    @Test func theAppsAverageCountsTheDueInvoiceAsTheStripDoes() async throws {
+    /// The average of the app counts an unpaid invoice due this month as the calculation of Přehled does.
+    @Test func theAppsAverageCountsTheDueInvoiceAsTheCalculationDoes() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
@@ -764,7 +756,7 @@ struct OverviewModelTests {
         let text = OverviewBuilder.dueAverage(try #require(average.due))
         #expect(text == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
         #expect(average.isEstimate)
-        #expect(try #require(await loadedModel(of: app).data).netIncome.monthValue == text)
+        #expect(try #require(await loadedModel(of: app).data).averageRow?.value == text)
     }
 
     /// Nothing is due this month in the sample: its one invoice that is not paid is a draft in dollars due on 30. 11.
@@ -774,15 +766,17 @@ struct OverviewModelTests {
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
         let model = await loadedModel(of: app)
-        let strip = try #require(model.data).netIncome
-        #expect(strip.monthSub == "průměr za leden–říjen")
-        #expect(strip.monthValue == "187\u{00A0}111\u{00A0}Kč")
-        #expect(!strip.monthValue.contains("≈"))
+        let calculation = try #require(model.data).calculation
+        let average = try #require(model.data?.averageRow)
+        #expect(average.period == "·\u{00A0}10\u{00A0}měsíců")
+        #expect(average.note == nil)
+        #expect(average.value == "187\u{00A0}111\u{00A0}Kč")
+        #expect(!average.value.contains("≈"))
 
         try await store([dueInvoice("20261003", issued: "2026-10-20", due: "2026-11-01")], in: app)
         await model.load()
 
-        #expect(try #require(model.data).netIncome == strip)
+        #expect(try #require(model.data).calculation == calculation)
     }
 
     /// Both ends of the rule are counted: an invoice due on 31. 10., the last day of the month, and one issued on
@@ -803,19 +797,19 @@ struct OverviewModelTests {
             await model.load()
 
             let counted = try await averageCounting(receipts, in: app)
-            #expect(try #require(model.data).netIncome.monthValue == counted, "An invoice \(name) is stored")
+            #expect(try #require(model.data).averageRow?.value == counted, "An invoice \(name) is stored")
         }
     }
 
     /// Neither a draft, nor an invoice held for review, nor an invoice issued two years ago counts, though each is due
-    /// by the end of the month: the strip reads as with nothing stored. An invoice for review is not income anywhere
-    /// else in the app, and the bound of two years is the one of the estimate of the whole year.
+    /// by the end of the month: the calculation reads as with nothing stored. An invoice for review is not income
+    /// anywhere else in the app, and the bound of two years is the one of the estimate of the whole year.
     @Test func aDraftAnInvoiceForReviewAndAnInvoiceIssuedTwoYearsAgoDoNotCount() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
         let model = await loadedModel(of: app)
-        let plain = try #require(model.data).netIncome
+        let plain = try #require(model.data).calculation
 
         for (name, invoice) in [
             ("a draft", dueInvoice("20261003", issued: "2026-10-05", due: "2026-10-25", status: .draft)),
@@ -830,7 +824,7 @@ struct OverviewModelTests {
             try await store([invoice], in: app)
             await model.load()
 
-            #expect(try #require(model.data).netIncome == plain, "\(name) is stored")
+            #expect(try #require(model.data).calculation == plain, "\(name) is stored")
         }
     }
 
@@ -851,18 +845,19 @@ struct OverviewModelTests {
         try await store([invoice("20261003", paidOn: "2026-10-17")], in: app)
         await model.load()
 
-        let paid = try #require(model.data).netIncome
+        let paid = try #require(model.data?.averageRow)
         let received = try AppModel.compute(try await app.yearInput(for: 2026).input, asOf: app.today)
-        #expect(paid.monthValue == CzechFormat.wholeKc(NetIncome(received).monthlyKc))
-        #expect(paid.monthSub == "průměr za leden–říjen")
+        #expect(paid.value == CzechFormat.wholeKc(NetIncome(received).monthlyKc))
+        #expect(paid.note == nil)
+        #expect(paid.period == "·\u{00A0}10\u{00A0}měsíců")
 
         try await store([invoice("20261004", paidOn: "2026-10-20")], in: app)
         await model.load()
 
-        let later = try #require(model.data).netIncome
+        let later = try #require(model.data?.averageRow)
         let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
-        #expect(later.monthValue == counted)
-        #expect(later.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(later.value == counted)
+        #expect(later.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
     }
 
     /// A past year is averaged over its twelve months as it was, whatever is due now: it has neither the sign nor the
@@ -876,10 +871,11 @@ struct OverviewModelTests {
 
         let model = await loadedModel(of: app)
 
-        let strip = try #require(model.data).netIncome
+        let average = try #require(model.data?.averageRow)
         let year = try AppModel.compute(try await app.yearInput(for: 2025).input, asOf: civilDate("2025-12-31"))
-        #expect(strip.monthValue == CzechFormat.wholeKc(NetIncome(year).monthlyKc))
-        #expect(strip.monthSub == "průměr za celý rok")
+        #expect(average.value == CzechFormat.wholeKc(NetIncome(year).monthlyKc))
+        #expect(average.period == "·\u{00A0}12\u{00A0}měsíců")
+        #expect(average.note == nil)
     }
 
     /// The chart by years has one average for the current year, wherever it is: with another year shown, its column
@@ -903,12 +899,13 @@ struct OverviewModelTests {
         let past = try #require(try column(ofYear: 2025, in: model).netAverage)
         #expect(!past.value.contains("≈"))
         #expect(past.note == nil)
-        #expect(try #require(model.data).netIncome.monthSub == "průměr za celý rok")
+        #expect(try #require(model.data).averageRow?.period == "·\u{00A0}12\u{00A0}měsíců")
+        #expect(try #require(model.data).averageRow?.note == nil)
     }
 
     /// With the invoice due stored, the page reads as before but for the average of the current year and its note: the
-    /// levies, the result card, the first figure of the strip and the net income of every column of the chart, by
-    /// months and by years, are the same, and so is the average of a past year.
+    /// levies, the result card, the rows of the calculation above its average and the net income of every column of
+    /// the chart, by months and by years, are the same, and so is the average of a past year.
     @Test func aDueInvoiceChangesNothingButTheAverage() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -929,15 +926,13 @@ struct OverviewModelTests {
             #expect(now.levies == was.levies, "\(mode)")
             #expect(now.keyFigure == was.keyFigure, "\(mode)")
             #expect(now.tiles == was.tiles, "\(mode)")
-            #expect(now.netIncome.yearLabel == was.netIncome.yearLabel, "\(mode)")
-            #expect(now.netIncome.yearValue == was.netIncome.yearValue, "\(mode)")
-            #expect(now.netIncome.yearSub == was.netIncome.yearSub, "\(mode)")
-            #expect(now.netIncome.monthLabel == was.netIncome.monthLabel, "\(mode)")
+            #expect(Array(now.calculation.prefix(3)) == Array(was.calculation.prefix(3)), "\(mode)")
+            #expect(now.averageRow?.period == was.averageRow?.period, "\(mode)")
             #expect(now.columns.map(\.netIncomeHalere) == was.columns.map(\.netIncomeHalere), "\(mode)")
             #expect(now.columns.map(\.netIncomeText) == was.columns.map(\.netIncomeText), "\(mode)")
             #expect(now.columns.map(\.netIncomeNote) == was.columns.map(\.netIncomeNote), "\(mode)")
             // The average is what changed.
-            #expect(now.netIncome.monthValue != was.netIncome.monthValue, "\(mode)")
+            #expect(now.averageRow?.value != was.averageRow?.value, "\(mode)")
         }
         let years = try #require(model.data).columns
         let pastYear = try #require(years.first { $0.label == "2025" })
@@ -946,8 +941,8 @@ struct OverviewModelTests {
     }
 
     /// The figure is the average of the year as of today. A day shown earlier in the year is another calculation, and
-    /// the strip names the months through that day, so it does not count the invoices due. A day to come is received
-    /// by today, so the strip is as of today and counts them.
+    /// the calculation counts the months through that day, so it does not count the invoices due. A day to come is
+    /// received by today, so the calculation is as of today and counts them.
     @Test func theInvoicesDueCountOnlyWhereTheYearIsWorkedOutAsOfToday() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -958,9 +953,10 @@ struct OverviewModelTests {
         app.pickAsOf(civilDate("2026-03-31"))
         await model.load()
 
-        let early = try #require(model.data).netIncome
-        #expect(early.monthSub == "průměr za leden–březen")
-        #expect(!early.monthValue.contains("≈"))
+        let early = try #require(model.data?.averageRow)
+        #expect(early.period == "·\u{00A0}3\u{00A0}měsíce")
+        #expect(early.note == nil)
+        #expect(!early.value.contains("≈"))
 
         await model.setChartMode(.years)
 
@@ -971,10 +967,11 @@ struct OverviewModelTests {
         app.pickAsOf(civilDate("2026-11-30"))
         await model.load()
 
-        let late = try #require(model.data).netIncome
-        #expect(late.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
-        #expect(late.monthValue.hasPrefix("≈\u{00A0}"))
-        #expect(try column(ofYear: 2026, in: model).netAverage?.value == late.monthValue)
+        let late = try #require(model.data?.averageRow)
+        #expect(late.period == "·\u{00A0}10\u{00A0}měsíců")
+        #expect(late.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        #expect(late.value.hasPrefix("≈\u{00A0}"))
+        #expect(try column(ofYear: 2026, in: model).netAverage?.value == late.value)
     }
 
     /// An invoice in dollars counts at the ČNB rate of its day of issue, as the chart values it: 10 000,00 dollars of
@@ -995,19 +992,19 @@ struct OverviewModelTests {
 
         let receipt = madeUpReceipt(rate.czkHalere(fromMinor: 1_000_000), on: app.today)
         let counted = try await averageCounting([receipt], in: app)
-        let strip = try #require(model.data).netIncome
-        #expect(strip.monthValue == counted)
-        #expect(strip.monthSub == "průměr za leden–říjen, včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
+        let average = try #require(model.data?.averageRow)
+        #expect(average.value == counted)
+        #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
     }
 
-    /// An invoice that is worth nothing brings no receipt, so the strip has neither the sign nor the words: one in a
-    /// currency the data has no rate of (the pound), and one of 0 Kč.
+    /// An invoice that is worth nothing brings no receipt, so the calculation has neither the sign nor the words: one
+    /// in a currency the data has no rate of (the pound), and one of 0 Kč.
     @Test func anInvoiceWorthNothingBringsNeitherTheSignNorTheNote() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
         let model = await loadedModel(of: app)
-        let plain = try #require(model.data).netIncome
+        let plain = try #require(model.data).calculation
         let pounds = Invoice.fixture(
             number: "20261003", currency: try #require(CurrencyCode("GBP")), issued: "2026-10-05", duzp: "2026-10-05",
             dueDate: "2026-10-25", items: [.fixture("1", at: 1_000_000)], vatMode: .outsideCountry)
@@ -1019,13 +1016,13 @@ struct OverviewModelTests {
             try await store([invoice], in: app)
             await model.load()
 
-            #expect(try #require(model.data).netIncome == plain, "An invoice \(name) is stored")
+            #expect(try #require(model.data).calculation == plain, "An invoice \(name) is stored")
         }
     }
 
     /// Last December's invoice that is due in January counts in January. The year in progress, 2027, has no rules in
-    /// the app yet and is worked out with those of 2026 as an estimate, but the strip does not mark its figures for
-    /// that, so the average has the one sign of the invoices it counts.
+    /// the app yet and is worked out with those of 2026 as an estimate, but the calculation does not mark its figures
+    /// for that, so the average has the one sign of the invoices it counts.
     @Test func lastDecembersInvoiceDueInJanuaryCountsInJanuary() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -1037,10 +1034,11 @@ struct OverviewModelTests {
         let model = await loadedModel(of: app)
 
         let counted = try await averageCounting([madeUpReceipt(5_000_000, vat: 1_050_000, on: app.today)], in: app)
-        let strip = try #require(model.data).netIncome
+        let average = try #require(model.data?.averageRow)
         #expect(model.rulesWarning != nil)
-        #expect(strip.monthValue == counted)
-        #expect(strip.monthSub == "průměr za leden, včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
+        #expect(average.value == counted)
+        #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
+        #expect(average.period == "·\u{00A0}1\u{00A0}měsíc")
     }
 
     /// The figure is an extra of the page: when the invoices due cannot be read, the page loads without it, as it does
@@ -1052,7 +1050,7 @@ struct OverviewModelTests {
         let database = try #require(app.database)
         try await store([theDueInvoice], in: app)
         let model = await loadedModel(of: app)
-        #expect(try #require(model.data).netIncome.monthValue.hasPrefix("≈\u{00A0}"))
+        #expect(try #require(model.data).averageRow?.value.hasPrefix("≈\u{00A0}") == true)
         let levies = try #require(model.data).levies
 
         // An invoice of last year, due by the end of the month, with a payment dated after today that no year but 2027
@@ -1064,8 +1062,8 @@ struct OverviewModelTests {
 
         let data = try #require(model.data)
         #expect(model.errorText == nil)
-        #expect(data.netIncome.monthValue == "187\u{00A0}111\u{00A0}Kč")
-        #expect(data.netIncome.monthSub == "průměr za leden–říjen")
+        #expect(data.averageRow?.value == "187\u{00A0}111\u{00A0}Kč")
+        #expect(data.averageRow?.note == nil)
         #expect(data.levies == levies)
         #expect(data.latestReceipts.count == 5)
         #expect(data.columns.count == 12)

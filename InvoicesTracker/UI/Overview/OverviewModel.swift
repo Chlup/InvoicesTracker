@@ -91,12 +91,6 @@ final class OverviewModel {
         await load()
     }
 
-    /// Shows the chart with VAT or without, remembers the choice in the settings and shows the chart that way.
-    func setChartWithVAT(_ on: Bool) async {
-        await app.updateAppSettings { $0.chartWithVAT = on }
-        await load()
-    }
-
     // MARK: Assembling
 
     private struct Loaded {
@@ -160,7 +154,7 @@ final class OverviewModel {
 
         let input = OverviewInput(
             year: shown.year, asOf: shown.asOf, today: today, result: result, advances: yearInput.advances,
-            latestReceipts: latest, chartMode: settings.chartMode, chartWithVAT: settings.chartWithVAT,
+            latestReceipts: latest, chartMode: settings.chartMode,
             chartRows: chartRows, chartYears: years, vatByMonth: vatByMonth, vatToCheckMonths: vatToCheckMonths,
             foreignCurrencies: foreignCurrencies, uniformRates: uniformRates, yearsAtUniformRate: yearsAtUniformRate,
             prediction: estimate, netIncomeResults: netIncomeResults, invoicePaymentEffects: invoicePaymentEffects,
