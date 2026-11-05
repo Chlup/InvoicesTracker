@@ -12,8 +12,10 @@ private nonisolated enum PredictionCalculationMetrics {
     /// The space between the two blocks one under the other.
     static let stackedSpacing: CGFloat = 16
 
-    /// The space at the sides of the panel and above and below its content.
+    /// The space between the sides of the panel and its content.
     static let panelHorizontal: CGFloat = 14
+
+    /// The space above and below the content of the panel.
     static let panelVertical: CGFloat = 10
 
     /// The space between the title of the panel and the rule-less first row under it, which has 8 points of its own.

@@ -15,9 +15,6 @@ nonisolated struct FigureTileData: Sendable, Hashable {
 
     /// The note under the figure, such as "s přiznáním a přehledy za rok 2026", or nil for none.
     var note: String?
-
-    /// Whether the tile is the net income per month, which a green dot in front of its label shows.
-    var marksNetIncome = false
 }
 
 /// The sizes and gaps of a figure tile.
@@ -27,18 +24,11 @@ private nonisolated enum FigureTileMetrics {
 
     /// The space between the figure and its share.
     static let shareGap: CGFloat = 8
-
-    /// The size of the dot that marks the net income.
-    static let dotSize: CGFloat = 8
-
-    /// The space between the mark and the label.
-    static let dotGap: CGFloat = 6
 }
 
 /// A figure with its label, its share and its note: the label in callout and secondary text, the figure in title 2 and
 /// the colour of text with the share beside it in body semibold and secondary text, and the note in callout and
-/// tertiary text. The tile of the net income per month has a green dot in front of its label. VoiceOver reads the
-/// tile as one phrase, and not the mark.
+/// tertiary text. VoiceOver reads the tile as one phrase.
 ///
 /// Tiles stand next to each other in a `FigureRow`; they are as wide as their texts are, and never stretched into
 /// columns.
@@ -52,7 +42,7 @@ struct FigureTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: FigureTileMetrics.spacing) {
-            labelLine
+            label
             figureLine
             if let note = data.note {
                 Text(verbatim: note)
@@ -62,20 +52,6 @@ struct FigureTile: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-
-    /// The label, with the green dot in front of it where the tile is about the net income: a dot that sits on the
-    /// baseline of the first line of the label.
-    private var labelLine: some View {
-        HStack(alignment: .firstTextBaseline, spacing: FigureTileMetrics.dotGap) {
-            if data.marksNetIncome {
-                Circle()
-                    .fill(Palette.green)
-                    .frame(width: FigureTileMetrics.dotSize, height: FigureTileMetrics.dotSize)
-                    .accessibilityHidden(true)
-            }
-            label
-        }
     }
 
     /// The words that say what the figure is.

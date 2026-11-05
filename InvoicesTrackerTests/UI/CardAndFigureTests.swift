@@ -5,7 +5,7 @@ import Testing
 
 /// The shared card and the figures that stand in it: how VoiceOver reads a card, how the card pads its content, how the
 /// sentence of a key figure is split at its emphasis and how wide it is set, where the share of a key figure stands,
-/// and how a figure tile is read and marked.
+/// and how a figure tile is read and set.
 @Suite(.serialized)
 @MainActor
 struct CardAndFigureTests {
@@ -458,65 +458,22 @@ struct CardAndFigureTests {
 
     // MARK: The figure tile
 
-    @Test func aFigureTileIsReadAsOnePhraseWithoutItsDot() async throws {
-        @MainActor func readings(marksNetIncome: Bool) async throws -> [String] {
-            var found: [String] = []
-            let tile = FigureTile(
-                FigureTileData(
-                    label: "Čistý příjem průměrně za měsíc", figure: "190\u{00A0}037\u{00A0}Kč",
-                    share: "83,3\u{00A0}%", note: "průměr za leden–říjen", marksNetIncome: marksNetIncome))
-            try await withHostedView(tile.padding(24), size: CGSize(width: 480, height: 160)) { window in
-                try await withAccessibilityElements {
-                    try await waitUntil { !accessibilityReadings(in: window).isEmpty }
-                    found = accessibilityReadings(in: window)
-                }
+    @Test func aFigureTileIsReadAsOnePhrase() async throws {
+        let tile = FigureTile(
+            FigureTileData(
+                label: "Odejde zálohami", figure: "190\u{00A0}037\u{00A0}Kč", share: "83,3\u{00A0}%",
+                note: "do konce roku podle plánu"))
+        try await withHostedView(tile.padding(24), size: CGSize(width: 480, height: 160)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { !accessibilityReadings(in: window).isEmpty }
+
+                // One element: the label, the figure, the share and the note, in the order they are drawn in.
+                #expect(
+                    accessibilityReadings(in: window) == [
+                        "Odejde zálohami, 190\u{00A0}037\u{00A0}Kč, 83,3\u{00A0}%, do konce roku podle plánu"
+                    ])
             }
-            return found
         }
-
-        // One element: the label, the figure, the share and the note, in the order they are drawn in.
-        let plain = try await readings(marksNetIncome: false)
-        #expect(
-            plain == [
-                "Čistý příjem průměrně za měsíc, 190\u{00A0}037\u{00A0}Kč, 83,3\u{00A0}%, průměr za leden–říjen"
-            ])
-        // The green dot of the net income is only for the eyes.
-        #expect(try await readings(marksNetIncome: true) == plain)
-    }
-
-    /// The tile of the net income carries a dot of 8 points in the green of the net income in front of its label, 20
-    /// points from the left of the picture where the tile stands in a padding of 20; no mark where the tile is not
-    /// about the net income.
-    @Test func aTileAboutTheNetIncomeIsMarkedWithADotOrNotAtAll() throws {
-        let green = try OffscreenPicture.bytes(of: Palette.green, in: .light)
-        func picture(marksNetIncome: Bool) throws -> OffscreenPicture {
-            let tile = FigureTile(
-                FigureTileData(
-                    label: "Čistý příjem průměrně za měsíc", figure: "190\u{00A0}037\u{00A0}Kč",
-                    note: "průměr za leden–říjen", marksNetIncome: marksNetIncome))
-            return try OffscreenPicture(of: tile.padding(20), in: .light)
-        }
-        /// The green pixels in the strip from `x` to `x + width` points, down the whole picture.
-        func greens(_ picture: OffscreenPicture, x: CGFloat, width: CGFloat) -> Int {
-            picture.count(
-                near: green, in: CGRect(x: x, y: 0, width: width, height: picture.size.height), by: 24)
-        }
-        /// The pixel rows, in a strip 2 points wide down the middle of the dot, that are green: the height of the
-        /// mark, 2 rows to the point.
-        func greenRows(_ picture: OffscreenPicture) -> Int {
-            picture.rows(near: green, from: 23, to: 25, by: 24).count
-        }
-
-        let dot = try picture(marksNetIncome: true)
-        let none = try picture(marksNetIncome: false)
-
-        // The dot is 8 points wide: nothing is green from 28 points on, and its middle is 8 points tall.
-        #expect(greens(dot, x: 20, width: 8) >= 150)
-        #expect(greens(dot, x: 28, width: 12) == 0)
-        #expect(greens(dot, x: 0, width: 20) == 0)
-        #expect(greenRows(dot) >= 12, "The dot is \(greenRows(dot)) rows of pixels tall")
-        // A tile that is not about the net income has no mark.
-        #expect(greens(none, x: 0, width: none.size.width) == 0)
     }
 
     /// The figure of a tile is set in the colour of text of the design, in a light and in a dark window, and not in the
