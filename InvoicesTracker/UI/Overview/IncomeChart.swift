@@ -107,26 +107,55 @@ nonisolated enum IncomeChartLayout {
     }
 }
 
+// MARK: - The calculation
+
+/// The sizes and gaps of the calculation of the card "Příjmy", in points.
+private nonisolated enum IncomeCalculationMetrics {
+    /// The widest the rows are, so that a value stays near its label in a wide card.
+    static let maximumWidth: CGFloat = 420
+
+    /// The space between a hairline and the rows.
+    static let padding: CGFloat = 14
+}
+
+/// The calculation of the card "Příjmy" between two hairlines that run the width of the card, 14 points from each:
+/// the income of the year so far less its levies, what that leaves and that per month, in the rows of a bill
+/// (`BillRows`, `OverviewBuilder.calculation(_:shares:)`), at most 420 points wide from the leading edge. VoiceOver
+/// reads each row as one phrase.
+struct IncomeCalculation: View {
+    let rows: [BillRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Hairline()
+            BillRows(rows: rows)
+                .frame(maxWidth: IncomeCalculationMetrics.maximumWidth, alignment: .leading)
+                .padding(.vertical, IncomeCalculationMetrics.padding)
+            Hairline()
+        }
+    }
+}
+
 // MARK: - The chart
 
 /// The card "Příjmy": under its header, with the segmented control that groups the chart by months or by years and the
-/// checkbox for VAT, the strip with the net income of the year up to the day shown and its average per month, then
-/// what was issued (bars, by the day of issue) and what was received (a line with points, by the day of payment) by
-/// month or by year, with or without VAT, and under it the uniform rate of the year. The chart also has a green line
-/// with points for the net income, always without VAT: by month that of the invoices paid in each month up to the day
-/// shown, by year that of each year that has been worked out. Hovering over a column highlights it and shows a tooltip
-/// with the series with and without VAT, all in whole Kč, the net income of the column where it has it, with the words
-/// that say what it covers, and, under a hairline, the average net income per month. A year that the engine worked
-/// out with the rules of another year is marked as an estimate there, with the sentence that says so, while its point
-/// stays in the chart. VoiceOver reads each column in the words of the tooltip, but for the words under the net
-/// income.
+/// checkbox for VAT, the calculation of the net income of the year up to the day shown and its average per month
+/// (`IncomeCalculation`), then what was issued (bars, by the day of issue) and what was received (a line with points,
+/// by the day of payment) by month or by year, with or without VAT, and under it the uniform rate of the year. The
+/// chart also has a green line with points for the net income, always without VAT: by month that of the invoices paid
+/// in each month up to the day shown, by year that of each year that has been worked out. Hovering over a column
+/// highlights it and shows a tooltip with the series with and without VAT, all in whole Kč, the net income of the
+/// column where it has it, with the words that say what it covers, and, under a hairline, the average net income per
+/// month. A year that the engine worked out with the rules of another year is marked as an estimate there, with the
+/// sentence that says so, while its point stays in the chart. VoiceOver reads each column in the words of the
+/// tooltip, but for the words under the net income.
 struct IncomeChart: View {
     let columns: [ChartColumn]
     let subtitle: String
 
-    /// The net income of the year up to the day shown and its average per month, which the strip under the header
-    /// tells. They do not depend on the way the chart is grouped or drawn.
-    let netIncome: OverviewNetIncome
+    /// The rows of the calculation under the header: the income of the year up to the day shown less its levies, what
+    /// that leaves and that per month. They do not depend on the way the chart is grouped or drawn.
+    let calculation: [BillRow]
     let uniformLine: UniformLine?
     let mode: ChartMode
     let withVAT: Bool
@@ -149,7 +178,7 @@ struct IncomeChart: View {
     var body: some View {
         Card(label: "Příjmy") {
             header
-            NetIncomeStrip(netIncome: netIncome)
+            IncomeCalculation(rows: calculation)
             legend
             chart
             if let uniformLine {

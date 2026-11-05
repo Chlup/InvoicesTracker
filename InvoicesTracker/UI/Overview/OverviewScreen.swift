@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// Přehled: the result card with what is left to pay, the bar of the levies of the three authorities and the tiles
-/// under them, the income chart with the net income of the year above it, the card with the estimate of the whole year
-/// and the chart of its months (for the current year while it is in progress), the latest payments and the upcoming
-/// ones, with the banner that reminds of a uniform rate to enter by hand, the New Year banner, the warning about rules
-/// that are only an estimate and the line about income converted at a provisional rate above them. The title and the
-/// line under it are the shell's. The data is loaded again whenever what it depends on changes, and when the day
-/// changes.
+/// under them, the income chart with the calculation of the net income of the year above it, the card with the
+/// estimate of the whole year and the chart of its months (for the current year while it is in progress), the latest
+/// payments and the upcoming ones, with the banner that reminds of a uniform rate to enter by hand, the New Year
+/// banner, the warning about rules that are only an estimate and the line about income converted at a provisional
+/// rate above them. The title and the line under it are the shell's. The data is loaded again whenever what it
+/// depends on changes, and when the day changes.
 struct OverviewScreen: View {
     let app: AppModel
     @State private var model: OverviewModel
@@ -76,7 +76,7 @@ struct OverviewScreen: View {
             )
             .zIndex(1)
             IncomeChart(
-                columns: data.columns, subtitle: data.chartSubtitle, netIncome: data.netIncome,
+                columns: data.columns, subtitle: data.chartSubtitle, calculation: data.calculation,
                 uniformLine: data.uniformLine, mode: app.appSettings.chartMode, withVAT: app.appSettings.chartWithVAT,
                 setMode: { mode in
                     Task { await model.setChartMode(mode) }

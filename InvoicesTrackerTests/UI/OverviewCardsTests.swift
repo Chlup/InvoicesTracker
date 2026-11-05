@@ -4,7 +4,7 @@ import Testing
 @testable import InvoicesTracker
 
 /// The cards, lines and banners of Přehled that the V2 design restyles, hosted one by one and looked at as VoiceOver
-/// and the eye see them: the strip of the net income between two hairlines, the figures of the estimate under a
+/// and the eye see them: the calculation of the net income between two hairlines, the figures of the estimate under a
 /// hairline in tiles that are 40 points apart and at most 240 wide, with no pill and no sign of an estimate, the New
 /// Year banner and the reminder of the uniform rate as notes with their buttons, and the surface of the hover boxes of
 /// the two charts. The sample is the prediction sample's 2026 as of 17. 10. 2026. In every expected string
@@ -12,11 +12,22 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct OverviewCardsTests {
-    /// What the strip above the chart of Příjmy says for the sample as of 17. 10. 2026.
-    private let netIncome = OverviewNetIncome(
-        yearLabel: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.", yearValue: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-        yearSub: "88,2\u{00A0}% příjmů bez DPH po odvodech", monthLabel: "Čistý příjem průměrně za měsíc",
-        monthValue: "193\u{00A0}347\u{00A0}Kč", monthSub: "průměr za leden–říjen")
+    /// The calculation of the card Příjmy for the sample as of 17. 10. 2026, as the builder makes it.
+    private let calculation = [
+        BillRow(
+            label: "Příjmy od 1.\u{00A0}1. do 17.\u{00A0}10.", value: "2\u{00A0}191\u{00A0}771\u{00A0}Kč",
+            valueStyle: .semibold),
+        BillRow(
+            label: "Odvody", value: "258\u{00A0}300\u{00A0}Kč",
+            note: "daň 32\u{00A0}076 · sociální 159\u{00A0}279 · zdravotní 66\u{00A0}945", sign: .minus,
+            share: "11,8\u{00A0}%", valueStyle: .semibold, rule: .hairline),
+        BillRow(
+            label: "Čistý příjem", value: "1\u{00A0}933\u{00A0}471\u{00A0}Kč", sign: .equals, style: .strong,
+            share: "88,2\u{00A0}%", valueStyle: .title3Bold, rule: .strong),
+        BillRow(
+            label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided, period: "· 10 měsíců",
+            marksNetIncome: true, valueStyle: .title2Bold, rule: BillRule.none),
+    ]
 
     // MARK: Helpers
 
@@ -52,78 +63,89 @@ struct OverviewCardsTests {
         PredictionBuilder.card(try PredictionSample.outcome(year: 2026))
     }
 
-    // MARK: The strip of the net income
+    // MARK: The calculation of the net income
 
-    /// The strip is a hairline, 12 points, the two tiles and 12 points, and a hairline: nothing else between the two
-    /// lines, which run the whole width of the strip.
-    @Test func theStripStandsBetweenTwoHairlinesWith12PointsAboveAndBelowItsTiles() throws {
+    /// The calculation of the card Příjmy hosted alone, 700 points wide, on the colour of a card.
+    private func calculationPicture(width: CGFloat = 700, in scheme: ColorScheme) throws -> OffscreenPicture {
+        try OffscreenPicture(
+            of: IncomeCalculation(rows: calculation).frame(width: width).background(Palette.bgCard), in: scheme)
+    }
+
+    /// The calculation is a hairline, 14 points, the four rows and 14 points, and a hairline: nothing else is a line
+    /// across the width of the card, as the rules between the rows are as wide as the rows.
+    @Test func theCalculationStandsBetweenTwoHairlinesWith14PointsAboveAndBelowItsRows() throws {
         let separator = try OffscreenPicture.bytes(of: Palette.sep, in: .light)
-        let picture = try OffscreenPicture(
-            of: NetIncomeStrip(netIncome: netIncome).frame(width: 600).background(Palette.bgCard), in: .light)
+        let picture = try calculationPicture(width: 600, in: .light)
 
         let found = lines(in: picture.rows(near: separator, from: 4, to: 596, by: 3))
 
-        #expect(found.count == 2, "The lines across the strip are \(found)")
+        #expect(found.count == 2, "The lines across the calculation are \(found)")
         guard found.count == 2 else { return }
         #expect(found[0].top < 1, "The first hairline is at \(found[0])")
         #expect(found[1].bottom > picture.size.height - 1.5, "The second is at \(found[1]) in \(picture.size)")
-        let tile = FigureTile(
-            FigureTileData(
-                label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub))
-        let tileHeight = NSHostingView(rootView: tile).fittingSize.height
-        // The height that a hosting view fits is rounded up to a whole point, so the tiles are up to a point lower.
-        let expected = 1 + 12 + tileHeight + 12 + 1
+        let rowsHeight = NSHostingView(rootView: BillRows(rows: calculation).frame(width: 420)).fittingSize.height
+        // The height that a hosting view fits is rounded up to a whole point, so the rows are up to a point lower.
+        let expected = 1 + 14 + rowsHeight + 14 + 1
         #expect(
             picture.size.height <= expected && picture.size.height > expected - 1.5,
-            "The strip is \(picture.size.height) points tall, the tiles \(tileHeight)")
+            "The calculation is \(picture.size.height) points tall, the rows \(rowsHeight)")
     }
 
-    /// The net income of the year and its average per month stand next to each other 48 points apart, each as wide as
-    /// its words, and one under the other 12 points apart where the room is too narrow for both. VoiceOver reads each
-    /// with its words as one phrase and the mark of the first one is not read.
-    @Test func theTwoTilesOfTheStripAreNotStretchedAndWrapWhereTheRoomIsNarrow() async throws {
-        for (width, beside) in [(700 as CGFloat, true), (360, false)] {
-            let strip = NetIncomeStrip(netIncome: netIncome).frame(width: width, alignment: .leading).padding(24)
-            try await withHostedView(strip, size: CGSize(width: width + 48, height: 240)) { window in
-                try await withAccessibilityElements {
-                    let yearPhrase = netIncome.yearLabel + ", " + netIncome.yearValue + ", " + netIncome.yearSub
-                    try await waitUntil { frameOfText(startingWith: netIncome.monthLabel, in: window) != nil }
-                    let year = try #require(frameOfText(startingWith: yearPhrase, in: window))
-                    let average = try #require(frameOfText(startingWith: netIncome.monthLabel + ", ", in: window))
-                    let content = contentRect(of: window)
+    /// In a card wider than that the rows are 420 points wide at most, from the left edge: the rules between them, the
+    /// hairline above the levies and the stronger one above the net income, end there.
+    @Test(arguments: [ColorScheme.light, ColorScheme.dark])
+    func theRowsOfTheCalculationAreNoWiderThan420Points(scheme: ColorScheme) throws {
+        let separator = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)
+        let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
+        let picture = try calculationPicture(in: scheme)
 
-                    #expect(abs(year.minX - content.minX - 24) < 1, "The first tile is at \(year.minX)")
-                    if beside {
-                        #expect(abs(average.minX - year.maxX - 48) < 1, "The tiles are \(year) and \(average)")
-                        #expect(abs(year.maxY - average.maxY) < 1, "The tiles are not level: \(year), \(average)")
-                        #expect(year.width < 300 && average.width < 300, "The tiles are stretched: \(year), \(average)")
-                    } else {
-                        #expect(abs(average.minX - year.minX) < 1, "The tiles are \(year) and \(average)")
-                        #expect(abs(year.minY - average.maxY - 12) < 1, "The tiles are \(year) and \(average)")
-                    }
-                }
-            }
+        for (name, colour) in [("the hairline", separator), ("the stronger line", strong)] {
+            let across420 = lines(in: picture.rows(near: colour, from: 0, to: 419.5, by: 3))
+            let beyond = lines(in: picture.rows(near: colour, from: 421, to: 430, by: 3))
+            // The hairline above the levies is also a part of the two hairlines that run the whole width.
+            #expect(across420.count == (colour == separator ? 3 : 1), "\(scheme): \(name) is at \(across420)")
+            #expect(beyond.count == (colour == separator ? 2 : 0), "\(scheme): \(name) beyond 420 is at \(beyond)")
         }
     }
 
-    /// The green dot marks the average per month, and not the net income of the year so far, and there is no green line
-    /// anywhere in the strip: the green pixels fit a square of 8 points, in front of the words of the average.
-    @Test func onlyTheMonthlyTileOfTheStripHasTheGreenDotOf8Points() throws {
-        let green = try OffscreenPicture.bytes(of: Palette.green, in: .light)
-        let picture = try OffscreenPicture(
-            of: NetIncomeStrip(netIncome: netIncome).frame(width: 700, alignment: .leading).background(Palette.bgCard),
-            in: .light)
+    /// The green dot of the net income stands before the label of the fourth row, the average per month: under the
+    /// stronger line above the net income, after the column of the signs and its gap, and it is the one green mark of
+    /// the calculation, 8 points square.
+    @Test(arguments: [ColorScheme.light, ColorScheme.dark])
+    func onlyTheFourthRowHasTheGreenDotOf8Points(scheme: ColorScheme) throws {
+        let green = try OffscreenPicture.bytes(of: Palette.green, in: scheme)
+        let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
+        let picture = try calculationPicture(in: scheme)
 
         let extent = try #require(picture.extent(near: green, by: 6))
+        let result = try #require(lines(in: picture.rows(near: strong, from: 0, to: 419.5, by: 3)).first)
 
         #expect((extent.width - 8).magnitude <= 1, "The mark is \(extent.width) points wide")
         #expect((extent.height - 8).magnitude <= 1, "The mark is \(extent.height) points high")
-        let year = NSHostingView(
-            rootView: FigureTile(
-                FigureTileData(label: netIncome.yearLabel, figure: netIncome.yearValue, note: netIncome.yearSub))
-        ).fittingSize.width
-        // The dot is left of the words of the average, which stand after the year's tile and the gap of 48.
-        #expect(extent.minX > year + 48 - 1, "The dot is at \(extent), the year's tile is \(year) wide")
+        #expect((extent.minX - 28).magnitude <= 1, "The mark starts at \(extent.minX)")
+        // Under the net income, which is a row under the stronger line: more than a row of body text lower.
+        #expect(extent.minY > result.bottom + 20, "The mark is at \(extent), the stronger line at \(result)")
+    }
+
+    /// VoiceOver reads each row as one phrase, the label with its share or its months, the value and the note; the
+    /// signs and the dot are not read.
+    @Test func eachRowOfTheCalculationIsReadAsOnePhrase() async throws {
+        let view = IncomeCalculation(rows: calculation).frame(width: 600).padding(24)
+        try await withHostedView(view, size: CGSize(width: 648, height: 300)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil { !accessibilityReadings(in: window).isEmpty }
+                let readings = accessibilityReadings(in: window)
+
+                #expect(
+                    readings == [
+                        "Příjmy od 1.\u{00A0}1. do 17.\u{00A0}10.: 2\u{00A0}191\u{00A0}771\u{00A0}Kč",
+                        "Odvody 11,8\u{00A0}%: 258\u{00A0}300\u{00A0}Kč."
+                            + " daň 32\u{00A0}076 · sociální 159\u{00A0}279 · zdravotní 66\u{00A0}945",
+                        "Čistý příjem 88,2\u{00A0}%: 1\u{00A0}933\u{00A0}471\u{00A0}Kč",
+                        "Průměrně za měsíc · 10 měsíců: 193\u{00A0}347\u{00A0}Kč",
+                    ])
+            }
+        }
     }
 
     // MARK: The estimate of the whole year

@@ -74,13 +74,9 @@ nonisolated extension PredictionBuilder {
     /// (`PredictionBuilder.leviesShare(_:)`), and what each authority takes of it, without the currency. A tax below
     /// zero is a bonus that the tax office pays, and reads so in place of the tax.
     private static func leviesStat(_ result: TaxResult) -> PredictionMini {
-        let tax = result.balance(.tax).liability
-        let taxText = tax < 0 ? "daňový bonus " + CzechFormat.grouped(-tax) : "daň " + CzechFormat.grouped(tax)
-        let social = CzechFormat.grouped(result.balance(.social).liability)
-        let health = CzechFormat.grouped(result.balance(.health).liability)
-        return PredictionMini(
+        PredictionMini(
             label: "Odvody", value: CzechFormat.wholeKc(result.liabilityTotal),
-            share: leviesShare(result), sub: "\(taxText) · sociální \(social) · zdravotní \(health)")
+            share: leviesShare(result), sub: BuilderText.leviesSplit(of: result))
     }
 
     /// What is left to pay with the returns, "Doplatek", after the advances of the whole year; or, when nothing is owed

@@ -294,12 +294,14 @@ struct OverviewViewTextTests {
         }
         return IncomeChart(
             columns: [year(2025, isCurrent: false), year(2026, isCurrent: true)], subtitle: "Po letech · v Kč bez DPH",
-            netIncome: OverviewNetIncome(
-                yearLabel: "Čistý příjem od 1.\u{00A0}1. do 17.\u{00A0}10.",
-                yearValue: "1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-                yearSub: "88,2\u{00A0}% příjmů bez DPH po odvodech",
-                monthLabel: "Čistý příjem průměrně za měsíc", monthValue: "193\u{00A0}347\u{00A0}Kč",
-                monthSub: "průměr za leden–říjen"),
+            calculation: [
+                BillRow(
+                    label: "Příjmy od 1.\u{00A0}1. do 17.\u{00A0}10.", value: "2\u{00A0}191\u{00A0}771\u{00A0}Kč",
+                    valueStyle: .semibold),
+                BillRow(
+                    label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided,
+                    period: "· 10 měsíců", marksNetIncome: true, valueStyle: .title2Bold),
+            ],
             uniformLine: nil, mode: .years, withVAT: false, setMode: { _ in }, setWithVAT: { _ in }
         )
         .frame(width: width)
