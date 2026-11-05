@@ -39,7 +39,7 @@ nonisolated enum PredictionBuilder {
         "Odhad je neúplný: některé částky nejsou známé – chybí kurz nebo podklady pro odhad."
 
     /// What stands for a figure that is not known while the estimate is incomplete.
-    private static let unknownAmount = "—"
+    static let unknownAmount = "—"
 
     // MARK: The page
 
@@ -92,8 +92,9 @@ nonisolated enum PredictionBuilder {
 
     /// The share of the year's income that the tax and the insurance take together, in percent with one decimal:
     /// "17,0 %". It is the part of the income that the net income does not leave (`IncomeShares`), and nil when the
-    /// income is not above zero. Odhad odvodů writes it beside the sum of the levies, and the card of the estimate on
-    /// Přehled beside its figure of them. It never has the sign "≈".
+    /// income is not above zero. Odhad odvodů writes it beside the sum of the levies in its result card, and the
+    /// calculations of the year beside their levies (`calculation(_:incomeLabel:incomeNote:marksEstimate:)`). It never
+    /// has the sign "≈".
     static func leviesShare(_ result: TaxResult) -> String? {
         IncomeShares(result).map { BuilderText.share(tenths: $0.leviesTenths) }
     }
@@ -396,7 +397,7 @@ nonisolated enum PredictionBuilder {
     }
 
     /// `text` with the sign of an estimate in front of it when `isEstimate`, and as it is otherwise.
-    private static func estimate(_ text: String, when isEstimate: Bool) -> String {
+    static func estimate(_ text: String, when isEstimate: Bool) -> String {
         isEstimate ? estimateSign + text : text
     }
 }

@@ -1763,40 +1763,35 @@ struct AppWindowLayoutTests {
     }
 
     /// The page fits the window with the card of the estimate, and the card holds its parts: the title (with no pill)
-    /// and the line under it, the button to the right of them, under them the five figures (the income, the levies,
-    /// the settlement, the net income and what to set aside) 40 points apart and none of them more than 240 wide or
-    /// beyond the card or on another, and under the figures the chart of the year, whose months VoiceOver reads within
-    /// the card. The figures stand in two rows by meaning, the year's three and the two per month, at the least room
-    /// (938 points of page), in a large window, with the sidebar as wide as it goes (850 points of page) and in a large
-    /// window with that sidebar: no figure wraps alone. No sign of an estimate is read anywhere in the card.
+    /// and the line under it, the button to the right of them, under them the calculation of the year and, beside it,
+    /// the panel of how its levies are paid, each row whole within its column and the card, and under them the chart
+    /// of the year, whose months VoiceOver reads within the card. The two blocks stand side by side at the least room
+    /// (938 points of page), in a large window, with the sidebar as wide as it goes (850 points of page, 810 inside
+    /// the padding of the card, more than the 712 the two need) and in a large window with that sidebar. No sign of an
+    /// estimate is read anywhere in the card.
     @Test func theCardHoldsItsPartsAndThePageFitsTheWindowAtTheLeastRoomAndAtALargeSize() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     try await showOverviewWithTheEstimate(of: app, in: window)
 
-                    for (size, figureRows) in [
-                        (AppWindowSize.minimum, [3, 2]), (AppWindowSize.large, [3, 2]), (AppWindowSize.minimum, [3, 2]),
-                    ] {
+                    for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
                         window.setContentSize(size)
                         try await expectSettled(window) {
-                            problems(ofPageIn: window)
-                                + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: figureRows)
+                            problems(ofPageIn: window) + problems(ofThePartsOfTheEstimateCardIn: window)
                         }
                     }
 
                     // The detail of the least window with the sidebar as wide as it goes: 890 points.
                     widenSidebar(of: window)
                     try await expectSettled(window) {
-                        problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
+                        problems(ofPageIn: window) + problems(ofThePartsOfTheEstimateCardIn: window)
                     }
 
-                    // A large window again, the sidebar still as wide as it goes: the same two rows.
+                    // A large window again, the sidebar still as wide as it goes: the blocks side by side again.
                     window.setContentSize(AppWindowSize.large)
                     try await expectSettled(window) {
-                        problems(ofPageIn: window)
-                            + problems(ofThePartsOfTheEstimateCardIn: window, figureRows: [3, 2])
+                        problems(ofPageIn: window) + problems(ofThePartsOfTheEstimateCardIn: window)
                     }
                 }
             }
@@ -1887,37 +1882,47 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the parts of the card of the estimate in `window`, in words: its title, the line under the
-    /// title, the five figures, the button or the months of the chart are not there, are beyond the card, lie on one
-    /// another, or are not arranged as the card arranges them; the card has a pill "odhad" or a sign "≈" among
-    /// what VoiceOver reads. The button stands to the right of the title and the line, in a row level with the title's:
-    /// its middle is within the height of the title and the line. The figures stand under the title and the button, in
-    /// rows of `figureRows` figures from the top; the figures of a row are level, side by side in the order income,
-    /// levies, settlement, net income, set-aside, 40 points apart and at most 240 points wide, and each row is under
-    /// the one before it. The chart stands under the figures: the elements VoiceOver reads for its months of September,
-    /// October and November are under every figure. The origin of the screen is at the bottom left, so what is under
-    /// has the smaller y. Needs the accessibility elements.
-    private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow, figureRows: [Int]) -> [String] {
+    /// title, the button, a row of the calculation of the year, the title of the panel of how its levies are paid or a
+    /// row of the panel is not there, is beyond the card, or lies on another part; or the card has a pill "odhad" or a
+    /// sign "≈" among what VoiceOver reads. The button stands to the right of the title and the line, in a row level
+    /// with the title's: its middle is within the height of the title and the line. The calculation and the panel
+    /// stand under the title and the button, side by side, as the card is wider than the 712 points they need inside
+    /// its padding in every window the tests show it in, in two columns of one width 32 points apart: the rows of the
+    /// calculation one under the other in the first, and the panel's title and rows in the second, 14 points inside
+    /// the panel. VoiceOver frames a row by its texts, which end with the value at the right edge of its column (of
+    /// the panel's padding in the panel), so that no value is cut or pushed out. The chart stands under both: the
+    /// elements VoiceOver reads for its months of September, October and November are under every row. The origin of
+    /// the screen is at the bottom left, so what is under has the smaller y. Needs the accessibility elements.
+    private func problems(ofThePartsOfTheEstimateCardIn window: NSWindow) -> [String] {
         guard let card = accessibilityElement(labelled: "Odhad za celý rok", in: window),
             let cardFrame = card.accessibilityFrame?()
         else {
             return ["No card Odhad za celý rok"]
         }
         // What VoiceOver reads for each part of the card, which starts with the words that find it.
-        let parts = [
+        let head = [
             (name: "the title", reading: "Odhad za celý rok 2026"),
-            (name: "the line under the title", reading: "z faktur do "), (name: "the income", reading: "Příjmy za rok"),
-            (name: "the levies", reading: "Odvody, "), (name: "the settlement", reading: "Doplatek, "),
-            (name: "the net income", reading: "Čistý příjem průměrně za měsíc"),
-            (name: "the set-aside", reading: "Odkládat průměrně za měsíc"),
-            (name: "the button", reading: "Odhad odvodů"),
+            (name: "the line under the title", reading: "z faktur do "), (name: "the button", reading: "Odhad odvodů"),
         ]
-        let children = (card.accessibilityChildren?() ?? []).map { $0 as AnyObject }
+        let calculation = [
+            (name: "the income", reading: "Příjmy za rok: "), (name: "the levies", reading: "Odvody 17,0\u{00A0}%: "),
+            (name: "the net income", reading: "Čistý příjem 83,0\u{00A0}%: "),
+            (name: "the average", reading: "Průměrně za měsíc · 12 měsíců: "),
+        ]
+        let panel = [
+            (name: "the title of the panel", reading: "Jak odvody zaplatíte"),
+            (name: "the advances to the insurances", reading: "Zálohy sociální a zdravotní: "),
+            (name: "the tax advances", reading: "Zálohy na daň: "), (name: "the doplatek", reading: "Doplatek: "),
+            (name: "the set-aside", reading: "Odkládat průměrně za měsíc: "),
+        ]
+        let parts = head + calculation + panel
+        let elements = descendants(of: card)
         var frames: [String: CGRect] = [:]
         var found: [String] = []
         for (name, reading) in parts {
-            let part = children.first { child in
-                let value: (() -> Any?)? = child.accessibilityValue
-                let words = (value?() ?? nil) as? String ?? child.accessibilityLabel?() ?? ""
+            let part = elements.first { element in
+                let value: (() -> Any?)? = element.accessibilityValue
+                let words = (value?() ?? nil) as? String ?? element.accessibilityLabel?() ?? ""
                 return words.hasPrefix(reading)
             }
             guard let frame = part?.accessibilityFrame?() else {
@@ -1942,10 +1947,6 @@ struct AppWindowLayoutTests {
         else {
             return found
         }
-        // The figures in the order they stand in.
-        let figures = [
-            "the income", "the levies", "the settlement", "the net income", "the set-aside",
-        ].compactMap { frames[$0] }
         let names = parts.map(\.name)
         for (index, name) in names.enumerated() {
             for other in names[(index + 1)...] {
@@ -1966,44 +1967,45 @@ struct AppWindowLayoutTests {
             found.append(
                 "The button is not level with the title: \(button), the title spans \(titleBottom)–\(titleTop)")
         }
-        // Every figure is under the title and the button.
+        let rows = calculation.compactMap { frames[$0.name] }
+        let panelParts = panel.compactMap { frames[$0.name] }
         let headBottom = min(titleBottom, button.minY)
-        if figures.contains(where: { $0.maxY > headBottom + 0.5 }) {
-            found.append("The figures are not under the title and the button: \(figures), they end at \(headBottom)")
+        if (rows + panelParts).contains(where: { $0.maxY > headBottom + 0.5 }) {
+            found.append("The calculation and the panel are not under the head: they start above \(headBottom)")
         }
-        // The figures of a row share their top, the largest y.
-        var rows: [[CGRect]] = []
-        for figure in figures {
-            if let top = rows.last?.first?.maxY, (top - figure.maxY).magnitude < 0.5 {
-                rows[rows.count - 1].append(figure)
-            } else {
-                rows.append([figure])
-            }
-        }
-        if rows.map(\.count) != figureRows {
-            found.append("The figures are in rows of \(rows.map(\.count)), not of \(figureRows): \(figures)")
-        }
+        // Two columns of one width, 32 points apart, inside the padding of 20.
+        let column = (cardFrame.width - 40 - 32) / 2
+        let left = cardFrame.minX + 20
+        let panelLeft = left + column + 32
         for row in rows {
-            for (left, right) in zip(row, row.dropFirst()) where left.maxX > right.minX + 0.5 {
-                found.append("The figures of a row are not side by side in their order: \(row)")
+            if row.minX < left - 0.5 {
+                found.append("A row of the calculation starts before the padding of the card: \(row), \(cardFrame)")
             }
-            for (left, right) in zip(row, row.dropFirst()) where (right.minX - left.maxX - 40).magnitude > 1 {
-                found.append("The figures of a row are not 40 points apart: \(left), \(right)")
+            if (row.maxX - (left + column)).magnitude > 1 {
+                found.append("A row of the calculation does not end at its column, \(left + column): \(row)")
             }
         }
-        for figure in figures where figure.width > 240.5 {
-            found.append("A figure is \(figure.width) points wide, not at most 240: \(figure)")
+        if let title = panelParts.first, (title.minX - (panelLeft + 14)).magnitude > 1 {
+            found.append("The title of the panel is not 14 points inside the second column: \(title), \(cardFrame)")
         }
-        for (above, below) in zip(rows, rows.dropFirst()) {
-            if let bottom = above.map(\.minY).min(), let top = below.map(\.maxY).max(), top > bottom + 0.5 {
-                found.append("A row of figures is not under the row before it: \(below), \(above)")
+        for part in panelParts.dropFirst() {
+            if part.minX < panelLeft + 14 - 0.5 {
+                found.append("A row of the panel is not in the second column, inside the panel: \(part), \(cardFrame)")
             }
+            if (part.maxX - (panelLeft + column - 14)).magnitude > 1 {
+                found.append("A row of the panel does not end at its padding, \(panelLeft + column - 14): \(part)")
+            }
+        }
+        for (above, below) in zip(rows, rows.dropFirst()) where below.maxY > above.minY + 0.5 {
+            found.append("The rows of the calculation are not one under the other: \(above), \(below)")
+        }
+        for (above, below) in zip(panelParts, panelParts.dropFirst()) where below.maxY > above.minY + 0.5 {
+            found.append("The parts of the panel are not one under the other: \(above), \(below)")
         }
         // A month of the chart, found by the words VoiceOver starts it with: a past one, the one of today and one to
         // come. The chart of Příjmy reads its months as well, and September with the same words, so they are looked
         // for in the card.
-        let figuresBottom = figures.map(\.minY).min() ?? cardFrame.maxY
-        let elements = descendants(of: card)
+        let blocksBottom = (rows + panelParts).map(\.minY).min() ?? cardFrame.maxY
         for start in ["Září 2026:", "Říjen 2026 · do", "Listopad 2026 · odhad:"] {
             let month = elements.first { ($0.accessibilityLabel?() ?? "").hasPrefix(start) }
             guard let frame = month?.accessibilityFrame?() else {
@@ -2013,8 +2015,8 @@ struct AppWindowLayoutTests {
             if !cardFrame.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
                 found.append("The month '\(start)' is not within the card: \(frame), the card \(cardFrame)")
             }
-            if frame.maxY > figuresBottom + 0.5 {
-                found.append("The month '\(start)' is not under the figures: \(frame), they end at \(figuresBottom)")
+            if frame.maxY > blocksBottom + 0.5 {
+                found.append("The month '\(start)' is not under the calculation: \(frame), it ends at \(blocksBottom)")
             }
         }
         return found
@@ -2056,12 +2058,13 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the calculation in the card "Příjmy" of Přehled in `window`, in words: a row that VoiceOver
-    /// reads as one of `readings` is not there, is beyond the card or is wider than 420 points, so that its value would
-    /// be cut or pushed out; the rows do not stand one under the other in their order, at the left edge of the card
-    /// inside its padding of 20; they are not under the head of the card (its line, which stands under its title) or
-    /// not above the legend of the chart; or the legend of the chart by months has the key of the net income line of
-    /// the chart by years. The origin of the screen is at the bottom left, so what is above has the larger y. Needs the
-    /// accessibility elements.
+    /// reads as one of `readings` is not there or is beyond the card; its texts, which VoiceOver frames it by, do not
+    /// start inside the padding of 20 of the card or do not end, with the value, at the right edge of the 420 points
+    /// the rows have, so that a value would be cut or pushed out; the rows do not stand one under the other in their
+    /// order; they are not under the head of the card (its line, which stands under its title) or not above the legend
+    /// of the chart; or the legend of the chart by months has the key of the net income line of the chart by years.
+    /// The origin of the screen is at the bottom left, so what is above has the larger y. Needs the accessibility
+    /// elements.
     private func problems(ofTheCalculationIn window: NSWindow, readings: [String]) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
@@ -2083,11 +2086,12 @@ struct AppWindowLayoutTests {
             if !card.insetBy(dx: -0.5, dy: -0.5).contains(row) {
                 found.append("'\(reading)' is not within the card: \(row), the card \(card)")
             }
-            if row.width > 420.5 {
-                found.append("'\(reading)' is \(row.width) points wide, not at most 420")
+            let right = card.minX + 20 + min(420, card.width - 40)
+            if (row.maxX - right).magnitude > 1 {
+                found.append("'\(reading)' does not end at \(right), 420 points inside the padding: \(row)")
             }
-            if (row.minX - card.minX - 20).magnitude > 1 {
-                found.append("'\(reading)' is not 20 points from the edge of the card: \(row), the card \(card)")
+            if row.minX < card.minX + 20 - 0.5 {
+                found.append("'\(reading)' starts before the padding of 20 of the card: \(row), the card \(card)")
             }
         }
         guard rows.count == readings.count, let first = rows.first, let last = rows.last else { return found }

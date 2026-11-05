@@ -1,27 +1,5 @@
 import Foundation
 
-// MARK: - The card of Přehled
-
-/// One of the figures of the card of Přehled, with its caption and the line under it: "Doplatek", "198 702 Kč",
-/// "po zálohách 268 080 Kč za celý rok".
-nonisolated struct PredictionMini: Identifiable, Sendable, Hashable {
-    var label: String
-    var value: String
-
-    /// The share of the income that the figure takes, written beside it in smaller type: "17,0 %". Only the tax and
-    /// the insurance have one (`PredictionBuilder.leviesShare(_:)`).
-    var share: String?
-    var sub: String
-
-    /// Whether the figure is the net income per month, which a green dot in front of its label shows
-    /// (`FigureTileData.marksNetIncome`). Only the tile of the net income per month has one.
-    var marksNetIncome = false
-
-    var id: String {
-        label
-    }
-}
-
 // MARK: - The income
 
 /// What a part of the year's income is, for the bar and its legend.

@@ -4,11 +4,11 @@ import Testing
 @testable import InvoicesTracker
 
 /// The cards, lines and banners of Přehled that the V2 design restyles, hosted one by one and looked at as VoiceOver
-/// and the eye see them: the calculation of the net income between two hairlines, the figures of the estimate under a
-/// hairline in tiles that are 40 points apart and at most 240 wide, with no pill and no sign of an estimate, the New
-/// Year banner and the reminder of the uniform rate as notes with their buttons, and the surface of the hover boxes of
-/// the two charts. The sample is the prediction sample's 2026 as of 17. 10. 2026. In every expected string
-/// `\u{00A0}` is the no-break space.
+/// and the eye see them: the calculation of the net income between two hairlines, the calculation of the estimate and
+/// how its levies are paid under a hairline, side by side or one under the other, with no pill and no sign of an
+/// estimate, the New Year banner and the reminder of the uniform rate as notes with their buttons, and the surface of
+/// the hover boxes of the two charts. The sample is the prediction sample's 2026 as of 17. 10. 2026. In every
+/// expected string `\u{00A0}` is the no-break space.
 @Suite(.serialized)
 @MainActor
 struct OverviewCardsTests {
@@ -48,14 +48,6 @@ struct OverviewCardsTests {
     /// The rectangle of the content of `window` in the coordinates of the screen, whose origin is at the bottom left.
     private func contentRect(of window: NSWindow) -> CGRect {
         window.contentRect(forFrameRect: window.frame)
-    }
-
-    /// The figures of a row of the card of the estimate as tiles, the way the card makes them.
-    private func tiles(of stats: [PredictionMini]) -> [FigureTileData] {
-        stats.map {
-            FigureTileData(
-                label: $0.label, figure: $0.value, share: $0.share, note: $0.sub, marksNetIncome: $0.marksNetIncome)
-        }
     }
 
     /// The card of the estimate of the prediction sample's 2026 as of 17. 10. 2026, without the chart of its months.
@@ -150,49 +142,75 @@ struct OverviewCardsTests {
 
     // MARK: The estimate of the whole year
 
-    /// The card has no pill "odhad" and no sign "≈" anywhere in what VoiceOver reads; its three figures of the year
-    /// stand in one row 40 points apart, level at the top, none of them more than 240 points wide, and the long line
-    /// under the levies wraps in its tile; the two figures per month stand in a row of their own, 40 points apart,
-    /// level, and under the first row; the button Odhad odvodů, a button inside a card, is 28 points tall at the end of
-    /// the head, 20 points from the edge.
-    @Test func theEstimateCardHasNoPillAndItsFiguresStandInTwoRowsOf40PointsApartAtMost240Wide() async throws {
+    /// The readings of the rows of the calculation of the sample's 2026 in the card of the estimate, by the words each
+    /// starts with: the income, the levies, the net income and the average per month.
+    private static let calculationStarts = [
+        "Příjmy za rok: ", "Odvody 17,0\u{00A0}%: ", "Čistý příjem 83,0\u{00A0}%: ", "Průměrně za měsíc · 12 měsíců: ",
+    ]
+
+    /// The readings of the rows of how the levies of the sample's 2026 are paid, by the words each starts with.
+    private static let paymentStarts = [
+        "Zálohy sociální a zdravotní: ", "Zálohy na daň: ", "Doplatek: ", "Odkládat průměrně za měsíc: ",
+    ]
+
+    /// The frames of the rows of `starts` in `window`, in the coordinates of the screen, found by the words VoiceOver
+    /// reads each of them with.
+    private func rowFrames(_ starts: [String], in window: NSWindow) throws -> [CGRect] {
+        try starts.map { start in
+            try #require(
+                accessibilityElement(labelStartingWith: start, in: window)?.accessibilityFrame?(), "No row \(start)")
+        }
+    }
+
+    /// The frame of the title of the panel of how the levies are paid in `window`, in the coordinates of the screen: a
+    /// heading, which VoiceOver reads under its words.
+    private func panelTitle(in window: NSWindow) throws -> CGRect {
+        try #require(
+            accessibilityElement(labelled: "Jak odvody zaplatíte", in: window)?.accessibilityFrame?(),
+            "No title of the panel")
+    }
+
+    /// The card has no pill "odhad" and no sign "≈" anywhere in what VoiceOver reads. In a card 1 000 points wide the
+    /// calculation and how the levies are paid stand side by side in two columns of one width, 32 points apart, from
+    /// the edge of the card inside its padding of 20 (960 points: two columns of 464): the rows of the calculation
+    /// fill the first, their values ending at its right edge, and the panel the second, its title, a heading, and its
+    /// rows 14 points inside it. VoiceOver frames a row by its texts, without the space above and below them and the
+    /// sign column where the sign is blank, so the texts of the first row are 8 points under the top of the blocks, and
+    /// the title 10, 2 lower. The button Odhad odvodů, a button inside a card, is 28 points tall at the end of the
+    /// head, 20 points from the edge.
+    @Test func theEstimateCardHasNoPillAndItsTwoBlocksStandSideBySideInAWideCard() async throws {
         let card = try estimateCard()
         var opened = 0
         let view = PredictionCard(card: card, showPrediction: { opened += 1 }).frame(width: 1_000).padding(24)
-        try await withHostedView(view, size: CGSize(width: 1_048, height: 400)) { window in
+        try await withHostedView(view, size: CGSize(width: 1_048, height: 500)) { window in
             try await withAccessibilityElements {
-                try await waitUntil { frameOfText(startingWith: "Příjmy za rok, ", in: window) != nil }
+                try await waitUntil { accessibilityElement(labelStartingWith: "Příjmy za rok: ", in: window) != nil }
                 let group = try #require(accessibilityElement(labelled: "Odhad za celý rok", in: window))
                 let groupFrame = try #require(group.accessibilityFrame?())
                 let readings = accessibilityReadings(under: group)
                 #expect(!readings.contains("odhad"), "The pill is read: \(readings)")
                 #expect(readings.allSatisfy { !$0.contains("≈") }, "A sign of an estimate is read: \(readings)")
 
-                @MainActor func frames(_ starts: [String]) throws -> [CGRect] {
-                    try starts.map { start in
-                        try #require(frameOfText(startingWith: start, in: window), "No figure \(start)")
-                    }
+                let rows = try rowFrames(Self.calculationStarts, in: window)
+                let payments = try rowFrames(Self.paymentStarts, in: window)
+                let title = try panelTitle(in: window)
+                let left = groupFrame.minX + 20
+                for row in rows {
+                    #expect(row.minX > left - 0.5, "A row of the calculation is at \(row)")
+                    #expect(abs(row.maxX - (left + 464)) < 1, "A row of the calculation ends at \(row.maxX)")
                 }
-                let year = try frames(["Příjmy za rok, ", "Odvody, ", "Doplatek, "])
-                let month = try frames(["Čistý příjem průměrně za měsíc, ", "Odkládat průměrně za měsíc, "])
-                #expect(abs(year[0].minX - groupFrame.minX - 20) < 1, "The first figure is at \(year[0])")
-                #expect(abs(month[0].minX - groupFrame.minX - 20) < 1, "The first of the month is at \(month[0])")
-                for row in [year, month] {
-                    for index in row.indices.dropFirst() {
-                        let (before, after) = (row[index - 1], row[index])
-                        #expect(abs(after.minX - before.maxX - 40) < 1, "The figures are \(before) and \(after)")
-                        #expect(abs(after.maxY - before.maxY) < 1, "The figures are not level: \(before), \(after)")
-                    }
+                let panel = left + 464 + 32
+                for row in payments {
+                    #expect(row.minX > panel + 14 - 0.5, "A payment is at \(row)")
+                    #expect(abs(row.maxX - (panel + 464 - 14)) < 1, "A payment ends at \(row.maxX)")
                 }
-                for frame in year + month {
-                    #expect(frame.width <= 240.5, "A figure is \(frame.width) points wide")
+                #expect(abs(title.minX - (panel + 14)) < 1, "The title is at \(title)")
+                // The origin of the screen is at the bottom left, so the top of a frame is its largest y.
+                #expect(abs(rows[0].maxY - 2 - title.maxY) < 1, "The title is at \(title), the income at \(rows[0])")
+                #expect(payments[0].maxY < title.minY + 0.5, "The payments are not under the title: \(payments[0])")
+                for (above, below) in zip(rows + payments, (rows + payments).dropFirst()) where above != rows.last {
+                    #expect(below.maxY < above.minY + 0.5, "The rows are not one under the other: \(above), \(below)")
                 }
-                // The line under the levies is wider than 240 points, so it wraps there and the tile is taller.
-                #expect(year[1].height > year[0].height + 10, "The levies are \(year[1]), income \(year[0])")
-                // The figures per month are a row under the year's, with a hairline and 14 points on each side of it.
-                let yearBottom = year.map(\.minY).min() ?? 0
-                let monthTop = month.map(\.maxY).max() ?? 0
-                #expect(abs(yearBottom - monthTop - (14 + 1 + 14)) < 2, "The rows are \(year) and \(month)")
 
                 let button = try #require(accessibilityButton(labelled: "Odhad odvodů", in: window))
                 let buttonFrame = try #require(button.accessibilityFrame?())
@@ -204,71 +222,96 @@ struct OverviewCardsTests {
         }
     }
 
-    /// Where the card is too narrow for the year's three figures they go on to the next row, 12 points lower, each of
-    /// them still at most 240 points wide and at the left edge of the card.
-    @Test func theFiguresOfTheEstimateGoOnToRowsOf12PointsWhereTheCardIsNarrow() async throws {
-        let card = try estimateCard()
-        let view = PredictionCard(card: card, showPrediction: {}).frame(width: 560).padding(24)
-        try await withHostedView(view, size: CGSize(width: 608, height: 700)) { window in
+    /// The panel's title is read as a heading, and each row of the calculation and of the panel as one phrase, with
+    /// no sign and no dot.
+    @Test func thePanelHasAHeadingAndEachRowIsReadAsOnePhrase() async throws {
+        let view = PredictionCard(card: try estimateCard(), showPrediction: {}).frame(width: 1_000).padding(24)
+        try await withHostedView(view, size: CGSize(width: 1_048, height: 500)) { window in
             try await withAccessibilityElements {
-                try await waitUntil { frameOfText(startingWith: "Příjmy za rok, ", in: window) != nil }
-                let starts = ["Příjmy za rok, ", "Odvody, ", "Doplatek, "]
-                let frames = try starts.map { start in
-                    try #require(frameOfText(startingWith: start, in: window), "No figure \(start)")
+                try await waitUntil { accessibilityElement(labelled: "Jak odvody zaplatíte", in: window) != nil }
+                let readings = accessibilityReadings(in: window)
+
+                for reading in [
+                    "Příjmy za rok: 2\u{00A0}743\u{00A0}157\u{00A0}Kč. z toho přišlo 2\u{00A0}191\u{00A0}771",
+                    "Odvody 17,0\u{00A0}%: 466\u{00A0}782\u{00A0}Kč."
+                        + " daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164",
+                    "Čistý příjem 83,0\u{00A0}%: 2\u{00A0}276\u{00A0}375\u{00A0}Kč",
+                    "Průměrně za měsíc · 12 měsíců: 189\u{00A0}698\u{00A0}Kč",
+                    "Zálohy sociální a zdravotní: 222\u{00A0}080\u{00A0}Kč. platí se každý měsíc",
+                    "Zálohy na daň: 46\u{00A0}000\u{00A0}Kč",
+                    "Doplatek: 198\u{00A0}702\u{00A0}Kč. s přiznáním a přehledy",
+                    "Odkládat průměrně za měsíc: 20\u{00A0}392\u{00A0}Kč. (zálohy na daň + doplatek) ÷ 12",
+                ] {
+                    #expect(readings.contains(reading), "'\(reading)' is not read: \(readings)")
                 }
-                for frame in frames {
-                    #expect(frame.width <= 240.5, "A figure is \(frame.width) points wide")
-                }
-                // The rows, from the top: the figures that share a top.
-                var rows: [[CGRect]] = []
-                for frame in frames.sorted(by: { $0.maxY > $1.maxY || ($0.maxY == $1.maxY && $0.minX < $1.minX) }) {
-                    if let top = rows.last?.first?.maxY, abs(top - frame.maxY) < 1 {
-                        rows[rows.count - 1].append(frame)
-                    } else {
-                        rows.append([frame])
+                let heading = try #require(accessibilityElement(labelled: "Jak odvody zaplatíte", in: window))
+                #expect(heading.accessibilityRole?()?.rawValue == "AXHeading", "The title of the panel is no heading")
+            }
+        }
+    }
+
+    /// Where the card is narrower than the two columns need inside its padding, 712 points (two of 340 and the gap of
+    /// 32), how the levies are paid stands under the calculation, 16 points lower, both in the whole width from the
+    /// edge of the card; at 712 points inside the padding they stand side by side. VoiceOver frames a row by its
+    /// texts, so the title of the panel, 10 points inside it, is 34 points under the texts of the last row, which has
+    /// 8 points of its own under them.
+    @Test func theTwoBlocksOfTheEstimateGoOneUnderTheOtherInACardNarrowerThan712PointsInside() async throws {
+        let card = try estimateCard()
+        for (width, beside) in [(600 as CGFloat, false), (751, false), (752, true)] {
+            let view = PredictionCard(card: card, showPrediction: {}).frame(width: width).padding(24)
+            try await withHostedView(view, size: CGSize(width: width + 48, height: 900)) { window in
+                try await withAccessibilityElements {
+                    try await waitUntil {
+                        accessibilityElement(labelStartingWith: "Příjmy za rok: ", in: window) != nil
                     }
-                }
-                #expect(rows.count > 1, "The figures stand in one row: \(frames)")
-                for (above, below) in zip(rows, rows.dropFirst()) {
-                    let bottom = above.map(\.minY).min() ?? 0
-                    let top = below.map(\.maxY).max() ?? 0
-                    #expect(abs(bottom - top - 12) < 1, "The rows are \(above) and \(below)")
-                    #expect(abs((below.map(\.minX).min() ?? 0) - (above.map(\.minX).min() ?? 0)) < 1)
+                    let group = try #require(frameOfCard(labelled: "Odhad za celý rok", in: window))
+                    let rows = try rowFrames(Self.calculationStarts, in: window)
+                    let payments = try rowFrames(Self.paymentStarts, in: window)
+                    let title = try panelTitle(in: window)
+                    let inner = width - 40
+
+                    let left = group.minX + 20
+                    if beside {
+                        #expect(title.minX > rows[0].maxX + 32 - 1, "\(width): the panel is at \(title)")
+                        #expect(abs(rows[0].maxX - (left + (inner - 32) / 2)) < 1, "\(width): \(rows[0])")
+                    } else {
+                        for row in rows {
+                            #expect(row.minX > left - 0.5, "\(width): a row is at \(row)")
+                            #expect(abs(row.maxX - (left + inner)) < 1, "\(width): a row ends at \(row.maxX)")
+                        }
+                        #expect(abs(title.minX - left - 14) < 1, "\(width): the title is at \(title)")
+                        // The panel is 16 points under the last row of the calculation, and its title 10 inside it.
+                        let gap = (rows.last?.minY ?? 0) - title.maxY
+                        #expect(abs(gap - (8 + 16 + 10)) < 1.5, "\(width): the title is \(gap) points under the rows")
+                        for row in payments {
+                            #expect(group.insetBy(dx: -0.5, dy: -0.5).contains(row), "\(width): \(row) in \(group)")
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// The figures stand in two rows, each under a hairline that runs the width of the card inside its padding, 14
-    /// points above them, and nothing else is a line across the card (the card has no chart here).
-    @Test func theFiguresOfTheEstimateStandInTwoRowsUnderTwoHairlines() throws {
+    /// The card is the head, 14 points, a hairline, 14 points and the two blocks, and its padding of 20 under them; no
+    /// other line runs across it (it has no chart here): the rules of the calculation are as wide as its column.
+    @Test func theTwoBlocksOfTheEstimateStandUnderAHairline() throws {
         let card = try estimateCard()
         let separator = try OffscreenPicture.bytes(of: Palette.sep, in: .light)
         let picture = try OffscreenPicture(
             of: PredictionCard(card: card, showPrediction: {}).frame(width: 1_000), in: .light)
         let found = lines(in: picture.rows(near: separator, from: 24, to: 976, by: 3))
 
-        #expect(found.count == 2, "The lines across the card are \(found)")
-        guard found.count == 2 else { return }
-        func height(of stats: [PredictionMini]) -> CGFloat {
-            NSHostingView(
-                rootView: FigureRow(spacing: 40, maxTileWidth: 240) {
-                    ForEach(Array(tiles(of: stats).enumerated()), id: \.offset) { _, tile in
-                        FigureTile(tile)
-                    }
-                }
-                .frame(width: 960, alignment: .leading)
-            ).fittingSize.height
-        }
-        let (year, month) = (height(of: card.stats), height(of: card.monthStats))
-        // Between the lines: 14 points, the year's figures and 14 points. Under the second: 14 points, the figures per
-        // month and the padding of 20.
+        #expect(found.count == 1, "The lines across the card are \(found)")
+        guard let line = found.first else { return }
+        let blocks = NSHostingView(
+            rootView: PredictionCalculationView(calculation: card.calculation).frame(width: 960)
+        ).fittingSize.height
+        // Under the line: 14 points, the blocks and the padding of 20. A hosted view is as high as a whole number of
+        // points, so the blocks are up to a point lower.
+        let under = picture.size.height - line.bottom
         #expect(
-            abs(found[1].top - found[0].bottom - (14 + year + 14)) < 1.5,
-            "The lines are \(found), the year's figures \(year) tall")
-        #expect(
-            abs(picture.size.height - found[1].bottom - (14 + month + 20)) < 1.5,
-            "The card is \(picture.size.height) points tall, the second line ends at \(found[1].bottom)")
+            under <= 14 + blocks + 20 + 0.5 && under > 14 + blocks + 20 - 1.5,
+            "The card is \(picture.size.height) points tall, the line ends at \(line.bottom), the blocks \(blocks)")
     }
 
     /// The net income of the card is marked by the green dot of 8 points, and nothing else in the card is green: the
