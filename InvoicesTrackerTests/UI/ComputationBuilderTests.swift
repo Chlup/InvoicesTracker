@@ -33,7 +33,7 @@ struct ComputationBuilderTests {
         try section(title, in: sections).rows.map { Shown($0.label, $0.value, $0.note, $0.sign.rawValue) }
     }
 
-    private func row(_ label: String, in title: String, of sections: [ComputationSection]) throws -> ComputationRow {
+    private func row(_ label: String, in title: String, of sections: [ComputationSection]) throws -> BillRow {
         try #require(section(title, in: sections).rows.first { $0.label == label }, "No row \(label) in \(title)")
     }
 
@@ -196,7 +196,7 @@ struct ComputationBuilderTests {
     @Test func theResultsOfACardAreBoldAndTheAmountLeftToPayIsTheTotal() throws {
         let sections = build(sample)
 
-        func style(_ label: String, in title: String) throws -> ComputationRowStyle {
+        func style(_ label: String, in title: String) throws -> BillRowStyle {
             try row(label, in: title, of: sections).style
         }
         #expect(try style("Příjmy z podnikání (§ 7)", in: incomeCard) == .strong)
@@ -724,7 +724,7 @@ struct ComputationBuilderTests {
         #expect(try row("Daň po slevách", in: taxCard, of: sections).value == "0")
         // No child, so no row of the children.
         #expect(try !labels(taxCard, in: sections).contains("Daňové zvýhodnění na děti"))
-        #expect(try row("Daň za rok 2023", in: taxCard, of: sections) == ComputationRow(
+        #expect(try row("Daň za rok 2023", in: taxCard, of: sections) == BillRow(
             label: "Daň za rok 2023", value: "0", note: nil, sign: .equals, style: .strong))
     }
 
@@ -742,7 +742,7 @@ struct ComputationBuilderTests {
                 + " příjmy pod 6× minimální mzdu (134\u{00A0}400)")
         #expect(
             try row("Daň z dosavadních příjmů", in: taxCard, of: january)
-                == ComputationRow(
+                == BillRow(
                     label: "Daň z dosavadních příjmů", value: "0", note: nil, sign: .equals, style: .strong))
 
         // Anna alone and 766 000 Kč: her 15 204 Kč take the 13 300 Kč of tax and leave 84 Kč.

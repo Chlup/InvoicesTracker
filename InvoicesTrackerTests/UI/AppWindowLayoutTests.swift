@@ -3878,7 +3878,7 @@ struct AppWindowLayoutTests {
 
     /// Waits until Výpočet in `window` shows `rows`, then checks them and the page at the least room, at a large size
     /// and at the least room again.
-    private func expectFamilyRowsFit(_ rows: [ComputationRow], in window: NSWindow) async throws {
+    private func expectFamilyRowsFit(_ rows: [BillRow], in window: NSWindow) async throws {
         try await waitUntil { rows.allSatisfy { accessibilityElement(labelled: $0.spokenText, in: window) != nil } }
         for size in [AppWindowSize.minimum, AppWindowSize.large, AppWindowSize.minimum] {
             window.setContentSize(size)
@@ -3904,25 +3904,25 @@ struct AppWindowLayoutTests {
     /// The rows of the tax card of the sample year with the sample family as of 28. 2. 2026: the income of 220 000 Kč
     /// is past six minimum wages, the deductions take the whole profit, and the children's 37 524 Kč are a bonus.
     private static let familyRowsWithABonus = [
-        ComputationRow(
+        BillRow(
             label: "Sleva na manžela / manželku", value: "0",
             note: "12\u{00A0}měsíců s dítětem do 3 let · daň už je nulová, sleva se neprojeví", sign: .minus),
-        ComputationRow(
+        BillRow(
             label: "Daň po slevách", value: "0", note: "slevy snižují daň nejvýš na nulu", sign: .equals,
             style: .strong),
-        ComputationRow(
+        BillRow(
             label: "Daňové zvýhodnění na děti", value: "\u{2212}37\u{00A0}524",
             note: "Anna 15\u{00A0}204 · Tomáš 22\u{00A0}320 · z toho daňový bonus 37\u{00A0}524", sign: .minus),
-        ComputationRow(
+        BillRow(
             label: "Daň z dosavadních příjmů", value: "\u{2212}37\u{00A0}524",
             note: "záporná daň je daňový bonus – vyplatí ho finanční úřad", sign: .equals, style: .strong),
-        ComputationRow(
+        BillRow(
             label: "Zbývá", value: "vrátí se 37\u{00A0}524\u{00A0}Kč", note: "vrací se po podání přiznání, na žádost",
             sign: .equals, style: .total),
     ]
 
     /// The row of the children as of 31. 1. 2026, before any income has come: the benefit is not paid as a bonus yet.
-    private static let childRowBeforeTheBonus = ComputationRow(
+    private static let childRowBeforeTheBonus = BillRow(
         label: "Daňové zvýhodnění na děti", value: "0",
         note: "Anna 15\u{00A0}204 · Tomáš 22\u{00A0}320 · bonus 37\u{00A0}524 se nevyplatí:"
             + " příjmy pod 6× minimální mzdu (134\u{00A0}400)",
@@ -3942,7 +3942,7 @@ struct AppWindowLayoutTests {
     /// What is wrong with `row` of a card of Výpočet in `window`, in words: VoiceOver does not find it, it is not
     /// within the margins of the page, or it is lower than its label and its note need at the width they have beside
     /// the sign and the value, as a text cut short would be. Empty when the row fits. Needs the accessibility elements.
-    private func problems(ofRow row: ComputationRow, in window: NSWindow) -> [String] {
+    private func problems(ofRow row: BillRow, in window: NSWindow) -> [String] {
         guard let frame = accessibilityElement(labelled: row.spokenText, in: window)?.accessibilityFrame?() else {
             return ["No row \(row.label)"]
         }

@@ -279,28 +279,28 @@ nonisolated enum SimulatorBuilder {
     private static func taxSection(_ result: TaxResult, _ choices: SimulatorInput) -> ComputationSection {
         let rate = CzechFormat.percent(Decimal(result.expensePercent) / 100, fractionDigits: 0)
         var rows = [
-            ComputationRow(label: "Příjmy", value: ComputationBuilder.crowns(result.P)),
-            ComputationRow(
+            BillRow(label: "Příjmy", value: ComputationBuilder.crowns(result.P)),
+            BillRow(
                 label: "Výdaje paušálem \(rate)", value: ComputationBuilder.crowns(-result.V),
                 note: capNote(result, rate: rate), sign: .minus),
-            ComputationRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ), sign: .equals, style: .strong),
-            ComputationRow(
+            BillRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ), sign: .equals, style: .strong),
+            BillRow(
                 label: "Odpočty", value: ComputationBuilder.crowns(-result.deductionsTotal),
                 note: deductionsNote(result), sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: "Základ daně", value: CzechFormat.grouped(result.B), note: "zaokrouhlený dolů na stovky",
                 sign: .equals, style: .strong),
         ]
         let (lowPart, highPart) = bandParts(result)
         let threshold = CzechFormat.grouped(result.rules.taxBandThreshold)
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: "Daň " + CzechFormat.percent(TaxRules.taxRateLow, fractionDigits: 0),
                 value: ComputationBuilder.wholeOrHalere(lowPart),
                 note: "z \(CzechFormat.grouped(result.taxBaseInLowBand)) základu (pásmo do \(threshold))"))
         if result.taxBaseInHighBand > 0 {
             rows.append(
-                ComputationRow(
+                BillRow(
                     label: "Daň " + CzechFormat.percent(TaxRules.taxRateHigh, fractionDigits: 0),
                     value: ComputationBuilder.wholeOrHalere(highPart),
                     note: "z \(CzechFormat.grouped(result.taxBaseInHighBand)) základu (pásmo nad \(threshold))",
@@ -346,7 +346,7 @@ nonisolated enum SimulatorBuilder {
         return result.deductionsTotal < allowed ? note + " – celkem nejvýše do výše zisku" : note
     }
 
-    private static func creditRow(_ result: TaxResult, claimed: Bool) -> ComputationRow {
+    private static func creditRow(_ result: TaxResult, claimed: Bool) -> BillRow {
         let credit = result.rules.taxpayerCredit
         let note: String
         if !claimed {
@@ -356,7 +356,7 @@ nonisolated enum SimulatorBuilder {
         } else {
             note = "celá roční částka"
         }
-        return ComputationRow(
+        return BillRow(
             label: "Sleva na poplatníka", value: CzechFormat.grouped(-result.creditApplied), note: note, sign: .minus)
     }
 
@@ -381,19 +381,19 @@ nonisolated enum SimulatorBuilder {
         return ComputationSection(
             title: socialName,
             rows: [
-                ComputationRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ)),
-                ComputationRow(
+                BillRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ)),
+                BillRow(
                     label: CzechFormat.percent(rules.socialAssessmentPercent, fractionDigits: 0) + " zisku",
                     value: CzechFormat.grouped(social.computedBase),
                     note: isInsured ? "zaokrouhleno nahoru" : ComputationBuilder.secondaryNotInsured, sign: .times),
-                ComputationRow(
+                BillRow(
                     label: minimumName, value: CzechFormat.grouped(social.minimumBase),
                     note: isInsured
                         ? "\(CzechFormat.grouped(monthlyMinimum)) × \(ComputationBuilder.months(countedMonths))" : nil),
-                ComputationRow(
+                BillRow(
                     label: "Vyměřovací základ", value: CzechFormat.grouped(social.base), note: baseNote, sign: .equals,
                     style: .strong),
-                ComputationRow(
+                BillRow(
                     label: CzechFormat.percent(TaxRules.socialRate, fractionDigits: 1),
                     value: CzechFormat.grouped(social.insurance), note: ComputationBuilder.roundedUp, sign: .times),
                 totalRow(socialName, social.insurance),
@@ -407,19 +407,19 @@ nonisolated enum SimulatorBuilder {
         return ComputationSection(
             title: healthName,
             rows: [
-                ComputationRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ)),
-                ComputationRow(
+                BillRow(label: "Zisk", value: ComputationBuilder.crowns(result.DZ)),
+                BillRow(
                     label: CzechFormat.percent(TaxRules.healthAssessmentPercent, fractionDigits: 0) + " zisku",
                     value: CzechFormat.amount(health.computedBaseHalere), sign: .times),
-                ComputationRow(
+                BillRow(
                     label: minimumName, value: CzechFormat.amount(health.minimumBaseHalere),
                     note: choices.isExemptFromHealthMinimum
                         ? exemptFromMinimum
                         : "\(monthlyMinimum) × \(ComputationBuilder.months(health.minimumMonths))"),
-                ComputationRow(
+                BillRow(
                     label: "Vyměřovací základ", value: CzechFormat.amount(health.baseHalere),
                     note: "vyšší z obou · bez maxima, nezaokrouhluje se", sign: .equals, style: .strong),
-                ComputationRow(
+                BillRow(
                     label: CzechFormat.percent(TaxRules.healthRate, fractionDigits: 1),
                     value: CzechFormat.grouped(health.insurance), note: ComputationBuilder.roundedUp, sign: .times),
                 totalRow(healthName, health.insurance),
@@ -440,8 +440,8 @@ nonisolated enum SimulatorBuilder {
     }
 
     /// The row that ends a card: the levy, as the amount to pay.
-    private static func totalRow(_ label: String, _ levy: Int64, note: String? = nil) -> ComputationRow {
-        ComputationRow(label: label, value: CzechFormat.wholeKc(levy), note: note, sign: .equals, style: .total)
+    private static func totalRow(_ label: String, _ levy: Int64, note: String? = nil) -> BillRow {
+        BillRow(label: label, value: CzechFormat.wholeKc(levy), note: note, sign: .equals, style: .total)
     }
 
     private static func lastDay(of year: Int) -> CivilDate {

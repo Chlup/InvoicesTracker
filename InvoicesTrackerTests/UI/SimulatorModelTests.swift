@@ -83,7 +83,7 @@ struct SimulatorModelTests {
     }
 
     /// The row of the card of the tax with `label`.
-    private func taxRow(_ label: String, of model: SimulatorModel) throws -> ComputationRow {
+    private func taxRow(_ label: String, of model: SimulatorModel) throws -> BillRow {
         let tax = try #require(model.page?.sections.first)
         return try #require(tax.rows.first { $0.label == label }, "No row \(label)")
     }

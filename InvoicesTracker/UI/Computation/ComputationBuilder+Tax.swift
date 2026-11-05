@@ -6,27 +6,27 @@ nonisolated extension ComputationBuilder {
     static func taxSection(_ facts: Facts) -> ComputationSection {
         let result = facts.result
         var rows = [
-            ComputationRow(label: "Zisk", value: crowns(result.DZ)),
-            ComputationRow(
+            BillRow(label: "Zisk", value: crowns(result.DZ)),
+            BillRow(
                 label: "Nezdanitelné části základu", value: crowns(-result.deductionsTotal),
                 note: deductionsNote(result), sign: .minus),
-            ComputationRow(
+            BillRow(
                 label: "Základ daně", value: CzechFormat.grouped(result.B), note: "zaokrouhleno na celé stovky dolů",
                 sign: .equals, style: .strong),
         ]
         rows += bandRows(facts)
         rows += [
-            ComputationRow(
+            BillRow(
                 label: "Daň před slevou", value: CzechFormat.grouped(result.taxBeforeCredit), note: roundedUp,
                 sign: .equals),
-            ComputationRow(
+            BillRow(
                 label: "Sleva na poplatníka", value: CzechFormat.grouped(-result.creditApplied),
                 note: creditNote(facts), sign: .minus),
         ]
         rows += familyRows(result)
         // The net tax: a tax bonus makes it negative.
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: facts.isOver ? "Daň za rok \(result.year)" : "Daň z dosavadních příjmů",
                 value: CzechFormat.grouped(result.netTax), note: result.netTax < 0 ? bonusNote : nil,
                 sign: .equals, style: .strong))
@@ -44,23 +44,23 @@ nonisolated extension ComputationBuilder {
     /// at most; and the child benefit, while it is, as the credit it takes and the bonus that is paid. Each value is
     /// the part used, as with the taxpayer credit, so the rows add up to the net tax. A year without them has none of
     /// the rows. The card of the tax of the Simulátor has them too.
-    static func familyRows(_ result: TaxResult) -> [ComputationRow] {
+    static func familyRows(_ result: TaxResult) -> [BillRow] {
         let family = result.family
         guard family.spouseCredit > 0 || family.childBenefit > 0 else { return [] }
-        var rows: [ComputationRow] = []
+        var rows: [BillRow] = []
         if family.spouseCredit > 0 {
             rows.append(
-                ComputationRow(
+                BillRow(
                     label: "Sleva na manžela / manželku", value: CzechFormat.grouped(-result.spouseCreditApplied),
                     note: spouseNote(result), sign: .minus))
         }
         rows.append(
-            ComputationRow(
+            BillRow(
                 label: "Daň po slevách", value: CzechFormat.grouped(result.taxAfterCredits),
                 note: "slevy snižují daň nejvýš na nulu", sign: .equals, style: .strong))
         if family.childBenefit > 0 {
             rows.append(
-                ComputationRow(
+                BillRow(
                     label: "Daňové zvýhodnění na děti",
                     value: CzechFormat.grouped(-(result.childCredit + result.childBonus)), note: childNote(result),
                     sign: .minus))
@@ -112,7 +112,7 @@ nonisolated extension ComputationBuilder {
 
     /// The tax of the part of the base in each band, each at its rate. The rates are whole percents, so each part is a
     /// whole number of haléře and the two add up exactly; the tax before the credit is their sum rounded up.
-    private static func bandRows(_ facts: Facts) -> [ComputationRow] {
+    private static func bandRows(_ facts: Facts) -> [BillRow] {
         let result = facts.result
         let rules = result.rules
         let threshold = CzechFormat.grouped(rules.taxBandThreshold)
@@ -127,10 +127,10 @@ nonisolated extension ComputationBuilder {
             ? "z \(CzechFormat.grouped(highBase)) základu (pásmo nad \(threshold))"
             : "pásmo nad \(threshold) \(facts.isOver ? "" : "zatím ")nedosaženo"
         return [
-            ComputationRow(
+            BillRow(
                 label: "Sazba " + percent(TaxRules.taxRateLow, fractionDigits: 0), value: wholeOrHalere(lowPart),
                 note: lowNote, sign: .times),
-            ComputationRow(
+            BillRow(
                 label: "Sazba " + percent(TaxRules.taxRateHigh, fractionDigits: 0), value: wholeOrHalere(highPart),
                 note: highNote, sign: .times),
         ]

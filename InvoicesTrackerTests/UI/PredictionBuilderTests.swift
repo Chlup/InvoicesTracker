@@ -123,7 +123,7 @@ struct PredictionBuilderTests {
         try #require((page.left + page.right).first { $0.title == title }, "No section \(title)")
     }
 
-    private func row(_ label: String, in section: ComputationSection) throws -> ComputationRow {
+    private func row(_ label: String, in section: ComputationSection) throws -> BillRow {
         try #require(section.rows.first { $0.label == label }, "No row \(label) in \(section.title)")
     }
 
@@ -705,81 +705,81 @@ struct PredictionBuilderTests {
 
         #expect(
             try section("Příjmy a zisk", in: page).rows == [
-                ComputationRow(
+                BillRow(
                     label: "Přijaté platby", value: "2\u{A0}191\u{A0}771,35",
                     note: "1.\u{A0}1. – 17.\u{A0}10. · 11\u{A0}plateb"),
-                ComputationRow(
+                BillRow(
                     label: "Koncepty a očekávané faktury", value: "551\u{A0}385,64",
                     note: "podle Kdy čekám faktury · Foxtrot 542\u{A0}386 · Tango 9\u{A0}000", sign: .plus),
-                ComputationRow(
+                BillRow(
                     label: "Příjmy za rok (odhad)", value: "2\u{A0}743\u{A0}156,99",
                     note: "bez 290\u{A0}193\u{A0}Kč, které přijdou až v roce 2027", sign: .equals, style: .strong),
-                ComputationRow(
+                BillRow(
                     label: "Příjmy z podnikání (§ 7)", value: "2\u{A0}743\u{A0}157,00",
                     note: ComputationBuilder.incomeRoundingNote, sign: .equals, style: .strong),
-                ComputationRow(
+                BillRow(
                     label: "Výdajový paušál 60\u{A0}%", value: "\u{2212}1\u{A0}200\u{A0}000,00",
                     note: "60\u{A0}% je 1\u{A0}645\u{A0}894,00 → použije se strop 1\u{A0}200\u{A0}000", sign: .minus),
-                ComputationRow(
+                BillRow(
                     label: "Zisk (dílčí základ daně)", value: "1\u{A0}543\u{A0}157,00", sign: .equals, style: .strong),
             ])
         #expect(
             try section("Daň z příjmů", in: page).rows == [
-                ComputationRow(label: "Zisk", value: "1\u{A0}543\u{A0}157,00"),
-                ComputationRow(
+                BillRow(label: "Zisk", value: "1\u{A0}543\u{A0}157,00"),
+                BillRow(
                     label: "Nezdanitelné části základu", value: "\u{2212}156\u{A0}480,00",
                     note: "úroky z hypotéky 150\u{A0}000 z 219\u{A0}000 (limit) · spoření a pojištění 6\u{A0}480",
                     sign: .minus),
-                ComputationRow(
+                BillRow(
                     label: "Základ daně", value: "1\u{A0}386\u{A0}600", note: "zaokrouhleno na celé stovky dolů",
                     sign: .equals, style: .strong),
-                ComputationRow(
+                BillRow(
                     label: "Sazba 15\u{A0}%", value: "207\u{A0}990",
                     note: "23\u{A0}% až ze základu nad 1\u{A0}762\u{A0}812", sign: .times),
-                ComputationRow(
+                BillRow(
                     label: "Sleva na poplatníka", value: "\u{2212}30\u{A0}840", note: "celá roční částka",
                     sign: .minus),
-                ComputationRow(
+                BillRow(
                     label: "Sleva na manžela / manželku", value: "\u{2212}24\u{A0}840",
                     note: "12\u{A0}měsíců s dítětem do 3 let", sign: .minus),
-                ComputationRow(
+                BillRow(
                     label: "Daň po slevách", value: "152\u{A0}310", note: "slevy snižují daň nejvýš na nulu",
                     sign: .equals, style: .strong),
-                ComputationRow(
+                BillRow(
                     label: "Daňové zvýhodnění na děti", value: "\u{2212}37\u{A0}524",
                     note: "Anna 15\u{A0}204 · Tomáš 22\u{A0}320", sign: .minus),
-                ComputationRow(label: "Daň za rok (odhad)", value: "114\u{A0}786", sign: .equals, style: .strong),
-                ComputationRow(
+                BillRow(label: "Daň za rok (odhad)", value: "114\u{A0}786", sign: .equals, style: .strong),
+                BillRow(
                     label: "Zálohy za rok", value: "\u{2212}46\u{A0}000",
                     note: "podle plánu záloh · 2\u{A0}platby za celý rok", sign: .minus),
-                ComputationRow(label: "Doplatek", value: "68\u{A0}786\u{A0}Kč", sign: .equals, style: .total),
+                BillRow(label: "Doplatek", value: "68\u{A0}786\u{A0}Kč", sign: .equals, style: .total),
             ])
         #expect(
             try section("Sociální pojištění", in: page).rows == [
-                ComputationRow(
+                BillRow(
                     label: "Vyměřovací základ", value: "848\u{A0}737",
                     note: "55\u{A0}% zisku, nahoru · min. 205\u{A0}668 (12\u{A0}měsíců hlavní činnosti)"
                         + " · max. 2\u{A0}350\u{A0}416"),
-                ComputationRow(
+                BillRow(
                     label: "Sazba 29,2\u{A0}%", value: "247\u{A0}832", note: "zaokrouhleno na celé koruny nahoru",
                     sign: .times),
-                ComputationRow(
+                BillRow(
                     label: "Zálohy za rok", value: "\u{2212}150\u{A0}560",
                     note: "podle plánu záloh · 12\u{A0}plateb za celý rok", sign: .minus),
-                ComputationRow(label: "Doplatek", value: "97\u{A0}272\u{A0}Kč", sign: .equals, style: .total),
+                BillRow(label: "Doplatek", value: "97\u{A0}272\u{A0}Kč", sign: .equals, style: .total),
             ])
         #expect(
             try section("Zdravotní pojištění", in: page).rows == [
-                ComputationRow(
+                BillRow(
                     label: "Vyměřovací základ", value: "771\u{A0}578,50",
                     note: "50\u{A0}% zisku · min. 293\u{A0}802,00 (12\u{A0}měsíců)"),
-                ComputationRow(
+                BillRow(
                     label: "Sazba 13,5\u{A0}%", value: "104\u{A0}164", note: "zaokrouhleno na celé koruny nahoru",
                     sign: .times),
-                ComputationRow(
+                BillRow(
                     label: "Zálohy za rok", value: "\u{2212}71\u{A0}520",
                     note: "podle plánu záloh · 12\u{A0}plateb za celý rok", sign: .minus),
-                ComputationRow(label: "Doplatek", value: "32\u{A0}644\u{A0}Kč", sign: .equals, style: .total),
+                BillRow(label: "Doplatek", value: "32\u{A0}644\u{A0}Kč", sign: .equals, style: .total),
             ])
 
         // No two rows of a card have the same label, which is their identity.
@@ -933,16 +933,16 @@ struct PredictionBuilderTests {
         #expect(card.authority == nil)
         #expect(
             card.rows == [
-                ComputationRow(label: "Příjmy z podnikání (§ 7)", value: "2\u{A0}743\u{A0}157,00", note: "bez DPH"),
-                ComputationRow(label: "Daň z příjmů", value: "\u{2212}114\u{A0}786", sign: .minus),
-                ComputationRow(label: "Sociální pojištění", value: "\u{2212}247\u{A0}832", sign: .minus),
-                ComputationRow(label: "Zdravotní pojištění", value: "\u{2212}104\u{A0}164", sign: .minus),
-                ComputationRow(
+                BillRow(label: "Příjmy z podnikání (§ 7)", value: "2\u{A0}743\u{A0}157,00", note: "bez DPH"),
+                BillRow(label: "Daň z příjmů", value: "\u{2212}114\u{A0}786", sign: .minus),
+                BillRow(label: "Sociální pojištění", value: "\u{2212}247\u{A0}832", sign: .minus),
+                BillRow(label: "Zdravotní pojištění", value: "\u{2212}104\u{A0}164", sign: .minus),
+                BillRow(
                     label: "Čistý příjem za rok (odhad)", value: "2\u{A0}276\u{A0}375",
                     note: "83,0\u{A0}% příjmů · skutečné výdaje podnikání tu odečtené nejsou", sign: .equals,
                     style: .strong),
-                ComputationRow(label: "12\u{A0}měsíců", value: "12", note: "celý rok", sign: .divided),
-                ComputationRow(
+                BillRow(label: "12\u{A0}měsíců", value: "12", note: "celý rok", sign: .divided),
+                BillRow(
                     label: "Průměrně za měsíc", value: "189\u{A0}698\u{A0}Kč", note: "čistý příjem na jeden měsíc",
                     sign: .equals, style: .total),
             ])
