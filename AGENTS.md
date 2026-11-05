@@ -168,7 +168,8 @@ user before building.
   - **Dashboard** (Přehled), which starts with the same result card as the reports.
 
   Přehled's Příjmy and Odhad za celý rok and Odhad odvodů's Příjmy start with a calculation in bill rows (příjmy −
-  odvody = čistý příjem ÷ months); the estimate cards have "Jak odvody zaplatíte" beside it
+  odvody = čistý příjem ÷ months), with the heavy line above Čistý příjem and a hairline above Odvody
+  (`BuilderText.netIncomeRows`); the estimate cards have "Jak odvody zaplatíte" beside it
   (`PredictionCalculationView`); below them the chart (Přehled) or the composition of the income (Odhad odvodů).
 
   Rozpočet is a tool like the Simulátor, laid out as a report: the source row (where the net income comes from); the

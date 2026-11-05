@@ -52,21 +52,12 @@ nonisolated extension PredictionBuilder {
         func marked(_ crowns: Int64) -> String {
             estimate(CzechFormat.wholeKc(crowns), when: marksEstimate)
         }
-        let rows = [
-            BillRow(
-                label: incomeLabel, value: CzechFormat.wholeKc(net.incomeKc), note: incomeNote, valueStyle: .semibold),
-            BillRow(
-                label: "Odvody", value: marked(net.leviesKc), note: BuilderText.leviesSplit(of: result), sign: .minus,
-                share: shares.map { BuilderText.share(tenths: $0.leviesTenths) }, valueStyle: .semibold,
-                rule: .hairline),
-            BillRow(
-                label: "Čistý příjem", value: marked(net.yearKc), sign: .equals, style: .strong,
-                share: shares.map { BuilderText.share(tenths: $0.netTenths) }, valueStyle: .title3Bold, rule: .strong),
-            BillRow(
-                label: "Průměrně za měsíc", value: marked(net.monthlyKc), sign: .divided,
-                period: BuilderText.period(of: net), marksNetIncome: true, valueStyle: .title2Bold,
-                rule: BillRule.none),
-        ]
+        let rows = BuilderText.netIncomeRows(
+            incomeLabel: incomeLabel, income: CzechFormat.wholeKc(net.incomeKc), incomeNote: incomeNote,
+            levies: marked(net.leviesKc), leviesNote: BuilderText.leviesSplit(of: result),
+            leviesShare: shares.map { BuilderText.share(tenths: $0.leviesTenths) },
+            net: marked(net.yearKc), netShare: shares.map { BuilderText.share(tenths: $0.netTenths) },
+            average: marked(net.monthlyKc), averageNote: nil, period: BuilderText.period(of: net))
         let owed = outcome.owedTotal
         let overpaid = outcome.overpaidTotal
         let settlement =
@@ -74,7 +65,7 @@ nonisolated extension PredictionBuilder {
             ? doplatekRow(value: marked(owed))
             : BillRow(
                 label: "Přeplatek", value: marked(overpaid), note: "zálohy převýší odvody, vrátí se", sign: .minus,
-                rule: BillRule.none)
+                rule: .hidden)
         let taxAdvances = outcome.plannedTotal(.tax)
         let payRows = [
             insuranceAdvancesRow(
@@ -96,16 +87,11 @@ nonisolated extension PredictionBuilder {
         _ outcome: PredictionOutcome, incomeLabel: String, incomeNote: String?
     ) -> PredictionCalculation {
         let net = NetIncome(outcome.result)
-        let rows = [
-            BillRow(label: incomeLabel, value: unknownAmount, note: incomeNote, valueStyle: .semibold),
-            BillRow(label: "Odvody", value: unknownAmount, sign: .minus, valueStyle: .semibold, rule: .hairline),
-            BillRow(
-                label: "Čistý příjem", value: unknownAmount, sign: .equals, style: .strong, valueStyle: .title3Bold,
-                rule: .strong),
-            BillRow(
-                label: "Průměrně za měsíc", value: unknownAmount, sign: .divided, period: BuilderText.period(of: net),
-                marksNetIncome: true, valueStyle: .title2Bold, rule: BillRule.none),
-        ]
+        let rows = BuilderText.netIncomeRows(
+            incomeLabel: incomeLabel, income: unknownAmount, incomeNote: incomeNote,
+            levies: unknownAmount, leviesNote: nil, leviesShare: nil,
+            net: unknownAmount, netShare: nil,
+            average: unknownAmount, averageNote: nil, period: BuilderText.period(of: net))
         let payRows = [
             insuranceAdvancesRow(value: unknownAmount),
             taxAdvancesRow(value: unknownAmount),
@@ -118,17 +104,17 @@ nonisolated extension PredictionBuilder {
     /// The advances planned to the social and the health insurance for the year, `value`, which are paid every month.
     private static func insuranceAdvancesRow(value: String) -> BillRow {
         BillRow(
-            label: "Zálohy sociální a zdravotní", value: value, note: "platí se každý měsíc", rule: BillRule.none)
+            label: "Zálohy sociální a zdravotní", value: value, note: "platí se každý měsíc", rule: .hidden)
     }
 
     /// The tax advances planned for the year, `value`, added to the advances above them.
     private static func taxAdvancesRow(value: String) -> BillRow {
-        BillRow(label: "Zálohy na daň", value: value, sign: .plus, rule: BillRule.none)
+        BillRow(label: "Zálohy na daň", value: value, sign: .plus, rule: .hidden)
     }
 
     /// What is left to pay with the returns beyond the advances, `value`, added to them.
     private static func doplatekRow(value: String) -> BillRow {
-        BillRow(label: "Doplatek", value: value, note: "s přiznáním a přehledy", sign: .plus, rule: BillRule.none)
+        BillRow(label: "Doplatek", value: value, note: "s přiznáním a přehledy", sign: .plus, rule: .hidden)
     }
 
     /// What to set aside each month, `value`, under the stronger line, with what it is made of: the tax advances and

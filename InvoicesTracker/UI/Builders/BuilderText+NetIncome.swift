@@ -19,9 +19,38 @@ nonisolated extension BuilderText {
     }
 
     /// The months an average of the net income is over, as the calculations of the income write them beside the
-    /// average: "· 10 měsíců", "· 1 měsíc", and "· 12 měsíců" for a whole year.
+    /// average: "· 10 měsíců", "· 1 měsíc", and "· 12 měsíců" for a whole year. Both spaces are no-break spaces, so the
+    /// months stay together and do not part from the dot.
     static func period(of net: NetIncome) -> String {
-        "· " + CzechCount.counted(net.months, one: "měsíc", few: "měsíce", many: "měsíců")
+        let counted = CzechCount.counted(
+            net.months, one: "měsíc", few: "měsíce", many: "měsíců", separator: CzechFormat.noBreakSpace)
+        return "·" + CzechFormat.noBreakSpace + counted
+    }
+
+    /// The four rows of the calculation of the income that Přehled and Odhad odvodů show: the income under
+    /// `incomeLabel` and with `incomeNote` under it, less the levies with `leviesNote` under them, "Odvody", what that
+    /// leaves, "Čistý příjem", and that per month, "Průměrně za měsíc", with `average` over `period` and the green dot
+    /// of the net income. The values are as they are shown, and the shares (`leviesShare`, `netShare`) stand beside the
+    /// levies and the net income, or are nil where there are none. The rule above the net income is the heavy line, the
+    /// levies have the hairline above them, and the first and the last row have none.
+    static func netIncomeRows(
+        incomeLabel: String, income: String, incomeNote: String?,
+        levies: String, leviesNote: String?, leviesShare: String?,
+        net: String, netShare: String?,
+        average: String, averageNote: String?, period: String
+    ) -> [BillRow] {
+        [
+            BillRow(label: incomeLabel, value: income, note: incomeNote, valueStyle: .semibold),
+            BillRow(
+                label: "Odvody", value: levies, note: leviesNote, sign: .minus, share: leviesShare,
+                valueStyle: .semibold, rule: .hairline),
+            BillRow(
+                label: "Čistý příjem", value: net, sign: .equals, style: .strong, share: netShare,
+                valueStyle: .title3Bold, rule: .heavy),
+            BillRow(
+                label: "Průměrně za měsíc", value: average, note: averageNote, sign: .divided, period: period,
+                marksNetIncome: true, valueStyle: .title2Bold, rule: .hidden),
+        ]
     }
 
     /// What each authority takes of the levies of `result`, in grouped whole Kč without the currency, as the note

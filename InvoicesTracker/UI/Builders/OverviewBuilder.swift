@@ -507,21 +507,12 @@ nonisolated enum OverviewBuilder {
             average = dueAverage(due)
             averageNote = includingDueInvoices(due)
         }
-        return [
-            BillRow(label: incomeLabel, value: CzechFormat.wholeKc(net.incomeKc), valueStyle: .semibold),
-            BillRow(
-                label: "Odvody", value: CzechFormat.wholeKc(net.leviesKc),
-                note: BuilderText.leviesSplit(of: input.result), sign: .minus,
-                share: shares.map { BuilderText.share(tenths: $0.leviesTenths) }, valueStyle: .semibold,
-                rule: .hairline),
-            BillRow(
-                label: "Čistý příjem", value: CzechFormat.wholeKc(net.yearKc), sign: .equals, style: .strong,
-                share: shares.map { BuilderText.share(tenths: $0.netTenths) }, valueStyle: .title3Bold, rule: .strong),
-            BillRow(
-                label: "Průměrně za měsíc", value: average, note: averageNote, sign: .divided,
-                period: BuilderText.period(of: net), marksNetIncome: true, valueStyle: .title2Bold,
-                rule: BillRule.none),
-        ]
+        return BuilderText.netIncomeRows(
+            incomeLabel: incomeLabel, income: CzechFormat.wholeKc(net.incomeKc), incomeNote: nil,
+            levies: CzechFormat.wholeKc(net.leviesKc), leviesNote: BuilderText.leviesSplit(of: input.result),
+            leviesShare: shares.map { BuilderText.share(tenths: $0.leviesTenths) },
+            net: CzechFormat.wholeKc(net.yearKc), netShare: shares.map { BuilderText.share(tenths: $0.netTenths) },
+            average: average, averageNote: averageNote, period: BuilderText.period(of: net))
     }
 
     /// The figure with the unpaid invoices due by the end of the month counted (`OverviewInput.dueNetIncome`) when it

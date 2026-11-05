@@ -23,10 +23,10 @@ struct OverviewCardsTests {
             share: "11,8\u{00A0}%", valueStyle: .semibold, rule: .hairline),
         BillRow(
             label: "Čistý příjem", value: "1\u{00A0}933\u{00A0}471\u{00A0}Kč", sign: .equals, style: .strong,
-            share: "88,2\u{00A0}%", valueStyle: .title3Bold, rule: .strong),
+            share: "88,2\u{00A0}%", valueStyle: .title3Bold, rule: .heavy),
         BillRow(
-            label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided, period: "· 10 měsíců",
-            marksNetIncome: true, valueStyle: .title2Bold, rule: BillRule.none),
+            label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided,
+            period: "·\u{00A0}10\u{00A0}měsíců", marksNetIncome: true, valueStyle: .title2Bold, rule: .hidden),
     ]
 
     // MARK: Helpers
@@ -84,14 +84,14 @@ struct OverviewCardsTests {
     }
 
     /// In a card wider than that the rows are 420 points wide at most, from the left edge: the rules between them, the
-    /// hairline above the levies and the stronger one above the net income, end there.
+    /// hairline above the levies and the heavy line above the net income, end there.
     @Test(arguments: [ColorScheme.light, ColorScheme.dark])
     func theRowsOfTheCalculationAreNoWiderThan420Points(scheme: ColorScheme) throws {
         let separator = try OffscreenPicture.bytes(of: Palette.sep, in: scheme)
-        let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
+        let heavy = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
         let picture = try calculationPicture(in: scheme)
 
-        for (name, colour) in [("the hairline", separator), ("the stronger line", strong)] {
+        for (name, colour) in [("the hairline", separator), ("the heavy line", heavy)] {
             let across420 = lines(in: picture.rows(near: colour, from: 0, to: 419.5, by: 3))
             let beyond = lines(in: picture.rows(near: colour, from: 421, to: 430, by: 3))
             // The hairline above the levies is also a part of the two hairlines that run the whole width.
@@ -101,22 +101,22 @@ struct OverviewCardsTests {
     }
 
     /// The green dot of the net income stands before the label of the fourth row, the average per month: under the
-    /// stronger line above the net income, after the column of the signs and its gap, and it is the one green mark of
+    /// heavy line above the net income, after the column of the signs and its gap, and it is the one green mark of
     /// the calculation, 8 points square.
     @Test(arguments: [ColorScheme.light, ColorScheme.dark])
     func onlyTheFourthRowHasTheGreenDotOf8Points(scheme: ColorScheme) throws {
         let green = try OffscreenPicture.bytes(of: Palette.green, in: scheme)
-        let strong = try OffscreenPicture.bytes(of: Palette.sepStrong, in: scheme)
+        let heavy = try OffscreenPicture.bytes(of: Palette.text, in: scheme)
         let picture = try calculationPicture(in: scheme)
 
         let extent = try #require(picture.extent(near: green, by: 6))
-        let result = try #require(lines(in: picture.rows(near: strong, from: 0, to: 419.5, by: 3)).first)
+        let result = try #require(lines(in: picture.rows(near: heavy, from: 0, to: 419.5, by: 3)).first)
 
         #expect((extent.width - 8).magnitude <= 1, "The mark is \(extent.width) points wide")
         #expect((extent.height - 8).magnitude <= 1, "The mark is \(extent.height) points high")
         #expect((extent.minX - 28).magnitude <= 1, "The mark starts at \(extent.minX)")
-        // Under the net income, which is a row under the stronger line: more than a row of body text lower.
-        #expect(extent.minY > result.bottom + 20, "The mark is at \(extent), the stronger line at \(result)")
+        // Under the net income, which is a row under the heavy line: more than a row of body text lower.
+        #expect(extent.minY > result.bottom + 20, "The mark is at \(extent), the heavy line at \(result)")
     }
 
     /// VoiceOver reads each row as one phrase, the label with its share or its months, the value and the note; the
@@ -134,7 +134,7 @@ struct OverviewCardsTests {
                         "Odvody 11,8\u{00A0}%: 258\u{00A0}300\u{00A0}Kč."
                             + " daň 32\u{00A0}076 · sociální 159\u{00A0}279 · zdravotní 66\u{00A0}945",
                         "Čistý příjem 88,2\u{00A0}%: 1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-                        "Průměrně za měsíc · 10 měsíců: 193\u{00A0}347\u{00A0}Kč",
+                        "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč",
                     ])
             }
         }
@@ -145,7 +145,8 @@ struct OverviewCardsTests {
     /// The readings of the rows of the calculation of the sample's 2026 in the card of the estimate, by the words each
     /// starts with: the income, the levies, the net income and the average per month.
     private static let calculationStarts = [
-        "Příjmy za rok: ", "Odvody 17,0\u{00A0}%: ", "Čistý příjem 83,0\u{00A0}%: ", "Průměrně za měsíc · 12 měsíců: ",
+        "Příjmy za rok: ", "Odvody 17,0\u{00A0}%: ", "Čistý příjem 83,0\u{00A0}%: ",
+        "Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: ",
     ]
 
     /// The readings of the rows of how the levies of the sample's 2026 are paid, by the words each starts with.
@@ -236,7 +237,7 @@ struct OverviewCardsTests {
                     "Odvody 17,0\u{00A0}%: 466\u{00A0}782\u{00A0}Kč."
                         + " daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164",
                     "Čistý příjem 83,0\u{00A0}%: 2\u{00A0}276\u{00A0}375\u{00A0}Kč",
-                    "Průměrně za měsíc · 12 měsíců: 189\u{00A0}698\u{00A0}Kč",
+                    "Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: 189\u{00A0}698\u{00A0}Kč",
                     "Zálohy sociální a zdravotní: 222\u{00A0}080\u{00A0}Kč. platí se každý měsíc",
                     "Zálohy na daň: 46\u{00A0}000\u{00A0}Kč",
                     "Doplatek: 198\u{00A0}702\u{00A0}Kč. s přiznáním a přehledy",

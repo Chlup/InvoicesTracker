@@ -722,7 +722,7 @@ struct OverviewBuilderTests {
     /// (the tax of 32 076 Kč, the social insurance of 159 279 Kč and the health insurance of 66 945 Kč), which take
     /// 11,8 % of it, leave 1 933 471 Kč, 88,2 %, which over the ten months from January through October is 193 347 Kč a
     /// month. The rows are set as a calculation: the income and the levies in body semibold, the net income under the
-    /// stronger hairline in title 3, and the average with the green dot in title 2, under no rule.
+    /// heavy line in title 3, and the average with the green dot in title 2, under no rule.
     @Test func theCalculationTakesTheLeviesOffTheIncomeOfTheYearSoFarAndDividesWhatIsLeftByItsMonths() {
         let result = TaxEngine.compute(PredictionSample.yearInput(year: 2026), asOf: civilDate("2026-10-17"))
 
@@ -739,10 +739,10 @@ struct OverviewBuilderTests {
                     share: "11,8\u{00A0}%", valueStyle: .semibold, rule: .hairline),
                 BillRow(
                     label: "Čistý příjem", value: "1\u{00A0}933\u{00A0}471\u{00A0}Kč", sign: .equals, style: .strong,
-                    share: "88,2\u{00A0}%", valueStyle: .title3Bold, rule: .strong),
+                    share: "88,2\u{00A0}%", valueStyle: .title3Bold, rule: .heavy),
                 BillRow(
                     label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided,
-                    period: "· 10 měsíců", marksNetIncome: true, valueStyle: .title2Bold, rule: BillRule.none),
+                    period: "·\u{00A0}10\u{00A0}měsíců", marksNetIncome: true, valueStyle: .title2Bold, rule: .hidden),
             ])
     }
 
@@ -761,7 +761,7 @@ struct OverviewBuilderTests {
                 "199\u{00A0}441\u{00A0}Kč",
             ])
         #expect(rows.map(\.share) == [nil, "18,3\u{00A0}%", "81,7\u{00A0}%", nil])
-        #expect(rows[3].period == "· 12 měsíců")
+        #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(rows[3].note == nil)
     }
 
@@ -778,7 +778,7 @@ struct OverviewBuilderTests {
         #expect(data.calculation.map(\.label).first == "Příjmy za rok 2026")
         let net = data.calculation.map(\.value).dropFirst(2)
         #expect(net == ["1\u{00A0}933\u{00A0}471\u{00A0}Kč", "161\u{00A0}123\u{00A0}Kč"])
-        #expect(data.calculation.last?.period == "· 12 měsíců")
+        #expect(data.calculation.last?.period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(data.levies.header == "Odvody z příjmů do 31.\u{00A0}12.")
     }
 
@@ -794,7 +794,7 @@ struct OverviewBuilderTests {
         #expect(rows.map(\.label).first == "Příjmy od 1.\u{00A0}1. do 15.\u{00A0}1.")
         #expect(rows.map(\.value).first == "0\u{00A0}Kč")
         #expect(rows.allSatisfy { $0.share == nil })
-        #expect(rows.last?.period == "· 1 měsíc")
+        #expect(rows.last?.period == "·\u{00A0}1\u{00A0}měsíc")
         #expect(rows[2].value.hasPrefix("\u{2212}"), "\(rows[2].value)")
         #expect(rows[2].value == rows[3].value)
     }
@@ -811,7 +811,7 @@ struct OverviewBuilderTests {
         #expect(rows[1].share == "\u{2212}5,9\u{00A0}%")
         #expect(rows[2].share == "105,9\u{00A0}%")
         #expect(!rows[2].value.hasPrefix("\u{2212}"), "\(rows[2].value)")
-        #expect(rows[3].period == "· 2 měsíce")
+        #expect(rows[3].period == "·\u{00A0}2\u{00A0}měsíce")
     }
 
     /// The calculation adds up: the income less the levies is the net income it shows, for a year in progress, a whole
@@ -848,7 +848,7 @@ struct OverviewBuilderTests {
         let rows = build(input(year: 2025, asOf: "2025-12-30", result: result)).calculation
 
         #expect(rows[0].label == "Příjmy od 1.\u{00A0}1. do 30.\u{00A0}12.")
-        #expect(rows[3].period == "· 12 měsíců")
+        #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
     }
 
     /// The calculation is about the levies, not about the chart: grouping the chart by years and drawing it with VAT
@@ -880,7 +880,7 @@ struct OverviewBuilderTests {
         #expect(rows[3].value == "≈\u{00A0}199\u{00A0}566\u{00A0}Kč")
         #expect(rows[3].value == OverviewBuilder.dueAverage(due))
         #expect(rows[3].note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
-        #expect(rows[3].period == "· 10 měsíců")
+        #expect(rows[3].period == "·\u{00A0}10\u{00A0}měsíců")
         #expect(rows[3].marksNetIncome)
         #expect(received[3].value == "193\u{00A0}347\u{00A0}Kč")
         #expect(received[3].note == nil)
@@ -914,7 +914,7 @@ struct OverviewBuilderTests {
             let average = build(input(asOf: day, today: day, result: result, dueNetIncome: due)).calculation[3]
 
             #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}12.", "\(day)")
-            #expect(average.period == "· 12 měsíců", "\(day)")
+            #expect(average.period == "·\u{00A0}12\u{00A0}měsíců", "\(day)")
             #expect(average.value.hasPrefix("≈\u{00A0}"), "\(day): \(average.value)")
         }
     }
@@ -1594,7 +1594,7 @@ struct OverviewBuilderTests {
             + RulesWarning.message(year: 2027, rulesYear: 2026)
         #expect(months.calculation[3].value == value)
         #expect(months.calculation[3].note == "včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
-        #expect(months.calculation[3].period == "· 1 měsíc")
+        #expect(months.calculation[3].period == "·\u{00A0}1\u{00A0}měsíc")
         #expect(months.columns.allSatisfy { $0.netAverage?.value == value })
         #expect(months.columns.allSatisfy { $0.netAverage?.note == note })
         #expect(years.columns.map { $0.netAverage?.value } == [nil, value])
@@ -2170,7 +2170,7 @@ struct OverviewBuilderTests {
                 "daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164", nil, nil,
             ])
         #expect(rows.map(\.share) == [nil, "17,0\u{00A0}%", "83,0\u{00A0}%", nil])
-        #expect(rows[3].period == "· 12 měsíců")
+        #expect(rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(card.calculation.payTitle == "Jak odvody zaplatíte")
         let pay = card.calculation.payRows
         #expect(
@@ -2236,7 +2236,7 @@ struct OverviewBuilderTests {
             overpaid.calculation.payRows[2]
                 == BillRow(
                     label: "Přeplatek", value: "168\u{00A0}360\u{00A0}Kč", note: "zálohy převýší odvody, vrátí se",
-                    sign: .minus, rule: BillRule.none))
+                    sign: .minus, rule: .hidden))
 
         // Advances that pay exactly the levies leave nothing to settle: that is a sum of nothing to pay.
         let none = [Int64](repeating: 0, count: 12)
@@ -2250,7 +2250,7 @@ struct OverviewBuilderTests {
             try #require(build(input(prediction: exact)).prediction).calculation.payRows[2]
                 == BillRow(
                     label: "Doplatek", value: "0\u{00A0}Kč", note: "s přiznáním a přehledy", sign: .plus,
-                    rule: BillRule.none))
+                    rule: .hidden))
 
         // On 30. 12. the tax advances pay more than the tax while the insurance is owed: an overpayment at one
         // authority does not lower what another is owed, so the card names what is owed and no overpayment.

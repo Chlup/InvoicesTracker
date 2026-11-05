@@ -73,10 +73,10 @@ struct BillRowTests {
 
     @Test func thePeriodOfARowIsReadAfterItsLabel() {
         let row = BillRow(
-            label: "Průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč", sign: .divided, period: "· 12 měsíců",
-            marksNetIncome: true)
+            label: "Průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč", sign: .divided,
+            period: "·\u{00A0}12\u{00A0}měsíců", marksNetIncome: true)
 
-        #expect(row.spokenText == "Průměrně za měsíc · 12 měsíců: 189\u{00A0}698\u{00A0}Kč")
+        #expect(row.spokenText == "Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: 189\u{00A0}698\u{00A0}Kč")
     }
 
     @Test func aRowWithoutTheNewPartsIsReadAsBefore() {
@@ -96,7 +96,7 @@ struct BillRowTests {
             BillRow(label: "Příjmy za rok 2026", value: "2\u{00A0}743\u{00A0}157\u{00A0}Kč"),
             BillRow(label: "Odvody", value: "466\u{00A0}782\u{00A0}Kč", sign: .minus),
             BillRow(label: "Čistý příjem", value: "2\u{00A0}276\u{00A0}375\u{00A0}Kč", sign: .equals, style: .strong),
-            BillRow(label: "Průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč", sign: .divided, rule: BillRule.none),
+            BillRow(label: "Průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč", sign: .divided, rule: .hidden),
         ]
         let first = height(of: [rows[0]])
         let second = height(of: [rows[1]])
@@ -130,7 +130,7 @@ struct BillRowTests {
     /// and the heavy one in the colour of text, 1,5 points.
     @Test func aRowCanStandUnderTheStrongerLineOrTheHeavyOne() throws {
         let rows = [
-            BillRow(label: "Zálohy na daň", value: "46\u{00A0}000\u{00A0}Kč", rule: BillRule.none),
+            BillRow(label: "Zálohy na daň", value: "46\u{00A0}000\u{00A0}Kč", rule: .hidden),
             BillRow(label: "Odkládat průměrně za měsíc", value: "20\u{00A0}392\u{00A0}Kč", rule: .separator),
             BillRow(label: "Zbývá", value: "71\u{00A0}440\u{00A0}Kč", rule: .heavy),
         ]
@@ -182,8 +182,8 @@ struct BillRowTests {
     @Test func theRowOfTheNetIncomeHasAGreenDotOf8PointsBeforeItsLabel() throws {
         func row(marksNetIncome: Bool) -> BillRow {
             BillRow(
-                label: "Průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč", sign: .divided, period: "· 12 měsíců",
-                marksNetIncome: marksNetIncome)
+                label: "Průměrně za měsíc", value: "189\u{00A0}698\u{00A0}Kč", sign: .divided,
+                period: "·\u{00A0}12\u{00A0}měsíců", marksNetIncome: marksNetIncome)
         }
         for scheme in schemes {
             let green = try OffscreenPicture.bytes(of: Palette.green, in: scheme)

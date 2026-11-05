@@ -300,7 +300,7 @@ struct OverviewViewTextTests {
                     valueStyle: .semibold),
                 BillRow(
                     label: "Průměrně za měsíc", value: "193\u{00A0}347\u{00A0}Kč", sign: .divided,
-                    period: "· 10 měsíců", marksNetIncome: true, valueStyle: .title2Bold),
+                    period: "·\u{00A0}10\u{00A0}měsíců", marksNetIncome: true, valueStyle: .title2Bold),
             ],
             uniformLine: nil, mode: .years, withVAT: false, setMode: { _ in }, setWithVAT: { _ in }
         )

@@ -650,7 +650,7 @@ struct PredictionWindowTests {
                     "Odvody 17,0\u{00A0}%: 466\u{00A0}782\u{00A0}Kč."
                         + " daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164",
                     "Čistý příjem 83,0\u{00A0}%: 2\u{00A0}276\u{00A0}375\u{00A0}Kč",
-                    "Průměrně za měsíc · 12 měsíců: 189\u{00A0}698\u{00A0}Kč",
+                    "Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: 189\u{00A0}698\u{00A0}Kč",
                     "Zálohy sociální a zdravotní: 222\u{00A0}080\u{00A0}Kč. platí se každý měsíc",
                     "Zálohy na daň: 46\u{00A0}000\u{00A0}Kč",
                     "Doplatek: 198\u{00A0}702\u{00A0}Kč. s přiznáním a přehledy",
@@ -701,7 +701,7 @@ struct PredictionWindowTests {
                 #expect(!readings.contains { $0.hasPrefix("Vystaveno") || $0.hasPrefix("Koncepty") })
                 let income = "Příjmy za rok 2025: 2\u{00A0}931\u{00A0}160\u{00A0}Kč"
                 #expect(accessibilityElement(labelled: income, in: window) != nil)
-                #expect(readings.contains("Průměrně za měsíc · 12 měsíců: 199\u{00A0}441\u{00A0}Kč"))
+                #expect(readings.contains("Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: 199\u{00A0}441\u{00A0}Kč"))
                 #expect(readings.contains { $0.hasPrefix("Odkládat průměrně za měsíc: ") })
                 #expect(!readings.contains { $0.contains("odhad") || $0.contains("≈") })
             }
@@ -727,7 +727,7 @@ struct PredictionWindowTests {
                 // The sentence that the estimate is incomplete stands once, in the result card, and not in the rows.
                 #expect(readings.contains("Příjmy za rok 2026: —. bez DPH · peníze přijaté do 31.\u{00A0}12."))
                 #expect(readings.contains("Odvody: —"))
-                #expect(readings.contains("Průměrně za měsíc · 12 měsíců: —"))
+                #expect(readings.contains("Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: —"))
                 #expect(readings.contains { $0.hasPrefix("Odkládat průměrně za měsíc: —") })
                 #expect(!readings.contains { $0.contains(PredictionBuilder.incompleteText) })
                 #expect(!readings.contains { $0.contains("2\u{00A0}743\u{00A0}157") || $0.contains("83,0") })

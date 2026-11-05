@@ -1907,7 +1907,7 @@ struct AppWindowLayoutTests {
         let calculation = [
             (name: "the income", reading: "Příjmy za rok: "), (name: "the levies", reading: "Odvody 17,0\u{00A0}%: "),
             (name: "the net income", reading: "Čistý příjem 83,0\u{00A0}%: "),
-            (name: "the average", reading: "Průměrně za měsíc · 12 měsíců: "),
+            (name: "the average", reading: "Průměrně za měsíc ·\u{00A0}12\u{00A0}měsíců: "),
         ]
         let panel = [
             (name: "the title of the panel", reading: "Jak odvody zaplatíte"),
@@ -2032,7 +2032,7 @@ struct AppWindowLayoutTests {
         "Odvody 11,8\u{00A0}%: 258\u{00A0}300\u{00A0}Kč."
             + " daň 32\u{00A0}076 · sociální 159\u{00A0}279 · zdravotní 66\u{00A0}945",
         "Čistý příjem 88,2\u{00A0}%: 1\u{00A0}933\u{00A0}471\u{00A0}Kč",
-        "Průměrně za měsíc · 10 měsíců: 193\u{00A0}347\u{00A0}Kč",
+        "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč",
     ]
 
     /// Přehled on the prediction sample as of Saturday 17. 10. 2026, today: the calculation of the net income stands in
@@ -2133,7 +2133,7 @@ struct AppWindowLayoutTests {
                 Receipt(day: app.today, czkNetHalere: 5_000_000, czkVatHalere: 1_050_000, source: .synthetic))
             let average = try AppModel.compute(year, asOf: app.today)
             let figure = PredictionBuilder.estimateSign + CzechFormat.wholeKc(NetIncome(average).monthlyKc)
-            let averageReading = "Průměrně za měsíc · 10 měsíců: " + figure
+            let averageReading = "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: " + figure
                 + ". včetně nezaplacených faktur splatných do 31.\u{00A0}10."
             let readings = Array(Self.calculationReadings.dropLast()) + [averageReading]
 
@@ -2195,7 +2195,7 @@ struct AppWindowLayoutTests {
         }
         // The card of the estimate below it has a row with the same words, over twelve months, so the average of the
         // calculation is found by its months and its figure as well.
-        let averageStart = "Průměrně za měsíc · 10 měsíců: 193\u{00A0}347\u{00A0}Kč"
+        let averageStart = "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč"
         guard let average = accessibilityElement(labelStartingWith: averageStart, in: window)?.accessibilityFrame?()
         else {
             return ["Cannot find the average per month of the calculation in the window"]
@@ -2267,7 +2267,7 @@ struct AppWindowLayoutTests {
         }
         // The card of the estimate below it has a row with the same words, over twelve months, so the average of the
         // calculation is found by its months and its figure as well.
-        let averageStart = "Průměrně za měsíc · 10 měsíců: 193\u{00A0}347\u{00A0}Kč"
+        let averageStart = "Průměrně za měsíc ·\u{00A0}10\u{00A0}měsíců: 193\u{00A0}347\u{00A0}Kč"
         guard let average = accessibilityElement(labelStartingWith: averageStart, in: window)?.accessibilityFrame?()
         else {
             return ["Cannot find the average per month of the calculation in the window"]
@@ -4245,15 +4245,15 @@ struct AppWindowLayoutTests {
     /// column where the page has less than the 856 points that two columns need (850 at the least room with the wide
     /// sidebar) and in two columns where it has more (938 in the least window, and a large window; the cards of
     /// Výpočet, with the same headings), the key figure and the bar of the result card stand as the width says and the
-    /// figure of what is left to settle under them, the net income and what to set aside are read as one phrase each
-    /// in the card Příjmy, beside the income (what to set aside wraps under them where the card is too narrow for
-    /// three figures: at the least room with the widest sidebar and in the narrowest window for twelve months in a
-    /// row with the wide sidebar, whose 836 points inside are less than the 874 that the three need) and above the
-    /// bar, the legend and the note of the money of next year, and no text of a cell is cut. Where the months stand in
-    /// rows of six, in cells of more than 100 points (810 points for the months at the least room with the wide
-    /// sidebar), and in a large window no text of a cell is even shrunk. Where all twelve stand in a row
-    /// in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the least window, whose
-    /// 898 points for the months give the cells 69, and in the narrowest window that holds them so, in cells of 64.
+    /// figure of what is left to settle under them, each row of the calculation and of the panel of how the levies
+    /// are paid is read as one phrase in the card Příjmy, whose two blocks stand side by side where the card has the
+    /// 712 points they need inside its padding (810 at the least room with the widest sidebar) and one under the other
+    /// where it has less, above the bar, the legend and the note of the money of next year, and no text of a cell is
+    /// cut. Where the months stand in rows of six, in cells of more than 100 points (810 points for the months at the
+    /// least room with the wide sidebar), and in a large window no text of a cell is even shrunk. Where all twelve
+    /// stand in a row in cells of less room, the texts shrink as far as the cell lets them and are not cut: in the
+    /// least window, whose 898 points for the months give the cells 69, and in the narrowest window that holds them so,
+    /// in cells of 64.
     @Test func thePredictionFitsTheLeastRoomAndALargeWindow() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
@@ -4413,14 +4413,14 @@ struct AppWindowLayoutTests {
     /// does not read a row of the calculation or of the panel of how the levies are paid as the one phrase of the row,
     /// or the title of the panel as a heading; a row or the bar of the income (14 points high) is not within the card;
     /// the calculation and the panel do not stand side by side in two columns of one width 32 points apart where the
-    /// card has the 712 points they need inside its padding of 20, or the panel not 16 points under the calculation in
-    /// the whole width where it has less (as at the least room with the widest sidebar), the texts of each row ending
-    /// with the value at the right edge of its column (of the panel's padding of 14 in the panel), so that no value is
-    /// cut or pushed out; the heading of the composition of the income is not under both, or the bar not 10 points
-    /// under the heading; an item of the legend is not under the bar; or the note of the money of next year (which
-    /// only a year with such money has) is not under the legend. VoiceOver frames a row by its texts: the space of 8
-    /// points above and below them is not in it. The origin of the screen is at the bottom left, so what is above has
-    /// the larger y. Empty when it stands so. Needs the accessibility elements.
+    /// card has the 712 points they need inside its padding of 20 (as it has 810 at the least room with the widest
+    /// sidebar), or the panel not 16 points under the calculation in the whole width where it has less, the texts of
+    /// each row ending with the value at the right edge of its column (of the panel's padding of 14 in the panel), so
+    /// that no value is cut or pushed out; the heading of the composition of the income is not under both, or the bar
+    /// not 10 points under the heading; an item of the legend is not under the bar; or the note of the money of next
+    /// year (which only a year with such money has) is not under the legend. VoiceOver frames a row by its texts: the
+    /// space of 8 points above and below them is not in it. The origin of the screen is at the bottom left, so what is
+    /// above has the larger y. Empty when it stands so. Needs the accessibility elements.
     private func problems(ofTheCardPrijmyOf page: PredictionPage, in window: NSWindow) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]

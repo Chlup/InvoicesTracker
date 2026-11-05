@@ -39,12 +39,12 @@ nonisolated enum BillValueStyle: Sendable, Hashable {
 }
 
 /// The line above a row of a bill where it is not the one the style and the sign of the row give
-/// (`BillRow.standardRule`). Write the first case as `BillRule.none`: where a `BillRule?` is expected, `.none` alone
-/// is nil, which is the rule the row would have anyway.
+/// (`BillRow.standardRule`). The first case is named `hidden` and not `none`, as where a `BillRule?` is expected,
+/// `.none` is nil, which is the rule the row would have anyway.
 nonisolated enum BillRule: Sendable, Hashable {
     /// No line, as above the first row of a calculation and between the payments of the panel of how the levies are
     /// paid.
-    case none
+    case hidden
 
     /// The hairline of the design (`Hairline`), as above an ordinary row.
     case hairline
@@ -75,7 +75,7 @@ nonisolated struct BillRow: Identifiable, Sendable, Hashable {
     /// The share of the income that the value is, beside the label in body and secondary text: "17,0 %".
     var share: String? = nil
 
-    /// The months the value is over, beside the label after the share in tertiary text: "· 10 měsíců".
+    /// The months the value is over, beside the label after the share in tertiary text: "· 10 měsíců", with no-break spaces.
     var period: String? = nil
 
     /// Whether the row is the net income per month, which a green dot of 8 points in front of its label shows.
@@ -101,9 +101,11 @@ nonisolated struct BillRow: Identifiable, Sendable, Hashable {
         return sign == .equals ? .strong : .hairline
     }
 
-    /// What VoiceOver reads for the row: the label with the share and the months beside it, the value with its sign, as
-    /// "−126 260", and the note: "Odvody 17,0 %: 466 782 Kč. daň 114 786 · sociální 247 832 · zdravotní 104 164". The
-    /// sign in front of the row and the dot are only for the eyes; a subtracted value carries its minus.
+    /// What VoiceOver reads for the row: the label with the share and the months beside it, the value as it is
+    /// written, and the note: "Odvody 17,0 %: 466 782 Kč. daň 114 786 · sociální 247 832 · zdravotní 104 164". The sign
+    /// in front of the row and the dot are only for the eyes, so a subtracted value is read with the minus only where
+    /// it is written in the value, as in Rozpis výpočtu ("Zálohy: −126 260"), and without it where the sign alone
+    /// shows the subtraction, as in the calculations of the income ("Odvody 17,0 %: 466 782 Kč").
     var spokenText: String {
         let name = [label, share, period].compactMap { $0 }.joined(separator: " ")
         let spoken = "\(name): \(value)"
@@ -179,7 +181,7 @@ struct BillRows: View {
         if let rule = row.rule {
             return rule
         }
-        return !startsWithRule && row.id == rows.first?.id ? BillRule.none : row.standardRule
+        return !startsWithRule && row.id == rows.first?.id ? BillRule.hidden : row.standardRule
     }
 }
 
@@ -189,7 +191,7 @@ private struct BillRuleView: View {
 
     var body: some View {
         switch rule {
-        case .none:
+        case .hidden:
             EmptyView()
         case .hairline:
             Hairline()

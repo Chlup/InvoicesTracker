@@ -1040,21 +1040,21 @@ struct PredictionBuilderTests {
                     share: "17,0\u{A0}%", valueStyle: .semibold, rule: .hairline),
                 BillRow(
                     label: "Čistý příjem", value: "2\u{A0}276\u{A0}375\u{A0}Kč", sign: .equals, style: .strong,
-                    share: "83,0\u{A0}%", valueStyle: .title3Bold, rule: .strong),
+                    share: "83,0\u{A0}%", valueStyle: .title3Bold, rule: .heavy),
                 BillRow(
-                    label: "Průměrně za měsíc", value: "189\u{A0}698\u{A0}Kč", sign: .divided, period: "· 12 měsíců",
-                    marksNetIncome: true, valueStyle: .title2Bold, rule: BillRule.none),
+                    label: "Průměrně za měsíc", value: "189\u{A0}698\u{A0}Kč", sign: .divided,
+                    period: "·\u{00A0}12\u{00A0}měsíců", marksNetIncome: true, valueStyle: .title2Bold, rule: .hidden),
             ])
         #expect(calculation.payTitle == "Jak odvody zaplatíte")
         #expect(
             calculation.payRows == [
                 BillRow(
                     label: "Zálohy sociální a zdravotní", value: "222\u{A0}080\u{A0}Kč", note: "platí se každý měsíc",
-                    rule: BillRule.none),
-                BillRow(label: "Zálohy na daň", value: "46\u{A0}000\u{A0}Kč", sign: .plus, rule: BillRule.none),
+                    rule: .hidden),
+                BillRow(label: "Zálohy na daň", value: "46\u{A0}000\u{A0}Kč", sign: .plus, rule: .hidden),
                 BillRow(
                     label: "Doplatek", value: "198\u{A0}702\u{A0}Kč", note: "s přiznáním a přehledy", sign: .plus,
-                    rule: BillRule.none),
+                    rule: .hidden),
                 BillRow(
                     label: "Odkládat průměrně za měsíc", value: "20\u{A0}392\u{A0}Kč",
                     note: "(zálohy na daň + doplatek) ÷ 12", style: .strong, valueStyle: .title3Bold,
@@ -1115,7 +1115,7 @@ struct PredictionBuilderTests {
             outcome, incomeLabel: "Příjmy za rok", incomeNote: receivedNote, marksEstimate: false
         ).payRows
 
-        #expect(pay[1] == BillRow(label: "Zálohy na daň", value: "0\u{A0}Kč", sign: .plus, rule: BillRule.none))
+        #expect(pay[1] == BillRow(label: "Zálohy na daň", value: "0\u{A0}Kč", sign: .plus, rule: .hidden))
         #expect(pay[2].label == "Doplatek")
         #expect(pay[2].value == "244\u{A0}702\u{A0}Kč")
         #expect(pay[3].value == "20\u{A0}392\u{A0}Kč")
@@ -1138,7 +1138,7 @@ struct PredictionBuilderTests {
             pay[2]
                 == BillRow(
                     label: "Přeplatek", value: "168\u{A0}360\u{A0}Kč", note: "zálohy převýší odvody, vrátí se",
-                    sign: .minus, rule: BillRule.none))
+                    sign: .minus, rule: .hidden))
         #expect(pay[3].value == "3\u{A0}833\u{A0}Kč")
         #expect(pay[3].note == "(zálohy na daň + doplatek) ÷ 12")
         #expect(pay.prefix(2).map(\.value) == ["222\u{A0}080\u{A0}Kč", "46\u{A0}000\u{A0}Kč"])
@@ -1169,7 +1169,7 @@ struct PredictionBuilderTests {
         #expect(incomplete.rows[0].note == receivedNote)
         #expect(incomplete.rows[1].note == nil)
         #expect(incomplete.rows[3].marksNetIncome)
-        #expect(incomplete.rows[3].period == "· 12 měsíců")
+        #expect(incomplete.rows[3].period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(all.allSatisfy { !($0.note ?? "").contains(PredictionBuilder.incompleteText) })
     }
 

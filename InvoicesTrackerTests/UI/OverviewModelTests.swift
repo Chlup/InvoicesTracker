@@ -709,7 +709,7 @@ struct OverviewModelTests {
         #expect(counted == "≈\u{00A0}190\u{00A0}220\u{00A0}Kč")
         #expect(average.value == counted)
         #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
-        #expect(average.period == "· 10 měsíců")
+        #expect(average.period == "·\u{00A0}10\u{00A0}měsíců")
         #expect(Array(data.calculation.prefix(3)) == Array(received.prefix(3)))
         let tooltips = data.columns.compactMap(\.netAverage)
         #expect(tooltips.count == 12)
@@ -776,7 +776,7 @@ struct OverviewModelTests {
         let model = await loadedModel(of: app)
         let calculation = try #require(model.data).calculation
         let average = try #require(model.data?.averageRow)
-        #expect(average.period == "· 10 měsíců")
+        #expect(average.period == "·\u{00A0}10\u{00A0}měsíců")
         #expect(average.note == nil)
         #expect(average.value == "187\u{00A0}111\u{00A0}Kč")
         #expect(!average.value.contains("≈"))
@@ -857,7 +857,7 @@ struct OverviewModelTests {
         let received = try AppModel.compute(try await app.yearInput(for: 2026).input, asOf: app.today)
         #expect(paid.value == CzechFormat.wholeKc(NetIncome(received).monthlyKc))
         #expect(paid.note == nil)
-        #expect(paid.period == "· 10 měsíců")
+        #expect(paid.period == "·\u{00A0}10\u{00A0}měsíců")
 
         try await store([invoice("20261004", paidOn: "2026-10-20")], in: app)
         await model.load()
@@ -882,7 +882,7 @@ struct OverviewModelTests {
         let average = try #require(model.data?.averageRow)
         let year = try AppModel.compute(try await app.yearInput(for: 2025).input, asOf: civilDate("2025-12-31"))
         #expect(average.value == CzechFormat.wholeKc(NetIncome(year).monthlyKc))
-        #expect(average.period == "· 12 měsíců")
+        #expect(average.period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(average.note == nil)
     }
 
@@ -907,7 +907,7 @@ struct OverviewModelTests {
         let past = try #require(try column(ofYear: 2025, in: model).netAverage)
         #expect(!past.value.contains("≈"))
         #expect(past.note == nil)
-        #expect(try #require(model.data).averageRow?.period == "· 12 měsíců")
+        #expect(try #require(model.data).averageRow?.period == "·\u{00A0}12\u{00A0}měsíců")
         #expect(try #require(model.data).averageRow?.note == nil)
     }
 
@@ -962,7 +962,7 @@ struct OverviewModelTests {
         await model.load()
 
         let early = try #require(model.data?.averageRow)
-        #expect(early.period == "· 3 měsíce")
+        #expect(early.period == "·\u{00A0}3\u{00A0}měsíce")
         #expect(early.note == nil)
         #expect(!early.value.contains("≈"))
 
@@ -976,7 +976,7 @@ struct OverviewModelTests {
         await model.load()
 
         let late = try #require(model.data?.averageRow)
-        #expect(late.period == "· 10 měsíců")
+        #expect(late.period == "·\u{00A0}10\u{00A0}měsíců")
         #expect(late.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}10.")
         #expect(late.value.hasPrefix("≈\u{00A0}"))
         #expect(try column(ofYear: 2026, in: model).netAverage?.value == late.value)
@@ -1046,7 +1046,7 @@ struct OverviewModelTests {
         #expect(model.rulesWarning != nil)
         #expect(average.value == counted)
         #expect(average.note == "včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
-        #expect(average.period == "· 1 měsíc")
+        #expect(average.period == "·\u{00A0}1\u{00A0}měsíc")
     }
 
     /// The figure is an extra of the page: when the invoices due cannot be read, the page loads without it, as it does
