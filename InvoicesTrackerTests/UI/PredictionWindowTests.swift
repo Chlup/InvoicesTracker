@@ -27,9 +27,11 @@ import Testing
 ///   be chosen for are not buttons. Just above the width that has room for the legend beside the heading, the legend
 ///   keeps its one row there, and a cell has no line for a text it does not have.
 /// - The result card has the key figure, the bar of the levies and what is left to settle beyond the advances, each
-///   read as one phrase, and the sentence that the estimate is incomplete once. The card Příjmy of a year in progress
-///   has the three parts of the income and the note of what is paid next year, and that of a year that is over has none
-///   of them but the part that was received. The sentence that no invoice is expected shows where no client is.
+///   read as one phrase, and the sentence that the estimate is incomplete once. The card Příjmy has the calculation
+///   of the year beside the panel of how its levies are paid, each row read as one phrase, and under them the heading
+///   of the composition of the income above its bar: a year in progress has the three parts of the income and the note
+///   of what is paid next year, and a year that is over none of them but the part that was received. The sentence that
+///   no invoice is expected shows where no client is.
 ///
 /// The elements are found by what VoiceOver reads for them. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.serialized, .settlesBackups)
@@ -631,10 +633,11 @@ struct PredictionWindowTests {
 
     // MARK: The card Příjmy
 
-    /// The card is a group, "Příjmy", with its subtitle, two figures next to each other (the income, and the net income
-    /// per month under a green dot), the bar of the income as a picture, the legend with an item for each part and the
-    /// note of the money of next year. Each figure and each item of the legend is read as one phrase.
-    @Test func theCardPrijmyOfAYearInProgressHasItsFiguresItsBarItsLegendAndTheNoteOfNextYear() async throws {
+    /// The card is a group, "Příjmy", with its subtitle, the calculation of the year and beside it the panel of how its
+    /// levies are paid, whose title is a heading, then the heading of the composition of the income above its bar,
+    /// which is a picture, the legend with an item for each part and the note of the money of next year. Each row of
+    /// the calculation and of the panel and each item of the legend is read as one phrase.
+    @Test func theCardPrijmyOfAYearInProgressHasItsCalculationItsPanelItsBarAndTheNoteOfNextYear() async throws {
         let page = try PredictionSample.page(year: 2026)
         try await withCard(PredictionIncomeCard(page: page)) { window in
             try await withAccessibilityElements {
@@ -642,21 +645,32 @@ struct PredictionWindowTests {
 
                 #expect(showsText("Odhad za celý rok 2026 z faktur do 17.\u{00A0}10.\u{00A0}2026", in: window))
                 let readings = accessibilityReadings(in: window)
-                #expect(
-                    readings.contains(
-                        "Příjmy za rok 2026 (odhad), 2\u{00A0}743\u{00A0}157\u{00A0}Kč,"
-                            + " bez DPH · peníze přijaté do 31.\u{00A0}12."))
-                #expect(
-                    readings.contains(
-                        "Čistý příjem průměrně za měsíc (odhad), 189\u{00A0}698\u{00A0}Kč,"
-                            + " za celý rok 2\u{00A0}276\u{00A0}375\u{00A0}Kč · 83,0\u{00A0}% příjmů po odvodech"))
-                #expect(
-                    readings.contains(
-                        "Odkládat průměrně za měsíc (odhad), 20\u{00A0}392\u{00A0}Kč,"
-                            + " za celý rok 244\u{00A0}702\u{00A0}Kč · doplatek a zálohy na daň"))
+                for reading in [
+                    "Příjmy za rok 2026: 2\u{00A0}743\u{00A0}157\u{00A0}Kč. bez DPH · peníze přijaté do 31.\u{00A0}12.",
+                    "Odvody 17,0\u{00A0}%: 466\u{00A0}782\u{00A0}Kč."
+                        + " daň 114\u{00A0}786 · sociální 247\u{00A0}832 · zdravotní 104\u{00A0}164",
+                    "Čistý příjem 83,0\u{00A0}%: 2\u{00A0}276\u{00A0}375\u{00A0}Kč",
+                    "Průměrně za měsíc · 12 měsíců: 189\u{00A0}698\u{00A0}Kč",
+                    "Zálohy sociální a zdravotní: 222\u{00A0}080\u{00A0}Kč. platí se každý měsíc",
+                    "Zálohy na daň: 46\u{00A0}000\u{00A0}Kč",
+                    "Doplatek: 198\u{00A0}702\u{00A0}Kč. s přiznáním a přehledy",
+                    "Odkládat průměrně za měsíc: 20\u{00A0}392\u{00A0}Kč. (zálohy na daň + doplatek) ÷ 12",
+                ] {
+                    #expect(readings.contains(reading), "'\(reading)' is not read: \(readings)")
+                }
+                let title = try #require(accessibilityElement(labelled: "Jak odvody zaplatíte", in: window))
+                #expect(title.accessibilityRole?()?.rawValue == "AXHeading")
                 let barLabel = "Příjmy za rok 2026 (odhad): 2\u{00A0}743\u{00A0}157\u{00A0}Kč"
                 let bar = try #require(accessibilityElement(labelled: barLabel, in: window))
                 #expect(bar.accessibilityRole?() == .image)
+                // The heading of the composition stands above the bar, and under the calculation and the panel.
+                let heading = try #require(frameOfText(startingWith: "Z čeho se příjmy roku skládají", in: window))
+                let barFrame = try #require(bar.accessibilityFrame?())
+                let lowestRow = try #require(
+                    accessibilityElement(labelStartingWith: "Odkládat průměrně za měsíc: ", in: window)?
+                        .accessibilityFrame?())
+                #expect(heading.minY > barFrame.maxY, "The heading is at \(heading), the bar at \(barFrame)")
+                #expect(heading.maxY < lowestRow.minY, "The heading is at \(heading), the panel ends at \(lowestRow)")
                 for part in page.parts {
                     #expect(readings.contains("\(part.text), \(part.value)"), "no part \(part.text) in \(readings)")
                 }
@@ -673,7 +687,7 @@ struct PredictionWindowTests {
     }
 
     /// In a year that is over the card has only the part that was received and no note, and its subtitle says
-    /// "skutečnost".
+    /// "skutečnost". Its calculation and its panel are of the year as it was, with no sign of an estimate.
     @Test func theCardPrijmyOfAYearThatIsOverHasOnlyWhatWasReceived() async throws {
         let page = try PredictionSample.page(year: 2025)
         try await withCard(PredictionIncomeCard(page: page)) { window in
@@ -687,18 +701,16 @@ struct PredictionWindowTests {
                 #expect(!readings.contains { $0.hasPrefix("Vystaveno") || $0.hasPrefix("Koncepty") })
                 let income = "Příjmy za rok 2025: 2\u{00A0}931\u{00A0}160\u{00A0}Kč"
                 #expect(accessibilityElement(labelled: income, in: window) != nil)
-                #expect(
-                    readings.contains {
-                        $0.hasPrefix("Čistý příjem průměrně za měsíc, 199\u{00A0}441\u{00A0}Kč, za celý rok")
-                    })
-                #expect(readings.contains { $0.hasPrefix("Odkládat průměrně za měsíc, ") })
-                #expect(!readings.contains { $0.contains("odhad") })
+                #expect(readings.contains("Průměrně za měsíc · 12 měsíců: 199\u{00A0}441\u{00A0}Kč"))
+                #expect(readings.contains { $0.hasPrefix("Odkládat průměrně za měsíc: ") })
+                #expect(!readings.contains { $0.contains("odhad") || $0.contains("≈") })
             }
         }
     }
 
-    /// The card Příjmy of an estimate that is not complete shows no total, and its net income says why; what was
-    /// received is still a part of the bar with its amount.
+    /// The card Příjmy of an estimate that is not complete shows no total, and its calculation and its panel show a
+    /// dash for every value without saying why: the result card says it once. What was received is still a part of
+    /// the bar with its amount.
     @Test func anIncompleteEstimateShowsNoTotalInTheCardPrijmy() async throws {
         var input = PredictionSample.input(year: 2026)
         input.averageRates = [:]
@@ -712,10 +724,11 @@ struct PredictionWindowTests {
                 let readings = accessibilityReadings(in: window)
                 #expect(readings.contains("Příjmy za rok 2026 (odhad): —"))
                 #expect(readings.contains("Přišlo do 17.\u{00A0}10.\u{00A0}2026, 2\u{00A0}191\u{00A0}771\u{00A0}Kč"))
-                // The sentence that the estimate is incomplete stands once, in the result card, and not under the
-                // monthly figures.
-                #expect(readings.contains("Čistý příjem průměrně za měsíc (odhad), —"))
-                #expect(readings.contains("Odkládat průměrně za měsíc (odhad), —"))
+                // The sentence that the estimate is incomplete stands once, in the result card, and not in the rows.
+                #expect(readings.contains("Příjmy za rok 2026: —. bez DPH · peníze přijaté do 31.\u{00A0}12."))
+                #expect(readings.contains("Odvody: —"))
+                #expect(readings.contains("Průměrně za měsíc · 12 měsíců: —"))
+                #expect(readings.contains { $0.hasPrefix("Odkládat průměrně za měsíc: —") })
                 #expect(!readings.contains { $0.contains(PredictionBuilder.incompleteText) })
                 #expect(!readings.contains { $0.contains("2\u{00A0}743\u{00A0}157") || $0.contains("83,0") })
             }
@@ -723,41 +736,44 @@ struct PredictionWindowTests {
     }
 
     /// The card Příjmy of an estimate that is not complete, in the room it has at the least window with the sidebar
-    /// of its default width (938 points of page, 898 of card), has its three figures in one row: the two monthly
-    /// ones have no long note to wrap alone.
-    @Test func theThreeFiguresOfAnIncompleteCardPrijmyShareOneRowAtTheLeastWindow() async throws {
+    /// of its default width (938 points of page, 898 inside the padding of the card), has its calculation and its panel
+    /// side by side: the dashes are no wider than the figures.
+    @Test func theTwoBlocksOfAnIncompleteCardPrijmyStandSideBySideAtTheLeastWindow() async throws {
         var input = PredictionSample.input(year: 2026)
         input.averageRates = [:]
         let outcome = try PredictionOutcome.make(
             prediction: IncomePrediction.make(input), yearInput: PredictionSample.yearInput(year: 2026))
         let card = PredictionIncomeCard(page: PredictionBuilder.page(outcome)).frame(width: 938)
-        try await withHostedView(card, size: CGSize(width: 938, height: 600)) { window in
+        try await withHostedView(card, size: CGSize(width: 938, height: 700)) { window in
             try await withAccessibilityElements {
                 try await waitUntil { frameOfCard(labelled: "Příjmy", in: window) != nil }
 
-                let income = try textFrame(startingWith: "Příjmy za rok 2026 (odhad), ", in: window)
-                let net = try textFrame(startingWith: "Čistý příjem průměrně za měsíc (odhad), ", in: window)
-                let setAside = try textFrame(startingWith: "Odkládat průměrně za měsíc (odhad), ", in: window)
-                let isOneRow = abs(income.minY - net.minY) <= 1 && abs(net.minY - setAside.minY) <= 1
-                #expect(isOneRow, "\(income) \(net) \(setAside)")
+                let income = try labelFrame(startingWith: "Příjmy za rok 2026: ", in: window)
+                let title = try labelFrame(startingWith: "Jak odvody zaplatíte", in: window)
+                #expect(title.minX > income.maxX + 32 - 1, "\(income) \(title)")
+                #expect(abs(income.minY - title.minY) < 20, "\(income) \(title)")
             }
         }
     }
 
-    /// At the least width of the window the income, the net income and what to set aside stand in one row: at the same
-    /// height, left to right, 48 points apart.
-    @Test func theThreeFiguresOfPrijmyStandInOneRowAtTheLeastRoom() async throws {
+    /// At the least width of the window the calculation and the panel stand side by side, the panel 32 points to the
+    /// right of the values, its title level with the income but for the 2 points more that the panel has above it,
+    /// and the heading of the composition and the bar stand under both.
+    @Test func theTwoBlocksOfPrijmyStandSideBySideAtTheLeastRoomWithTheBarUnderThem() async throws {
         try await PredictionSample.withStoredSample { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     try await showPrediction(of: app, in: window)
 
-                    let income = try textFrame(startingWith: "Příjmy za rok 2026 (odhad), ", in: window)
-                    let net = try textFrame(startingWith: "Čistý příjem průměrně za měsíc (odhad), ", in: window)
-                    let setAside = try textFrame(startingWith: "Odkládat průměrně za měsíc (odhad), ", in: window)
-                    #expect(abs(income.minY - net.minY) <= 1 && abs(net.minY - setAside.minY) <= 1)
-                    #expect(abs(net.minX - income.maxX - 48) <= 1, "\(income) \(net)")
-                    #expect(abs(setAside.minX - net.maxX - 48) <= 1, "\(net) \(setAside)")
+                    let income = try labelFrame(startingWith: "Příjmy za rok 2026: ", in: window)
+                    let title = try labelFrame(startingWith: "Jak odvody zaplatíte", in: window)
+                    let setAside = try labelFrame(startingWith: "Odkládat průměrně za měsíc: ", in: window)
+                    let heading = try textFrame(startingWith: "Z čeho se příjmy roku skládají", in: window)
+                    #expect(abs(title.minX - income.maxX - 32 - 14) <= 1, "\(income) \(title)")
+                    // In the frames of a picture, from the top: the title is 2 points lower than the income.
+                    #expect(abs(title.minY - income.minY - 2) <= 1, "\(income) \(title)")
+                    #expect(heading.minY > setAside.maxY, "\(setAside) \(heading)")
+                    #expect(heading.minY > income.maxY, "\(income) \(heading)")
                 }
             }
         }
@@ -856,6 +872,14 @@ struct PredictionWindowTests {
             }
         }
         return found
+    }
+
+    /// The frame of the first element of `window` that VoiceOver reads under a label that starts with `prefix`, such
+    /// as a row of a bill or a heading, in points from the top left of its content. A row is framed by its texts.
+    private func labelFrame(startingWith prefix: String, in window: NSWindow) throws -> CGRect {
+        let screen = try #require(
+            accessibilityElement(labelStartingWith: prefix, in: window)?.accessibilityFrame?(), "No element \(prefix)")
+        return try pictureFrame(ofScreenFrame: screen, in: window)
     }
 
     /// Shows `card` alone in a window, 24 points from its edges, as wide as a large window's page has room for.

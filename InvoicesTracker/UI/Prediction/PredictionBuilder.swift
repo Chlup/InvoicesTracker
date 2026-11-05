@@ -23,9 +23,10 @@ import Foundation
 /// levies of a year that is over and that the engine worked out with the rules of another year
 /// (`TaxResult.rulesAreEstimate`): they are an estimate among figures that are not, so the sum of them, each of them
 /// in the legend of the bar and in the rows of its popover that follow from the levy, the amount of what is left to
-/// settle, the net income, which is the income less them, and what to set aside, which is made of them, have the
-/// sign. The advances never have it. The sums are in whole Kč, rounded half up from haléře, and the dates are written
-/// as everywhere in the app (`CzechFormat`).
+/// settle, and in the calculation of the card Příjmy the levies, the net income, which is the income less them, its
+/// average per month, the doplatek or the přeplatek and what to set aside, which are made of them, have the sign. The
+/// advances never have it. The sums are in whole Kč, rounded half up from haléře, and the dates are written as
+/// everywhere in the app (`CzechFormat`).
 nonisolated enum PredictionBuilder {
     // MARK: Texts
 
@@ -63,20 +64,17 @@ nonisolated enum PredictionBuilder {
         let monthsSub =
             "Měsíce s očekávanou fakturou předvyplňuje aplikace podle dosavadních faktur."
             + " Klepnutím je změníte, když víte víc – třeba u nové zakázky nebo když spolupráce končí."
+        let incomeLabel = "Příjmy za rok \(year)"
+        let incomeNote = "bez DPH · peníze přijaté do 31.\u{00A0}12."
         return PredictionPage(
             keyFigure: keyFigure(outcome), levyBar: levyBar(outcome), due: due(outcome), incomeSub: incomeSub,
-            incomeNote: "bez DPH · peníze přijaté do 31.\u{00A0}12.",
             incomeHead: isClosed ? "Příjmy za rok \(year)" : "Příjmy za rok \(year) (odhad)",
             incomeTotal: prediction.isComplete ? kc(ofHalere: prediction.incomeHalere) : "—",
-            parts: parts(prediction), netIncome: prediction.isComplete
-                ? netIncome(outcome)
-                : PredictionNetIncome(
-                    label: "Čistý příjem průměrně za měsíc (odhad)", amount: unknownAmount, sub: nil),
-            setAside: prediction.isComplete
-                ? setAside(outcome)
-                : PredictionSetAside(
-                    label: "Odkládat průměrně za měsíc (odhad)", amount: unknownAmount, sub: nil),
-            nextYearNote: nextYearNote(prediction),
+            calculation: prediction.isComplete
+                ? calculation(
+                    outcome, incomeLabel: incomeLabel, incomeNote: incomeNote, marksEstimate: marksLevies(outcome))
+                : incompleteCalculation(outcome, incomeLabel: incomeLabel, incomeNote: incomeNote),
+            parts: parts(prediction), nextYearNote: nextYearNote(prediction),
             banner: banner(
                 prediction, rulesAreEstimate: rulesAreEstimate, hasProvisionalIncome: hasProvisionalIncome),
             monthsHead: isClosed ? "Faktury po měsících" : "Kdy čekám faktury",
@@ -101,7 +99,8 @@ nonisolated enum PredictionBuilder {
 
     /// Whether the levies of the year have the sign of an estimate in front of them: the engine worked the year out
     /// with the rules of another year and the year is over, so that they are an estimate among figures that are not.
-    /// In a year in progress nothing of the result card has it, as the card is an estimate as a whole.
+    /// The figures of the calculation of the card Příjmy that are made of the levies follow it. In a year in progress
+    /// nothing of the result card or of the card Příjmy has it, as both are estimates as a whole.
     private static func marksLevies(_ outcome: PredictionOutcome) -> Bool {
         outcome.result.rulesAreEstimate && outcome.prediction.isClosed
     }
@@ -268,45 +267,6 @@ nonisolated enum PredictionBuilder {
         return min(1, max(0, Double(part) / Double(whole)))
     }
 
-    /// What the income of the year leaves after the levies (`NetIncome`): its average per month as the amount, and
-    /// under it the sum of the whole year, with the part of the income that the sum is (`IncomeShares`) while the
-    /// income is above zero. A part below zero or above the whole is shown as it is. The result is of 31 December, so
-    /// the average is over all twelve months. The caption says that the figure is an estimate in a year in progress, as
-    /// the head of the income does, and the two figures have the sign of an estimate only in a year that is over and
-    /// that the engine worked out with the rules of another year, as the levies they are made from have.
-    private static func netIncome(_ outcome: PredictionOutcome) -> PredictionNetIncome {
-        let result = outcome.result
-        let net = NetIncome(result)
-        let sign = marksLevies(outcome)
-        let share =
-            IncomeShares(result).map { " · " + BuilderText.share(tenths: $0.netTenths) + " příjmů po odvodech" } ?? ""
-        return PredictionNetIncome(
-            label: outcome.prediction.isClosed
-                ? "Čistý příjem průměrně za měsíc" : "Čistý příjem průměrně za měsíc (odhad)",
-            amount: estimate(CzechFormat.wholeKc(net.monthlyKc), when: sign),
-            sub: "za celý rok " + estimate(CzechFormat.wholeKc(net.yearKc), when: sign) + share)
-    }
-
-    /// What to put aside each month for the irregular levy payments (`PredictionOutcome.setAsideTotal`): the average
-    /// per month as the amount, and under it the sum of the whole year. The result is of 31 December, so the average is
-    /// over all twelve months. The caption says that the figure is an estimate in a year in progress, as the head of
-    /// the income does, and the two figures have the sign of an estimate only where the net income's have it.
-    private static func setAside(_ outcome: PredictionOutcome) -> PredictionSetAside {
-        let sign = marksLevies(outcome)
-        return PredictionSetAside(
-            label: outcome.prediction.isClosed ? "Odkládat průměrně za měsíc" : "Odkládat průměrně za měsíc (odhad)",
-            amount: estimate(CzechFormat.wholeKc(outcome.setAsideMonthly), when: sign),
-            sub: setAsideNote(outcome, total: estimate(CzechFormat.wholeKc(outcome.setAsideTotal), when: sign)))
-    }
-
-    /// The note under what to set aside, on Odhad odvodů and on Přehled: the sum of the whole year, made of the year's
-    /// tax advances and the doplatek, or, in a year without tax advances, only that it is the doplatek. That one has no
-    /// sum, as the sum would repeat the doplatek. `total` is the sum as the screen writes it, with or without the sign
-    /// of an estimate.
-    static func setAsideNote(_ outcome: PredictionOutcome, total: String) -> String {
-        outcome.result.balance(.tax).advancesPaid == 0
-            ? "jen doplatek, bez záloh na daň" : "za celý rok " + total + " · doplatek a zálohy na daň"
-    }
 
     /// The sum that is paid only in the next year, which is that year's income, or nil when there is none. The note
     /// names the year and not a month: a payment after 31 December need not come in January. It has no sign of an

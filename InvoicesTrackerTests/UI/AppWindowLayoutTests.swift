@@ -4410,66 +4410,89 @@ struct AppWindowLayoutTests {
     }
 
     /// What is wrong with the card Příjmy of Odhad odvodů for `page` in `window`, in words: it is missing; VoiceOver
-    /// does not read the income, the net income and what to set aside each as one phrase; the income and the net
-    /// income do not stand side by side, 48 points apart and level at the top, in the card; what to set aside does not
-    /// stand beside the net income, level at the top and 48 points from it, or, where the card is too narrow for three
-    /// figures in a row (the three and the two gaps are wider than the card inside its padding of 20, as at the
-    /// least room with the widest sidebar), at the left edge of the figures on the next row, 12 points under the
-    /// lower of the income and the net income, and only then; the bar of the income (14 points high) is
-    /// not 14 points under the lowest of the three; an item of the legend is not under the bar; or the note of the
-    /// money of next year (which only a year with such money has) is not under the legend. The origin of the screen is
-    /// at the bottom left, so what is above has the larger y. Empty when it stands so. Needs the accessibility
-    /// elements.
+    /// does not read a row of the calculation or of the panel of how the levies are paid as the one phrase of the row,
+    /// or the title of the panel as a heading; a row or the bar of the income (14 points high) is not within the card;
+    /// the calculation and the panel do not stand side by side in two columns of one width 32 points apart where the
+    /// card has the 712 points they need inside its padding of 20, or the panel not 16 points under the calculation in
+    /// the whole width where it has less (as at the least room with the widest sidebar), the texts of each row ending
+    /// with the value at the right edge of its column (of the panel's padding of 14 in the panel), so that no value is
+    /// cut or pushed out; the heading of the composition of the income is not under both, or the bar not 10 points
+    /// under the heading; an item of the legend is not under the bar; or the note of the money of next year (which
+    /// only a year with such money has) is not under the legend. VoiceOver frames a row by its texts: the space of 8
+    /// points above and below them is not in it. The origin of the screen is at the bottom left, so what is above has
+    /// the larger y. Empty when it stands so. Needs the accessibility elements.
     private func problems(ofTheCardPrijmyOf page: PredictionPage, in window: NSWindow) -> [String] {
         guard let card = frameOfCard(labelled: "Příjmy", in: window) else {
             return ["No card Příjmy"]
         }
-        let net = page.netIncome
-        let incomePhrase = [page.incomeHead, page.incomeTotal, page.incomeNote].joined(separator: ", ")
-        let netPhrase = [net.label, net.amount, net.sub].compactMap { $0 }.joined(separator: ", ")
-        guard let income = frameOfText(startingWith: incomePhrase, in: window) else {
-            return ["The income is not read as one phrase: \(incomePhrase)"]
+        var found: [String] = []
+        func frames(of rows: [BillRow]) -> [CGRect] {
+            rows.compactMap { row in
+                guard let frame = accessibilityElement(labelled: row.spokenText, in: window)?.accessibilityFrame?()
+                else {
+                    found.append("No row is read as '\(row.spokenText)'")
+                    return nil
+                }
+                return frame
+            }
         }
-        guard let netIncome = frameOfText(startingWith: netPhrase, in: window) else {
-            return ["The net income is not read as one phrase: \(netPhrase)"]
+        let rows = frames(of: page.calculation.rows)
+        let payments = frames(of: page.calculation.payRows)
+        guard let titleElement = accessibilityElement(labelled: page.calculation.payTitle, in: window),
+            let title = titleElement.accessibilityFrame?()
+        else {
+            return found + ["No title of the panel"]
         }
-        let setAsideParts = [page.setAside.label, page.setAside.amount, page.setAside.sub]
-        let setAsidePhrase = setAsideParts.compactMap { $0 }.joined(separator: ", ")
-        guard let setAside = frameOfText(startingWith: setAsidePhrase, in: window) else {
-            return ["What to set aside is not read as one phrase: \(setAsidePhrase)"]
+        if titleElement.accessibilityRole?()?.rawValue != "AXHeading" {
+            found.append("The title of the panel is not a heading")
+        }
+        guard let heading = frameOfText(startingWith: "Z čeho se příjmy roku skládají", in: window) else {
+            return found + ["No heading of the composition of the income"]
         }
         guard let bar = accessibilityElement(labelled: "\(page.incomeHead): \(page.incomeTotal)", in: window)?
             .accessibilityFrame?()
         else {
-            return ["No bar of the income"]
+            return found + ["No bar of the income"]
         }
-        var found: [String] = []
+        guard found.isEmpty, let lastRow = rows.last, let lastPayment = payments.last else { return found }
         let inside = card.insetBy(dx: -0.5, dy: -0.5)
-        for (name, frame) in [
-            ("The income", income), ("The net income", netIncome), ("What to set aside", setAside), ("The bar", bar),
-        ]
-        where !inside.contains(frame) {
-            found.append("\(name) is not within the card Příjmy: \(frame), the card \(card)")
+        for frame in rows + payments + [title, heading, bar] where !inside.contains(frame) {
+            found.append("A part is not within the card Příjmy: \(frame), the card \(card)")
         }
-        if (income.maxY - netIncome.maxY).magnitude > 1 || (netIncome.minX - income.maxX - 48).magnitude > 1 {
-            found.append("The net income is not beside the income, 48 points from it: \(netIncome), \(income)")
+        let left = card.minX + 20
+        let inner = card.width - 40
+        let beside = inner >= 712
+        let column = beside ? (inner - 32) / 2 : inner
+        let panelLeft = beside ? left + column + 32 : left
+        for row in rows {
+            if row.minX < left - 0.5 || (row.maxX - (left + column)).magnitude > 1 {
+                found.append("A row of the calculation is not in its column, \(left)–\(left + column): \(row)")
+            }
         }
-        let needsTwoRows = income.width + netIncome.width + setAside.width + 96 > card.width - 40 + 0.5
-        let isBesideNet =
-            (netIncome.maxY - setAside.maxY).magnitude <= 1 && (setAside.minX - netIncome.maxX - 48).magnitude <= 1
-        let isOnNextRow =
-            (setAside.minX - income.minX).magnitude <= 1
-            && (min(income.minY, netIncome.minY) - 12 - setAside.maxY).magnitude <= 1
-        if needsTwoRows ? !isOnNextRow : !isBesideNet {
-            let place =
-                needsTwoRows ? "under both, 12 points under the lower" : "beside the net income, 48 points from it"
-            found.append("What to set aside is not \(place): \(setAside), \(netIncome), \(income), the card \(card)")
+        if (title.minX - (panelLeft + 14)).magnitude > 1 {
+            found.append("The title of the panel is not 14 points inside it, at \(panelLeft + 14): \(title)")
+        }
+        for row in payments {
+            if row.minX < panelLeft + 14 - 0.5 || (row.maxX - (panelLeft + column - 14)).magnitude > 1 {
+                found.append("A row of the panel is not inside it from \(panelLeft + 14): \(row), \(card)")
+            }
+        }
+        // Side by side, the texts of the first row are 8 points under the top of the blocks, and the title of the
+        // panel 10; one under the other, the title is 10 points inside the panel, which is 16 points under the last
+        // row, which has 8 points of its own under its texts.
+        let titleTop: CGFloat = beside ? rows[0].maxY - 2 : lastRow.minY - 34
+        if (title.maxY - titleTop).magnitude > 1.5 {
+            let place = beside ? "level with the calculation" : "16 points under the calculation"
+            found.append("The panel is not \(place): \(title), \(rows[0]), \(lastRow)")
+        }
+        if heading.maxY > min(lastRow.minY, lastPayment.minY) - 0.5 {
+            found.append("The heading of the composition is not under the calculation and the panel: \(heading)")
         }
         if (bar.height - 14).magnitude > 0.5 {
             found.append("The bar of the income is \(bar.height) points high, not 14")
         }
-        if (min(income.minY, netIncome.minY, setAside.minY) - 14 - bar.maxY).magnitude > 1.5 {
-            found.append("The bar is not 14 points under the figures: \(bar), \(income), \(netIncome), \(setAside)")
+        if (heading.minY - 10 - bar.maxY).magnitude > 1.5 {
+            found.append("The bar is not 10 points under the heading: \(bar), \(heading)")
         }
         var legendBottom = bar.minY
         for part in page.parts {
@@ -4477,7 +4500,7 @@ struct AppWindowLayoutTests {
                 found.append("No item of the legend for \(part.text)")
                 continue
             }
-            if item.maxY > bar.minY - 11 {
+            if item.maxY > bar.minY - 9.5 {
                 found.append("The item \(part.text) is not under the bar: \(item), \(bar)")
             }
             legendBottom = min(legendBottom, item.minY)

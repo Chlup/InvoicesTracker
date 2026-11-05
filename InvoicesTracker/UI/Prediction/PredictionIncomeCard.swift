@@ -2,14 +2,11 @@ import SwiftUI
 
 /// The sizes and gaps of the card Příjmy that its parts do not set themselves, in points.
 private nonisolated enum PredictionIncomeCardMetrics {
-    /// The space between the figures where they stand side by side.
-    static let figureSpacing: CGFloat = 48
+    /// The space between a hairline and the part under it.
+    static let hairlineGap: CGFloat = 14
 
-    /// The space between the hairline and the figures under it.
-    static let figuresTop: CGFloat = 12
-
-    /// The space between the figures and the bottom of their part of the card.
-    static let figuresBottom: CGFloat = 2
+    /// The space between the heading of the composition of the income, its bar and the legend of the bar.
+    static let compositionSpacing: CGFloat = 10
 
     /// The space between two items of the legend of the bar on a row, and between two rows.
     static let legendSpacing: CGFloat = 24
@@ -19,48 +16,47 @@ private nonisolated enum PredictionIncomeCardMetrics {
     static let legendItemSpacing: CGFloat = 6
 }
 
-/// The card Příjmy of Odhad odvodů: under its title and the line that says what the estimate counts, a hairline and the
-/// three figures side by side (the income of the year with its note, the net income per month under a green dot, with
-/// the sum of the whole year under it, and what to set aside per month, with the sum of the year), then the bar of the
-/// income and its legend in one line that wraps, and, where some money is paid only in the next year, the note about
-/// it in the tone of an estimate.
+/// The card Příjmy of Odhad odvodů: under its title and the line that says what the estimate counts, a hairline and
+/// the calculation of the year (the income less the levies, what that leaves and that per month, under the green dot)
+/// beside the panel of how the levies are paid, or one under the other where the card is too narrow for both
+/// (`PredictionCalculationView`); then a hairline, the heading "Z čeho se příjmy roku skládají" in callout and
+/// secondary text, the bar of the income and its legend in one line that wraps, and, where some money is paid only in
+/// the next year, the note about it in the tone of an estimate.
 ///
-/// VoiceOver reads the card as a group under "Příjmy", each figure and each item of the legend as one phrase, and the
-/// bar as a picture named by the head of the income and its total.
+/// VoiceOver reads the card as a group under "Příjmy", each row of the calculation and of the panel and each item of
+/// the legend as one phrase, the title of the panel as a heading, and the bar as a picture named by the head of the
+/// income and its total.
 struct PredictionIncomeCard: View {
     let page: PredictionPage
 
     var body: some View {
         Card(title: "Příjmy", subtitle: page.incomeSub) {
-            figures
-            PredictionIncomeBar(parts: page.parts)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(page.incomeHead): \(page.incomeTotal)")
-                .accessibilityAddTraits(.isImage)
-            legend
+            part {
+                PredictionCalculationView(calculation: page.calculation)
+            }
+            part {
+                VStack(alignment: .leading, spacing: PredictionIncomeCardMetrics.compositionSpacing) {
+                    Text(verbatim: "Z čeho se příjmy roku skládají")
+                        .font(Typography.callout)
+                        .foregroundStyle(Palette.text2)
+                    PredictionIncomeBar(parts: page.parts)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(page.incomeHead): \(page.incomeTotal)")
+                        .accessibilityAddTraits(.isImage)
+                    legend
+                }
+            }
             if let note = page.nextYearNote {
                 Note(.attention, icon: .none, text: note)
             }
         }
     }
 
-    /// The income, the net income and what to set aside under a hairline, 48 points apart, each as wide as its words.
-    /// While the estimate is incomplete the two monthly figures have no note.
-    private var figures: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    /// `content` under a hairline, 14 points under it.
+    private func part(@ViewBuilder _ content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: PredictionIncomeCardMetrics.hairlineGap) {
             Hairline()
-            FigureRow(spacing: PredictionIncomeCardMetrics.figureSpacing) {
-                FigureTile(FigureTileData(label: page.incomeHead, figure: page.incomeTotal, note: page.incomeNote))
-                FigureTile(
-                    FigureTileData(
-                        label: page.netIncome.label, figure: page.netIncome.amount, note: page.netIncome.sub,
-                        marksNetIncome: true))
-                FigureTile(
-                    FigureTileData(
-                        label: page.setAside.label, figure: page.setAside.amount, note: page.setAside.sub))
-            }
-            .padding(.top, PredictionIncomeCardMetrics.figuresTop)
-            .padding(.bottom, PredictionIncomeCardMetrics.figuresBottom)
+            content()
         }
     }
 
