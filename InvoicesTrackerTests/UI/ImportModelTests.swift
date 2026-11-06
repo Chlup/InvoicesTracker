@@ -430,24 +430,29 @@ struct ImportModelTests {
         #expect(!model.canFillSupplier)
     }
 
-    @Test func importIsNotOfferedWhileThePreviewIsMadeAndNoStalePreviewLandsAfterwards() async throws {
+    @Test(.hangGuard)
+    func importIsNotOfferedWhileThePreviewIsMadeAndNoStalePreviewLandsAfterwards() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
         let model = ImportModel(app: app)
         await model.addFiles([try sampleURL()])
         #expect(model.canImport)
         let url = try sampleURL("fakturoid_reimport")
 
+        // The database is held, so the preview of the file added now cannot read it, and cannot end, until the hold
+        // ends. Nothing the test waits for meanwhile needs the database: the refused import does not reach it.
+        let hold = DatabaseHold(database)
+        defer { hold.end() }
         // The file is listed at once and its preview is still being made.
         let adding = Task { await model.addFiles([url]) }
-        while model.files.count < 2 {
-            await Task.yield()
-        }
+        try await waitUntil { model.files.count == 2 }
         #expect(model.previewing && !model.canImport)
         await model.importCollected()
         #expect(!model.running && model.summary == nil && model.files.count == 2)
 
+        hold.end()
         await adding.value
 
         #expect(!model.previewing && model.canImport)

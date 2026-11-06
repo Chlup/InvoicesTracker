@@ -1,5 +1,4 @@
 import Foundation
-import os
 import Testing
 @testable import InvoicesTracker
 
@@ -1014,40 +1013,5 @@ struct BudgetModelTests {
             #expect(row(.costs, of: again)?.amountText == "20\u{00A0}000")
             #expect(row(.savings, of: again)?.percentText == "15,0")
         }
-    }
-}
-
-/// Keeps a database busy until `end()`, so that what is asked of it meanwhile waits: for a test that needs a write to
-/// be still running while something else happens. The hold runs on the actor of the database and keeps its thread
-/// while it waits, so it may only hold a database that nothing the test waits for needs any more, such as one that a
-/// restore has closed and replaced. If the database never runs the hold, the init records an issue after 5 seconds and
-/// returns, so that the test ends instead of hanging.
-private final class DatabaseHold: Sendable {
-    private let release = DispatchSemaphore(value: 0)
-    private let isHolding = OSAllocatedUnfairLock(initialState: false)
-
-    /// Holds `database`, and returns once the hold runs on its actor: whatever is asked of the database from now on
-    /// waits for `end()`. It also returns, with an issue recorded, when the hold has not started after 5 seconds.
-    init(_ database: Database) {
-        Task.detached { [release, isHolding] in
-            _ = try? await database.read { _ in
-                isHolding.withLock { $0 = true }
-                release.wait()
-            }
-            isHolding.withLock { $0 = true }
-        }
-        let deadline = Date.now.addingTimeInterval(5)
-        while !isHolding.withLock({ $0 }) {
-            guard Date.now < deadline else {
-                Issue.record("The hold on the database did not start within 5 seconds.")
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.001)
-        }
-    }
-
-    /// Ends the hold: what was asked of the database runs. Ending it again does nothing more.
-    func end() {
-        release.signal()
     }
 }
