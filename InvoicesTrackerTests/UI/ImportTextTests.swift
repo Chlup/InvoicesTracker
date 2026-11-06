@@ -3,8 +3,8 @@ import Testing
 @testable import InvoicesTracker
 
 /// The words of the Import screen that are put together from the summary of an import: its counts, its lines, the lists
-/// of what is to check, kept and not added, the line of the last import and the size of a file. In every expected
-/// string `\u{00A0}` is the no-break space.
+/// of what is to check and not added, the line of the last import and the size of a file. In every expected string
+/// `\u{00A0}` is the no-break space.
 struct ImportTextTests {
     private let summary = ImportSummary(
         files: ["a.csv", "b.csv"], added: 11, updated: 2, unchanged: 5, skipped: 3, needsReview: 4,
@@ -48,19 +48,18 @@ struct ImportTextTests {
     @Test func theListsHaveATitleWithTheirCountANoteAndTheirItemsAndAreLeftOutWhenEmpty() {
         let lists = ImportText.lists(of: summary)
 
-        #expect(lists.map(\.title) == ["Ke kontrole (2)", "Ponecháno, jak je v aplikaci (1)", "Nepřidáno (1)"])
+        #expect(lists.map(\.title) == ["Ke kontrole (2)", "Nepřidáno (1)"])
         #expect(lists[0].items == summary.reviewItems)
-        #expect(lists[1].items == summary.keptItems)
-        #expect(lists[2].items == summary.conflictItems)
+        #expect(lists[1].items == summary.conflictItems)
         #expect(
             lists[0].note
                 == "Tyto faktury se nezapočítají do příjmů, dokud je nevyřešíte: označte je jako zaplacené, smažte je"
                 + " nebo zapište úpravu příjmů v Nastavení › Rok.")
-        #expect(lists[1].note == "Tyto faktury jste po importu změnili v aplikaci, proto je nový import nepřepsal.")
-        #expect(lists[2].note == "Tyto řádky se nepodařilo přidat, důvod je u každého.")
+        #expect(lists[1].note == "Tyto řádky se nepodařilo přidat, důvod je u každého.")
         #expect(ImportText.lists(of: ImportSummary()).isEmpty)
+        // An import overwrites what was changed in the app, so the kept rows of an older log are not listed.
         let onlyKept = ImportSummary(keptItems: ["x"])
-        #expect(ImportText.lists(of: onlyKept).map(\.title) == ["Ponecháno, jak je v aplikaci (1)"])
+        #expect(ImportText.lists(of: onlyKept).isEmpty)
     }
 
     // MARK: The last import

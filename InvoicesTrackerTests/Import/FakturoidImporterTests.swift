@@ -258,7 +258,7 @@ struct FakturoidImporterTests {
 
     // MARK: A changed export
 
-    @Test func aChangedExportUpdatesWhatWasNotChangedKeepsWhatWasAndFlagsWhatWasCancelled() async throws {
+    @Test func aChangedExportOverwritesAppChangesTakesInAnAppInvoiceAndFlagsWhatWasCancelled() async throws {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
         let importer = makeImporter(database, http: try cnb())
@@ -280,18 +280,30 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, [try sampleURL("fakturoid_reimport")])
 
-        // Row 3 is updated, row 1 is kept, row 14 is a conflict, row 2 is flagged and rows 4 and 5 are skipped.
-        #expect(summary.added == 0 && summary.updated == 1 && summary.unchanged == 8 && summary.skipped == 2)
-        #expect(summary.keptChangedInApp == 1)
-        #expect(summary.keptItems == ["20260902 — změněno v aplikaci — ponecháno"])
-        #expect(summary.conflicts == 1 && summary.conflictItems.count == 1)
-        #expect(summary.conflictItems.first?.hasPrefix("20261102 — ") == true)
+        // Rows 1, 3 and 14 are updated, row 2 is flagged and rows 4 and 5 are skipped.
+        #expect(summary.added == 0 && summary.updated == 3 && summary.unchanged == 8 && summary.skipped == 2)
+        #expect(summary.keptChangedInApp == 0 && summary.keptItems.isEmpty)
+        #expect(summary.conflicts == 0 && summary.conflictItems.isEmpty)
         #expect(summary.flaggedCancelled == 1 && summary.needsReview == 0)
         #expect(summary.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
         #expect(summary.newClients == 0 && summary.filledClients == 0)
-        // The invoice changed in the app and the invoice made in the app are exactly as they were.
-        #expect(try await invoice("20260902", in: database) == edited)
-        #expect(try await invoice("20261102", in: database) == appInvoice)
+        // The change in the app is overwritten by the changed row, and the payment is converted again for the new
+        // amounts, on the same day.
+        let overwritten = try await invoice("20260902", in: database)
+        #expect(overwritten.id == edited.id && overwritten.note.isEmpty && overwritten.netMinor == 460_000)
+        #expect(
+            overwritten.payment
+                == Payment(
+                    date: civilDate("2026-10-15"), conversion: .czk, czkNetHalere: 460_000, czkVatHalere: 96_600))
+        #expect(
+            overwritten.source
+                == .imported(fakturoidID: "5001", fingerprint: reimport[0].fingerprint, changedInApp: false))
+        // The invoice made in the app with the number of row 14 is that invoice of Fakturoid now.
+        let takenIn = try await invoice("20261102", in: database)
+        #expect(takenIn.id == appInvoice.id && takenIn.items.map(\.description) == ["Import z Fakturoidu"])
+        #expect(
+            takenIn.source
+                == .imported(fakturoidID: "5014", fingerprint: reimport[13].fingerprint, changedInApp: false))
         // The updated invoice has its payment.
         let updated = try await invoice("20261001", in: database)
         #expect(updated.number == "2026-10-01")
@@ -310,7 +322,7 @@ struct FakturoidImporterTests {
         let receipts = try await database.receipts(year: 2026)
         #expect(!receipts.contains { $0.source == .invoice(flagged.id) })
         #expect(
-            receipts.map(\.source) == [.invoice(edited.id), .invoice(updated.id)])
+            receipts.map(\.source) == [.invoice(overwritten.id), .invoice(updated.id)])
         #expect(receipts.map(\.day) == [civilDate("2026-10-15"), civilDate("2026-11-03")])
     }
 
@@ -910,13 +922,12 @@ struct FakturoidImporterTests {
         let summary = try await importFiles(importer, [url])
 
         #expect(summary.flaggedCancelled == 1 && summary.keptChangedInApp == 0 && summary.updated == 0)
-        #expect(
-            summary.reviewItems == ["20260902 — zrušeno ve Fakturoidu a změněno v aplikaci — ponecháno ke kontrole"])
+        #expect(summary.reviewItems == ["20260902 — zrušeno ve Fakturoidu"])
         let stored = try await invoice("20260902", in: database)
         var expected = edited
         expected.review = ReviewFlag(reason: "zrušeno ve Fakturoidu")
         if case .imported(let id, _, _) = edited.source {
-            expected.source = .imported(fakturoidID: id, fingerprint: cancelledRow.fingerprint, changedInApp: true)
+            expected.source = .imported(fakturoidID: id, fingerprint: cancelledRow.fingerprint, changedInApp: false)
         }
         #expect(stored == expected)
         #expect(stored.payment != nil && stored.note == "Domluveno telefonicky")
@@ -1045,7 +1056,9 @@ struct FakturoidImporterTests {
         let summary = try await importFiles(makeImporter(database, http: try cnb()), [url])
 
         #expect(summary.added == 11 && summary.skipped == 2 && summary.needsReview == 4)
-        #expect(try await invoice("20261008", in: database).items[0].description == "Konzultace \"říjen\", 2. část")
+        // The quoted fields with commas are read whole.
+        let dollars = try await invoice("20260901", .usd, in: database)
+        #expect(dollars.client.name == "Beta Labs, Inc." && dollars.client.city == "Austin, TX")
     }
 
     @Test func noFilesIsNoImport() async throws {

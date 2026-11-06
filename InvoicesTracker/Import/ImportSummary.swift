@@ -3,7 +3,7 @@ import Foundation
 /// What an import did, for the Import screen to show and for the import log to keep (as JSON).
 ///
 /// It holds numbers and the lines that go with them, and it holds no amounts. A line is a number of an invoice and
-/// what became of it: "20260902 — změněno v aplikaci — ponecháno".
+/// what became of it: "20261003 — záporná částka".
 nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// The names of the files.
     var files: [String] = []
@@ -23,10 +23,11 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// Invoices added or updated as "ke kontrole": not counted in income until they are resolved.
     var needsReview = 0
 
-    /// Rows not applied because the invoice was changed in the app.
+    /// Rows not applied because the invoice was changed in the app, as the logs of older imports say. An import
+    /// overwrites what was changed in the app now, so it writes 0; the field stays so that those logs still decode.
     var keptChangedInApp = 0
 
-    /// Rows that could not be added: the number is taken by an invoice of the app, to name one.
+    /// Invoices that could not be added: the number is taken by an invoice in another currency, to name one.
     var conflicts = 0
 
     /// Invoices imported earlier that are cancelled in Fakturoid now and are held for review, not counted.
@@ -41,7 +42,8 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// The invoices to check (see `needsReview` and `flaggedCancelled`) and the notes on countries that are no codes.
     var reviewItems: [String] = []
 
-    /// The rows kept as the app has them.
+    /// The rows kept as the app had them, as the logs of older imports say. An import writes none now; the field stays
+    /// so that those logs still decode.
     var keptItems: [String] = []
 
     /// The rows that could not be added.
@@ -60,12 +62,11 @@ nonisolated extension ImportSummary {
     /// The summary of an import that does what `plan` says.
     init(plan: ImportPlan, files: [String], exportSupplier: Supplier?) {
         self.init(
-            files: files, added: plan.inserts.count, updated: plan.updates.count, unchanged: plan.unchanged.count,
-            skipped: plan.skipped.count,
+            files: files, added: plan.inserts.count, updated: plan.updates.count,
+            unchanged: plan.unchangedNumbers.count, skipped: plan.skipped.count,
             needsReview: (plan.inserts + plan.updates).filter { $0.review != nil }.count,
-            keptChangedInApp: plan.kept.count, conflicts: plan.conflicts.count,
-            flaggedCancelled: plan.flaggedCancelled.count, newClients: plan.newClients.count,
-            filledClients: plan.clientUpdates.count, reviewItems: plan.reviewItems, keptItems: plan.kept,
+            conflicts: plan.conflicts.count, flaggedCancelled: plan.flaggedCancelled.count,
+            newClients: plan.newClients.count, filledClients: plan.clientUpdates.count, reviewItems: plan.reviewItems,
             conflictItems: plan.conflicts, exportSupplier: exportSupplier,
             newestYear: (plan.inserts + plan.updates + plan.flaggedCancelled).map(\.issueDate.year).max()
         )

@@ -57,8 +57,9 @@ nonisolated enum ImportText {
         [headline(of: summary), clientsLine(of: summary)]
     }
 
-    /// The lists under the summary: what is to check, what the app kept as it had it, and what could not be added. A
-    /// list with no item is left out.
+    /// The lists under the summary: what is to check, and what could not be added. A list with no item is left out.
+    /// The rows that the logs of older imports kept as the app had them are not listed: an import overwrites what was
+    /// changed in the app now.
     static func lists(of summary: ImportSummary) -> [ImportList] {
         var lists: [ImportList] = []
         if !summary.reviewItems.isEmpty {
@@ -68,13 +69,6 @@ nonisolated enum ImportText {
                     note: "Tyto faktury se nezapočítají do příjmů, dokud je nevyřešíte: označte je jako zaplacené,"
                         + " smažte je nebo zapište úpravu příjmů v Nastavení › Rok.",
                     items: summary.reviewItems))
-        }
-        if !summary.keptItems.isEmpty {
-            lists.append(
-                ImportList(
-                    title: "Ponecháno, jak je v aplikaci (\(summary.keptItems.count))",
-                    note: "Tyto faktury jste po importu změnili v aplikaci, proto je nový import nepřepsal.",
-                    items: summary.keptItems))
         }
         if !summary.conflictItems.isEmpty {
             lists.append(

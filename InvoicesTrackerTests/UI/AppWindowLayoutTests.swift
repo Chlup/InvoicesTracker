@@ -5136,8 +5136,9 @@ struct AppWindowLayoutTests {
             await gate.untilARequestWaits()
         case .done:
             await gate.open()
-            // An invoice of the app has the number of one of the rows: a line of what could not be added.
-            try await #require(app.database).saveInvoice(Invoice.fixture(number: "20261008"))
+            // An invoice of the app in euros has the number of one of the rows: a line of what could not be added.
+            try await #require(app.database).saveInvoice(
+                Invoice.fixture(number: "20261008", currency: .eur, vatMode: VatMode.none))
             await model.importFiles([sample])
         case .failed:
             await gate.open()

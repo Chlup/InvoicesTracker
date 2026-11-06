@@ -91,8 +91,10 @@ nonisolated enum InvoiceSource: Sendable, Hashable, Codable {
     /// Written in the app.
     case app
 
-    /// Read from a Fakturoid export. The fingerprint identifies the row as it was last imported, and
-    /// `changedInApp` says the invoice has been changed in the app since, so a later import must leave it alone.
+    /// Read from a Fakturoid export. The fingerprint identifies the CSV row as it was last imported (empty while only
+    /// an ISDOC file of the invoice is), and `changedInApp` says the invoice has been changed in the app since. The
+    /// import does not read it: Fakturoid is the source of truth, and an import saves the invoices it updates as not
+    /// changed in the app.
     case imported(fakturoidID: String, fingerprint: String, changedInApp: Bool)
 }
 

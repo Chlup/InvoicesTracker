@@ -6,7 +6,7 @@ import Testing
 /// Import in a window of its own, made as the app makes it, in a light and in a dark appearance, and looked at as the
 /// pixels of the window and the frames VoiceOver reads show it: the zone where the files are dropped, the card of the
 /// progress with a block for each file, the green box of the summary, the offer to fill in the supplier, and the lists
-/// of what is to check, kept and not added. The page is shown alone in a tall window so that it needs no scrolling.
+/// of what is to check and not added. The page is shown alone in a tall window so that it needs no scrolling.
 @Suite(.serialized, .settlesBackups)
 @MainActor
 struct ImportWindowTests {
@@ -80,8 +80,9 @@ struct ImportWindowTests {
         let gate = Gate()
         await gate.open()
         let app = try await makeApp(in: directory, gate: gate)
-        // An invoice of the app has the number of one of the rows: a line of what could not be added.
-        try await #require(app.database).saveInvoice(Invoice.fixture(number: "20261008"))
+        // An invoice of the app in euros has the number of one of the rows: a line of what could not be added.
+        try await #require(app.database).saveInvoice(
+            Invoice.fixture(number: "20261008", currency: .eur, vatMode: VatMode.none))
         await app.importModel.importFiles([try fixtureURL("fakturoid_sample", "csv")])
         #expect(app.importModel.canFillSupplier)
 

@@ -383,7 +383,7 @@ extension Database {
         try write { connection in
             let existing = try invoicesOfRows(job.rows, in: connection)
             let plan = ImportPlanner.plan(
-                rows: job.rows,
+                sources: ImportSources(rows: job.rows, isdocs: []),
                 existingInvoices: existing,
                 clients: try clients(),
                 knownCurrencies: job.knownCurrencies,
