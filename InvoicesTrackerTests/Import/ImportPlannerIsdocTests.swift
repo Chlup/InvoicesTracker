@@ -1097,6 +1097,80 @@ struct ImportPlannerIsdocTests {
         #expect(both.reviewItems == ["20260902 — zaplaceno bez data platby"])
     }
 
+    @Test func aResolvedHoldThatDisplacedAFlagOfTheRowStaysResolvedWhenTheSameRowComesAgain() throws {
+        // Paid without a date: held for review at the first import, and not resolved before the hold.
+        let row = try FakturoidCSV.parsed(Self.crownRow.merging(["Paid on": ""]) { $1 })
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let first = applied(plan(rows: [row]))
+        let flagged = try #require(first.invoices.first)
+        let held = try #require(
+            plan(rows: [row], isdocs: [file, other], existing: [flagged], clients: first.clients).updates.first)
+        #expect(held.review == Self.differingFlag)
+        // The person resolves the hold by entering the payment.
+        var resolved = resolvedInApp(held)
+        let entered = Payment.fixture(on: "2026-09-10", net: 504_000, vat: 105_840)
+        resolved.payment = entered
+
+        let rowAlone = plan(rows: [row], existing: [resolved], clients: first.clients)
+        let withIsdoc = plan(rows: [row], isdocs: [file], existing: [resolved], clients: first.clients)
+
+        // The row the invoice took is unchanged, so it is not applied again over what the person did.
+        #expect(rowAlone.unchangedNumbers == ["20260902"] && rowAlone.invoiceCount == 0)
+        // The ISDOC file was never applied, so it is; the resolution and the payment stay.
+        let updated = try #require(withIsdoc.updates.first)
+        #expect(updated.review == nil && updated.payment == entered && withIsdoc.reviewItems.isEmpty)
+        #expect(updated.items == IsdocInvoiceBuilder.items(of: file).items)
+    }
+
+    @Test func aResolvedHoldThatDisplacedACancellationStaysResolvedWhenTheSameCancelledRowComesAgain() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let cancelled = try FakturoidCSV.parsed(
+            Self.crownRow.merging(["Status": "cancelled", "Cancelled at": "2026-09-20 09:00:00"]) { $1 })
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let fromCsv = applied(plan(rows: [row], payments: [row.fingerprint: try payment(of: row)]))
+        let flagged = try #require(
+            plan(rows: [cancelled], existing: fromCsv.invoices, clients: fromCsv.clients).flaggedCancelled.first)
+        let held = try #require(
+            plan(isdocs: [file, other], existing: [flagged], clients: fromCsv.clients).updates.first)
+        let resolved = resolvedInApp(held)
+
+        // A flag the person resolved stays resolved: the same cancelled row, alone or with an ISDOC file, is unchanged.
+        for again in [
+            plan(rows: [cancelled], existing: [resolved], clients: fromCsv.clients),
+            plan(rows: [cancelled], isdocs: [file], existing: [resolved], clients: fromCsv.clients),
+        ] {
+            #expect(again.unchangedNumbers == ["20260902"] && again.invoiceCount == 0)
+            #expect(again.flaggedCancelled.isEmpty && again.reviewItems.isEmpty)
+        }
+    }
+
+    @Test func aResolvedHoldOfAnInvoiceHeldTheOldWayStaysResolvedWhenTheSameRowComesAgain() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row)]
+        let fromCsv = applied(plan(rows: [row]))
+        var heldTheOldWay = try #require(fromCsv.invoices.first)
+        heldTheOldWay.review = Self.differingFlag
+
+        // Held again for two ISDOC files that differ, with its row or without it, and then resolved by the person,
+        // who enters the payment.
+        for rows in [[], [row]] {
+            let held = try #require(
+                plan(rows: rows, isdocs: [file, other], existing: [heldTheOldWay], clients: fromCsv.clients)
+                    .updates.first)
+            var resolved = resolvedInApp(held)
+            let entered = Payment.fixture(on: "2026-09-10", net: 504_000, vat: 105_840)
+            resolved.payment = entered
+
+            let rowAlone = plan(rows: [row], existing: [resolved], clients: fromCsv.clients, payments: payments)
+
+            #expect(rowAlone.unchangedNumbers == ["20260902"] && rowAlone.invoiceCount == 0)
+        }
+    }
+
     @Test func mixedVatIsNotAddedWithItsReason() throws {
         let plan = plan(isdocs: [try isdoc("mixed-vat")])
 

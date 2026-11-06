@@ -437,7 +437,7 @@ nonisolated extension ImportPlanner {
 
         /// A group whose invoice is there and whose files do not differ: the ISDOC invoice is applied when it differs
         /// from the file the invoice was last imported from, and the row when the invoice was made in the app or the
-        /// row differs from the one it was last imported from. When neither is, the invoice is unchanged.
+        /// row differs from the one it has taken (`takenRow(of:)`). When neither is, the invoice is unchanged.
         ///
         /// An invoice still held because files of it differed ends its hold only with a group that brings every kind of
         /// file it is held for (`heldKinds(of:)`). Such a group applies the files of those kinds whatever the invoice
@@ -455,8 +455,8 @@ nonisolated extension ImportPlanner {
                 switch existing.source {
                 case .app:
                     applyingRow = true
-                case .imported(_, let fingerprint, _):
-                    applyingRow = fingerprint != row.fingerprint
+                case .imported:
+                    applyingRow = Self.takenRow(of: existing) != row.fingerprint
                 }
             }
             let held = Self.heldKinds(of: existing)
@@ -490,16 +490,17 @@ nonisolated extension ImportPlanner {
             add(made.invoice, notes: made.notes, of: group, label: label, as: .update)
         }
 
-        /// The kinds of file an invoice is held for because files of that kind differed in an import, or nil when the
-        /// invoice is not held so: it has no flag (`ImportPlanner.differingRowsReason`), the person has resolved it, or
-        /// it has a flag of another reason. A kind is held when the invoice's fingerprint of it is that of the files
-        /// that differed (`ImportPlanner.isFingerprintOfDifferingFiles(_:)`). An invoice with the flag and neither was
-        /// held by the import as it was before ISDOC files, which held an invoice only for its rows and stored it under
-        /// the row it was made from: it is held for its rows.
+        /// The kinds of file an invoice held for review by a hold (`ImportPlanner.differingRowsReason`) is held for, or
+        /// nil when the invoice is not held so: it has no flag, the person has resolved it, or it has a flag of another
+        /// reason. A kind is held when the invoice's fingerprint of it holds it (`ImportPlanner.isHoldingFingerprint`):
+        /// the fingerprint of a set of files it has not taken, such as files that differed, or the marker of a row it
+        /// has taken but is held for all the same. An invoice with the flag and neither was held by the import as it
+        /// was before ISDOC files, which held an invoice only for its rows and stored it under the row it was made
+        /// from: it is held for its rows.
         private static func heldKinds(of invoice: Invoice) -> (rows: Bool, isdocs: Bool)? {
             guard invoice.review?.reason == ImportPlanner.differingRowsReason else { return nil }
-            let rows = rowFingerprint(of: invoice).map { ImportPlanner.isFingerprintOfDifferingFiles($0) } ?? false
-            let isdocs = invoice.isdocFingerprint.map { ImportPlanner.isFingerprintOfDifferingFiles($0) } ?? false
+            let rows = rowFingerprint(of: invoice).map { ImportPlanner.isHoldingFingerprint($0) } ?? false
+            let isdocs = invoice.isdocFingerprint.map { ImportPlanner.isHoldingFingerprint($0) } ?? false
             return rows || isdocs ? (rows: rows, isdocs: isdocs) : (rows: true, isdocs: false)
         }
 
@@ -625,67 +626,62 @@ nonisolated extension ImportPlanner {
         /// `invoice` (`addNew`), or whether it is the invoice that is there.
         ///
         /// Each kind of file the group has (the rows, or the ISDOC invoices) is held: it is stored under the
-        /// fingerprint of its files in the group (`ImportPlanner.fingerprint(ofAll:)`), which is never that of a single
-        /// file, so that only an import that brings that kind ends the hold. A kind whose files are all alike keeps the
-        /// fingerprint of that file instead when the invoice holds the very file already and nothing else holds the
-        /// kind, so that the file alone is not applied again over what the person did in the app since. The invoice
-        /// holds the file when it was last imported from it (its CSV row, or its `isdocFingerprint`), or, on a new
-        /// invoice, when it is the ISDOC file that made it. A kind is held whatever its files are:
-        /// - when the invoice is held for it already, so that a hold never drops a kind; an invoice held the old way,
-        ///   with the flag and under its own row, is held for its rows;
-        /// - for the rows, when the hold displaces a flag of the invoice's own, such as "zrušeno ve Fakturoidu": only
-        ///   its row brings that flag back;
-        /// - for the rows of a new invoice, whose payment and review the hold takes away.
+        /// fingerprint of the set of its files in the group (`ImportPlanner.fingerprint(ofAll:)`), which is never that
+        /// of a single file, so that only an import that brings that kind ends the hold and applies its file. The
+        /// exception is a kind whose files are all alike and whose very file the invoice has taken already: the file it
+        /// was last imported from (its CSV row, or its `isdocFingerprint`), or, on a new invoice, the ISDOC file that
+        /// made it. The rows of a new invoice are never taken, since the hold takes their payment and review away. Such
+        /// a file is not applied again over what the person did in the app since:
+        /// - the kind keeps the fingerprint of that file, and the invoice is not held for it;
+        /// - or, for the rows, the invoice is held for them all the same, under the marker of the taken row
+        ///   (`ImportPlanner.fingerprint(ofTakenRow:)`): when the hold displaces a flag of the invoice's own that only
+        ///   the row brings back, such as "zrušeno ve Fakturoidu", or when the invoice is held for its rows already, so
+        ///   that a hold never drops a kind (an invoice held the old way, with the flag and under its own row, is held
+        ///   for its rows). While the hold lasts, an import that ends it applies the row again; once the person has
+        ///   resolved it, the same row is unchanged.
         ///
-        /// In the first two cases a kind the group has none of is held under the fingerprint of differing files made
-        /// of the fingerprint the invoice has for it, or keeps the one it has when it is held for it already. Any other
-        /// kind the group has none of keeps its fingerprint. The fingerprint of the rows goes with the Fakturoid id of
-        /// the first row (or the one the invoice has), and an imported invoice is not marked as changed in the app any
-        /// more.
+        /// A kind the group has none of keeps its fingerprint, unless the invoice is held for its rows all the same, as
+        /// above: the rows are then stored under the marker of the row the invoice has taken, or keep the fingerprint
+        /// of a set they are held under already. The fingerprint of the rows goes with the Fakturoid id of the first
+        /// row (or the one the invoice has), and an imported invoice is not marked as changed in the app any more.
         private func heldForDifferingFiles(_ invoice: Invoice, of group: Group, isNew: Bool) -> Invoice {
             var held = invoice
             held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
             let already = isNew ? nil : Self.heldKinds(of: invoice)
             let displacesFlag = !isNew && invoice.review != nil && already == nil
-            let holdingRows = isNew || displacesFlag || already?.rows == true
-            let holdingIsdocs = already?.isdocs == true
+            let holdingRows = displacesFlag || already?.rows == true
+            let takenRow = isNew ? nil : Self.takenRow(of: invoice)
             let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
             let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
-            let storedRow = Self.rowFingerprint(of: invoice)
             if !rowPrints.isEmpty {
                 let rowID = group.rowOffsets.first.map { rows[$0].fakturoidID } ?? ""
-                let rowPrint = Self.heldFingerprint(of: rowPrints, holding: holdingRows ? nil : storedRow)
+                var rowPrint = Self.heldFingerprint(of: rowPrints, taken: takenRow)
+                if holdingRows, let takenRow, rowPrint == takenRow {
+                    rowPrint = ImportPlanner.fingerprint(ofTakenRow: takenRow)
+                }
                 held.source = .imported(
                     fakturoidID: rowID.isEmpty ? Self.fakturoidID(of: invoice) : rowID, fingerprint: rowPrint,
                     changedInApp: false)
-            } else if holdingRows, let storedRow {
+            } else if holdingRows, let stored = Self.rowFingerprint(of: invoice) {
+                let rowPrint = takenRow.map { ImportPlanner.fingerprint(ofTakenRow: $0) } ?? stored
                 held.source = .imported(
-                    fakturoidID: Self.fakturoidID(of: invoice), fingerprint: Self.heldFingerprint(ofStored: storedRow),
-                    changedInApp: false)
+                    fakturoidID: Self.fakturoidID(of: invoice), fingerprint: rowPrint, changedInApp: false)
             } else if case .imported = invoice.source {
                 held.source = Self.unmarked(invoice.source)
             }
             if !isdocPrints.isEmpty {
-                let stored = holdingIsdocs ? nil : invoice.isdocFingerprint
-                held.isdocFingerprint = Self.heldFingerprint(of: isdocPrints, holding: stored)
+                let taken = invoice.isdocFingerprint.flatMap { ImportPlanner.takenFingerprint($0) }
+                held.isdocFingerprint = Self.heldFingerprint(of: isdocPrints, taken: taken)
             }
             return held
         }
 
-        /// The fingerprint an invoice held for a kind of file the import has none of is stored under for that kind,
-        /// given `stored`, the fingerprint it has for it: the same when it is that of differing files already, and
-        /// otherwise the fingerprint of differing files made of it (`ImportPlanner.fingerprint(ofAll:)`).
-        private static func heldFingerprint(ofStored stored: String) -> String {
-            ImportPlanner.isFingerprintOfDifferingFiles(stored) ? stored : ImportPlanner.fingerprint(ofAll: [stored])
-        }
-
         /// The fingerprint an invoice held for files of one kind, with the fingerprints `prints`, is stored under for
-        /// that kind. When the files are all alike and their fingerprint is `stored`, the invoice's fingerprint of that
-        /// kind, the invoice holds that file already and keeps its fingerprint. Otherwise it is the fingerprint of
-        /// their set (`ImportPlanner.fingerprint(ofAll:)`). `stored` is nil for a kind that is held whatever its files
-        /// are.
-        private static func heldFingerprint(of prints: [String], holding stored: String?) -> String {
-            if let single = alike(prints), single == stored {
+        /// that kind: the fingerprint of those files when they are all alike and it is `taken`, the fingerprint of the
+        /// file of that kind the invoice has taken (nil when it has taken none), and otherwise the fingerprint of their
+        /// set (`ImportPlanner.fingerprint(ofAll:)`).
+        private static func heldFingerprint(of prints: [String], taken: String?) -> String {
+            if let single = alike(prints), single == taken {
                 return single
             }
             return ImportPlanner.fingerprint(ofAll: prints)
@@ -694,8 +690,9 @@ nonisolated extension ImportPlanner {
         /// Whether `invoice` is stored under the files of `group` the way `heldForDifferingFiles(_:of:isNew:)` stores
         /// an invoice held for them, so that they bring nothing new: for each kind of file the group has, the invoice's
         /// fingerprint of that kind (of its CSV row, or `isdocFingerprint`) is the fingerprint of the set of those
-        /// files, or, when they are all alike, the fingerprint of that one file. An invoice that has never been held
-        /// for these files is not stored so, since a kind whose files differ has only the fingerprint of their set.
+        /// files, or, when they are all alike, the fingerprint of that one file or the marker of it as a taken row. An
+        /// invoice that has never been held for these files is not stored so, since a kind whose files differ has only
+        /// the fingerprint of their set.
         private func isStored(_ invoice: Invoice, underTheFilesOf group: Group) -> Bool {
             let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
             let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
@@ -709,11 +706,15 @@ nonisolated extension ImportPlanner {
         }
 
         /// Whether `stored`, an invoice's fingerprint of one kind of file, is one that an invoice held for files of
-        /// that kind, with the fingerprints `prints`, is stored under: the fingerprint of their set, or the fingerprint
-        /// of those files when they are all alike.
+        /// that kind, with the fingerprints `prints`, is stored under: the fingerprint of their set, or, when they are
+        /// all alike, a fingerprint whose taken file is theirs (`ImportPlanner.takenFingerprint(_:)`).
         private static func isHeld(_ stored: String?, for prints: [String]) -> Bool {
             guard let stored else { return false }
-            return stored == ImportPlanner.fingerprint(ofAll: prints) || stored == alike(prints)
+            if stored == ImportPlanner.fingerprint(ofAll: prints) {
+                return true
+            }
+            guard let single = alike(prints) else { return false }
+            return ImportPlanner.takenFingerprint(stored) == single
         }
 
         /// The fingerprint of `prints` when they are all alike, or nil when they differ or there are none.
@@ -722,11 +723,20 @@ nonisolated extension ImportPlanner {
             return distinct.count == 1 ? distinct.first : nil
         }
 
-        /// The fingerprint of the CSV row `invoice` was last imported from, or nil when no row has been imported for
-        /// it, such as an invoice made in the app or one known only from an ISDOC file.
+        /// The fingerprint `invoice` is stored under for its CSV row, or nil when no row has been imported for it, such
+        /// as an invoice made in the app or one known only from an ISDOC file. It may hold the invoice for its rows
+        /// (`ImportPlanner.isHoldingFingerprint(_:)`).
         private static func rowFingerprint(of invoice: Invoice) -> String? {
             guard case .imported(_, let fingerprint, _) = invoice.source, !fingerprint.isEmpty else { return nil }
             return fingerprint
+        }
+
+        /// The fingerprint of the CSV row `invoice` has taken: the one it was last imported from, also when it is held
+        /// for its rows under the marker of that row (`ImportPlanner.fingerprint(ofTakenRow:)`). It is nil when the
+        /// invoice has taken no row: none has been imported for it, or it is stored under the fingerprint of a set of
+        /// rows.
+        private static func takenRow(of invoice: Invoice) -> String? {
+            rowFingerprint(of: invoice).flatMap { ImportPlanner.takenFingerprint($0) }
         }
 
         /// Whether `invoice` was imported from the invoice with the Fakturoid id `id`.
@@ -811,9 +821,11 @@ nonisolated extension ImportPlanner {
 
         /// An invoice with a row that is cancelled in Fakturoid, which wins over the other rows and the ISDOC invoices
         /// of the group: none of them is applied. An invoice that is there, imported or made in the app, is held for
-        /// review with all it has, and is not marked as changed in the app any more; the same row again leaves it as it
-        /// is. Without such an invoice the row is skipped, and the row of another invoice of Fakturoid whose number has
-        /// the same digits is a conflict, which leaves the stored invoice as it is.
+        /// review with all it has, and is not marked as changed in the app any more. The row the invoice has taken
+        /// (`takenRow(of:)`) leaves it as it is, unless a hold still holds the invoice for its rows (`heldKinds(of:)`):
+        /// the cancelled row ends that hold and holds the invoice as cancelled again. Without such an invoice the row
+        /// is skipped, and the row of another invoice of Fakturoid whose number has the same digits is a conflict,
+        /// which leaves the stored invoice as it is.
         private mutating func visitCancelled(_ group: Group, row: FakturoidRow) {
             let label = Self.label(row.number)
             guard let existing = existingByDigits[group.digits], existing.currency == group.currency,
@@ -830,7 +842,7 @@ nonisolated extension ImportPlanner {
                 addConflict(label, Self.anotherFakturoidInvoice)
                 return
             }
-            if case .imported(_, let fingerprint, _) = existing.source, fingerprint == row.fingerprint {
+            if Self.heldKinds(of: existing)?.rows != true && Self.takenRow(of: existing) == row.fingerprint {
                 plan.unchangedNumbers.append(label)
                 return
             }

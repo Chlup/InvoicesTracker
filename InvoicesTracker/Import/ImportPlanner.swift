@@ -345,22 +345,26 @@ nonisolated enum ImportPlanner {
         return codes
     }()
 
-    // MARK: Files that differ
+    // MARK: Held invoices
 
-    /// What the fingerprint of the files of one kind that held an invoice starts with (`fingerprint(ofAll:)`). The
+    /// What the fingerprint of a set of files an invoice is held for starts with (`fingerprint(ofAll:)`). The
     /// fingerprint of a single file is plain hexadecimal, so it never starts so.
-    static let differingFilesPrefix = "held:"
+    static let heldSetPrefix = "held:"
 
-    /// The fingerprint an invoice held for files that differ is stored under, for each kind of file (CSV rows, or ISDOC
-    /// invoices) the import has of it: `differingFilesPrefix`, then the SHA-256 of a marker line and the distinct
+    /// What the marker of a row an invoice has taken and is held for starts with (`fingerprint(ofTakenRow:)`).
+    static let takenRowPrefix = "taken:"
+
+    /// The fingerprint an invoice held for review is stored under for a kind of file (CSV rows, or ISDOC invoices) it
+    /// is held for and has taken no file of: `heldSetPrefix`, then the SHA-256 of a marker line and the distinct
     /// fingerprints, sorted and each with its length before it, as lowercase hexadecimal. The order of the files does
-    /// not change it, so the same files in another import give it again.
+    /// not change it, so the same files in another import give it again. It stands for the files of a kind that
+    /// differed in an import, and for a kind whose files are alike but were not taken, such as the row of a new invoice
+    /// whose payment the hold took away.
     ///
-    /// It is never the fingerprint of a single file, also when the files of that kind are all alike, so that a later
-    /// import that has one of them alone applies it. A kind whose files are alike and whose file the held invoice holds
-    /// already is stored under the fingerprint of that file instead (see `plan`). The prefix tells which kind of file
-    /// an invoice is held for (`isFingerprintOfDifferingFiles(_:)`). Holds made before the prefix existed were never
-    /// released, so nothing is migrated.
+    /// It is never the fingerprint of a single file, also for a set of one file, so that a later import that has one of
+    /// them alone applies it. A kind whose single file the held invoice has taken is stored under the fingerprint of
+    /// that file, or under `fingerprint(ofTakenRow:)` when the invoice is held for its rows all the same (see `plan`).
+    /// Holds made before the prefix existed were never released, so nothing is migrated.
     static func fingerprint(ofAll fingerprints: [String]) -> String {
         let distinct = Set(fingerprints).sorted()
         var hasher = SHA256()
@@ -369,7 +373,7 @@ nonisolated enum ImportPlanner {
             hasher.update(data: Data("\(fingerprint.utf8.count):\(fingerprint)\n".utf8))
         }
         let digits = Array("0123456789abcdef")
-        var text = differingFilesPrefix
+        var text = heldSetPrefix
         for byte in hasher.finalize() {
             text.append(digits[Int(byte >> 4)])
             text.append(digits[Int(byte & 0x0F)])
@@ -377,10 +381,36 @@ nonisolated enum ImportPlanner {
         return text
     }
 
-    /// Whether `fingerprint`, one an invoice is stored under for a kind of file, is that of files of the kind that
-    /// differed and held the invoice (`fingerprint(ofAll:)`), not that of a single file that was applied.
-    static func isFingerprintOfDifferingFiles(_ fingerprint: String) -> Bool {
-        fingerprint.hasPrefix(differingFilesPrefix)
+    /// The marker an invoice held for review is stored under for its CSV row when it is held for its rows although it
+    /// has taken `row`, the fingerprint of that row, already: when the hold displaces a flag of the invoice's own that
+    /// only the row brings back, or when the invoice was held for its rows already. It is `takenRowPrefix` and then the
+    /// fingerprint, so it equals neither a plain fingerprint nor that of a set (`fingerprint(ofAll:)`).
+    ///
+    /// While the invoice carries the hold's flag, the marker holds it for its rows, and an import that brings a row
+    /// applies it. Once the person has resolved the flag, the marker counts as the row it carries
+    /// (`takenFingerprint(_:)`), so the same row again is unchanged and another one is applied as usual.
+    static func fingerprint(ofTakenRow row: String) -> String {
+        takenRowPrefix + row
+    }
+
+    /// Whether `fingerprint`, one an invoice is stored under for a kind of file, holds the invoice for that kind while
+    /// it carries the hold's flag: the fingerprint of a set of files (`fingerprint(ofAll:)`) or the marker of a taken
+    /// row (`fingerprint(ofTakenRow:)`), not the plain fingerprint of a single file.
+    static func isHoldingFingerprint(_ fingerprint: String) -> Bool {
+        fingerprint.hasPrefix(heldSetPrefix) || fingerprint.hasPrefix(takenRowPrefix)
+    }
+
+    /// The fingerprint of the single file that an invoice stored under `stored` for a kind of file has taken: `stored`
+    /// itself when it is plain, the fingerprint of the row a marker of a taken row carries, and nil for the fingerprint
+    /// of a set of files, none of which the invoice has taken.
+    static func takenFingerprint(_ stored: String) -> String? {
+        if stored.hasPrefix(heldSetPrefix) {
+            return nil
+        }
+        if stored.hasPrefix(takenRowPrefix) {
+            return String(stored.dropFirst(takenRowPrefix.count))
+        }
+        return stored
     }
 
     // MARK: The plan
@@ -402,16 +432,17 @@ nonisolated enum ImportPlanner {
     /// file instead, so that the file alone is not applied again over what the person did in the app: on an invoice
     /// that is there, the file it was last imported from; on a new one, its ISDOC file, which made it. The rows of a
     /// new invoice are always stored under the fingerprint of their set, since the hold takes the payment and the
-    /// review of its row away. The fingerprint of differing files is recognizable
-    /// (`isFingerprintOfDifferingFiles(_:)`), so it tells which kind of file the invoice is held for; an invoice with
-    /// the flag and no such fingerprint was held by the import as it was before ISDOC files, for its rows. A hold never
-    /// drops a kind the invoice is held for already, and a hold that displaces a flag of the invoice's own, such as
-    /// "zrušeno ve Fakturoidu", holds its rows too, so that the hold ends only with an import that brings its row,
-    /// which brings that flag back. While the invoice still carries that flag, an import whose files of it do not
-    /// differ ends the hold only when it brings every kind the invoice is held for: the files of those kinds are
-    /// applied whatever the invoice is stored under, the row's status, payment and review replace the flag, and without
-    /// a row applied the flag goes. An import that lacks a held kind applies no file of a held kind, applies the other
-    /// kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
+    /// review of its row away. A fingerprint that holds the invoice is recognizable (`isHoldingFingerprint(_:)`), so it
+    /// tells which kind of file the invoice is held for; an invoice with the flag and no such fingerprint was held by
+    /// the import as it was before ISDOC files, for its rows. A hold never drops a kind the invoice is held for
+    /// already, and a hold that displaces a flag of the invoice's own, such as "zrušeno ve Fakturoidu", holds its rows
+    /// too, so that the hold ends only with an import that brings its row, which brings that flag back. Rows the
+    /// invoice has taken already are held under the marker of that row (`fingerprint(ofTakenRow:)`): once the person
+    /// has resolved the hold, the same row is unchanged again. While the invoice still carries that flag, an import
+    /// whose files of it do not differ ends the hold only when it brings every kind the invoice is held for: the files
+    /// of those kinds are applied whatever the invoice is stored under, the row's status, payment and review replace
+    /// the flag, and without a row applied the flag goes. An import that lacks a held kind applies no file of a held
+    /// kind, applies the other kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
