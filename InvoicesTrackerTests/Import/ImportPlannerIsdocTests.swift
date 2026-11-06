@@ -1630,6 +1630,33 @@ struct ImportPlannerIsdocTests {
         }
     }
 
+    @Test func aCancelledRowSettlesWhatAHoldLeftForTheIsdocFiles() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let cancelled = try FakturoidCSV.parsed(
+            Self.crownRow.merging(["Status": "cancelled", "Cancelled at": "2026-09-20 09:00:00"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let first = applied(plan(rows: [row], isdocs: [file], payments: [row.fingerprint: try payment(of: row)]))
+        let heldForIsdocs = try #require(
+            plan(isdocs: [file, otherFile], existing: first.invoices, clients: first.clients).updates.first)
+        #expect(ImportPlanner.isHoldingFingerprint(try #require(heldForIsdocs.isdocFingerprint)))
+
+        // The row comes cancelled, while the invoice is held for its ISDOC files and once the person has resolved it.
+        for stored in [heldForIsdocs, resolvedInApp(heldForIsdocs)] {
+            let plan = plan(rows: [cancelled], existing: [stored], clients: first.clients)
+
+            // The cancellation replaces the hold, so what the hold left for the ISDOC files is settled: the invoice
+            // still counts as imported from ISDOC, but nothing holds it for those files any more.
+            let flagged = try #require(plan.flaggedCancelled.first)
+            #expect(flagged.review == ReviewFlag(reason: "zrušeno ve Fakturoidu"))
+            let isdocValue = try #require(flagged.isdocFingerprint)
+            #expect(!ImportPlanner.isHoldingFingerprint(isdocValue) && !isdocValue.hasPrefix("held:"))
+            #expect(
+                flagged.source
+                    == .imported(fakturoidID: "7001", fingerprint: cancelled.fingerprint, changedInApp: false))
+        }
+    }
+
     @Test func mixedVatIsNotAddedWithItsReason() throws {
         let plan = plan(isdocs: [try isdoc("mixed-vat")])
 

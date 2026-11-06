@@ -893,9 +893,10 @@ nonisolated extension ImportPlanner {
         /// of the group: none of them is applied. An invoice that is there, imported or made in the app, is held for
         /// review with all it has, and is not marked as changed in the app any more. The row the invoice has taken
         /// (`takenRow(of:)`) leaves it as it is, unless a hold still holds the invoice for its rows (`heldKinds(of:)`):
-        /// the cancelled row ends that hold and holds the invoice as cancelled again. Without such an invoice the row
-        /// is skipped, and the row of another invoice of Fakturoid whose number has the same digits is a conflict,
-        /// which leaves the stored invoice as it is.
+        /// the cancelled row ends that hold and holds the invoice as cancelled again. The flagged invoice is held by no
+        /// hold, so both kinds of file are released (`releasingHolds(of:)`): a fingerprint of a set of ISDOC files that
+        /// a hold left is settled. Without such an invoice the row is skipped, and the row of another invoice of
+        /// Fakturoid whose number has the same digits is a conflict, which leaves the stored invoice as it is.
         private mutating func visitCancelled(_ group: Group, row: FakturoidRow) {
             let label = Self.label(row.number)
             guard let existing = existingByDigits[group.digits], existing.currency == group.currency,
@@ -916,7 +917,7 @@ nonisolated extension ImportPlanner {
                 plan.unchangedNumbers.append(label)
                 return
             }
-            var flagged = existing
+            var flagged = Self.releasingHolds(of: existing)
             flagged.review = ReviewFlag(reason: ImportPlanner.cancelledReason)
             flagged.source = .imported(
                 fakturoidID: row.fakturoidID.isEmpty ? storedID : row.fakturoidID, fingerprint: row.fingerprint,
