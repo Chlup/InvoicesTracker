@@ -257,7 +257,8 @@ nonisolated enum ImportPlanner {
 
     // MARK: VAT
 
-    private static let euCountries: Set<String> = [
+    /// The countries of the European Union, as ISO 3166-1 alpha-2 codes.
+    static let euCountries: Set<String> = [
         "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU",
         "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK",
     ]
