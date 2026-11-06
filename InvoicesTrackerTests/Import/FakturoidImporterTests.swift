@@ -283,7 +283,8 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, [try sampleURL("fakturoid_reimport")])
 
-        // Rows 1, 3 and 14 are updated, row 2 is flagged (and counts among the overwritten) and rows 4 and 5 are skipped.
+        // Rows 1, 3 and 14 are updated, row 2 is flagged (and counts among the overwritten) and rows 4 and 5 are
+        // skipped.
         #expect(summary.added == 0 && summary.updated == 4 && summary.unchanged == 8 && summary.skipped == 2)
         #expect(summary.keptChangedInApp == 0 && summary.keptItems.isEmpty)
         #expect(summary.conflicts == 0 && summary.conflictItems.isEmpty)

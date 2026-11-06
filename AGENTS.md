@@ -85,9 +85,11 @@ The code is layered, bottom to top:
     publishes releases;
   - the public key (`SUPublicEDKey`) is committed. The appcast and every archive must be signed with its private half,
     which is never committed (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`);
-  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the
-    generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into
-    the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`;
+  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. It also declares the
+    `.isdoc` file type that the Import screen accepts (`UTImportedTypeDeclarations`,
+    `info.chlup.InvoicesTracker.isdoc`). Xcode merges it with the generated Info.plist, and it stays outside the
+    synchronized `InvoicesTracker/` folder so that it is not copied into the app. The sandbox exception for Sparkle's
+    installer is in `InvoicesTracker.entitlements`;
   - `AppUpdater` starts Sparkle's updater once at launch, never under the test host, and is its delegate. It is the only
     code that imports Sparkle. An `UpdatesModel` mirrors an `AppUpdating` (the tests use `FakeUpdater`), and the person
     reaches it in two places:

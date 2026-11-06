@@ -82,6 +82,24 @@ struct IsdocReaderTests {
         #expect(withBOM.lines.first?.description == "Správa IT a podpora – září 2026")
     }
 
+    @Test(arguments: [("czk-21", String.Encoding.utf8), ("windows-1250", String.Encoding.windowsCP1250)])
+    func textWrittenAsCDATAIsReadOnceAsText(fixture: String, encoding: String.Encoding) throws {
+        let plain = try #require(String(data: try data(fixture), encoding: encoding))
+        let note = "<Note>Fakturujeme vám za září.</Note>"
+        let description = "<Description>Správa IT a podpora – září 2026</Description>"
+        #expect(plain.contains(note) && plain.contains(description))
+        let wrapped =
+            plain
+            .replacingOccurrences(of: note, with: "<Note><![CDATA[Fakturujeme <vám> & za září.]]></Note>")
+            .replacingOccurrences(
+                of: description, with: "<Description>Správa <![CDATA[IT & podpora]]> – září 2026</Description>")
+
+        let invoice = try IsdocReader.read(try #require(wrapped.data(using: encoding)))
+
+        #expect(invoice.note == "Fakturujeme <vám> & za září.")
+        #expect(invoice.lines.first?.description == "Správa IT & podpora – září 2026")
+    }
+
     @Test func aUBLFileIsNotAnIsdocInvoice() throws {
         #expect(throws: ImportError.notAnIsdocInvoice) { try read("not-isdoc", "xml") }
     }

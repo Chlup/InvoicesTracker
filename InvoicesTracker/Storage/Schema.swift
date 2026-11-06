@@ -542,6 +542,12 @@ private nonisolated extension Schema {
 private nonisolated extension Schema {
     /// The fingerprint of the ISDOC file an invoice was imported from, and Fakturoid's wording for a payment by bank
     /// transfer. The new column is added in place, so the table is not rebuilt and the rows that refer to it stay.
+    ///
+    /// The search documents of the invoices whose wording changes are made again through today's `Invoice.load`
+    /// (`Database.rebuildSearchDocument(invoiceID:in:)`). It reads the invoice and payment columns as the newest
+    /// schema has them, while the database it reads here is only at version 4. A later change to those columns must
+    /// therefore keep databases and backups of version 3 migrating through this step: `SchemaTests` and `BackupTests`
+    /// migrate data of version 3 with "Banka" in it, and guard it.
     static func createVersion4(_ connection: SQLiteConnection, _ searchIndex: SearchIndexKind) throws {
         try connection.execute(isdocFingerprintColumn)
         try writeFakturoidsWordingForBank(connection)

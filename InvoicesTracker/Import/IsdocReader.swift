@@ -72,6 +72,13 @@ nonisolated private final class Collector: NSObject, XMLParserDelegate {
         text += string
     }
 
+    /// A CDATA block is text of its element like any other text, such as a note written as `<![CDATA[…]]>`. The
+    /// parser hands its bytes over in UTF-8 whatever the encoding of the file, and it hands them only here once this
+    /// method is there, not to `parser(_:foundCharacters:)` as well.
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        text += String(decoding: CDATABlock, as: UTF8.self)
+    }
+
     func parser(
         _ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?
     ) {
