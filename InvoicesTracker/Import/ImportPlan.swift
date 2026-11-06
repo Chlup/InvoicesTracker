@@ -46,7 +46,9 @@ nonisolated struct ImportPlan: Sendable, Hashable {
     var reviewItems: [String] = []
 
     /// A line for each proforma invoice, for each ISDOC document that is no invoice and for each cancelled invoice
-    /// that is not in the app: "Z20261001 — zálohová faktura".
+    /// that is not in the app: "Z20261001 — zálohová faktura". A document, by the digits of its number, its currency
+    /// and whether it is a proforma invoice, has one line however many of its files are skipped, and none when another
+    /// outcome counts it.
     var skipped: [String] = []
 
     /// For the invoices of `inserts` and `updates` whose client is new, by the digits of their number: the index of

@@ -814,7 +814,8 @@ struct FakturoidImporterTests {
         #expect(progress.steps == (1...11).map { "\($0)/11" })
         #expect(summary.files == ["fakturoid_sample.csv", "fakturoid_reimport.csv"])
         #expect(summary.added == 11 && summary.updated == 0 && summary.unchanged == 0 && summary.conflicts == 0)
-        #expect(summary.skipped == 4)
+        // The proforma invoice of both files is skipped once, and each cancelled invoice once.
+        #expect(summary.skipped == 3)
         #expect(summary.needsReview == 6 && summary.flaggedCancelled == 0)
         let held = "v importu vícekrát s různým obsahem — ke kontrole"
         #expect(summary.reviewItems.contains("20260902 — " + held))
@@ -1229,6 +1230,27 @@ struct FakturoidImporterTests {
         #expect(afterARowWithOne.exportSupplier?.name == "Jana Vzorová")
         // It is only offered: nothing is written to the supplier.
         #expect(try await database.supplier() == Supplier())
+    }
+
+    @Test func theSupplierOfferComesFromTheFirstRowThatHasTheYourColumns() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let blank = FakturoidCSV.row([
+            "Id": "9", "Number": "20261005", "Your name": "", "Your street": "", "Your city": "", "Your zip": "",
+            "Your country": "", "Your registration no": "", "Your vat no": "",
+        ])
+        let own = FakturoidCSV.row(["Id": "10", "Number": "20261006"])
+        let withoutSupplier = try file([blank], named: "blank.csv", in: directory)
+        let withSupplier = try file([own], named: "own.csv", in: directory)
+        let both = try file([blank, own], named: "both.csv", in: directory)
+        let isdoc = try fixtureURL("czk-21", "isdoc")
+
+        let twoFiles = try await importFiles(makeImporter(database), [withoutSupplier, isdoc, withSupplier])
+        let oneFile = try await importFiles(makeImporter(database), [isdoc, both])
+
+        // A blank first row does not hide the supplier of a later one, and the ISDOC is only for when no row has one.
+        #expect(twoFiles.exportSupplier?.name == "Jana Vzorová" && twoFiles.exportSupplier?.ico == "11223344")
+        #expect(oneFile.exportSupplier?.name == "Jana Vzorová")
     }
 
     /// An ISDOC file imported alone finds the invoice the app has under its number, imported earlier from the CSV or

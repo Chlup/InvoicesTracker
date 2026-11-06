@@ -143,10 +143,10 @@ final class FakturoidImporter {
 
     // MARK: The supplier of the export
 
-    /// The supplier the import offers to fill an empty profile with: the one the first row prints in its "Your …"
-    /// columns, or else the supplier of the first ISDOC invoice. Nil when neither has one.
+    /// The supplier the import offers to fill an empty profile with: the one the first row that has "Your …" columns
+    /// prints in them, or else the supplier of the first ISDOC invoice. Nil when neither has one.
     private nonisolated static func exportSupplier(of sources: ImportSources) -> Supplier? {
-        if let supplier = sources.rows.first.flatMap({ supplier(of: $0) }) {
+        if let supplier = sources.rows.lazy.compactMap({ supplier(of: $0) }).first {
             return supplier
         }
         return sources.isdocs.first?.supplier.flatMap { supplier(of: $0) }

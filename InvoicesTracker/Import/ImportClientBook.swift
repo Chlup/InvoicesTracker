@@ -41,6 +41,10 @@ nonisolated extension ImportPlanner {
             }
 
             /// The client the files make: the newest file's values, with the defaults of a new client for the rest.
+            ///
+            /// The language and the payment method are those the rows say. Without them, a client of ISDOC invoices
+            /// takes what an invoice of an ISDOC file alone takes: the language of the country of the customer, and a
+            /// transfer worded in that language for code 42 or no payment method for any other code.
             func madeClient() -> Client {
                 var made = Client()
                 made.name = values.name
@@ -55,10 +59,13 @@ nonisolated extension ImportPlanner {
                 made.currency = values.currency ?? made.currency
                 made.vatMode = values.vatMode ?? made.vatMode
                 made.dueDays = values.dueDays ?? made.dueDays
+                made.language = values.language ?? values.isdocLanguage ?? made.language
                 if !values.paymentMethod.isEmpty {
                     made.paymentMethod = values.paymentMethod
+                } else if values.tookIsdoc {
+                    made.paymentMethod =
+                        IsdocInvoiceBuilder.paymentMethod(code: values.paymentMeansCode, language: made.language) ?? ""
                 }
-                made.language = values.language ?? made.language
                 made.origin = .imported
                 made.editedAfterImport = false
                 return made
@@ -103,6 +110,15 @@ nonisolated extension ImportPlanner {
             var dueDays: Int?
             var language: InvoiceLanguage?
 
+            /// The language the country of the customer of the newest ISDOC invoice suggests, which a new client takes
+            /// when no row says one (`language`).
+            var isdocLanguage: InvoiceLanguage?
+
+            /// Whether an ISDOC invoice of the client was taken, and the newest `PaymentMeansCode` one of them has: a
+            /// new client whose rows say no payment method takes a transfer for code 42, and none for another code.
+            var tookIsdoc = false
+            var paymentMeansCode = ""
+
             /// Takes what `row` says of its client, of the currency, the VAT, the days until due, the language and the
             /// payment method of its invoice. A payment by transfer is worded as the invoice of the row prints it.
             mutating func absorb(_ row: FakturoidRow, knownCurrencies: Set<CurrencyCode>) {
@@ -135,8 +151,9 @@ nonisolated extension ImportPlanner {
             }
 
             /// Takes what `isdoc` says of its customer: the name, the address, the IČO, the DIČ and the e-mail, and the
-            /// currency and the VAT mode of the invoice. The file says nothing of the phone, the days until due, the
-            /// language or the payment method of the client.
+            /// currency and the VAT mode of the invoice. The file says nothing of the phone or the days until due. The
+            /// language its customer's country suggests and its `PaymentMeansCode` are kept apart from what the rows
+            /// say, which wins over them whatever the order of the files.
             mutating func absorb(_ isdoc: IsdocInvoice, knownCurrencies: Set<CurrencyCode>) {
                 let customer = isdoc.customer
                 let customerCountry = ImportPlanner.countryCode(of: customer.country)
@@ -154,6 +171,9 @@ nonisolated extension ImportPlanner {
                 if let mode = IsdocInvoiceBuilder.vatMode(of: isdoc, existing: nil, clientCountry: customerCountry) {
                     vatMode = mode
                 }
+                isdocLanguage = ImportPlanner.language(ofCustomer: customer)
+                tookIsdoc = true
+                take(&paymentMeansCode, isdoc.paymentMeansCode)
             }
 
             /// Puts `value` in `field` unless it is empty.

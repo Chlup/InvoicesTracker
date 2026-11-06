@@ -28,6 +28,26 @@ nonisolated extension ImportPlanner {
             var cancelledOffset: Int?
         }
 
+        /// A document as the outcomes of the plan count it: by the digits of its number and its currency, as invoices
+        /// are matched, and by whether it is a proforma invoice. A proforma invoice is a document of its own: it never
+        /// joins the group of the invoice with the same digits, so it is never counted as that invoice either.
+        struct DocumentKey: Hashable {
+            let digits: String
+            let currency: CurrencyCode
+            let proforma: Bool
+        }
+
+        /// A source that is skipped, kept until the plan is made: it is counted then unless its document is counted
+        /// already (`finishSkips()`).
+        struct Skip {
+            let label: String
+            let reason: String
+
+            /// The document of the source, or nil when its number has no digit or its currency is no code, which says
+            /// nothing of which document it is: such a source is always counted.
+            let key: DocumentKey?
+        }
+
         private static let anotherWithoutDigits = "jiná faktura už má číslo bez číslic"
         private static let anotherCurrency = "číslo už používá faktura v jiné měně"
         private static let anotherFakturoidInvoice = "číslo už používá jiná faktura z Fakturoidu"
@@ -62,6 +82,13 @@ nonisolated extension ImportPlanner {
         /// The countries noted as no code already.
         private var notedCountries: Set<String> = []
 
+        /// The sources that are skipped, in the order they are met (`finishSkips()`).
+        private var skips: [Skip] = []
+
+        /// The invoices of the groups that are added, overwritten, unchanged or not added: a source of one of them
+        /// that is skipped is not counted again.
+        private var countedInvoices: Set<DocumentKey> = []
+
         /// A pass over `sources` against the invoices and clients that are there. See `plan` for the parameters.
         init(
             sources: ImportSources, existingInvoices: [Invoice], clients: [Client], knownCurrencies: Set<CurrencyCode>,
@@ -87,7 +114,7 @@ nonisolated extension ImportPlanner {
         }
 
         /// Makes the plan: the clients of the groups first, then each source in the order of the files (a group where
-        /// its first source is), and the links of the invoices to their clients last.
+        /// its first source is), and the skipped sources and the links of the invoices to their clients last.
         mutating func run() {
             let (groups, groupOfSource) = groups()
             placeClients(of: groups)
@@ -106,6 +133,7 @@ nonisolated extension ImportPlanner {
                     visitAlone(isdoc: offset)
                 }
             }
+            finishSkips()
             finishClients()
         }
 
@@ -113,11 +141,16 @@ nonisolated extension ImportPlanner {
         /// skipped, and a row no invoice can be made of is a conflict.
         private mutating func visitAlone(row offset: Int) {
             let row = rows[offset]
+            let currency = ImportPlanner.currency(of: row)
             switch rowClasses[offset] {
             case .skipProforma:
-                skip(Self.label(row.number), "zálohová faktura")
+                skip(
+                    Self.label(row.number), "zálohová faktura",
+                    key: Self.key(number: row.number, currency: currency, proforma: true))
             case .skipCancelled:
-                skip(Self.label(row.number), ImportPlanner.cancelledReason)
+                skip(
+                    Self.label(row.number), ImportPlanner.cancelledReason,
+                    key: Self.key(number: row.number, currency: currency, proforma: false))
             case .invoice:
                 if let reason = ImportPlanner.unstorableReason(row) {
                     addConflict(Self.label(row.number), reason)
@@ -127,10 +160,13 @@ nonisolated extension ImportPlanner {
 
         /// An ISDOC invoice that is in no group: one that is skipped or cannot be added (`IsdocClass`).
         private mutating func visitAlone(isdoc offset: Int) {
-            let label = Self.label(isdocs[offset].number)
+            let isdoc = isdocs[offset]
+            let label = Self.label(isdoc.number)
             switch isdocClasses[offset] {
             case .skip(let reason):
-                skip(label, reason)
+                let key = Self.key(
+                    number: isdoc.number, currency: CurrencyCode(isdoc.currency), proforma: isdoc.documentType == 4)
+                skip(label, reason, key: key)
             case .conflict(let reason):
                 addConflict(label, reason)
             case .invoice:
@@ -200,12 +236,17 @@ nonisolated extension ImportPlanner {
             return (groups, groupOfSource)
         }
 
-        /// Deals with a group: a cancelled one, or an invoice.
+        /// Deals with a group: a cancelled one, or an invoice. A group that is not skipped counts its invoice, so that
+        /// a source of it that is skipped is not counted again.
         private mutating func visit(_ group: Group) {
+            let skipsBefore = skips.count
             if let cancelled = group.cancelledOffset {
                 visitCancelled(group, row: rows[cancelled])
             } else {
                 visitInvoice(group)
+            }
+            if skips.count == skipsBefore, !group.digits.isEmpty {
+                countedInvoices.insert(DocumentKey(digits: group.digits, currency: group.currency, proforma: false))
             }
         }
 
@@ -447,8 +488,7 @@ nonisolated extension ImportPlanner {
                 result = csv
             } else if let isdoc {
                 let defaults = book.defaults(of: entry)
-                let language =
-                    defaults.language ?? (ImportPlanner.countryCode(of: isdoc.customer.country) == "CZ" ? .cs : .en)
+                let language = defaults.language ?? ImportPlanner.language(ofCustomer: isdoc.customer)
                 let paymentMethod =
                     IsdocInvoiceBuilder.paymentMethod(code: isdoc.paymentMeansCode, language: language)
                     ?? defaults.paymentMethod
@@ -612,10 +652,31 @@ nonisolated extension ImportPlanner {
             plan.notAdded.append(ImportNotAddedItem(number: label, reason: reason))
         }
 
-        /// A source that is skipped: the number, and why.
-        private mutating func skip(_ label: String, _ reason: String) {
-            plan.skipped.append("\(label) — \(reason)")
-            plan.skippedNumbers.append(label)
+        /// A source that is skipped: the number, why, and the document it is (nil when that cannot be told).
+        private mutating func skip(_ label: String, _ reason: String, key: DocumentKey?) {
+            skips.append(Skip(label: label, reason: reason, key: key))
+        }
+
+        /// The document a source with `number` in `currency` is, a proforma invoice or not, or nil when the number has
+        /// no digit or the currency is no code.
+        private static func key(number: String, currency: CurrencyCode?, proforma: Bool) -> DocumentKey? {
+            let digits = InvoiceNumbering.digits(of: number)
+            guard !digits.isEmpty, let currency else { return nil }
+            return DocumentKey(digits: digits, currency: currency, proforma: proforma)
+        }
+
+        /// Puts the skipped sources in the plan in the order they were met, each document once: a source is left out
+        /// when its document is counted already, by a group or by a source skipped before it. A proforma invoice in
+        /// both exports is one line, and the ISDOC file of a credit note whose row is added is none.
+        private mutating func finishSkips() {
+            var counted = countedInvoices
+            for skip in skips {
+                if let key = skip.key, !counted.insert(key).inserted {
+                    continue
+                }
+                plan.skipped.append("\(skip.label) — \(skip.reason)")
+                plan.skippedNumbers.append(skip.label)
+            }
         }
 
         /// Puts `invoice` of `group` in the plan, to add or to update, with its notes, its line of review, and the note
@@ -663,7 +724,10 @@ nonisolated extension ImportPlanner {
             guard let existing = existingByDigits[group.digits], existing.currency == group.currency,
                 !group.digits.isEmpty || isInvoice(existing, ofFakturoidID: row.fakturoidID)
             else {
-                skip(label, ImportPlanner.cancelledReason)
+                let key =
+                    group.digits.isEmpty
+                    ? nil : DocumentKey(digits: group.digits, currency: group.currency, proforma: false)
+                skip(label, ImportPlanner.cancelledReason, key: key)
                 return
             }
             let storedID = Self.fakturoidID(of: existing)

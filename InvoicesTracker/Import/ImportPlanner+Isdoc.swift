@@ -150,6 +150,12 @@ nonisolated extension ImportPlanner {
         return PaymentConverter.reapply(payment, to: final)
     }
 
+    /// The language of an invoice or a client the import knows only from an ISDOC file, by the country of its
+    /// `customer`: Czech for CZ, and English for any other country or none. The file has no language of its own.
+    static func language(ofCustomer customer: IsdocParty) -> InvoiceLanguage {
+        countryCode(of: customer.country) == "CZ" ? .cs : .en
+    }
+
     /// What an invoice prints of the customer of an ISDOC file, with `email`: the file has an e-mail only sometimes,
     /// and the CSV owns it.
     static func snapshot(of customer: IsdocParty, email: String) -> ClientSnapshot {

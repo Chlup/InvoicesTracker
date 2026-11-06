@@ -196,6 +196,73 @@ struct ImportPlannerIsdocTests {
         #expect(byNobody.language == .cs && byNobody.paymentMethod == "")
     }
 
+    @Test func aClientMadeFromAnIsdocAloneHasTheLanguageAndPaymentMethodOfItsInvoice() throws {
+        let dollars = try isdoc("usd-0")
+
+        let byCode = plan(isdocs: [dollars])
+        let withoutCode = plan(isdocs: [copy(of: dollars, paymentMeansCode: "")])
+        let czech = plan(isdocs: [try isdoc("czk-21")])
+
+        // The language goes by the country of the customer, and code 42 is a transfer in that language.
+        let english = try #require(byCode.newClients.first)
+        let invoice = try #require(byCode.inserts.first)
+        #expect(english.language == .en && english.paymentMethod == "Bank transfer")
+        #expect(english.language == invoice.language && english.paymentMethod == invoice.paymentMethod)
+        // Without the code the file does not say how the client pays.
+        let custom = try #require(withoutCode.newClients.first)
+        #expect(custom.language == .en && custom.paymentMethod == "")
+        let local = try #require(czech.newClients.first)
+        #expect(local.language == .cs && local.paymentMethod == "Převodem")
+    }
+
+    @Test func theClientOfAnIsdocAndItsRowIsTheSameInEitherOrder() throws {
+        let file = try isdoc("usd-0")
+        let row = try FakturoidCSV.parsed(Self.dollarRow)
+
+        let isdocFirst = applied(plan(isdocs: [file]))
+        let isdocThenCsv = applied(
+            plan(rows: [row], existing: isdocFirst.invoices, clients: isdocFirst.clients), over: isdocFirst.invoices,
+            clients: isdocFirst.clients)
+        let csvFirst = applied(plan(rows: [row]))
+        let csvThenIsdoc = applied(
+            plan(isdocs: [file], existing: csvFirst.invoices, clients: csvFirst.clients), over: csvFirst.invoices,
+            clients: csvFirst.clients)
+        let together = applied(plan(rows: [row], isdocs: [file]))
+
+        for clients in [isdocThenCsv.clients, csvThenIsdoc.clients, together.clients] {
+            #expect(clients.map(\.language) == [.en] && clients.map(\.paymentMethod) == ["Bank transfer"])
+        }
+    }
+
+    @Test func aLanguageAndAPaymentMethodARowSaysWinOverWhatAnIsdocSuggests() throws {
+        // An older invoice of the client in Czech, paid in cash, and a newer ISDOC of it from a customer in the US.
+        let older = try FakturoidCSV.parsed(
+            Self.dollarRow.merging([
+                "Id": "7000", "Number": "20260801", "Issued on": "2026-08-03", "Taxable fulfillment due": "2026-08-03",
+                "Due on": "2026-08-17", "Language": "cz", "Payment method": "cash", "Payment method human": "Hotově",
+                "Status": "open", "Paid on": "",
+            ]) { $1 })
+
+        let plan = plan(rows: [older], isdocs: [try isdoc("usd-0")])
+
+        let client = try #require(plan.newClients.first)
+        #expect(plan.newClients.count == 1)
+        #expect(client.language == .cs && client.paymentMethod == "Hotově")
+    }
+
+    @Test func anIsdocFillsOnlyTheEmptyFieldsOfAClientThatIsThere() throws {
+        let client = Client(
+            id: 4, name: "Harborlight Software, Inc.", country: "US", paymentMethod: "", language: .cs)
+
+        let plan = plan(isdocs: [try isdoc("usd-0")], clients: [client])
+
+        let filled = try #require(plan.clientUpdates.first)
+        #expect(plan.newClients.isEmpty && filled.id == 4)
+        #expect(filled.street == "1450 Alder Ridge Rd" && filled.city == "Boise")
+        // What the client has is kept, and an ISDOC says nothing of the client's own payment method.
+        #expect(filled.language == .cs && filled.paymentMethod == "")
+    }
+
     // MARK: Both formats
 
     @Test(arguments: [("czk-21", Self.crownRow), ("usd-0", Self.dollarRow)])
@@ -544,13 +611,49 @@ struct ImportPlannerIsdocTests {
 
     @Test func anIsdocProformaOrOtherDocumentTypeIsSkipped() throws {
         let proforma = try isdoc("proforma")
-        let otherKind = copy(of: try isdoc("czk-21"), documentType: 2)
+        let otherKind = copy(of: try isdoc("czk-21"), documentType: 2, number: "20260903")
 
         let plan = plan(isdocs: [proforma, otherKind])
 
-        #expect(plan.skipped == ["20260902 — zálohová faktura", "20260902 — jiný typ dokladu (2)"])
-        #expect(plan.skippedNumbers == ["20260902", "20260902"])
+        #expect(plan.skipped == ["20260902 — zálohová faktura", "20260903 — jiný typ dokladu (2)"])
+        #expect(plan.skippedNumbers == ["20260902", "20260903"])
         #expect(plan.inserts.isEmpty && plan.conflicts.isEmpty && plan.newClients.isEmpty)
+    }
+
+    @Test func anInvoiceInBothExportsIsCountedOnceWhenOneOfThemIsSkipped() throws {
+        let proformaRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Proforma": "true"]) { $1 })
+        let creditRow = try FakturoidCSV.parsed(
+            Self.crownRow.merging([
+                "Subtotal": "-5040,0", "Total": "-6098,4", "Vat": "-1058.4", "Status": "open", "Paid on": "",
+            ]) { $1 })
+        let file = try isdoc("czk-21")
+        let creditNote = copy(of: file, documentType: 2)
+
+        let proformas = plan(rows: [proformaRow], isdocs: [try isdoc("proforma")])
+        let credit = plan(rows: [creditRow], isdocs: [creditNote])
+        let creditFirst = plan(isdocs: [creditNote, file])
+
+        // A proforma in the CSV and in the ISDOC is one invoice skipped once.
+        #expect(proformas.skippedNumbers == ["20260902"] && proformas.skipped == ["20260902 — zálohová faktura"])
+        #expect(ImportSummary(plan: proformas, files: [], exportSupplier: nil).skipped == 1)
+        // A credit note the CSV adds for review is not also skipped for its ISDOC, whichever comes first.
+        for plan in [credit, creditFirst] {
+            #expect(plan.newNumbers == ["20260902"] && plan.skippedNumbers.isEmpty && plan.skipped.isEmpty)
+        }
+        #expect(credit.inserts.first?.review == ReviewFlag(reason: "záporná částka"))
+        // Another number, or the same digits in another currency, is another invoice.
+        let otherNumber = copy(of: file, documentType: 2, number: "20260903")
+        let dollarProforma = try FakturoidCSV.parsed(
+            Self.dollarRow.merging(["Number": "20260902", "Proforma": "true"]) { $1 })
+        let twoNumbers = plan(rows: [proformaRow], isdocs: [otherNumber])
+        let twoCurrencies = plan(rows: [dollarProforma], isdocs: [try isdoc("proforma")])
+        #expect(twoNumbers.skippedNumbers == ["20260902", "20260903"])
+        #expect(twoCurrencies.skippedNumbers == ["20260902", "20260902"])
+        // A proforma invoice is a document of its own: it stays skipped beside the invoice with the same digits.
+        let ownProforma = try FakturoidCSV.parsed(
+            Self.crownRow.merging(["Id": "7000", "Number": "Z20260902", "Proforma": "true"]) { $1 })
+        let besideItsInvoice = plan(rows: [ownProforma], isdocs: [file, try isdoc("proforma")])
+        #expect(besideItsInvoice.newNumbers == ["20260902"] && besideItsInvoice.skippedNumbers == ["Z20260902"])
     }
 
     @Test func twoIdenticalIsdocFilesAreOneInvoice() throws {

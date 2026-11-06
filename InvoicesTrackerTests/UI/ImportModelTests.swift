@@ -140,7 +140,8 @@ struct ImportModelTests {
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
         await model.addFiles([try sampleURL(), try sampleURL("fakturoid_reimport")])
-        #expect(model.preview?.skippedNumbers.count == 4)
+        // The proforma invoice of both files is skipped once.
+        #expect(model.preview?.skippedNumbers.count == 3)
 
         await model.removeFile(named: "fakturoid_reimport.csv")
 
@@ -198,7 +199,7 @@ struct ImportModelTests {
         await model.importAll([try sampleURL(), try sampleURL("fakturoid_reimport")])
 
         #expect(model.summary?.files == ["fakturoid_sample.csv", "fakturoid_reimport.csv"])
-        #expect(model.summary?.added == 11 && model.summary?.skipped == 4)
+        #expect(model.summary?.added == 11 && model.summary?.skipped == 3)
         #expect(model.lastImportLine?.contains("2\u{00A0}soubory") == true)
         #expect(model.files.isEmpty && model.preview == nil)
     }
@@ -450,7 +451,7 @@ struct ImportModelTests {
         await adding.value
 
         #expect(!model.previewing && model.canImport)
-        #expect(model.preview?.skippedNumbers.count == 4)
+        #expect(model.preview?.skippedNumbers.count == 3)
         await model.importCollected()
         #expect(model.summary?.added == 11 && model.files.isEmpty && model.preview == nil)
         #expect(model.failure == nil && !model.previewing)

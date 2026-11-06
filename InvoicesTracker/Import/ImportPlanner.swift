@@ -421,8 +421,14 @@ nonisolated enum ImportPlanner {
     /// **Clients** are matched by company number, then VAT number, then folded name, the customers of the ISDOC
     /// invoices as the clients of the rows. A client that is not there is made from its files, the newest (by day of
     /// issue) giving the values and the older ones filling what it leaves empty; on one day an ISDOC invoice comes
-    /// before the row of its invoice. A client that is there gets only its empty fields filled. The clients of an
-    /// invoice that is cancelled are not used.
+    /// before the row of its invoice. The language and the payment method of a new client are those its rows say, or
+    /// else those an invoice of an ISDOC file alone takes. A client that is there gets only its empty fields filled.
+    /// The clients of an invoice that is cancelled are not used.
+    ///
+    /// **Counting.** Each document, by the digits of its number and its currency, is counted once in the outcomes of
+    /// the plan: a proforma invoice in both exports is skipped once, and a source that is skipped is not counted when
+    /// its invoice is added, overwritten, unchanged or not added for another source. A proforma invoice is a document
+    /// of its own, apart from the invoice with the same digits, as it never joins that invoice's group.
     ///
     /// - Parameters:
     ///   - sources: The rows and the ISDOC invoices of the files, each in the order of the files.

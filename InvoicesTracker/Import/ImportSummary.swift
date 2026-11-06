@@ -51,8 +51,9 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// The rows that could not be added.
     var conflictItems: [String] = []
 
-    /// The supplier the export prints in its "Your …" columns, taken from the first row, for the Import screen to
-    /// offer to fill an empty supplier profile with. Nothing is written to the profile.
+    /// The supplier the export prints in its "Your …" columns, taken from the first row that has them, or else the
+    /// supplier of the first ISDOC invoice, for the Import screen to offer to fill an empty supplier profile with.
+    /// Nothing is written to the profile.
     var exportSupplier: Supplier?
 
     /// The newest year in which an invoice was issued that this import added, updated or flagged as cancelled in
