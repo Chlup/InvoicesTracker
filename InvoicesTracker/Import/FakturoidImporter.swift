@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Errors
 
 /// Why a file is not imported. The messages are the copy of the Import screen.
-nonisolated enum ImportError: Error, Equatable, LocalizedError {
+nonisolated enum ImportError: Error, Hashable, LocalizedError {
     /// The file is a CSV, but not an export of invoices from Fakturoid: it has no `Number` or no `Issued on` column.
     case notAFakturoidExport
 
@@ -119,21 +119,20 @@ final class FakturoidImporter {
     func importFiles(_ urls: [URL], progress: @MainActor (ImportProgress) -> Void) async throws -> ImportSummary {
         yearsOfChangedPayments = []
         guard !urls.isEmpty else { return ImportSummary() }
-        var rows: [FakturoidRow] = []
-        var names: [String] = []
+        var files: [ImportFile] = []
         var rowCounts: [Int] = []
         for url in urls {
-            let name = url.lastPathComponent
-            do {
-                let read = try await Self.rows(of: url)
-                rows += read
-                rowCounts.append(read.count)
-            } catch let error as ImportError {
-                throw FileImportError(file: name, reason: error)
+            for file in await ImportFile.read([url]) {
+                if case .failed(let error) = file.content {
+                    throw FileImportError(file: file.name, reason: error)
+                }
+                files.append(file)
             }
-            names.append(name)
+            rowCounts.append(files.last.map(Self.rowCount(of:)) ?? 0)
             progress(ImportProgress(rowCounts: rowCounts, fileCount: urls.count))
         }
+        let rows = files.sources.rows
+        let names = files.map(\.name)
         try await fetchMissingRates(for: rows)
         let knownCurrencies = ImportPlanner.quotedCurrencies(cached: try await database.cnbCurrencies())
         let invoiceRates = try await invoiceRatesOfRowsWithoutOne(in: rows)
@@ -151,25 +150,9 @@ final class FakturoidImporter {
         return applied.summary
     }
 
-    // MARK: Reading
-
-    /// The rows of the file, read away from the main actor.
-    @concurrent
-    private nonisolated static func rows(of url: URL) async throws -> [FakturoidRow] {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer {
-            if scoped {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            throw ImportError.unreadableFile
-        }
-        guard let text = String(data: data, encoding: .utf8) else { throw ImportError.unreadableFile }
-        return try FakturoidRow.rows(from: CSVTable.parse(text))
+    /// The rows of a file read from a CSV export, or none for another file.
+    private nonisolated static func rowCount(of file: ImportFile) -> Int {
+        if case .rows(let rows) = file.content { rows.count } else { 0 }
     }
 
     /// The supplier the row prints, or nil when its "Your …" columns are all empty.
