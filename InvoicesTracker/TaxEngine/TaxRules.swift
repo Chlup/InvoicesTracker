@@ -36,6 +36,11 @@ nonisolated struct TaxRules: Sendable, Hashable {
     /// exist from 2024.
     let hasDIPAndLongTermCare: Bool
 
+    /// The most of the tax base that gifts may take off: `0.30` is 30 %. It is 30 % for 2022 to 2026 under zákon
+    /// č. 128/2022 Sb., § 1 odst. 1, as extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb.,
+    /// Čl. X. From 2027 it is the 15 % of § 15 odst. 1 zákona č. 586/1992 Sb.
+    let giftsCapPercent: Decimal
+
     /// The share of the profit that is the social insurance assessment base: `0.55` is 55 %.
     let socialAssessmentPercent: Decimal
 
@@ -106,11 +111,6 @@ nonisolated struct TaxRules: Sendable, Hashable {
 
     /// The share of the profit that is the health insurance assessment base (§ 3a zákona č. 592/1992 Sb.).
     static let healthAssessmentPercent = DecimalMath.decimal("0.5")!
-
-    /// The most of the tax base that gifts may take off, in every year from 2022 to 2026. The income tax act's own cap
-    /// is 15 %, but the special act prevails (zákon č. 128/2022 Sb., § 1 odst. 1, extended by zákon č. 349/2023 Sb.,
-    /// Čl. CVII, and zákon č. 24/2025 Sb., Čl. X).
-    static let giftsCapPercent = DecimalMath.decimal("0.30")!
 
     /// Gifts are deductible when their total is at least this many Kč; below that, the total must be more than
     /// `giftsMinimumPercent` of the tax base (§ 15 odst. 1 zákona č. 586/1992 Sb.).

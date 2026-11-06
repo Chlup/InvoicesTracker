@@ -384,6 +384,15 @@ struct AdvanceImpactTests {
                 == "U penzijního spoření zadejte částku z potvrzení penzijní společnosti " + contributions)
     }
 
+    @Test func theGiftsNoteNamesTheCapOfTheYear() {
+        #expect(
+            DeductionHints.make(from: [], deductions: Deductions(), giftsCapPercent: decimal("0.15")).giftsNote
+                == "od 1 000 Kč (nebo nad 2 % základu), nejvýš 15 % základu")
+        #expect(
+            DeductionHints.make(from: [], deductions: Deductions(), giftsCapPercent: decimal("0.30")).giftsNote
+                == "od 1 000 Kč (nebo nad 2 % základu), nejvýš 30 % základu")
+    }
+
     // MARK: Words
 
     @Test(arguments: [

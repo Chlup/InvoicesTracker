@@ -172,13 +172,17 @@ struct TaxRulesTests {
 
     // MARK: Constants that hold in every year
 
+    @Test(arguments: 2022...2026)
+    func giftsMayTakeOffAtMost30PercentOfTheBaseIn2022To2026(_ year: Int) {
+        #expect(TaxRules.forYear(year).rules.giftsCapPercent == decimal("0.30"))
+    }
+
     @Test func ratesAndGiftLimitsAreExact() {
         #expect(TaxRules.taxRateLow == decimal("0.15"))
         #expect(TaxRules.taxRateHigh == decimal("0.23"))
         #expect(TaxRules.socialRate == decimal("0.292"))
         #expect(TaxRules.healthRate == decimal("0.135"))
         #expect(TaxRules.healthAssessmentPercent == decimal("0.5"))
-        #expect(TaxRules.giftsCapPercent == decimal("0.30"))
         #expect(TaxRules.giftsMinimumKc == 1_000)
         #expect(TaxRules.giftsMinimumPercent == decimal("0.02"))
     }

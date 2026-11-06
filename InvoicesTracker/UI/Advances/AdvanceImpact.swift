@@ -153,7 +153,8 @@ nonisolated enum AdvanceImpactBuilder {
                 spouseCreditKc: family.spouseCredit > 0 ? result.spouseCreditApplied : nil,
                 childBenefitKc: family.childBenefit > 0 ? result.childCredit + result.childBonus : nil,
                 childBonusKc: result.childBonus),
-            hints: DeductionHints.make(from: result.deductionLines, deductions: input.deductions),
+            hints: DeductionHints.make(from: result.deductionLines, deductions: input.deductions,
+                giftsCapPercent: result.rules.giftsCapPercent),
             result: result)
     }
 }

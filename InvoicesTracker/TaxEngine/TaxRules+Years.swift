@@ -21,10 +21,11 @@ import Foundation
 // - Health insurance (healthMinimumMonthlyBase, childCareHealthExemption): zákon č. 592/1992 Sb., § 3a. The minimum
 //   base is half of the average wage, and it does not apply to a month in which, for the whole month, the person was
 //   in one of the situations that exempt it (§ 3a odst. 3 and 4).
-// - Rates, flat-rate expense caps and gift limits are the same in every year, so they are constants of `TaxRules`
-//   with their sources: § 16 odst. 1, § 7 odst. 7 and § 15 odst. 1 zákona č. 586/1992 Sb., § 7 zákona č. 589/1992
-//   Sb., § 2 odst. 2 zákona č. 592/1992 Sb., and for the 30 % cap on gifts zákon č. 128/2022 Sb., § 1 odst. 1,
-//   extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb., Čl. X.
+// - Rates, flat-rate expense caps and the gift minimums are the same in every year, so they are constants of
+//   `TaxRules` with their sources: § 16 odst. 1, § 7 odst. 7 and § 15 odst. 1 zákona č. 586/1992 Sb., § 7 zákona
+//   č. 589/1992 Sb. and § 2 odst. 2 zákona č. 592/1992 Sb.
+// - The cap on gifts (giftsCapPercent) is a rule of each year: 30 % for 2022 to 2026 under zákon č. 128/2022 Sb.,
+//   § 1 odst. 1, extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb., Čl. X.
 // - Spouse credit and child tax benefit, checked on 20 October 2026: § 35ba odst. 1 písm. b) and odst. 3 and § 35c
 //   zákona č. 586/1992 Sb. The amounts are the same in every year: the spouse credit is 24 840 Kč a year (2 070 Kč a
 //   month), the child benefit 15 204, 22 320 and 27 840 Kč a year (1 267, 1 860 and 2 320 Kč a month) for the first,
@@ -75,6 +76,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .separate(pensionSavings: 24_000, lifeInsurance: 24_000),
         hasDIPAndLongTermCare: false,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.50")!,
         socialMinimumMonthlyMain: 9_728,
         socialMinimumMonthlySecondary: 3_892,
@@ -103,6 +105,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .separate(pensionSavings: 24_000, lifeInsurance: 24_000),
         hasDIPAndLongTermCare: false,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.50")!,
         socialMinimumMonthlyMain: 10_081,
         socialMinimumMonthlySecondary: 4_033,
@@ -133,6 +136,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .combined(48_000),
         hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.55")!,
         socialMinimumMonthlyMain: 13_191,
         socialMinimumMonthlySecondary: 4_837,
@@ -164,6 +168,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .combined(48_000),
         hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.55")!,
         socialMinimumMonthlyMain: 16_295,
         socialMinimumMonthlySecondary: 5_122,
@@ -198,6 +203,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .combined(48_000),
         hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.55")!,
         socialMinimumMonthlyMain: 17_139,
         socialMinimumMonthlySecondary: 5_387,

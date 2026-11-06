@@ -1137,7 +1137,8 @@ struct SimulatorBuilderTests {
         let result = try compute(choices)
         let page = SimulatorBuilder.page(result, choices: choices, rateFromSettings: false)
 
-        #expect(page.hints == DeductionHints.make(from: result.deductionLines, deductions: claims))
+        #expect(page.hints == DeductionHints.make(
+                from: result.deductionLines, deductions: claims, giftsCapPercent: result.rules.giftsCapPercent))
         #expect(page.hints.mortgageAllowed == "150\u{00A0}000\u{00A0}Kč")
         #expect(page.hints.mortgageOverLimit == "50\u{00A0}000\u{00A0}Kč")
         #expect(page.hints.mortgageLimit == "limit 150\u{00A0}000\u{00A0}Kč za 12 měsíců")
