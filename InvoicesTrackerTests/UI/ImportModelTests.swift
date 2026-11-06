@@ -5,9 +5,10 @@ import Testing
 /// The model of the Import screen: the files it collects and the preview it makes of them without writing anything, the
 /// import it runs when it is asked to and what it says once that is done, the summary with the lines of the clients,
 /// the line of the last import, the sidebar badge while an import runs, the one step at a time that the import shares
-/// with the restore and the change of the keys, filling an empty supplier from the export, and Zobrazit faktury. The files are the invented fixtures `fakturoid_sample.csv` (13 rows: 11 invoices,
-/// 4 of them to check, 2 skipped) and `fakturoid_reimport.csv`; the server of the ČNB is a stub with the file of 2026.
-/// The clock is at noon of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
+/// with the restore and the change of the keys, filling an empty supplier from the export, and Zobrazit faktury.
+/// The files are the invented fixtures `fakturoid_sample.csv` (13 rows: 11 invoices, 4 of them to check, 2 skipped)
+/// and `fakturoid_reimport.csv`; the server of the ČNB is a stub with the file of 2026. The clock is at noon of
+/// 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct ImportModelTests {
@@ -426,6 +427,67 @@ struct ImportModelTests {
         #expect(model.summary == nil && model.summaryLines.isEmpty && model.summaryLists.isEmpty)
         #expect(model.files.map(\.name) == ["fakturoid_reimport.csv"] && model.preview != nil)
         #expect(!model.canFillSupplier)
+    }
+
+    @Test func importIsNotOfferedWhileThePreviewIsMadeAndNoStalePreviewLandsAfterwards() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let model = ImportModel(app: app)
+        await model.addFiles([try sampleURL()])
+        #expect(model.canImport)
+        let url = try sampleURL("fakturoid_reimport")
+
+        // The file is listed at once and its preview is still being made.
+        let adding = Task { await model.addFiles([url]) }
+        while model.files.count < 2 {
+            await Task.yield()
+        }
+        #expect(model.previewing && !model.canImport)
+        await model.importCollected()
+        #expect(!model.running && model.summary == nil && model.files.count == 2)
+
+        await adding.value
+
+        #expect(!model.previewing && model.canImport)
+        #expect(model.preview?.skippedNumbers.count == 4)
+        await model.importCollected()
+        #expect(model.summary?.added == 11 && model.files.isEmpty && model.preview == nil)
+        #expect(model.failure == nil && !model.previewing)
+    }
+
+    @Test func filesWhosePreviewFailedAreNotImportedAndStayCollected() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        try await database.execute("ALTER TABLE invoice RENAME TO invoice_moved")
+
+        await model.addFiles([try sampleURL()])
+
+        #expect(model.preview == nil && model.failure == ImportModel.previewFailedText)
+        await model.importCollected()
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"] && model.summary == nil && !model.running)
+        #expect(model.failure == ImportModel.previewFailedText && app.importBadge == nil)
+        try await database.execute("ALTER TABLE invoice_moved RENAME TO invoice")
+        #expect(try await database.invoiceCount() == 0)
+    }
+
+    @Test func filesAddedWhileLockedAreNotImportedOnceTheDataIsBack() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        app.database = nil
+        await model.addFiles([try sampleURL()])
+        app.database = database
+
+        await model.importCollected()
+
+        #expect(model.preview == nil && model.summary == nil && model.files.count == 1)
+        #expect(try await database.invoiceCount() == 0)
     }
 
     @Test func noFilesIsNoImportAndNoPreview() async throws {

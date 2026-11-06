@@ -45,6 +45,10 @@ final class ImportModel {
     /// cannot be made (`failure` says why).
     private(set) var preview: ImportPlan?
 
+    /// Whether the preview of the collected files is being made. The preview shown is not that of the files until it
+    /// is done.
+    private(set) var previewing = false
+
     /// Whether an import runs: from the moment "Importovat" is pressed until it is done or has failed.
     private(set) var running = false
 
@@ -96,9 +100,10 @@ final class ImportModel {
         ImportPreviewText.importButtonTitle(count: invoicesToImport)
     }
 
-    /// Whether "Importovat" is offered: the preview adds or overwrites an invoice, and no import runs.
+    /// Whether "Importovat" is offered: the preview of exactly the collected files is made and adds or overwrites an
+    /// invoice, and no import runs.
     var canImport: Bool {
-        invoicesToImport > 0 && !running
+        invoicesToImport > 0 && !running && !previewing && !files.isEmpty
     }
 
     /// The lists under the summary: what is to check, what the app kept as it was and what could not be added.
@@ -168,6 +173,7 @@ final class ImportModel {
     func cancel() {
         guard !running else { return }
         previewGeneration += 1
+        previewing = false
         files = []
         preview = nil
         failure = nil
@@ -180,20 +186,25 @@ final class ImportModel {
         let generation = previewGeneration
         guard !files.isEmpty else {
             preview = nil
+            previewing = false
             return
         }
         guard let database = app?.database else {
             preview = nil
+            previewing = false
             failure = WelcomeTexts.vaultErrorText(.locked)
             return
         }
         let importer = FakturoidImporter(database: database, fetcher: nil, clock: dependencies.clock)
+        previewing = true
         do {
             let plan = try await importer.preview(files)
             guard generation == previewGeneration else { return }
             preview = plan
+            previewing = false
         } catch {
             guard generation == previewGeneration else { return }
+            previewing = false
             AppModel.log("Checking the files to import", failedWith: error)
             preview = nil
             failure = Self.previewFailedText
@@ -209,12 +220,11 @@ final class ImportModel {
     /// The years whose payments the import changed are converted again by the method each uses then, as the payments
     /// may change what they have the uniform rate for, and the import converted them before it wrote them, by the
     /// method their year used then (`AppModel.recomputePaymentsAfterChanges(inYears:)`). Returns when it is done. Does
-    /// nothing without files, while an import runs, or when the preview has nothing to import. While another step of
-    /// the vault runs or the data is locked it says so (`failure`) and keeps the files. Any other failure leaves the
-    /// data as they were and the files collected.
+    /// nothing unless `canImport`: without a preview of exactly the collected files that has something to import, or
+    /// while an import runs. While another step of the vault runs or the data is locked it says so (`failure`) and
+    /// keeps the files. Any other failure leaves the data as they were and the files collected.
     func importCollected() async {
-        guard !files.isEmpty, !running, let app else { return }
-        if preview != nil, invoicesToImport == 0 { return }
+        guard canImport, let app else { return }
         guard !app.securityStepRunning else {
             failure = WelcomeTexts.vaultErrorText(.busy)
             return
@@ -227,7 +237,10 @@ final class ImportModel {
         summary = nil
         summaryLines = []
         running = true
-        // The importer says how many invoices it stores before it fetches the rates, in the preview.
+        // No preview that is still being made may land from now on.
+        previewGeneration += 1
+        // The badge shows the total from the preview, which holds the plan the import is about to make again, until
+        // the importer reports the first invoice it stores (it fetches the missing rates first).
         let expected = preview?.invoiceCount ?? 0
         progress = (done: 0, total: expected)
         app.importBadge = expected > 0 ? "0/\(expected)" : nil
@@ -276,6 +289,7 @@ final class ImportModel {
     private func finish(with result: ImportSummary) {
         summary = result
         summaryLines = ImportText.summaryLines(of: result)
+        previewGeneration += 1
         files = []
         preview = nil
         lastImportLine = ImportText.lastImportLine(of: result, on: day(of: dependencies.clock.now()))
