@@ -354,6 +354,10 @@ nonisolated enum ImportPlanner {
     /// What the marker of a row an invoice has taken and is held for starts with (`fingerprint(ofTakenRow:)`).
     static let takenRowPrefix = "taken:"
 
+    /// What the settled form of the fingerprint of a set of files starts with (`releasedFingerprint(_:)`): the same
+    /// hash as after `heldSetPrefix`, for a set whose hold is over.
+    static let settledSetPrefix = "settled:"
+
     /// The fingerprint an invoice held for review is stored under for a kind of file (CSV rows, or ISDOC invoices) it
     /// is held for and has taken no file of: `heldSetPrefix`, then the SHA-256 of a marker line and the distinct
     /// fingerprints, sorted and each with its length before it, as lowercase hexadecimal. The order of the files does
@@ -364,7 +368,9 @@ nonisolated enum ImportPlanner {
     /// It is never the fingerprint of a single file, also for a set of one file, so that a later import that has one of
     /// them alone applies it. A kind whose single file the held invoice has taken is stored under the fingerprint of
     /// that file, or under `fingerprint(ofTakenRow:)` when the invoice is held for its rows all the same (see `plan`).
-    /// Holds made before the prefix existed were never released, so nothing is migrated.
+    /// It holds the invoice only while the hold that wrote it lasts: once the person has resolved it, the next import
+    /// that stores the invoice settles it (`releasedFingerprint(_:)`). Holds made before the prefix existed were never
+    /// released, so nothing is migrated.
     static func fingerprint(ofAll fingerprints: [String]) -> String {
         let distinct = Set(fingerprints).sorted()
         var hasher = SHA256()
@@ -397,16 +403,38 @@ nonisolated enum ImportPlanner {
 
     /// Whether `fingerprint`, one an invoice is stored under for a kind of file, holds the invoice for that kind while
     /// it carries the hold's flag: the fingerprint of a set of files (`fingerprint(ofAll:)`) or the marker of a taken
-    /// row (`fingerprint(ofTakenRow:)`), not the plain fingerprint of a single file.
+    /// row (`fingerprint(ofTakenRow:)`), not the plain fingerprint of a single file, and not the settled form of a set
+    /// (`releasedFingerprint(_:)`).
     static func isHoldingFingerprint(_ fingerprint: String) -> Bool {
         fingerprint.hasPrefix(heldSetPrefix) || fingerprint.hasPrefix(takenRowPrefix)
     }
 
+    /// The fingerprint an invoice stored under `stored` for a kind of file is stored under once no hold holds it for
+    /// that kind: the hold that wrote `stored` is over, as the person has resolved it, or the import ends it.
+    ///
+    /// - The marker of a taken row (`fingerprint(ofTakenRow:)`) becomes the fingerprint of that row.
+    /// - The fingerprint of a set of files (`fingerprint(ofAll:)`) becomes its settled form: the same hash after
+    ///   `settledSetPrefix`. It holds nothing (`isHoldingFingerprint(_:)`), so a later hold for the other kind of file
+    ///   is not held for this one too. It still stands for the same files, so they leave the invoice as it is when
+    ///   they come again, and it is still never the fingerprint of a single file, so the next file of that kind alone
+    ///   is applied (`takenFingerprint(_:)` is nil for it). As `Invoice.isdocFingerprint` it still means that the
+    ///   invoice is imported from ISDOC.
+    /// - Any other fingerprint, a plain one or one settled already, stays as it is.
+    static func releasedFingerprint(_ stored: String) -> String {
+        if stored.hasPrefix(heldSetPrefix) {
+            return settledSetPrefix + String(stored.dropFirst(heldSetPrefix.count))
+        }
+        if stored.hasPrefix(takenRowPrefix) {
+            return String(stored.dropFirst(takenRowPrefix.count))
+        }
+        return stored
+    }
+
     /// The fingerprint of the single file that an invoice stored under `stored` for a kind of file has taken: `stored`
     /// itself when it is plain, the fingerprint of the row a marker of a taken row carries, and nil for the fingerprint
-    /// of a set of files, none of which the invoice has taken.
+    /// of a set of files, held or settled, none of which the invoice has taken.
     static func takenFingerprint(_ stored: String) -> String? {
-        if stored.hasPrefix(heldSetPrefix) {
+        if stored.hasPrefix(heldSetPrefix) || stored.hasPrefix(settledSetPrefix) {
             return nil
         }
         if stored.hasPrefix(takenRowPrefix) {
@@ -446,6 +474,12 @@ nonisolated enum ImportPlanner {
     /// are applied whatever the invoice is stored under, the row's status, payment and review replace the flag, and
     /// without a row applied the flag goes. An import that lacks a held kind applies no file of a held kind, applies
     /// the other kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
+    ///
+    /// A hold's fingerprints count only while the invoice carries its flag. Every import that stores the invoice
+    /// without that flag, or holds it anew once the person has resolved it, first releases both kinds
+    /// (`releasedFingerprint(_:)`): a taken row becomes the row, and the fingerprint of a set becomes its settled form,
+    /// which holds nothing. A hold the person has resolved therefore never makes a later hold for the other kind of
+    /// file wait for this kind as well, while the same set of files again still leaves the invoice as it is.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of

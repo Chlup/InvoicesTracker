@@ -411,6 +411,45 @@ struct ImportPlannerIsdocTests {
         #expect(changed.clientID == 1 && updated.newClientIndexByDigits.isEmpty)
     }
 
+    @Test func aRowOfAnInvoiceTheIsdocDoesNotOwnRelinksItToTheClientTheRowNames() throws {
+        let clients = [Self.doubek, Self.kovar]
+        let fromCsv = applied(
+            plan(rows: [try FakturoidCSV.parsed(Self.crownRow)], clients: clients), clients: clients)
+        #expect(fromCsv.invoices.first?.clientID == 1)
+        let toKovar = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+
+        let plan = plan(rows: [toKovar], existing: fromCsv.invoices, clients: fromCsv.clients)
+
+        // The row owns the printed client of an invoice known only from the CSV, so the invoice follows it.
+        let updated = try #require(plan.updates.first)
+        #expect(updated.client.ico == "28441234" && updated.clientID == 2)
+    }
+
+    @Test func aRowOfAnInvoiceHeldForIsdocFilesItNeverTookKeepsItsClientAndLink() throws {
+        let clients = [Self.doubek, Self.kovar]
+        let fromCsv = applied(
+            plan(rows: [try FakturoidCSV.parsed(Self.crownRow)], clients: clients), clients: clients)
+        #expect(fromCsv.invoices.first?.clientID == 1)
+        // Two ISDOC files that differ, for another customer: neither is applied, and the invoice is held for them.
+        let toHlinsko = copy(of: try isdoc("czk-21"), customer: Self.hlinskoParty)
+        let otherToHlinsko = copy(of: toHlinsko, note: "Druhé znění poznámky.")
+        let held = try #require(
+            plan(isdocs: [toHlinsko, otherToHlinsko], existing: fromCsv.invoices, clients: fromCsv.clients)
+                .updates.first)
+        #expect(held.review == Self.differingFlag && held.client.ico == "17392047" && held.clientID == 1)
+        let toKovar = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+
+        // The invoice counts as imported from ISDOC from then on, so a row for another client, while the invoice is
+        // held or once it is resolved, sets only the state: the client stays the one of the row it was made from,
+        // printed and linked.
+        for stored in [held, resolvedInApp(held)] {
+            let plan = plan(rows: [toKovar], existing: [stored], clients: fromCsv.clients)
+            let updated = try #require(plan.updates.first)
+            #expect(updated.client.ico == "17392047" && updated.clientID == 1)
+            #expect(plan.newClientIndexByDigits.isEmpty)
+        }
+    }
+
     // MARK: Both formats
 
     @Test(arguments: [("czk-21", Self.crownRow), ("usd-0", Self.dollarRow)])
@@ -1381,6 +1420,213 @@ struct ImportPlannerIsdocTests {
         ] {
             #expect(again.unchangedNumbers == ["20260902"] && again.invoiceCount == 0)
             #expect(again.flaggedCancelled.isEmpty && again.reviewItems.isEmpty)
+        }
+    }
+
+    /// The fingerprint `invoice` is stored under for its CSV row, empty for an invoice made in the app.
+    private func rowFingerprint(of invoice: Invoice) -> String {
+        guard case .imported(_, let fingerprint, _) = invoice.source else { return "" }
+        return fingerprint
+    }
+
+    @Test func aResolvedCsvHoldDoesNotMakeALaterIsdocHoldNeedTheRows() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let fromCsv = applied(plan(rows: [row], payments: [row.fingerprint: try payment(of: row)]))
+        // Two rows that differ hold the invoice, and the person resolves it.
+        let heldForRows = try #require(
+            plan(rows: [row, otherRow], existing: fromCsv.invoices, clients: fromCsv.clients).updates.first)
+        #expect(heldForRows.review == Self.differingFlag)
+        // Later, two ISDOC files that differ hold it again, without its rows.
+        let heldForIsdocs = try #require(
+            plan(isdocs: [file, otherFile], existing: [resolvedInApp(heldForRows)], clients: fromCsv.clients)
+                .updates.first)
+        #expect(heldForIsdocs.review == Self.differingFlag)
+
+        let clean = plan(isdocs: [file], existing: [heldForIsdocs], clients: fromCsv.clients)
+
+        // The hold of the rows is over, so the new hold is for the ISDOC files alone, and one clean ISDOC file ends it.
+        #expect(!ImportPlanner.isHoldingFingerprint(rowFingerprint(of: heldForIsdocs)))
+        let released = try #require(clean.updates.first)
+        #expect(clean.updates.count == 1 && clean.reviewItems.isEmpty && released.review == nil)
+        #expect(released.items == IsdocInvoiceBuilder.items(of: file).items)
+        #expect(released.isdocFingerprint == file.fingerprint)
+    }
+
+    @Test func aResolvedIsdocHoldDoesNotMakeALaterRowsHoldNeedAnIsdoc() throws {
+        let open = try FakturoidCSV.parsed(Self.crownRow.merging(["Status": "open", "Paid on": ""]) { $1 })
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row)]
+        let first = applied(plan(rows: [open], isdocs: [file]))
+        // Two ISDOC files that differ hold the invoice, and the person resolves it.
+        let heldForIsdocs = try #require(
+            plan(isdocs: [file, otherFile], existing: first.invoices, clients: first.clients).updates.first)
+        #expect(heldForIsdocs.review == Self.differingFlag)
+        // Later, two rows that differ hold it again, without an ISDOC file.
+        let heldForRows = try #require(
+            plan(rows: [row, otherRow], existing: [resolvedInApp(heldForIsdocs)], clients: first.clients)
+                .updates.first)
+        #expect(heldForRows.review == Self.differingFlag)
+
+        let clean = plan(rows: [row], existing: [heldForRows], clients: first.clients, payments: payments)
+
+        // The hold of the ISDOC files is over, so the new hold is for the rows alone, and one clean row ends it. The
+        // invoice still counts as imported from ISDOC, so its lines stay.
+        let isdocValue = try #require(heldForRows.isdocFingerprint)
+        #expect(!ImportPlanner.isHoldingFingerprint(isdocValue))
+        let released = try #require(clean.updates.first)
+        #expect(clean.updates.count == 1 && clean.reviewItems.isEmpty && released.review == nil)
+        #expect(released.payment == payments[row.fingerprint])
+        #expect(released.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+        #expect(released.items == IsdocInvoiceBuilder.items(of: file).items)
+    }
+
+    @Test func aResolvedHoldIsSettledWhenOnlyTheRowIsLaterApplied() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let changed = try FakturoidCSV.parsed(Self.crownRow.merging(["Client email": "nova@doubek.example"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let third = copy(of: file, note: "Třetí znění poznámky.")
+        let fourth = copy(of: file, note: "Čtvrté znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row), changed.fingerprint: try payment(of: changed)]
+        let first = applied(plan(rows: [row], isdocs: [file], payments: payments))
+        let heldForIsdocs = try #require(
+            plan(isdocs: [file, otherFile], existing: first.invoices, clients: first.clients).updates.first)
+
+        // The person resolves the hold, and a changed row comes alone: only the row is applied.
+        let resolved = resolvedInApp(heldForIsdocs)
+        let afterRow = try #require(
+            plan(rows: [changed], existing: [resolved], clients: first.clients, payments: payments).updates.first)
+
+        // What the resolved hold left for the ISDOC files is settled: the invoice still counts as imported from ISDOC,
+        // but nothing holds it for those files any more.
+        #expect(afterRow.review == nil && afterRow.client.email == "nova@doubek.example")
+        let settled = try #require(afterRow.isdocFingerprint)
+        #expect(!ImportPlanner.isHoldingFingerprint(settled) && settled != file.fingerprint)
+        // A later hold for ISDOC files alone ends with one clean ISDOC file, and a later hold for rows alone with one
+        // clean row.
+        let isdocHold = try #require(
+            plan(isdocs: [third, fourth], existing: [afterRow], clients: first.clients).updates.first)
+        let rowHold = try #require(
+            plan(rows: [row, otherRow], existing: [afterRow], clients: first.clients).updates.first)
+        #expect(isdocHold.review == Self.differingFlag && rowHold.review == Self.differingFlag)
+        let isdocReleased = try #require(
+            plan(isdocs: [third], existing: [isdocHold], clients: first.clients).updates.first)
+        #expect(isdocReleased.review == nil && isdocReleased.isdocFingerprint == third.fingerprint)
+        let rowReleased = try #require(
+            plan(rows: [row], existing: [rowHold], clients: first.clients, payments: payments).updates.first)
+        #expect(rowReleased.review == nil)
+        #expect(
+            rowReleased.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+    }
+
+    /// The invoice of `crownRow` and `czk-21` in two states, each with the fingerprint of the set of files of a hold
+    /// the person has resolved, which a later import settled:
+    /// - `rows`: made from the row, held for it and the same row due on 30 September and resolved, then held for
+    ///   `czk-21` and the same file with another note and resolved again;
+    /// - `isdocs`: made from both files, held for those two ISDOC files and resolved, then updated by the row with
+    ///   another e-mail of the client alone.
+    private func settledHolds() throws -> (rows: Invoice, isdocs: Invoice, clients: [Client]) {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let changed = try FakturoidCSV.parsed(Self.crownRow.merging(["Client email": "nova@doubek.example"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let fromCsv = applied(plan(rows: [row]))
+        let heldForRows = try #require(
+            plan(rows: [row, otherRow], existing: fromCsv.invoices, clients: fromCsv.clients).updates.first)
+        let heldForIsdocsAfterRows = try #require(
+            plan(isdocs: [file, otherFile], existing: [resolvedInApp(heldForRows)], clients: fromCsv.clients)
+                .updates.first)
+        let fromBoth = applied(plan(rows: [row], isdocs: [file]))
+        let heldForIsdocs = try #require(
+            plan(isdocs: [file, otherFile], existing: fromBoth.invoices, clients: fromBoth.clients).updates.first)
+        let afterRow = try #require(
+            plan(rows: [changed], existing: [resolvedInApp(heldForIsdocs)], clients: fromBoth.clients).updates.first)
+        return (resolvedInApp(heldForIsdocsAfterRows), afterRow, fromCsv.clients)
+    }
+
+    @Test func theSameOldSetAfterResolutionIsStillUnchanged() throws {
+        let settled = try settledHolds()
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        // What each resolved hold left is settled: it holds the invoice for nothing.
+        #expect(!ImportPlanner.isHoldingFingerprint(rowFingerprint(of: settled.rows)))
+        #expect(!ImportPlanner.isHoldingFingerprint(try #require(settled.isdocs.isdocFingerprint)))
+
+        let sameRows = plan(rows: [otherRow, row], existing: [settled.rows], clients: settled.clients)
+        let sameIsdocs = plan(isdocs: [otherFile, file], existing: [settled.isdocs], clients: settled.clients)
+
+        // The same files that differed are still known: the invoice stays as the person resolved it.
+        for same in [sameRows, sameIsdocs] {
+            #expect(same.unchangedNumbers == ["20260902"] && same.invoiceCount == 0 && same.reviewItems.isEmpty)
+        }
+    }
+
+    @Test func aSettledValueIsAppliedOverByTheNextCleanFileOfItsKind() throws {
+        let settled = try settledHolds()
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let file = try isdoc("czk-21")
+        let rowValue = rowFingerprint(of: settled.rows)
+        let isdocValue = try #require(settled.isdocs.isdocFingerprint)
+        // A settled value holds nothing and stands for no single file.
+        for value in [rowValue, isdocValue] {
+            #expect(!ImportPlanner.isHoldingFingerprint(value) && ImportPlanner.takenFingerprint(value) == nil)
+        }
+        #expect(rowValue != row.fingerprint && isdocValue != file.fingerprint)
+
+        let cleanRow = plan(rows: [row], existing: [settled.rows], clients: settled.clients)
+        let cleanIsdoc = plan(isdocs: [file], existing: [settled.isdocs], clients: settled.clients)
+
+        // So one clean file of its kind is applied, as after any resolution: the set gave the invoice no file.
+        let fromRow = try #require(cleanRow.updates.first)
+        #expect(fromRow.review == nil)
+        #expect(fromRow.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+        let fromIsdoc = try #require(cleanIsdoc.updates.first)
+        #expect(fromIsdoc.review == nil && fromIsdoc.isdocFingerprint == file.fingerprint)
+    }
+
+    @Test func anActiveHoldThatGetsAConflictOfTheOtherKindStillNeedsBothKinds() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row)]
+        let first = applied(plan(rows: [row], isdocs: [file], payments: payments))
+        let heldForRows = try #require(
+            plan(rows: [row, otherRow], existing: first.invoices, clients: first.clients).updates.first)
+        let heldForIsdocs = try #require(
+            plan(isdocs: [file, otherFile], existing: first.invoices, clients: first.clients).updates.first)
+
+        // While a hold is not resolved, a conflict of the other kind adds that kind to it.
+        for heldForBoth in [
+            plan(isdocs: [file, otherFile], existing: [heldForRows], clients: first.clients).updates.first,
+            plan(rows: [row, otherRow], existing: [heldForIsdocs], clients: first.clients).updates.first,
+        ] {
+            let held = try #require(heldForBoth)
+            #expect(held.review == Self.differingFlag)
+            let isdocAlone = plan(isdocs: [file], existing: [held], clients: first.clients)
+            let rowAlone = plan(rows: [row], existing: [held], clients: first.clients, payments: payments)
+            let both = plan(
+                rows: [row], isdocs: [file], existing: [held], clients: first.clients, payments: payments)
+
+            // Either kind alone leaves it held; both together end the hold.
+            for alone in [isdocAlone, rowAlone] {
+                #expect(alone.unchangedNumbers == ["20260902"] && alone.invoiceCount == 0)
+            }
+            let released = try #require(both.updates.first)
+            #expect(released.review == nil && released.payment == payments[row.fingerprint])
+            #expect(released.isdocFingerprint == file.fingerprint)
+            #expect(
+                released.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
         }
     }
 
