@@ -1,22 +1,25 @@
 import SwiftUI
 
-/// The card of the progress of an import: a block for each file with its bar and where it is, then the failure that
-/// stopped the import, or the green box of the summary with Zobrazit faktury, the offer to fill in the supplier from
-/// the export, and the lists of what is to check, kept and not added. The numbers are the model's (`ImportModel`); the
-/// card only shows them.
+/// The card of the progress of an import: while it runs, how far it is; once it is done, a block for each file it
+/// imported, the green box of the summary with Zobrazit faktury, the offer to fill in the supplier from the export, and
+/// the lists of what is to check, kept and not added. The numbers are the model's (`ImportModel`); the card only shows
+/// them.
 struct ImportProgressCard: View {
     let model: ImportModel
 
     var body: some View {
         Card(spacing: 10, label: "Průběh importu") {
             header
-            ForEach(model.fileRows) { row in
-                FileRowView(row: row, status: model.statusText(of: row), parts: parts(of: row), running: model.running)
-            }
-            if let failure = model.failure {
-                SettingsFailureLine(text: failure)
+            if let progress = model.progress {
+                ProgressBlock(done: progress.done, total: progress.total)
             }
             if let summary = model.summary {
+                ForEach(summary.files, id: \.self) { name in
+                    FileRowView(name: name, parts: summary.files.count == 1 ? ImportText.countParts(of: summary) : [])
+                }
+                if let failure = model.failure {
+                    SettingsFailureLine(text: failure)
+                }
                 SummaryBox(lines: model.summaryLines, showInvoices: model.showInvoices)
                 if model.canFillSupplier {
                     supplierOffer(exported: summary.exportSupplier)
@@ -40,12 +43,6 @@ struct ImportProgressCard: View {
                     .multilineTextAlignment(.trailing)
             }
         }
-    }
-
-    /// The counts of the file, for an import of one file, whose counts are the file's.
-    private func parts(of row: ImportModel.FileRow) -> [ImportText.CountPart] {
-        guard row.counts != nil, let summary = model.summary else { return [] }
-        return ImportText.countParts(of: summary)
     }
 
     /// "Doplnit údaje dodavatele z exportu": the profile of the supplier is empty and the export has the details. It
@@ -72,41 +69,57 @@ struct ImportProgressCard: View {
     }
 }
 
-// MARK: - A file
+// MARK: - Progress
 
-/// A file of the import: its name and size, its bar, and where it is: waiting, read and going on, done, or why it
-/// cannot be imported; and, for an import of one file, its counts in their colours. It is a panel on the inset
-/// background.
-private struct FileRowView: View {
-    let row: ImportModel.FileRow
-    let status: String
-    let parts: [ImportText.CountPart]
-    let running: Bool
+/// How far the running import is: a bar over the invoices it stores and "Importuji 3 z 12…". Before the importer stores
+/// the first invoice (it fetches the rates first) the bar moves without a count.
+private struct ProgressBlock: View {
+    let done: Int
+    let total: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(verbatim: row.name)
-                    .font(Typography.bodySemibold)
-                    .foregroundStyle(Palette.text)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                if let size = row.size {
-                    Text(verbatim: size)
-                        .font(Typography.callout)
-                        .foregroundStyle(Palette.text2)
-                }
+            if total > 0 {
+                ProgressView(value: Double(done), total: Double(total))
+                    .tint(Palette.accent)
+            } else {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(Palette.accent)
             }
-            bar
-                .accessibilityLabel("Průběh importu \(row.name)")
+            Text(verbatim: ImportPreviewText.progress(done: done, total: total))
+                .font(Typography.calloutSemibold)
+                .foregroundStyle(Palette.text)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - A file
+
+/// A file the import imported: its name, a full green bar, and, for an import of one file, its counts in their colours.
+/// It is a panel on the inset background.
+private struct FileRowView: View {
+    let name: String
+    let parts: [ImportText.CountPart]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: name)
+                .font(Typography.bodySemibold)
+                .foregroundStyle(Palette.text)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            ProgressView(value: 1.0)
+                .tint(Palette.greenText)
+                .accessibilityLabel("Průběh importu \(name)")
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    statusText
+                    status
                     counts
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    statusText
+                    status
                     HStack(spacing: 12) {
                         counts
                     }
@@ -118,44 +131,10 @@ private struct FileRowView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The bar: empty while the file waits, moving while the import goes on with it, full and green once it is done,
-    /// and full and red when it cannot be imported. It is the accent while it waits or moves, as the prototype draws
-    /// it.
-    @ViewBuilder
-    private var bar: some View {
-        switch row.stage {
-        case .waiting:
-            ProgressView(value: 0.0)
-                .tint(Palette.accent)
-        case .read where running:
-            // Moving: the rest of the import has no steps to count.
-            ProgressView()
-                .progressViewStyle(.linear)
-                .tint(Palette.accent)
-        case .read:
-            ProgressView(value: 1.0)
-                .tint(Palette.accent)
-        case .done:
-            ProgressView(value: 1.0)
-                .tint(Palette.greenText)
-        case .failed:
-            ProgressView(value: 1.0)
-                .tint(Palette.redText)
-        }
-    }
-
-    private var statusText: some View {
-        Text(verbatim: status)
+    private var status: some View {
+        Text("Hotovo")
             .font(Typography.calloutSemibold)
-            .foregroundStyle(isFailed ? Palette.redText : Palette.text)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var isFailed: Bool {
-        if case .failed = row.stage {
-            return true
-        }
-        return false
+            .foregroundStyle(Palette.text)
     }
 
     @ViewBuilder

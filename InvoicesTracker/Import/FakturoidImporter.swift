@@ -44,16 +44,6 @@ nonisolated enum ImportError: Error, Hashable, LocalizedError {
     }
 }
 
-/// An `ImportError` and the file it is about, for a screen that stops an import at a file that cannot be used.
-nonisolated struct FileImportError: Error, Equatable, LocalizedError {
-    let file: String
-    let reason: ImportError
-
-    var errorDescription: String? {
-        "\(file): \(reason.errorDescription ?? "")"
-    }
-}
-
 // MARK: - Importer
 
 /// Imports the invoices of Fakturoid's CSV exports and ISDOC files into the database, in two steps.

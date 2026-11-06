@@ -482,7 +482,7 @@ struct IdleLockWindowTests {
                 try #require(app.isIdleLocked)
                 try await waitUntil { showsTheLock(in: window) }
 
-                await app.importModel.importFiles([try fixtureURL("fakturoid_sample", "csv")])
+                await app.importModel.importAll([try fixtureURL("fakturoid_sample", "csv")])
                 let summary = app.importModel.summaryLines.joined(separator: " ")
                 try #require(!summary.isEmpty)
                 try await layOut(window)

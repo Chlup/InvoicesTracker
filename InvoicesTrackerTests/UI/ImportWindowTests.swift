@@ -83,7 +83,7 @@ struct ImportWindowTests {
         // An invoice of the app in euros has the number of one of the rows: a line of what could not be added.
         try await #require(app.database).saveInvoice(
             Invoice.fixture(number: "20261008", currency: .eur, vatMode: VatMode.none))
-        await app.importModel.importFiles([try fixtureURL("fakturoid_sample", "csv")])
+        await app.importModel.importAll([try fixtureURL("fakturoid_sample", "csv")])
         #expect(app.importModel.canFillSupplier)
 
         try await withHostedView(ImportScreen(app: app), size: Self.size) { window in

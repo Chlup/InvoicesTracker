@@ -414,7 +414,7 @@ struct AppModelFXTests {
         let url = try writeCSV(FakturoidCSV.text([paidEuroRow()]), named: "export.csv", in: directory)
         let model = ImportModel(app: app)
 
-        await model.importFiles([url])
+        await model.importAll([url])
 
         #expect(model.failure == nil && model.summary?.added == 1 && model.summary?.needsReview == 0)
         let state = try await app.fxState(year: 2025)
@@ -689,7 +689,7 @@ struct AppModelFXTests {
         // payments of the year before the import wrote its own, so it found none of them.
         try await database.updateYearSettings(2025) { $0.incomeFXMethod = .cnbDaily }
 
-        // What the import does once it has written its payments (`ImportModel.importFiles(_:)`).
+        // What the import does once it has written its payments (`ImportModel.importCollected()`).
         await app.recomputePaymentsAfterChanges(inYears: importer.yearsOfChangedPayments)
 
         #expect(importer.yearsOfChangedPayments == [2025])

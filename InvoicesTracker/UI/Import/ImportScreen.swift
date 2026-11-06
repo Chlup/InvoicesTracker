@@ -19,7 +19,10 @@ struct ImportScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignMetrics.cardSpacing) {
                 ChooseFilesCard(model: model, showPicker: { showsPicker = true }, start: { start($0, in: model) })
-                if !model.fileRows.isEmpty {
+                if !model.files.isEmpty {
+                    ImportReviewCard(model: model)
+                }
+                if model.running || model.summary != nil {
                     ImportProgressCard(model: model)
                 }
             }
@@ -44,9 +47,9 @@ struct ImportScreen: View {
         }
     }
 
-    /// Imports `urls`, in a task of its own: the import goes on when the screen is left.
+    /// Adds `urls` to the files to import, in a task of its own.
     private func start(_ urls: [URL], in model: ImportModel) {
-        Task { await model.importFiles(urls) }
+        Task { await model.addFiles(urls) }
     }
 }
 
@@ -61,7 +64,7 @@ private struct ChooseFilesCard: View {
     /// Opens the panel.
     let showPicker: () -> Void
 
-    /// Imports the files that were dropped.
+    /// Adds the files that were dropped.
     let start: ([URL]) -> Void
 
     @State private var isDropTarget = false
@@ -76,7 +79,7 @@ private struct ChooseFilesCard: View {
             .font(Typography.callout)
             .foregroundStyle(Palette.text2)
             .fixedSize(horizontal: false, vertical: true)
-            if model.fileRows.isEmpty {
+            if model.files.isEmpty && model.summary == nil && !model.running {
                 if let failure = model.failure {
                     SettingsFailureLine(text: failure)
                 }
