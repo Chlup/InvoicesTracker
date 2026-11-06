@@ -562,17 +562,26 @@ struct ImportPlannerIsdocTests {
 
         #expect(identical.inserts.count == 1 && identical.inserts.first?.review == nil)
         #expect(identical.conflicts.isEmpty && identical.reviewItems.isEmpty && identical.newNumbers == ["20260902"])
-        // Two files of one invoice that differ are held like rows that differ: the first one gives the content.
+        // Two files of one invoice that differ are held like rows that differ: the first one gives the content, and
+        // the invoice is stored under the fingerprint of both files.
+        let both = ImportPlanner.fingerprint(ofAll: [file.fingerprint, other.fingerprint])
         let held = try #require(differing.inserts.first)
         #expect(differing.inserts.count == 1 && held.note == file.note && held.payment == nil)
         #expect(held.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
+        #expect(held.isdocFingerprint == both)
         #expect(differing.reviewItems == ["20260902 — v importu vícekrát s různým obsahem — ke kontrole"])
         // An invoice that is there keeps what it holds, and is held.
         let stored = applied(identical)
         let overStored = plan(isdocs: [file, other], existing: stored.invoices, clients: stored.clients)
         var expected = stored.invoices[0]
         expected.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
+        expected.isdocFingerprint = both
         #expect(overStored.updates == [expected])
+        // Once the person has resolved it, the same two files, in either order, leave it alone.
+        var resolved = expected
+        resolved.review = nil
+        let again = plan(isdocs: [other, file], existing: [resolved], clients: stored.clients)
+        #expect(again.unchangedNumbers == ["20260902"] && again.updates.isEmpty && again.reviewItems.isEmpty)
     }
 
     @Test func mixedVatIsNotAddedWithItsReason() throws {

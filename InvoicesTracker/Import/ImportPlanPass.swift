@@ -362,15 +362,15 @@ nonisolated extension ImportPlanner {
                 return
             }
             if differing {
-                holdForDifferingFiles(existing, label: label)
+                holdForDifferingFiles(existing, of: group, label: label)
             } else {
                 update(existing, group: group, row: row, isdoc: isdoc, label: label)
             }
         }
 
         /// A group the app has no invoice of: the invoice its files make is added, held for review without a payment
-        /// when its rows or its ISDOC invoices differ. A foreign invoice of an ISDOC file alone that has no rate is a
-        /// conflict.
+        /// when its rows or its ISDOC invoices differ (`heldForDifferingFiles(_:of:)`). A foreign invoice of an ISDOC
+        /// file alone that has no rate is a conflict.
         private mutating func addNew(
             _ group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, differing: Bool, label: String
         ) {
@@ -387,7 +387,7 @@ nonisolated extension ImportPlanner {
                 return
             }
             if differing {
-                invoice.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
+                invoice = heldForDifferingFiles(invoice, of: group)
                 invoice.payment = nil
             }
             add(invoice, notes: made.notes, of: group, label: label, as: .insert)
@@ -526,20 +526,68 @@ nonisolated extension ImportPlanner {
         }
 
         /// The rows or the ISDOC invoices of the import for an invoice that is there differ, so none of them is
-        /// applied: the invoice keeps all it holds, and is held for review, unless it is held for them already.
-        private mutating func holdForDifferingFiles(_ existing: Invoice, label: String) {
-            if existing.review?.reason == ImportPlanner.differingRowsReason {
+        /// applied: the invoice keeps all it holds, and is held for review (`heldForDifferingFiles(_:of:)`). When it
+        /// is stored under the fingerprints of these very files already, it is unchanged, whatever its flag: it was
+        /// held for them by an earlier import, and whatever the person did with it since stays until Fakturoid's data
+        /// changes.
+        private mutating func holdForDifferingFiles(_ existing: Invoice, of group: Group, label: String) {
+            if isStored(existing, underTheFilesOf: group) {
                 plan.unchangedNumbers.append(label)
                 return
             }
-            var held = existing
-            held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
-            if case .imported = existing.source {
-                held.source = Self.unmarked(existing.source)
-            }
-            plan.updates.append(held)
+            plan.updates.append(heldForDifferingFiles(existing, of: group))
             plan.overwrittenNumbers.append(label)
             plan.reviewItems.append(reviewLine(label, ImportPlanner.differingRowsReason))
+        }
+
+        /// The fingerprints the files of `group` are stored under (`ImportPlanner.fingerprint(ofAll:)`): one for its
+        /// rows and one for its ISDOC invoices, each nil when the group has none of that kind.
+        private func fingerprints(of group: Group) -> (rows: String?, isdocs: String?) {
+            let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
+            let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
+            return (
+                rows: rowPrints.isEmpty ? nil : ImportPlanner.fingerprint(ofAll: rowPrints),
+                isdocs: isdocPrints.isEmpty ? nil : ImportPlanner.fingerprint(ofAll: isdocPrints)
+            )
+        }
+
+        /// `invoice` held for review because the files of `group` differ, and stored under their fingerprints, so
+        /// that the same files in a later import leave it alone: the fingerprint of the rows as the fingerprint of the
+        /// CSV row, with the Fakturoid id of the first row (or the one the invoice has), and the fingerprint of the
+        /// ISDOC invoices as `isdocFingerprint`. A kind of file the group has none of leaves its fingerprint as it is,
+        /// and an imported invoice is not marked as changed in the app any more.
+        private func heldForDifferingFiles(_ invoice: Invoice, of group: Group) -> Invoice {
+            var held = invoice
+            held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
+            let prints = fingerprints(of: group)
+            if let rowPrint = prints.rows {
+                let rowID = group.rowOffsets.first.map { rows[$0].fakturoidID } ?? ""
+                held.source = .imported(
+                    fakturoidID: rowID.isEmpty ? Self.fakturoidID(of: invoice) : rowID, fingerprint: rowPrint,
+                    changedInApp: false)
+            } else if case .imported = invoice.source {
+                held.source = Self.unmarked(invoice.source)
+            }
+            if let isdocPrint = prints.isdocs {
+                held.isdocFingerprint = isdocPrint
+            }
+            return held
+        }
+
+        /// Whether `invoice` is stored under the fingerprints of the files of `group`: the fingerprint of its CSV row
+        /// is that of the rows of the group, when the group has rows, and its `isdocFingerprint` is that of the ISDOC
+        /// invoices of the group, when it has ISDOC invoices.
+        private func isStored(_ invoice: Invoice, underTheFilesOf group: Group) -> Bool {
+            let prints = fingerprints(of: group)
+            if let rowPrint = prints.rows {
+                guard case .imported(_, let fingerprint, _) = invoice.source, fingerprint == rowPrint else {
+                    return false
+                }
+            }
+            if let isdocPrint = prints.isdocs, invoice.isdocFingerprint != isdocPrint {
+                return false
+            }
+            return true
         }
 
         /// Whether `invoice` was imported from the invoice with the Fakturoid id `id`.
@@ -591,11 +639,11 @@ nonisolated extension ImportPlanner {
         }
 
         /// Notes the country of `row` once when it is neither a code nor a name the import knows: it is kept as it is
-        /// written.
+        /// written. The note does not hold the invoice, so it is one of `notes`, not a line to check.
         private mutating func noteCountry(of row: FakturoidRow) {
             guard case .unknown(let text) = ImportPlanner.country(row.clientCountry) else { return }
             if notedCountries.insert(text).inserted {
-                plan.reviewItems.append("země „\(text)“ — není kód země, ponecháno jak je")
+                plan.notes.append("země „\(text)“ — není kód země, ponecháno jak je")
             }
         }
 

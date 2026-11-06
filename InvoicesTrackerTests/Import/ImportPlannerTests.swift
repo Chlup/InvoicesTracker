@@ -504,7 +504,9 @@ struct ImportPlannerTests {
 
         #expect(plan.inserts.map(\.client.country) == ["Švýcarsko", "Švýcarsko", "CZ"])
         #expect(plan.newClients.map(\.country) == ["CZ"])  // Alfa is one client, and its newest row says CZ
-        #expect(plan.reviewItems == ["země „Švýcarsko“ — není kód země, ponecháno jak je"])
+        // The note does not hold an invoice, so it is not a line to check.
+        #expect(plan.notes == ["země „Švýcarsko“ — není kód země, ponecháno jak je"])
+        #expect(plan.reviewItems.isEmpty)
     }
 
     // MARK: The sample, planned against an empty database
@@ -1423,9 +1425,13 @@ struct ImportPlannerTests {
         #expect(held.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
         #expect(held.payment == nil)
         #expect(plan.reviewItems == ["\(rows[0].number) — v importu vícekrát s různým obsahem — ke kontrole"])
-        // It has the content of the row that comes first.
+        // It has the content of the row that comes first, and it is stored under the fingerprint of both rows,
+        // whatever their order, so that the same rows again are known.
         #expect(held.number == rows[0].number && held.netMinor == rows[0].subtotalMinor)
-        #expect(held.source == .imported(fakturoidID: "5002", fingerprint: rows[0].fingerprint, changedInApp: false))
+        let both = ImportPlanner.fingerprint(ofAll: rows.map(\.fingerprint))
+        #expect(both == ImportPlanner.fingerprint(ofAll: rows.reversed().map(\.fingerprint)))
+        #expect(both != rows[0].fingerprint && both != rows[1].fingerprint)
+        #expect(held.source == .imported(fakturoidID: "5002", fingerprint: both, changedInApp: false))
     }
 
     @Test func oneRowThatDiffersAmongRepeatsHoldsTheInvoiceToo() throws {
@@ -1448,35 +1454,65 @@ struct ImportPlannerTests {
         let plan = plan(rows, existing: [stored], payments: paymentsOf(rows))
 
         // Neither row is applied: the invoice keeps its content and its payment, and is not counted until resolved.
+        // It is stored under the fingerprint of both rows.
         var expected = stored
         expected.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
+        expected.source = .imported(
+            fakturoidID: "5002", fingerprint: ImportPlanner.fingerprint(ofAll: rows.map(\.fingerprint)),
+            changedInApp: false)
         #expect(plan.updates == [expected])
         #expect(plan.inserts.isEmpty && plan.conflicts.isEmpty && plan.unchangedNumbers.isEmpty)
         #expect(plan.reviewItems == ["\(rows[0].number) — v importu vícekrát s různým obsahem — ke kontrole"])
     }
 
-    @Test func theInvoiceThatWasFlaggedForItsRowsIsLeftAloneTheNextTimeAndHeldAgainOnceResolved() throws {
-        var stored = try imported(
+    @Test func theInvoiceHeldForItsRowsIsLeftAloneByTheSameRowsBeforeAndAfterItIsResolved() throws {
+        let stored = try imported(
             ["Id": "5002", "Number": "20260901", "Status": "paid", "Paid on": "2026-10-02"], id: 12)
-        stored.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
-        var changedInApp = stored
-        changedInApp.review = nil
-        if case .imported(let id, let fingerprint, _) = stored.source {
-            changedInApp.source = .imported(fakturoidID: id, fingerprint: fingerprint, changedInApp: true)
-        }
         let rows = try twoVersions(reversed: false)
+        let held = try #require(plan(rows, existing: [stored]).updates.first)
+        #expect(held.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
+        // The person has resolved it in the app since: the flag is gone, the payment is entered, and the invoice is
+        // marked as changed there.
+        var resolved = held
+        resolved.review = nil
+        resolved.payment = Payment.fixture(on: "2026-10-02")
+        if case .imported(let id, let fingerprint, _) = held.source {
+            resolved.source = .imported(fakturoidID: id, fingerprint: fingerprint, changedInApp: true)
+        }
 
-        let again = plan(rows, existing: [stored])
-        let resolved = plan(rows, existing: [changedInApp])
+        let again = plan(rows, existing: [held])
+        let againReversed = plan(try twoVersions(reversed: true), existing: [held])
+        let afterResolving = plan(rows, existing: [resolved])
 
-        #expect(again.unchangedNumbers == [rows[0].number] && again.updates.isEmpty && again.reviewItems.isEmpty)
-        // The rows still disagree, and nothing tells an invoice resolved in the app from one that was never held, so
-        // it is held again with all it holds.
-        var heldAgain = changedInApp
-        heldAgain.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
-        heldAgain.source = stored.source
-        #expect(resolved.updates == [heldAgain])
-        #expect(resolved.reviewItems == ["\(rows[0].number) — v importu vícekrát s různým obsahem — ke kontrole"])
+        // The same rows, in either order, change nothing: not before the invoice is resolved, and not after.
+        for plan in [again, againReversed, afterResolving] {
+            #expect(plan.unchangedNumbers.count == 1 && plan.updates.isEmpty && plan.reviewItems.isEmpty)
+            #expect(plan.inserts.isEmpty && plan.overwrittenNumbers.isEmpty)
+        }
+    }
+
+    @Test func aHeldInvoiceIsComparedAsUsualOnceItsRowsStopDifferingOrDifferOtherwise() throws {
+        let rows = try twoVersions(reversed: false)
+        var held = try #require(plan(rows).inserts.first)
+        held.id = 12
+        let third = try FakturoidCSV.parsed([
+            "Id": "5002", "Number": "20260901", "Status": "paid", "Paid on": "2026-10-02", "Subtotal": "4700,0",
+            "Total": "5687,0", "Vat": "987.0",
+        ])
+        let payment = Payment.fixture(on: "2026-10-02")
+
+        let alone = plan([rows[0]], existing: [held], payments: [rows[0].fingerprint: payment])
+        let otherwise = plan([rows[0], third], existing: [held])
+
+        // One of the rows alone is a change of what the invoice is stored under: it is applied, and the flag goes.
+        #expect(alone.updates.map(\.id) == [12] && alone.updates.first?.review == nil)
+        #expect(alone.updates.first?.payment == payment && alone.unchangedNumbers.isEmpty)
+        // Rows that differ otherwise hold it again, under their own fingerprint.
+        let heldAgain = try #require(otherwise.updates.first)
+        #expect(heldAgain.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
+        let both = ImportPlanner.fingerprint(ofAll: [third.fingerprint, rows[0].fingerprint])
+        #expect(heldAgain.source == .imported(fakturoidID: "5002", fingerprint: both, changedInApp: false))
+        #expect(otherwise.unchangedNumbers.isEmpty)
     }
 
     @Test func aFlagForRowsThatDifferedStaysForTheRowTheInvoiceWasMadeFromAndGoesWithTheOtherRow() throws {
@@ -1557,6 +1593,31 @@ struct ImportPlannerTests {
 
         #expect(try JSONDecoder().decode(ImportSummary.self, from: data) == summary)
         #expect(summary.newestYear == 2026)
+    }
+
+    @Test func theSummaryKeepsTheNotesOfThePlan() throws {
+        let rows = try FakturoidCSV.rows([FakturoidCSV.row(["Client country": "Švýcarsko", "Vat": "0.0"])])
+
+        let summary = ImportSummary(plan: plan(rows), files: [], exportSupplier: nil)
+
+        #expect(summary.notes == ["země „Švýcarsko“ — není kód země, ponecháno jak je"])
+        #expect(summary.reviewItems.isEmpty && summary.needsReview == 0)
+    }
+
+    @Test func aSummaryOfAnOlderLogWithoutNotesIsStillRead() throws {
+        var summary = ImportSummary(plan: plan(try sample()), files: ["x.csv"], exportSupplier: nil)
+        summary.notes = ["20260902 — částka v CSV nesouhlasí s položkami z ISDOC — ponechány položky"]
+        let encoded = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(summary))
+        var object = try #require(encoded as? [String: Any])
+        // The log of an import made before the summary kept its notes has every other key.
+        object["notes"] = nil
+
+        let data = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(ImportSummary.self, from: data)
+
+        #expect(decoded.notes.isEmpty && decoded.added == 11 && decoded.files == ["x.csv"])
+        #expect(try JSONDecoder().decode(ImportSummary.self, from: try JSONEncoder().encode(summary)) == summary)
     }
 
     @Test func aSummaryOfAnOlderLogWithoutTheNewestYearIsStillRead() throws {

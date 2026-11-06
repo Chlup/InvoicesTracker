@@ -42,7 +42,7 @@ nonisolated struct ImportPlan: Sendable, Hashable {
     var flaggedCancelled: [Invoice] = []
 
     /// A line for each invoice that is added or updated in review and for each invoice flagged as cancelled ("20261003
-    /// — záporná částka"), and a note for each country that is neither a code nor a name the import knows.
+    /// — záporná částka"): the invoices that do not count until the person resolves them.
     var reviewItems: [String] = []
 
     /// A line for each proforma invoice, for each ISDOC document that is no invoice and for each cancelled invoice
@@ -70,8 +70,9 @@ nonisolated struct ImportPlan: Sendable, Hashable {
     var notAdded: [ImportNotAddedItem] = []
 
     /// A line for each note that does not stop an invoice from counting ("Upozornění"), such as a CSV row whose amount
-    /// disagrees with the lines of the ISDOC file: "20260902 — částka v CSV nesouhlasí s položkami z ISDOC —
-    /// ponechány položky".
+    /// disagrees with the lines of the ISDOC file ("20260902 — částka v CSV nesouhlasí s položkami z ISDOC —
+    /// ponechány položky") or a country that is neither a code nor a name the import knows ("země „Švýcarsko“ — není
+    /// kód země, ponecháno jak je").
     var notes: [String] = []
 
     /// How many invoices the import saves: those it adds, those it updates and those it flags as cancelled.

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// What the import makes of one row.
@@ -342,6 +343,28 @@ nonisolated enum ImportPlanner {
         return codes
     }()
 
+    // MARK: Files that differ
+
+    /// The fingerprint an invoice is stored under when the files of one kind (CSV rows, or ISDOC invoices) that an
+    /// import has of it differ: the one fingerprint when they are all alike, and otherwise the SHA-256 of the distinct
+    /// fingerprints, sorted and each with its length before it, as lowercase hexadecimal. The order of the files does
+    /// not change it, so the same files in another import give it again.
+    static func fingerprint(ofAll fingerprints: [String]) -> String {
+        let distinct = Set(fingerprints).sorted()
+        guard distinct.count > 1 else { return distinct.first ?? "" }
+        var hasher = SHA256()
+        for fingerprint in distinct {
+            hasher.update(data: Data("\(fingerprint.utf8.count):\(fingerprint)\n".utf8))
+        }
+        let digits = Array("0123456789abcdef")
+        var text = ""
+        for byte in hasher.finalize() {
+            text.append(digits[Int(byte >> 4)])
+            text.append(digits[Int(byte & 0x0F)])
+        }
+        return text
+    }
+
     // MARK: The plan
 
     /// What importing `sources` does, given the invoices and the clients that are there. Each format sets only the
@@ -354,7 +377,8 @@ nonisolated enum ImportPlanner {
     /// ISDOC invoices of the group are not applied. Otherwise sources that are alike are taken once, and rows that
     /// differ, or ISDOC invoices that differ, hold the invoice for review without a payment: the import cannot tell
     /// which of them is right, so a new invoice has the content of the first ones, and an invoice that is there keeps
-    /// all it holds.
+    /// all it holds. The held invoice is stored under the fingerprints of those files (`fingerprint(ofAll:)`), so the
+    /// same files again leave it as it is, also once the person has resolved it.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
@@ -386,8 +410,9 @@ nonisolated enum ImportPlanner {
     /// code 42, or else the client's, or else none; its client's e-mail is the one of the file. A foreign one without
     /// a rate is not added.
     ///
-    /// **Notes.** A row whose subtotal or VAT disagrees with the lines of an invoice the ISDOC owns, and a line of an
-    /// ISDOC file taken as one times its amount, are noted in `notes`; they do not hold the invoice.
+    /// **Notes.** A row whose subtotal or VAT disagrees with the lines of an invoice the ISDOC owns, a line of an
+    /// ISDOC file taken as one times its amount, and a country that is neither a code nor a name the import knows are
+    /// noted in `notes`; they do not hold the invoice.
     ///
     /// **Clients** are matched by company number, then VAT number, then folded name, the customers of the ISDOC
     /// invoices as the clients of the rows. A client that is not there is made from its files, the newest (by day of

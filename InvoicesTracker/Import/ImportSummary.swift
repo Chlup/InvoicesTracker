@@ -39,7 +39,8 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// Clients that were there and had fields filled.
     var filledClients = 0
 
-    /// The invoices to check (see `needsReview` and `flaggedCancelled`) and the notes on countries that are no codes.
+    /// The invoices to check (see `needsReview` and `flaggedCancelled`). The logs of older imports also have the notes
+    /// on countries that are no codes here; `notes` has them now.
     var reviewItems: [String] = []
 
     /// The rows kept as the app had them, as the logs of older imports say. An import writes none now; the field stays
@@ -56,6 +57,10 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// The newest year in which an invoice was issued that this import added, updated or flagged as cancelled in
     /// Fakturoid: the year the Import screen opens Faktury on. Nil when the import changed no invoice.
     var newestYear: Int?
+
+    /// The notes that do not hold an invoice ("Upozornění"), such as a country that is no code or a CSV row whose
+    /// amount disagrees with the lines of its ISDOC file. A log stored before the summary kept them has none.
+    var notes: [String] = []
 }
 
 nonisolated extension ImportSummary {
@@ -68,7 +73,33 @@ nonisolated extension ImportSummary {
             conflicts: plan.conflicts.count, flaggedCancelled: plan.flaggedCancelled.count,
             newClients: plan.newClients.count, filledClients: plan.clientUpdates.count, reviewItems: plan.reviewItems,
             conflictItems: plan.conflicts, exportSupplier: exportSupplier,
-            newestYear: (plan.inserts + plan.updates + plan.flaggedCancelled).map(\.issueDate.year).max()
+            newestYear: (plan.inserts + plan.updates + plan.flaggedCancelled).map(\.issueDate.year).max(),
+            notes: plan.notes
+        )
+    }
+
+    /// Reads a summary from the import log. A log stored before a field was added to the summary does not have it:
+    /// the year (`newestYear`) and the supplier are nil then, and `notes` is empty. Every other field must be there.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            files: try container.decode([String].self, forKey: .files),
+            added: try container.decode(Int.self, forKey: .added),
+            updated: try container.decode(Int.self, forKey: .updated),
+            unchanged: try container.decode(Int.self, forKey: .unchanged),
+            skipped: try container.decode(Int.self, forKey: .skipped),
+            needsReview: try container.decode(Int.self, forKey: .needsReview),
+            keptChangedInApp: try container.decode(Int.self, forKey: .keptChangedInApp),
+            conflicts: try container.decode(Int.self, forKey: .conflicts),
+            flaggedCancelled: try container.decode(Int.self, forKey: .flaggedCancelled),
+            newClients: try container.decode(Int.self, forKey: .newClients),
+            filledClients: try container.decode(Int.self, forKey: .filledClients),
+            reviewItems: try container.decode([String].self, forKey: .reviewItems),
+            keptItems: try container.decode([String].self, forKey: .keptItems),
+            conflictItems: try container.decode([String].self, forKey: .conflictItems),
+            exportSupplier: try container.decodeIfPresent(Supplier.self, forKey: .exportSupplier),
+            newestYear: try container.decodeIfPresent(Int.self, forKey: .newestYear),
+            notes: try container.decodeIfPresent([String].self, forKey: .notes) ?? []
         )
     }
 }
