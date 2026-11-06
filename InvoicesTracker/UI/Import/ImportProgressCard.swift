@@ -1,26 +1,34 @@
 import SwiftUI
 
-/// The card of the progress of an import: while it runs, how far it is; once it is done, a block for each file it
-/// imported, the green box of the summary with Zobrazit faktury, the offer to fill in the supplier from the export, and
-/// the lists of what is to check, kept and not added. The numbers are the model's (`ImportModel`); the card only shows
-/// them.
+/// The card of the progress of an import ("Průběh", which VoiceOver reads as "Průběh importu"). While the import runs:
+/// that it goes on when another screen is shown, a bar of 6 points in the accent over the invoices it stores, and
+/// "Importuji 3 z 12…". Once it is done: the bar full in the green text, the green panel with what the import did and
+/// Zobrazit faktury, under it the line of the clients and the offer to fill in the supplier from the export, and then
+/// each list of what was overwritten, is to check, was not added or has a notice. The numbers are the model's
+/// (`ImportModel`); the card only shows them.
 struct ImportProgressCard: View {
     let model: ImportModel
 
     var body: some View {
         Card(spacing: 10, label: "Průběh importu") {
             header
-            if let progress = model.progress {
-                ProgressBlock(done: progress.done, total: progress.total)
+            ProgressBar(fraction: fraction, isDone: !model.running)
+            if model.running, let progress = model.progress {
+                Text(verbatim: ImportPreviewText.progress(done: progress.done, total: progress.total))
+                    .font(Typography.calloutSemibold)
+                    .foregroundStyle(Palette.text)
             }
-            if let summary = model.summary {
-                ForEach(summary.files, id: \.self) { name in
-                    FileRowView(name: name, parts: summary.files.count == 1 ? ImportText.countParts(of: summary) : [])
-                }
+            if !model.running, let summary = model.summary {
+                SummaryPanel(
+                    headline: ImportText.headline(of: summary),
+                    announcement: model.summaryLines.joined(separator: " "), showInvoices: model.showInvoices)
+                Text(verbatim: ImportText.clientsLine(of: summary))
+                    .font(Typography.callout)
+                    .foregroundStyle(Palette.text2)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let failure = model.failure {
                     SettingsFailureLine(text: failure)
                 }
-                SummaryBox(lines: model.summaryLines, showInvoices: model.showInvoices)
                 if model.canFillSupplier {
                     supplierOffer(exported: summary.exportSupplier)
                 }
@@ -29,6 +37,14 @@ struct ImportProgressCard: View {
                 }
             }
         }
+    }
+
+    /// How much of the bar is filled: the share of the invoices stored while the import runs, and all of it once it is
+    /// done.
+    private var fraction: Double {
+        guard model.running else { return 1 }
+        guard let progress = model.progress, progress.total > 0 else { return 0 }
+        return min(1, Double(progress.done) / Double(progress.total))
     }
 
     /// "Průběh", and while the import runs that it goes on when another screen is shown.
@@ -69,101 +85,51 @@ struct ImportProgressCard: View {
     }
 }
 
-// MARK: - Progress
+// MARK: - The bar
 
-/// How far the running import is: a bar over the invoices it stores and "Importuji 3 z 12…". Before the importer stores
-/// the first invoice (it fetches the rates first) the bar moves without a count.
-private struct ProgressBlock: View {
-    let done: Int
-    let total: Int
+/// The bar of the progress: 6 points tall on the grey fill, with the corners of half its height, filled from the left
+/// by `fraction` in the accent while the import runs and in the green text once it is done. VoiceOver reads it as a
+/// progress indicator named "Průběh importu".
+private struct ProgressBar: View {
+    /// How much of the bar is filled, from 0 to 1.
+    let fraction: Double
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if total > 0 {
-                ProgressView(value: Double(done), total: Double(total))
-                    .tint(Palette.accent)
-            } else {
-                ProgressView()
-                    .progressViewStyle(.linear)
-                    .tint(Palette.accent)
-            }
-            Text(verbatim: ImportPreviewText.progress(done: done, total: total))
-                .font(Typography.calloutSemibold)
-                .foregroundStyle(Palette.text)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - A file
-
-/// A file the import imported: its name, a full green bar, and, for an import of one file, its counts in their colours.
-/// It is a panel on the inset background.
-private struct FileRowView: View {
-    let name: String
-    let parts: [ImportText.CountPart]
+    /// Whether the import is done.
+    let isDone: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: name)
-                .font(Typography.bodySemibold)
-                .foregroundStyle(Palette.text)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-            ProgressView(value: 1.0)
-                .tint(Palette.greenText)
-                .accessibilityLabel("Průběh importu \(name)")
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    status
-                    counts
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    status
-                    HStack(spacing: 12) {
-                        counts
-                    }
+        let shape = RoundedRectangle(cornerRadius: 3)
+        shape
+            .fill(Palette.fill)
+            .frame(maxWidth: .infinity)
+            .frame(height: 6)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Rectangle()
+                        .fill(isDone ? Palette.greenText : Palette.accent)
+                        .frame(width: proxy.size.width * fraction)
                 }
             }
-            .font(Typography.callout)
-        }
-        .insetPanel(horizontal: 14, vertical: 12)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var status: some View {
-        Text("Hotovo")
-            .font(Typography.calloutSemibold)
-            .foregroundStyle(Palette.text)
-    }
-
-    @ViewBuilder
-    private var counts: some View {
-        ForEach(parts, id: \.text) { part in
-            Text(verbatim: part.text)
-                .foregroundStyle(color(of: part.tone))
-        }
-    }
-
-    /// The colour of a count: what was added in the green text, what was updated in the blue of a link, what stayed
-    /// as it was in the grey text, and what was skipped, or is held for review, in the orange text.
-    private func color(of tone: ImportText.CountPart.Tone) -> Color {
-        switch tone {
-        case .added: Palette.greenText
-        case .updated: Palette.accentText
-        case .unchanged: Palette.text2
-        case .skipped: Palette.orangeText
-        }
+            .clipShape(shape)
+            .animation(.linear(duration: 0.12), value: fraction)
+            .accessibilityRepresentation {
+                ProgressView(value: fraction)
+            }
+            .accessibilityLabel("Průběh importu")
     }
 }
 
 // MARK: - The summary
 
-/// The green box of the summary: what the import did, and Zobrazit faktury. It is a panel on the green tint: the
-/// headline in the green text, the line of the clients under it in the grey text, and the button a small capsule of
-/// the accent.
-private struct SummaryBox: View {
-    let lines: [String]
+/// The green panel of the summary: what the import did in the green text, and Zobrazit faktury as the small capsule of
+/// the accent on its right, or under it where the two do not fit on one line. VoiceOver says the lines of the summary
+/// when it appears, or once the app is unlocked when the import ended under the lock after inactivity.
+private struct SummaryPanel: View {
+    /// "Hotovo – nové 11, přepsané 0, beze změny 0, přeskočené 2."
+    let headline: String
+
+    /// What VoiceOver says when the panel appears: the headline and the line of the clients.
+    let announcement: String
 
     /// Zobrazit faktury.
     let showInvoices: () -> Void
@@ -172,13 +138,14 @@ private struct SummaryBox: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
                 text
-                Spacer(minLength: 12)
+                Spacer(minLength: 10)
                 button
             }
             VStack(alignment: .leading, spacing: 10) {
                 text
+                    .fixedSize(horizontal: false, vertical: true)
                 button
             }
         }
@@ -187,20 +154,13 @@ private struct SummaryBox: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.greenTint, in: RoundedRectangle(cornerRadius: DesignMetrics.panelRadius))
         .accessibilityElement(children: .contain)
-        // VoiceOver says what the import did when its summary appears, or once the app is unlocked when the import
-        // ended under the lock after inactivity.
-        .onAppear { VoiceOverAnnouncement.post(lines.joined(separator: " "), by: app) }
+        .onAppear { VoiceOverAnnouncement.post(announcement, by: app) }
     }
 
     private var text: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                Text(verbatim: line)
-                    .font(index == 0 ? Typography.bodySemibold : Typography.body)
-                    .foregroundStyle(index == 0 ? Palette.greenText : Palette.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        Text(verbatim: headline)
+            .font(Typography.bodySemibold)
+            .foregroundStyle(Palette.greenText)
     }
 
     private var button: some View {
@@ -209,22 +169,21 @@ private struct SummaryBox: View {
     }
 }
 
-/// A list of the summary: its title, what it means and the line of each item, which can be selected and copied. It is a
-/// panel on the inset background.
+/// A list of the summary on the inset background: its title in semibold, what it means in the grey of captions, and
+/// the line of each item in figures of one width, which can be selected and copied.
 private struct ImportListView: View {
     let list: ImportList
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(verbatim: list.title)
                 .font(Typography.bodySemibold)
                 .foregroundStyle(Palette.text)
-                .accessibilityAddTraits(.isHeader)
             Text(verbatim: list.note)
                 .font(Typography.callout)
                 .foregroundStyle(Palette.text2)
                 .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(list.items.enumerated()), id: \.offset) { _, item in
                     Text(verbatim: item)
                         .font(Typography.callout)

@@ -51,7 +51,7 @@ struct ScreenTests {
                 ScreenHeader(title: "Nastavení", subtitle: "Aplikace, moje údaje, zabezpečení a rok 2026"),
                 ScreenHeader(
                     title: "Import faktur",
-                    subtitle: "CSV export z Fakturoidu · obvykle jen jednou, při přechodu do aplikace"),
+                    subtitle: "Exporty CSV a ISDOC z Fakturoidu · obvykle jen jednou, při přechodu do aplikace"),
             ])
     }
 

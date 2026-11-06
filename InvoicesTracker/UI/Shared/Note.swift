@@ -47,6 +47,10 @@ nonisolated enum NoteIcon: Sendable, Hashable {
     /// The triangle with an exclamation mark, for a warning and for what cannot be undone.
     case warning
 
+    /// The circle with an exclamation mark, for what an action will overwrite, as the note of Import that the import
+    /// overwrites the invoices the app has, where the prototype draws it.
+    case exclamation
+
     /// No icon: the text starts at the edge of the note.
     case none
 
@@ -55,6 +59,7 @@ nonisolated enum NoteIcon: Sendable, Hashable {
         switch self {
         case .info: "info.circle"
         case .warning: "exclamationmark.triangle"
+        case .exclamation: "exclamationmark.circle"
         case .none: nil
         }
     }

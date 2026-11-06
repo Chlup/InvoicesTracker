@@ -50,9 +50,12 @@ struct DesignControlsTests {
         #expect(NoteTone.info.iconColor != NoteTone.success.iconColor)
     }
 
-    @Test func aNoteIconIsTheInfoCircleOrTheWarningTriangleOrNothing() {
+    /// The circle with an exclamation mark is the icon the prototype draws on the note of Import that the import
+    /// overwrites the invoices the app has.
+    @Test func aNoteIconIsTheInfoCircleTheWarningTriangleTheExclamationCircleOrNothing() {
         #expect(NoteIcon.info.symbolName == "info.circle")
         #expect(NoteIcon.warning.symbolName == "exclamationmark.triangle")
+        #expect(NoteIcon.exclamation.symbolName == "exclamationmark.circle")
         #expect(NoteIcon.none.symbolName == nil)
     }
 
@@ -418,6 +421,7 @@ struct DesignControlsTests {
         #expect(withoutIcon.contains("Poznámka"))
         #expect(try await readings(of: .info) == withoutIcon)
         #expect(try await readings(of: .warning) == withoutIcon)
+        #expect(try await readings(of: .exclamation) == withoutIcon)
     }
 
     @Test func theBannerShowsItsSentenceAndCloses() async throws {

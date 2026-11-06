@@ -93,6 +93,28 @@ struct WelcomeScreensTests {
         }
     }
 
+    // MARK: The import
+
+    /// The step of the import offers the exports of Fakturoid in both formats, CSV and ISDOC.
+    @Test func theStepOfTheImportOffersTheExportsInCsvAndIsdoc() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let model = makeAppModel(in: directory)
+
+        try await withHostedView(OnboardingView(model: model, step: .importOffer)) { window in
+            try await withAccessibilityElements {
+                try await waitUntil {
+                    accessibilityReadings(in: window).contains { $0.contains("Importovat z Fakturoidu") }
+                }
+                let readings = accessibilityReadings(in: window)
+                #expect(
+                    readings.contains { $0.contains("Exporty CSV a ISDOC, klidně za víc let najednou.") },
+                    "The step reads \(readings)")
+                #expect(!readings.contains { $0.contains("CSV export faktur") })
+            }
+        }
+    }
+
     // MARK: When the app asks for Touch ID
 
     /// The locked screen of a launch says when the app asks for Touch ID or the password: at the launch, and after the
