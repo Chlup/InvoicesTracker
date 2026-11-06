@@ -1573,8 +1573,9 @@ struct ImportPlannerTests {
         let summary = ImportSummary(plan: plan, files: ["a.csv", "b.csv"], exportSupplier: supplier)
 
         #expect(summary.files == ["a.csv", "b.csv"])
-        // Row 1 overwrites what was changed in the app, row 3 is a change too, and row 14 is a conflict.
-        #expect(summary.added == 0 && summary.updated == 2 && summary.unchanged == 8 && summary.skipped == 2)
+        // Row 1 overwrites what was changed in the app, row 3 is a change too, row 2 is flagged as cancelled (which
+        // counts among the overwritten) and row 14 is a conflict.
+        #expect(summary.added == 0 && summary.updated == 3 && summary.unchanged == 8 && summary.skipped == 2)
         #expect(summary.keptChangedInApp == 0 && summary.keptItems.isEmpty)
         #expect(summary.conflicts == 1)
         #expect(summary.conflictItems == ["20261102 — číslo už používá faktura v jiné měně — nepřidáno"])
