@@ -445,7 +445,8 @@ nonisolated extension ImportPlanner {
         /// replace the flag, and the flag goes when no row is applied. A group that lacks a kind the invoice is held
         /// for settles nothing: it applies no file of a held kind and leaves the flag, while a kind the invoice is not
         /// held for is applied as usual. A flag the person has resolved, or a flag of another reason, does not count:
-        /// the invoice is compared as usual then.
+        /// the invoice is compared as usual then. An invoice the group leaves not held for its rows is stored under the
+        /// row it has taken, not under the marker of it that a resolved hold left (`released(_:)`).
         private mutating func update(
             _ existing: Invoice, group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, label: String
         ) {
@@ -486,6 +487,9 @@ nonisolated extension ImportPlanner {
                 } else if !applyingRow {
                     made.invoice.review = nil
                 }
+            }
+            if held?.rows != true {
+                made.invoice.source = Self.released(made.invoice.source)
             }
             add(made.invoice, notes: made.notes, of: group, label: label, as: .update)
         }
@@ -605,6 +609,19 @@ nonisolated extension ImportPlanner {
             }
         }
 
+        /// `source` as an invoice the plan stores without holding it for its rows has it: `unmarked(_:)`, and with the
+        /// marker of a row it has taken (`ImportPlanner.fingerprint(ofTakenRow:)`) written back as the fingerprint of
+        /// that row. The marker holds the invoice for its rows only while the hold that wrote it lasts. Kept after the
+        /// person has resolved that hold, it would make a later hold that is not for the rows, such as one for ISDOC
+        /// files alone, hold them too: the unchanged row would be forced over what the person did, and an ISDOC file
+        /// alone would no longer end that hold.
+        private static func released(_ source: InvoiceSource) -> InvoiceSource {
+            guard case .imported(let id, let fingerprint, _) = source else { return unmarked(source) }
+            return .imported(
+                fakturoidID: id, fingerprint: ImportPlanner.takenFingerprint(fingerprint) ?? fingerprint,
+                changedInApp: false)
+        }
+
         /// The rows or the ISDOC invoices of the import for an invoice that is there differ, so none of them is
         /// applied: the invoice keeps all it holds, and is held for review (`heldForDifferingFiles(_:of:isNew:)`).
         /// When it is stored under these very files already (`isStored(_:underTheFilesOf:)`), it is unchanged,
@@ -642,8 +659,11 @@ nonisolated extension ImportPlanner {
         ///
         /// A kind the group has none of keeps its fingerprint, unless the invoice is held for its rows all the same, as
         /// above: the rows are then stored under the marker of the row the invoice has taken, or keep the fingerprint
-        /// of a set they are held under already. The fingerprint of the rows goes with the Fakturoid id of the first
-        /// row (or the one the invoice has), and an imported invoice is not marked as changed in the app any more.
+        /// of a set they are held under already. Rows this hold does not hold keep no marker: one that a hold the
+        /// person has resolved left goes back to the fingerprint of its row (`released(_:)`), so that the rows are not
+        /// held again by a hold for the ISDOC invoices alone. The fingerprint of the rows goes with the Fakturoid id of
+        /// the first row (or the one the invoice has), and an imported invoice is not marked as changed in the app any
+        /// more.
         private func heldForDifferingFiles(_ invoice: Invoice, of group: Group, isNew: Bool) -> Invoice {
             var held = invoice
             held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
@@ -667,7 +687,7 @@ nonisolated extension ImportPlanner {
                 held.source = .imported(
                     fakturoidID: Self.fakturoidID(of: invoice), fingerprint: rowPrint, changedInApp: false)
             } else if case .imported = invoice.source {
-                held.source = Self.unmarked(invoice.source)
+                held.source = Self.released(invoice.source)
             }
             if !isdocPrints.isEmpty {
                 let taken = invoice.isdocFingerprint.flatMap { ImportPlanner.takenFingerprint($0) }

@@ -1171,6 +1171,71 @@ struct ImportPlannerIsdocTests {
         }
     }
 
+    @Test func aRowTakenUnderAResolvedHoldIsNotHeldAgainByALaterHoldForIsdocFilesAlone() throws {
+        // Paid without a date: held for review at the first import, and not resolved before the hold.
+        let row = try FakturoidCSV.parsed(Self.crownRow.merging(["Paid on": ""]) { $1 })
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let third = copy(of: file, note: "Třetí znění poznámky.")
+        let first = applied(plan(rows: [row]))
+        let flagged = try #require(first.invoices.first)
+        let held = try #require(
+            plan(rows: [row], isdocs: [file, other], existing: [flagged], clients: first.clients).updates.first)
+        // The person resolves the hold by entering the payment.
+        var resolved = resolvedInApp(held)
+        let entered = Payment.fixture(on: "2026-09-10", net: 504_000, vat: 105_840)
+        resolved.payment = entered
+        let takenRow = InvoiceSource.imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false)
+
+        // A clean ISDOC file stores the resolved invoice under the row it took, which no hold holds any more.
+        let updated = try #require(plan(isdocs: [file], existing: [resolved], clients: first.clients).updates.first)
+        #expect(updated.review == nil && updated.source == takenRow)
+        // So does a later hold for two other ISDOC files that differ, imported without the row.
+        let heldAgain = try #require(
+            plan(isdocs: [file, third], existing: [resolved], clients: first.clients).updates.first)
+        #expect(heldAgain.review == Self.differingFlag && heldAgain.payment == entered)
+        #expect(heldAgain.source == takenRow)
+
+        // That hold is for the ISDOC files alone: one clean ISDOC file ends it, with the row the invoice took or
+        // alone, and the row is not applied again over the resolution and the payment.
+        for clean in [
+            plan(rows: [row], isdocs: [file], existing: [heldAgain], clients: first.clients),
+            plan(isdocs: [file], existing: [heldAgain], clients: first.clients),
+        ] {
+            let released = try #require(clean.updates.first)
+            #expect(released.review == nil && released.payment == entered && clean.reviewItems.isEmpty)
+            #expect(released.items == IsdocInvoiceBuilder.items(of: file).items)
+        }
+    }
+
+    @Test func aCancelledRowTakenUnderAResolvedHoldIsUnchangedThroughALaterHoldForIsdocFilesAlone() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let cancelled = try FakturoidCSV.parsed(
+            Self.crownRow.merging(["Status": "cancelled", "Cancelled at": "2026-09-20 09:00:00"]) { $1 })
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let third = copy(of: file, note: "Třetí znění poznámky.")
+        let fromCsv = applied(plan(rows: [row], payments: [row.fingerprint: try payment(of: row)]))
+        let flagged = try #require(
+            plan(rows: [cancelled], existing: fromCsv.invoices, clients: fromCsv.clients).flaggedCancelled.first)
+        let held = try #require(
+            plan(isdocs: [file, other], existing: [flagged], clients: fromCsv.clients).updates.first)
+        // The person resolves the hold, and two other ISDOC files that differ hold the invoice again.
+        let heldAgain = try #require(
+            plan(isdocs: [file, third], existing: [resolvedInApp(held)], clients: fromCsv.clients).updates.first)
+        #expect(heldAgain.review == Self.differingFlag)
+
+        // The cancellation stays resolved, since this hold is not for the rows: the same cancelled row, alone or with
+        // an ISDOC file, is unchanged.
+        for again in [
+            plan(rows: [cancelled], existing: [heldAgain], clients: fromCsv.clients),
+            plan(rows: [cancelled], isdocs: [file], existing: [heldAgain], clients: fromCsv.clients),
+        ] {
+            #expect(again.unchangedNumbers == ["20260902"] && again.invoiceCount == 0)
+            #expect(again.flaggedCancelled.isEmpty && again.reviewItems.isEmpty)
+        }
+    }
+
     @Test func mixedVatIsNotAddedWithItsReason() throws {
         let plan = plan(isdocs: [try isdoc("mixed-vat")])
 

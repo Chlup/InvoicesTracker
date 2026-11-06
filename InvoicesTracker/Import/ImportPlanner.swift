@@ -388,7 +388,9 @@ nonisolated enum ImportPlanner {
     ///
     /// While the invoice carries the hold's flag, the marker holds it for its rows, and an import that brings a row
     /// applies it. Once the person has resolved the flag, the marker counts as the row it carries
-    /// (`takenFingerprint(_:)`), so the same row again is unchanged and another one is applied as usual.
+    /// (`takenFingerprint(_:)`), so the same row again is unchanged and another one is applied as usual. The next
+    /// import that stores the invoice without holding it for its rows writes the fingerprint of that row back in its
+    /// place, so a later hold for ISDOC files alone does not hold the rows as well.
     static func fingerprint(ofTakenRow row: String) -> String {
         takenRowPrefix + row
     }
@@ -438,11 +440,12 @@ nonisolated enum ImportPlanner {
     /// already, and a hold that displaces a flag of the invoice's own, such as "zrušeno ve Fakturoidu", holds its rows
     /// too, so that the hold ends only with an import that brings its row, which brings that flag back. Rows the
     /// invoice has taken already are held under the marker of that row (`fingerprint(ofTakenRow:)`): once the person
-    /// has resolved the hold, the same row is unchanged again. While the invoice still carries that flag, an import
-    /// whose files of it do not differ ends the hold only when it brings every kind the invoice is held for: the files
-    /// of those kinds are applied whatever the invoice is stored under, the row's status, payment and review replace
-    /// the flag, and without a row applied the flag goes. An import that lacks a held kind applies no file of a held
-    /// kind, applies the other kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
+    /// has resolved the hold, the same row is unchanged again, and a later hold that is not for the rows stores the
+    /// row itself again, so it does not hold them. While the invoice still carries that flag, an import whose files of
+    /// it do not differ ends the hold only when it brings every kind the invoice is held for: the files of those kinds
+    /// are applied whatever the invoice is stored under, the row's status, payment and review replace the flag, and
+    /// without a row applied the flag goes. An import that lacks a held kind applies no file of a held kind, applies
+    /// the other kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
