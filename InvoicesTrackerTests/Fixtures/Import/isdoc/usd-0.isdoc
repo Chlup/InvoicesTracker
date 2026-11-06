@@ -9,7 +9,7 @@
   <Note></Note>
   <LocalCurrencyCode>CZK</LocalCurrencyCode>
   <ForeignCurrencyCode>USD</ForeignCurrencyCode>
-  <CurrRate>21.359</CurrRate>
+  <CurrRate>21.278</CurrRate>
   <RefCurrRate>1</RefCurrRate>
   <AccountingSupplierParty>
     <Party>
@@ -58,11 +58,11 @@
   <InvoiceLines>
     <InvoiceLine>
       <ID>1</ID>
-      <InvoicedQuantity unitCode="h">218</InvoicedQuantity>
-      <LineExtensionAmountCurr>17440.0</LineExtensionAmountCurr>
-      <LineExtensionAmount>372506.62</LineExtensionAmount>
+      <InvoicedQuantity unitCode="h">194</InvoicedQuantity>
+      <LineExtensionAmountCurr>14356.0</LineExtensionAmountCurr>
+      <LineExtensionAmount>305466.97</LineExtensionAmount>
       <LineExtensionTaxAmount>0.0</LineExtensionTaxAmount>
-      <UnitPrice>1708.72</UnitPrice>
+      <UnitPrice>1574.57</UnitPrice>
       <ClassifiedTaxCategory>
         <Percent>0.0</Percent>
         <VATCalculationMethod>0</VATCalculationMethod>

@@ -59,16 +59,16 @@
   <InvoiceLines>
     <InvoiceLine>
       <ID>1</ID>
-      <InvoicedQuantity unitCode="hod">6.5</InvoicedQuantity>
-      <LineExtensionAmount>5200.0</LineExtensionAmount>
-      <LineExtensionTaxAmount>0.0</LineExtensionTaxAmount>
-      <UnitPrice>800.0</UnitPrice>
+      <InvoicedQuantity unitCode="hod">7</InvoicedQuantity>
+      <LineExtensionAmount>5040.0</LineExtensionAmount>
+      <LineExtensionTaxAmount>1058.4</LineExtensionTaxAmount>
+      <UnitPrice>720.0</UnitPrice>
       <ClassifiedTaxCategory>
         <Percent>21.0</Percent>
         <VATCalculationMethod>0</VATCalculationMethod>
       </ClassifiedTaxCategory>
       <Item>
-        <Description>IT služby</Description>
+        <Description>Správa IT a podpora – září 2026</Description>
       </Item>
     </InvoiceLine>
     <InvoiceLine>

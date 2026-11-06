@@ -31,21 +31,21 @@ struct IsdocReaderTests {
         #expect(invoice.supplier?.name == "Truhlářství Doubek s.r.o.")
         #expect(invoice.lines.count == 1)
         let line = try #require(invoice.lines.first)
-        #expect(line.quantity == Decimal(string: "6.5"))
+        #expect(line.quantity == Decimal(7))
         #expect(line.unit == "hod")
-        #expect(line.description == "IT služby")
-        #expect(line.lineAmountMinor == 520_000)
-        #expect(line.unitPriceCZKMinor == 80_000)
+        #expect(line.description == "Správa IT a podpora – září 2026")
+        #expect(line.lineAmountMinor == 504_000)
+        #expect(line.unitPriceCZKMinor == 72_000)
         #expect(line.vatPercent == 21)
     }
 
     @Test func aForeignInvoiceTakesItsCurrencyRateAndAmountsInTheCurrency() throws {
         let invoice = try read("usd-0")
         #expect(invoice.currency == "USD")
-        #expect(invoice.rate == Decimal(string: "21.359"))
+        #expect(invoice.rate == Decimal(string: "21.278"))
         let line = try #require(invoice.lines.first)
-        #expect(line.lineAmountMinor == 1_744_000)
-        #expect(line.unitPriceCZKMinor == 170_872)
+        #expect(line.lineAmountMinor == 1_435_600)
+        #expect(line.unitPriceCZKMinor == 157_457)
         #expect(line.unit == "h")
         #expect(line.vatPercent == 0)
         #expect(invoice.customer.ico == "")
@@ -62,7 +62,7 @@ struct IsdocReaderTests {
     @Test func anEmptyUnitStaysEmpty() throws {
         let invoice = try read("two-lines")
         #expect(invoice.lines.map(\.unit) == ["hod", ""])
-        #expect(invoice.lines.map(\.description) == ["IT služby", "Doprava"])
+        #expect(invoice.lines.map(\.description) == ["Správa IT a podpora – září 2026", "Doprava"])
     }
 
     @Test func aDocumentTypeOfFourIsAProformaAndMixedRatesStayPerLine() throws {
@@ -72,14 +72,14 @@ struct IsdocReaderTests {
 
     @Test func aDeclaredEncodingIsReadAndABOMSkipped() throws {
         let legacy = try read("windows-1250")
-        #expect(legacy.lines.first?.description == "IT služby")
+        #expect(legacy.lines.first?.description == "Správa IT a podpora – září 2026")
         #expect(legacy.note == "Fakturujeme vám za září.")
         #expect(legacy.customer.name == "Truhlářství Doubek s.r.o.")
 
         let bom = Data([0xEF, 0xBB, 0xBF]) + (try data("czk-21"))
         let withBOM = try IsdocReader.read(bom)
         #expect(withBOM.number == "20260902")
-        #expect(withBOM.lines.first?.description == "IT služby")
+        #expect(withBOM.lines.first?.description == "Správa IT a podpora – září 2026")
     }
 
     @Test func aUBLFileIsNotAnIsdocInvoice() throws {
@@ -107,7 +107,7 @@ struct IsdocReaderTests {
         #expect(invoice.fingerprint.allSatisfy { "0123456789abcdef".contains($0) })
 
         var changed = invoice
-        changed.lines[0].quantity = 7
+        changed.lines[0].quantity = 8
         #expect(changed.fingerprint != invoice.fingerprint)
         #expect(try read("two-lines").fingerprint != invoice.fingerprint)
     }
