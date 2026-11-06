@@ -1,9 +1,11 @@
 import Foundation
 import Testing
+import os
 @testable import InvoicesTracker
 
-/// The import from files to the database: the payments the rows get, the rates fetched for them, the one transaction
-/// the plan is applied in, and what a second and a third import of changed files do to the data.
+/// The import from files to the database: the preview that writes nothing, the payments the rows get, the rates fetched
+/// for them, the one transaction the plan is made again and applied in with its progress per invoice, and what a
+/// second and a third import of changed files do to the data.
 @MainActor
 struct FakturoidImporterTests {
     // MARK: Helpers
@@ -29,8 +31,9 @@ struct FakturoidImporterTests {
         try fixtureURL(name, "csv")
     }
 
+    /// Reads the files at `urls` as the Import screen does, and imports them.
     private func importFiles(_ importer: FakturoidImporter, _ urls: [URL]) async throws -> ImportSummary {
-        try await importer.importFiles(urls) { _ in }
+        try await importer.importFiles(await ImportFile.read(urls)) { _, _ in }
     }
 
     private func invoice(
@@ -70,13 +73,13 @@ struct FakturoidImporterTests {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
         let http = try cnb()
-        var progress: [ImportProgress] = []
+        let progress = ProgressLog()
 
         let summary = try await makeImporter(database, http: http)
-            .importFiles([try sampleURL()]) { progress.append($0) }
+            .importFiles(await ImportFile.read([try sampleURL()])) { progress.record($0, $1) }
 
-        // The one file has 13 rows.
-        #expect(progress == [ImportProgress(rowCounts: [13], fileCount: 1)])
+        // The eleven invoices it adds, one by one.
+        #expect(progress.steps == (1...11).map { "\($0)/11" })
         #expect(summary.files == ["fakturoid_sample.csv"])
         #expect(summary.added == 11 && summary.updated == 0 && summary.unchanged == 0 && summary.skipped == 2)
         #expect(summary.needsReview == 4 && summary.reviewItems.count == 4)
@@ -258,7 +261,7 @@ struct FakturoidImporterTests {
 
     // MARK: A changed export
 
-    @Test func aChangedExportUpdatesWhatWasNotChangedKeepsWhatWasAndFlagsWhatWasCancelled() async throws {
+    @Test func aChangedExportOverwritesAppChangesTakesInAnAppInvoiceAndFlagsWhatWasCancelled() async throws {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
         let importer = makeImporter(database, http: try cnb())
@@ -280,18 +283,31 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, [try sampleURL("fakturoid_reimport")])
 
-        // Row 3 is updated, row 1 is kept, row 14 is a conflict, row 2 is flagged and rows 4 and 5 are skipped.
-        #expect(summary.added == 0 && summary.updated == 1 && summary.unchanged == 8 && summary.skipped == 2)
-        #expect(summary.keptChangedInApp == 1)
-        #expect(summary.keptItems == ["20260902 — změněno v aplikaci — ponecháno"])
-        #expect(summary.conflicts == 1 && summary.conflictItems.count == 1)
-        #expect(summary.conflictItems.first?.hasPrefix("20261102 — ") == true)
+        // Rows 1, 3 and 14 are updated, row 2 is flagged (and counts among the overwritten) and rows 4 and 5 are
+        // skipped.
+        #expect(summary.added == 0 && summary.updated == 4 && summary.unchanged == 8 && summary.skipped == 2)
+        #expect(summary.keptChangedInApp == 0 && summary.keptItems.isEmpty)
+        #expect(summary.conflicts == 0 && summary.conflictItems.isEmpty)
         #expect(summary.flaggedCancelled == 1 && summary.needsReview == 0)
         #expect(summary.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
         #expect(summary.newClients == 0 && summary.filledClients == 0)
-        // The invoice changed in the app and the invoice made in the app are exactly as they were.
-        #expect(try await invoice("20260902", in: database) == edited)
-        #expect(try await invoice("20261102", in: database) == appInvoice)
+        // The change in the app is overwritten by the changed row, and the payment is converted again for the new
+        // amounts, on the same day.
+        let overwritten = try await invoice("20260902", in: database)
+        #expect(overwritten.id == edited.id && overwritten.note.isEmpty && overwritten.netMinor == 460_000)
+        #expect(
+            overwritten.payment
+                == Payment(
+                    date: civilDate("2026-10-15"), conversion: .czk, czkNetHalere: 460_000, czkVatHalere: 96_600))
+        #expect(
+            overwritten.source
+                == .imported(fakturoidID: "5001", fingerprint: reimport[0].fingerprint, changedInApp: false))
+        // The invoice made in the app with the number of row 14 is that invoice of Fakturoid now.
+        let takenIn = try await invoice("20261102", in: database)
+        #expect(takenIn.id == appInvoice.id && takenIn.items.map(\.description) == ["Import z Fakturoidu"])
+        #expect(
+            takenIn.source
+                == .imported(fakturoidID: "5014", fingerprint: reimport[13].fingerprint, changedInApp: false))
         // The updated invoice has its payment.
         let updated = try await invoice("20261001", in: database)
         #expect(updated.number == "2026-10-01")
@@ -310,7 +326,7 @@ struct FakturoidImporterTests {
         let receipts = try await database.receipts(year: 2026)
         #expect(!receipts.contains { $0.source == .invoice(flagged.id) })
         #expect(
-            receipts.map(\.source) == [.invoice(edited.id), .invoice(updated.id)])
+            receipts.map(\.source) == [.invoice(overwritten.id), .invoice(updated.id)])
         #expect(receipts.map(\.day) == [civilDate("2026-10-15"), civilDate("2026-11-03")])
     }
 
@@ -501,9 +517,9 @@ struct FakturoidImporterTests {
         defer { removeTemporaryDirectory(directory) }
         let importer = FakturoidImporter(
             database: database, fetcher: CNBFetcher(http: CancellingHTTPClient()), clock: ManualClock(Self.importTime))
-        let url = try sampleURL()
+        let files = await ImportFile.read([try sampleURL()])
 
-        let task = Task { try await importer.importFiles([url]) { _ in } }
+        let task = Task { try await importer.importFiles(files) { _, _ in } }
 
         await #expect(throws: CancellationError.self) { _ = try await task.value }
         #expect(try await database.invoiceCount() == 0)
@@ -788,23 +804,19 @@ struct FakturoidImporterTests {
     @Test func severalFilesAreOneImportAndEachIsReported() async throws {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
-        var progress: [ImportProgress] = []
+        let progress = ProgressLog()
+        let files = await ImportFile.read([try sampleURL(), try sampleURL("fakturoid_reimport")])
 
         // The same invoices twice in one import. Rows that are alike are taken once. Where the second file differs, the
         // invoice is held for review (rows 1 and 3), or it is cancelled in the second file and is not added (row 2).
-        let summary = try await makeImporter(database, http: try cnb())
-            .importFiles([try sampleURL(), try sampleURL("fakturoid_reimport")]) { progress.append($0) }
+        let summary = try await makeImporter(database, http: try cnb()).importFiles(files) { progress.record($0, $1) }
 
-        // After each file: the rows of every file read so far (13 and 14), and how many files there are.
-        #expect(
-            progress == [
-                ImportProgress(rowCounts: [13], fileCount: 2), ImportProgress(rowCounts: [13, 14], fileCount: 2),
-            ])
-        #expect(progress.map(\.filesRead) == [1, 2])
-        #expect(progress.map(\.rowsRead) == [13, 27])
+        // The invoices of both files are saved together, one by one, and the summary names each file.
+        #expect(progress.steps == (1...11).map { "\($0)/11" })
         #expect(summary.files == ["fakturoid_sample.csv", "fakturoid_reimport.csv"])
         #expect(summary.added == 11 && summary.updated == 0 && summary.unchanged == 0 && summary.conflicts == 0)
-        #expect(summary.skipped == 4)
+        // The proforma invoice of both files is skipped once, and each cancelled invoice once.
+        #expect(summary.skipped == 3)
         #expect(summary.needsReview == 6 && summary.flaggedCancelled == 0)
         let held = "v importu vícekrát s různým obsahem — ke kontrole"
         #expect(summary.reviewItems.contains("20260902 — " + held))
@@ -857,7 +869,7 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, urls)
 
-        #expect(summary.flaggedCancelled == 1 && summary.added == 0 && summary.updated == 0 && summary.conflicts == 0)
+        #expect(summary.flaggedCancelled == 1 && summary.added == 0 && summary.updated == 1 && summary.conflicts == 0)
         #expect(summary.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
         let flagged = try await invoice("20260901", .usd, in: database)
         #expect(flagged.review == ReviewFlag(reason: "zrušeno ve Fakturoidu"))
@@ -909,14 +921,13 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, [url])
 
-        #expect(summary.flaggedCancelled == 1 && summary.keptChangedInApp == 0 && summary.updated == 0)
-        #expect(
-            summary.reviewItems == ["20260902 — zrušeno ve Fakturoidu a změněno v aplikaci — ponecháno ke kontrole"])
+        #expect(summary.flaggedCancelled == 1 && summary.keptChangedInApp == 0 && summary.updated == 1)
+        #expect(summary.reviewItems == ["20260902 — zrušeno ve Fakturoidu"])
         let stored = try await invoice("20260902", in: database)
         var expected = edited
         expected.review = ReviewFlag(reason: "zrušeno ve Fakturoidu")
         if case .imported(let id, _, _) = edited.source {
-            expected.source = .imported(fakturoidID: id, fingerprint: cancelledRow.fingerprint, changedInApp: true)
+            expected.source = .imported(fakturoidID: id, fingerprint: cancelledRow.fingerprint, changedInApp: false)
         }
         #expect(stored == expected)
         #expect(stored.payment != nil && stored.note == "Domluveno telefonicky")
@@ -1045,39 +1056,40 @@ struct FakturoidImporterTests {
         let summary = try await importFiles(makeImporter(database, http: try cnb()), [url])
 
         #expect(summary.added == 11 && summary.skipped == 2 && summary.needsReview == 4)
-        #expect(try await invoice("20261008", in: database).items[0].description == "Konzultace \"říjen\", 2. část")
+        // The quoted fields with commas are read whole.
+        let dollars = try await invoice("20260901", .usd, in: database)
+        #expect(dollars.client.name == "Beta Labs, Inc." && dollars.client.city == "Austin, TX")
     }
 
     @Test func noFilesIsNoImport() async throws {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
-        var progress: [ImportProgress] = []
+        let progress = ProgressLog()
 
-        let summary = try await makeImporter(database, http: try cnb()).importFiles([]) { progress.append($0) }
+        let summary = try await makeImporter(database, http: try cnb()).importFiles([]) { progress.record($0, $1) }
 
         #expect(summary == ImportSummary())
-        #expect(progress.isEmpty)
+        #expect(progress.steps.isEmpty)
         #expect(try await database.lastImportLog() == nil)
     }
 
-    @Test func aFileThatIsNoFakturoidExportStopsTheImportBeforeAnythingIsChanged() async throws {
+    /// A file that cannot be used no longer stops the import: it is left out, and the others import.
+    @Test func aFailedFileIsLeftOutAndTheOthersImport() async throws {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
-        let other = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
-        var progress: [ImportProgress] = []
+        let bank = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
+        let files = await ImportFile.read([try sampleURL(), bank, try fixtureURL("damaged", "isdoc")])
+        let progress = ProgressLog()
 
-        let error = await #expect(throws: FileImportError.self) {
-            _ = try await makeImporter(database, http: try cnb())
-                .importFiles([try sampleURL(), other]) { progress.append($0) }
-        }
+        let summary = try await makeImporter(database, http: try cnb()).importFiles(files) { progress.record($0, $1) }
 
-        #expect(error == FileImportError(file: "bank.csv", reason: .notAFakturoidExport))
-        #expect(error?.errorDescription == "bank.csv: Nevypadá to jako export faktur z Fakturoidu.")
-        // Only the first file was read when the second one stopped the import.
-        #expect(progress == [ImportProgress(rowCounts: [13], fileCount: 2)])
-        #expect(try await database.invoiceCount() == 0)
-        #expect(try await database.clients().isEmpty)
-        #expect(try await database.lastImportLog() == nil)
+        #expect(files.map(\.content).dropFirst() == [.failed(.notAFakturoidExport), .failed(.notAnIsdocInvoice)])
+        #expect(summary.files == ["fakturoid_sample.csv"])
+        #expect(summary.added == 11 && summary.skipped == 2 && summary.needsReview == 4)
+        #expect(progress.steps.last == "11/11")
+        #expect(try await database.invoiceCount() == 11)
+        let log = try #require(try await database.lastImportLog())
+        #expect(try JSONDecoder().decode(ImportSummary.self, from: log.json) == summary)
     }
 
     @Test func anEmptyFileADamagedFileAndAFileThatIsNotTextAreRefusedWithTheirReasons() async throws {
@@ -1089,21 +1101,204 @@ struct FakturoidImporterTests {
         let notText = directory.appending(path: "binary.csv")
         try Data([0xFF, 0xFE, 0x00, 0xC3, 0x28, 0x81]).write(to: notText)
         let missing = directory.appending(path: "missing.csv")
+        let files = await ImportFile.read([empty, damaged, notText, missing])
 
-        let emptyError = await #expect(throws: FileImportError.self) { _ = try await importFiles(importer, [empty]) }
-        let damagedError = await #expect(throws: FileImportError.self) {
-            _ = try await importFiles(importer, [damaged])
-        }
-        let binaryError = await #expect(throws: FileImportError.self) { _ = try await importFiles(importer, [notText]) }
-        let missingError = await #expect(throws: FileImportError.self) {
-            _ = try await importFiles(importer, [missing])
-        }
+        let summary = try await importer.importFiles(files) { _, _ in }
 
-        #expect(emptyError == FileImportError(file: "empty.csv", reason: .emptyFile))
-        #expect(damagedError == FileImportError(file: "damaged.csv", reason: .damagedFile(line: 2)))
-        #expect(binaryError == FileImportError(file: "binary.csv", reason: .unreadableFile))
-        #expect(missingError == FileImportError(file: "missing.csv", reason: .unreadableFile))
+        #expect(files.map(\.name) == ["empty.csv", "damaged.csv", "binary.csv", "missing.csv"])
+        #expect(
+            files.map(\.content) == [
+                .failed(.emptyFile), .failed(.damagedFile(line: 2)), .failed(.unreadableFile),
+                .failed(.unreadableFile),
+            ])
+        // Without a file that can be used there is nothing to import, and nothing is written.
+        #expect(summary == ImportSummary())
         #expect(try await database.invoiceCount() == 0)
+        #expect(try await database.lastImportLog() == nil)
+    }
+
+    // MARK: The preview
+
+    @Test func aPreviewWritesNothing() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let http = try cnb()
+        let importer = makeImporter(database, http: http)
+        let sample = await ImportFile.read([try sampleURL()])
+        let writesBefore = await database.writeCount
+
+        // On empty data, with the ČNB at hand: the preview asks it for no rate.
+        let first = try await importer.preview(sample)
+
+        #expect(first.newNumbers.count == 11 && first.skippedNumbers.count == 2 && first.invoiceCount == 11)
+        #expect(await database.writeCount == writesBefore)
+        #expect(http.requests.isEmpty)
+        #expect(try await database.invoiceCount() == 0)
+        #expect(try await database.clients().isEmpty)
+        #expect(try await database.cnbCurrencies().isEmpty)
+        #expect(try await database.recentFetchLog(limit: 10).isEmpty)
+        #expect(try await database.lastImportLog() == nil)
+
+        // On data that have the sample: the preview of the changed export.
+        _ = try await importer.importFiles(sample) { _, _ in }
+        let invoicesBefore = try await allInvoices(database)
+        let clientsBefore = try await database.clients()
+        let fetchLogBefore = try await database.recentFetchLog(limit: 10)
+        let importLogBefore = try #require(try await database.lastImportLog())
+        let writesAfterTheImport = await database.writeCount
+        let reimport = await ImportFile.read([try sampleURL("fakturoid_reimport"), try fixtureURL("czk-21", "isdoc")])
+
+        let second = try await importer.preview(reimport)
+
+        #expect(second.invoiceCount > 0)
+        #expect(await database.writeCount == writesAfterTheImport)
+        #expect(try await allInvoices(database) == invoicesBefore)
+        #expect(try await database.clients() == clientsBefore)
+        #expect(try await database.recentFetchLog(limit: 10) == fetchLogBefore)
+        #expect(try await database.lastImportLog()?.json == importLogBefore.json)
+        #expect(http.requests == [CNBEndpoints.yearly(2026)])
+    }
+
+    @Test func importingAppliesThePlanAndReportsEachInvoice() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let importer = makeImporter(database, http: try cnb())
+        _ = try await importFiles(importer, [try sampleURL()])
+        let files = await ImportFile.read([try sampleURL("fakturoid_reimport")])
+        let plan = try await importer.preview(files)
+        let progress = ProgressLog()
+
+        let summary = try await importer.importFiles(files) { progress.record($0, $1) }
+
+        // Row 14 is added, rows 1 and 3 are updated and row 2 is flagged as cancelled: four invoices are saved, and
+        // each is reported as it is saved.
+        #expect(plan.newNumbers.count == 1 && plan.overwrittenNumbers.count == 3 && plan.invoiceCount == 4)
+        #expect(progress.steps == ["1/4", "2/4", "3/4", "4/4"])
+        #expect(summary.added == 1 && summary.updated == 3 && summary.flaggedCancelled == 1)
+        #expect(summary.unchanged == 8 && summary.skipped == 2)
+        // The import does what the preview said, as nothing changed in between.
+        #expect(summary.added == plan.newNumbers.count)
+        #expect(summary.updated == plan.overwrittenNumbers.count)
+        #expect(summary.unchanged == plan.unchangedNumbers.count && summary.skipped == plan.skippedNumbers.count)
+        #expect(summary.reviewItems == plan.reviewItems && summary.conflictItems == plan.conflicts)
+    }
+
+    /// The import does not apply the plan of the preview: it plans again, inside its transaction, on the data as they
+    /// are then. An invoice deleted after the preview is added again, without an error.
+    @Test func theImportPlansAgainOnTheDataAsTheyAreThen() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let importer = makeImporter(database, http: try cnb())
+        let files = await ImportFile.read([try sampleURL()])
+        _ = try await importer.importFiles(files) { _, _ in }
+        let plan = try await importer.preview(files)
+        let deleted = try await invoice("20260902", in: database)
+        try await database.deleteInvoice(id: deleted.id)
+
+        let summary = try await importer.importFiles(files) { _, _ in }
+
+        #expect(plan.unchangedNumbers.count == 11 && plan.newNumbers.isEmpty)
+        #expect(summary.added == 1 && summary.unchanged == 10 && summary.conflicts == 0)
+        let added = try await invoice("20260902", in: database)
+        #expect(added.id != deleted.id && added.netMinor == deleted.netMinor && added.payment == deleted.payment)
+        #expect(try await database.invoiceCount() == 11)
+    }
+
+    // MARK: ISDOC files
+
+    @Test func theSupplierOfferComesFromTheIsdocWhenNoCsvHasOne() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let isdoc = try fixtureURL("czk-21", "isdoc")
+        let blank = FakturoidCSV.row([
+            "Id": "9", "Number": "20261005", "Your name": "", "Your street": "", "Your city": "", "Your zip": "",
+            "Your country": "", "Your registration no": "", "Your vat no": "",
+        ])
+        let withoutSupplier = try file([blank], named: "blank.csv", in: directory)
+        let withSupplier = try file(
+            [FakturoidCSV.row(["Id": "10", "Number": "20261006"])], named: "own.csv", in: directory)
+        let doubek = Supplier(
+            name: "Truhlářství Doubek s.r.o.", street: "Na Výsluní 112", postcode: "25601", city: "Benešov",
+            country: "CZ", ico: "17392047", dic: "CZ17392047")
+
+        let alone = try await importFiles(makeImporter(database), [isdoc])
+        let afterABlankRow = try await importFiles(makeImporter(database), [withoutSupplier, isdoc])
+        let afterARowWithOne = try await importFiles(makeImporter(database), [isdoc, withSupplier])
+
+        #expect(alone.exportSupplier == doubek)
+        #expect(afterABlankRow.exportSupplier == doubek)
+        // A row with the "Your …" columns wins, whichever file comes first.
+        #expect(afterARowWithOne.exportSupplier?.name == "Jana Vzorová")
+        // It is only offered: nothing is written to the supplier.
+        #expect(try await database.supplier() == Supplier())
+    }
+
+    @Test func theSupplierOfferComesFromTheFirstRowThatHasTheYourColumns() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let blank = FakturoidCSV.row([
+            "Id": "9", "Number": "20261005", "Your name": "", "Your street": "", "Your city": "", "Your zip": "",
+            "Your country": "", "Your registration no": "", "Your vat no": "",
+        ])
+        let own = FakturoidCSV.row(["Id": "10", "Number": "20261006"])
+        let withoutSupplier = try file([blank], named: "blank.csv", in: directory)
+        let withSupplier = try file([own], named: "own.csv", in: directory)
+        let both = try file([blank, own], named: "both.csv", in: directory)
+        let isdoc = try fixtureURL("czk-21", "isdoc")
+
+        let twoFiles = try await importFiles(makeImporter(database), [withoutSupplier, isdoc, withSupplier])
+        let oneFile = try await importFiles(makeImporter(database), [isdoc, both])
+
+        // A blank first row does not hide the supplier of a later one, and the ISDOC is only for when no row has one.
+        #expect(twoFiles.exportSupplier?.name == "Jana Vzorová" && twoFiles.exportSupplier?.ico == "11223344")
+        #expect(oneFile.exportSupplier?.name == "Jana Vzorová")
+    }
+
+    /// An ISDOC file imported alone finds the invoice the app has under its number, imported earlier from the CSV or
+    /// made in the app, and updates it: it never adds a second one.
+    @Test(arguments: [false, true])
+    func anIsdocAloneUpdatesTheInvoiceTheAppHasInsteadOfAddingASecondOne(madeInApp: Bool) async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        let importer = makeImporter(database)
+        if madeInApp {
+            try await database.saveInvoice(
+                Invoice.fixture(number: "20260902", issued: "2026-09-02", duzp: "2026-09-02", dueDate: "2026-09-16"))
+        } else {
+            let csv = try file([FakturoidCSV.row(ImportPlannerIsdocTests.crownRow)], in: directory)
+            _ = try await importFiles(importer, [csv])
+        }
+        let before = try await invoice("20260902", in: database)
+
+        let summary = try await importFiles(importer, [try fixtureURL("czk-21", "isdoc")])
+
+        #expect(summary.updated == 1 && summary.added == 0 && summary.conflicts == 0 && summary.notes.isEmpty)
+        #expect(try await database.invoiceCount() == 1)
+        let updated = try await invoice("20260902", in: database)
+        #expect(updated.id == before.id)
+        #expect(updated.items.map(\.description) == ["Správa IT a podpora – září 2026"])
+        #expect(updated.items.map(\.unit) == ["hod"] && updated.items.map(\.quantity) == [7])
+        #expect(updated.payment == before.payment)
+        // The same file again changes nothing.
+        let again = try await importFiles(importer, [try fixtureURL("czk-21", "isdoc")])
+        #expect(again.unchanged == 1 && again.updated == 0 && again.added == 0)
+        #expect(try await database.invoiceCount() == 1)
+    }
+}
+
+/// What an import reports as it saves its invoices, in the order it reports it: "3/11" for the third invoice of eleven.
+/// The importer reports from the database, so the record is guarded by a lock.
+private final class ProgressLog: Sendable {
+    private let recorded = OSAllocatedUnfairLock(initialState: [String]())
+
+    /// The steps reported so far.
+    var steps: [String] {
+        recorded.withLock { $0 }
+    }
+
+    /// Records that `done` of `total` invoices are saved.
+    func record(_ done: Int, _ total: Int) {
+        recorded.withLock { $0.append("\(done)/\(total)") }
     }
 }
 

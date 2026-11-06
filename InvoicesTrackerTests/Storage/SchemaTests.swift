@@ -119,7 +119,7 @@ struct SchemaTests {
         defer { removeTemporaryDirectory(directory) }
 
         #expect(try await database.schemaVersion() == Schema.latestVersion)
-        #expect(Schema.latestVersion == 3)
+        #expect(Schema.latestVersion == 4)
         let names = try await tableNames(in: database)
         for table in Self.expectedTables {
             #expect(names.contains(table), "table \(table)")
@@ -187,7 +187,7 @@ struct SchemaTests {
             )
         }
 
-        #expect(try await database.integer("PRAGMA user_version") == 3)
+        #expect(try await database.integer("PRAGMA user_version") == 4)
         #expect(children == ["id", "name", "birth_date"])
         #expect(
             childYears == [
@@ -275,7 +275,7 @@ struct SchemaTests {
 
         let database = try Database(fileURL: fileURL, key: key)
 
-        #expect(try await database.schemaVersion() == 3)
+        #expect(try await database.schemaVersion() == 4)
         // Every row of every table is there, with every value it had but the column that version 3 drops.
         let after = try await database.read { try Self.rows(of: kept, in: $0) }
         #expect(after == before)
@@ -350,7 +350,7 @@ struct SchemaTests {
 
         let database = try Database(fileURL: fileURL, key: key)
 
-        #expect(try await database.schemaVersion() == 3)
+        #expect(try await database.schemaVersion() == 4)
         // Every row of every table is there, with every value it had but the column that version 3 drops. The rows
         // that hang on the settings of the year are there too: rebuilding the table would have deleted them.
         let after = try await database.read { try Self.rows(of: kept, in: $0) }
@@ -370,6 +370,94 @@ struct SchemaTests {
         // The client takes a change of a month from now on.
         try await database.setExpectedInvoiceMonth(year: 2026, clientID: 1, month: 7, expected: false)
         #expect(try await database.expectedInvoiceMonths(year: 2026) == [1: [7: false]])
+    }
+
+    // MARK: Version 4
+
+    /// A database of version 3 with a Czech client and a Czech invoice, an English client and an English invoice, and
+    /// two invoices whose payment method only starts with a word that is not exactly "Banka", all with the payment
+    /// method the arguments of `SchemaRows` give. The invoices have a search document of the old wording.
+    private static func versionThreeDatabase(at fileURL: URL, key: SymmetricKey) throws {
+        let old = try SQLiteConnection(path: fileURL.path(percentEncoded: false), key: key)
+        try Migrator.migrate(old, searchIndex: .plain, upTo: 3)
+        try old.transaction {
+            try SchemaRows.client(old, id: 1, paymentMethod: "Banka", language: "cs")
+            try SchemaRows.client(old, id: 2, paymentMethod: "Banka", language: "en")
+            try SchemaRows.client(old, id: 3, paymentMethod: "ACH (USD)", language: "en")
+            try SchemaRows.invoice(old, id: 1, digits: "20260901", clientID: 1, paymentMethod: "Banka")
+            try SchemaRows.invoice(old, id: 2, digits: "20260902", clientID: 2, language: "en", paymentMethod: "Banka")
+            try SchemaRows.invoice(old, id: 3, digits: "20260903", paymentMethod: "Banka s.r.o. převod")
+            try SchemaRows.invoice(old, id: 4, digits: "20260904", language: "en", paymentMethod: "ACH (USD)")
+            for id in 1...4 {
+                try old.run(
+                    "INSERT INTO invoice_search(rowid, doc) VALUES (?, 'Způsob platby Banka')", [.integer(Int64(id))])
+            }
+        }
+        old.close()
+    }
+
+    @Test func version4AddsTheIsdocFingerprintAndKeepsTheRows() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let fileURL = directory.appending(path: "version3.sqlite")
+        let key = randomKey()
+        try Self.versionThreeDatabase(at: fileURL, key: key)
+
+        let database = try Database(fileURL: fileURL, key: key)
+
+        #expect(try await database.schemaVersion() == 4)
+        let invoice = try #require(try await database.invoice(id: 4))
+        #expect(invoice.isdocFingerprint == nil)
+        #expect(invoice.number == "20260904")
+        #expect(invoice.items.isEmpty)
+        #expect(invoice.source == .app)
+        let columns = try await database.read { try Self.columnNames(of: "invoice", in: $0) }
+        #expect(columns.last == "isdoc_fingerprint")
+        #expect(try await database.invoiceCount() == 4)
+        await database.close()
+    }
+
+    @Test func version4WritesFakturoidsWordingForBanka() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let fileURL = directory.appending(path: "version3.sqlite")
+        let key = randomKey()
+        try Self.versionThreeDatabase(at: fileURL, key: key)
+
+        let database = try Database(fileURL: fileURL, key: key)
+
+        let invoices = try await database.read { c in
+            try c.query("SELECT id, payment_method FROM invoice ORDER BY id").map { ($0.int64(0), $0.text(1)) }
+        }
+        #expect(invoices.map(\.1) == ["Převodem", "Bank transfer", "Banka s.r.o. převod", "ACH (USD)"])
+        let clients = try await database.read { c in
+            try c.query("SELECT payment_method FROM client ORDER BY id").map { $0.text(0) }
+        }
+        #expect(clients == ["Převodem", "Bank transfer", "ACH (USD)"])
+        await database.close()
+    }
+
+    @Test func searchFindsTheNewWordingAfterTheMigration() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let fileURL = directory.appending(path: "version3.sqlite")
+        let key = randomKey()
+        try Self.versionThreeDatabase(at: fileURL, key: key)
+
+        let database = try Database(fileURL: fileURL, key: key)
+
+        let day = civilDate("2026-10-31")
+        let czech = try await database.searchInvoiceIDs("Převodem", scope: .issued, year: 2026, asOf: day)
+        let english = try await database.searchInvoiceIDs("Bank transfer", scope: .issued, year: 2026, asOf: day)
+        #expect(czech == [1])
+        #expect(english == [2])
+        // The invoices the migration did not change keep the document they had, and each invoice has one document.
+        let unchanged = try await database.read { c in
+            try c.query("SELECT doc FROM invoice_search WHERE rowid IN (3, 4) ORDER BY rowid").map { $0.text(0) }
+        }
+        #expect(unchanged == ["Způsob platby Banka", "Způsob platby Banka"])
+        #expect(try await database.integer("SELECT count(*) FROM invoice_search") == 4)
+        await database.close()
     }
 
     @Test func aDatabaseOfANewerVersionIsRefusedAndLeftAlone() throws {

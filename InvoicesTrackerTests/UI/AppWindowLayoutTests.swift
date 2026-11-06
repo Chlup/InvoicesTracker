@@ -5102,14 +5102,14 @@ struct AppWindowLayoutTests {
         /// Only the choice of files.
         case choosing
 
-        /// Two files that are read, and the import that goes on.
+        /// Two files that are collected, and the import that goes on.
         case running
 
         /// The summary of an import, with the lists of what is to check and not added, and the offer to fill the
         /// supplier.
         case done
 
-        /// A file that is no export, with the line that says nothing was imported.
+        /// Two collected files, one of them no export, with the preview of the import.
         case failed
     }
 
@@ -5132,17 +5132,19 @@ struct AppWindowLayoutTests {
         case .choosing:
             break
         case .running:
-            running = Task { await model.importFiles([sample, reimport]) }
+            running = Task { await model.importAll([sample, reimport]) }
             await gate.untilARequestWaits()
         case .done:
             await gate.open()
-            // An invoice of the app has the number of one of the rows: a line of what could not be added.
-            try await #require(app.database).saveInvoice(Invoice.fixture(number: "20261008"))
-            await model.importFiles([sample])
+            // An invoice of the app in euros has the number of one of the rows: a line of what could not be added.
+            try await #require(app.database).saveInvoice(
+                Invoice.fixture(number: "20261008", currency: .eur, vatMode: VatMode.none))
+            await model.importAll([sample])
         case .failed:
             await gate.open()
             let bank = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
-            await model.importFiles([sample, bank])
+            // The files are collected and checked, and the one that is no export says so; nothing is imported.
+            await model.addFiles([sample, bank])
         }
 
         do {
@@ -5169,7 +5171,7 @@ struct AppWindowLayoutTests {
         case .done:
             #expect(model.summary?.conflicts == 1 && model.canFillSupplier)
         case .failed:
-            #expect(model.failure != nil)
+            #expect(model.files.count == 2 && model.preview != nil)
         case .running, .choosing:
             break
         }

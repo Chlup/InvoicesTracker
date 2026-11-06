@@ -213,15 +213,26 @@ struct ContainerNamesTests {
         }
     }
 
-    /// The choice of the files in Import is named as the prototype names it.
-    @Test func theChoiceOfFilesOfImportIsNamedAsThePrototypeNamesIt() async throws {
-        try await EditorFixture.with { f in
-            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
-                f.app.screen = .importer
-                try await waitUntil { window.title == "Import faktur" }
-                try await withAccessibilityElements {
-                    try await expectContainers(["Výběr souborů"], in: window, "Import")
-                }
+    /// Import names its cards as the prototype names them: the choice of the files, then with files collected the
+    /// check before the import, and after the import its progress. The files are the invented sample of Fakturoid.
+    @Test func theCardsOfImportAreNamedAsThePrototypeNamesThem() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let yearly = try Data(contentsOf: fixtureURL("cnb_rok_2026", "txt"))
+        let app = makeAppModel(in: directory, http: StubHTTPClient([CNBEndpoints.yearly(2026): yearly]))
+        try await startFresh(app)
+        try await withAppWindow(of: app, size: AppWindowSize.large) { window in
+            app.screen = .importer
+            try await waitUntil { window.title == "Import faktur" }
+            try await withAccessibilityElements {
+                try await expectContainers(["Výběr souborů"], in: window, "Import")
+
+                await app.importModel.addFiles([try fixtureURL("fakturoid_sample", "csv")])
+                try await expectContainers(
+                    ["Výběr souborů", "Kontrola před importem"], in: window, "Import with files collected")
+
+                await app.importModel.importCollected()
+                try await expectContainers(["Výběr souborů", "Průběh importu"], in: window, "Import when done")
             }
         }
     }

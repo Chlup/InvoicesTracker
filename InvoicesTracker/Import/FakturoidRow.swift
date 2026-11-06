@@ -46,7 +46,16 @@ nonisolated struct FakturoidRow: Sendable, Hashable {
 
     /// The language in lowercase: `cz`, `en` …
     let language: String
+
+    /// The code of the payment method in lowercase (`Payment method`): `bank`, `cash`, `custom` … It is not part of the
+    /// fingerprint: see `fingerprint`.
+    let paymentMethodCode: String
+
+    /// The payment method as the export words it (`Payment method human`), such as "Banka" or a custom "ACH (USD)".
     let paymentMethodHuman: String
+
+    /// The `Subject`, which is the id of the client in Fakturoid, not a description of the invoice. It is read only
+    /// for the fingerprint, which has had it from the start: no invoice uses it.
     let subject: String
 
     let clientName: String
@@ -143,6 +152,7 @@ nonisolated extension FakturoidRow {
         vatUnreadable = !vatText.isEmpty && vat == nil
         transferredTaxLiability = Self.flag(cells.text("Transferred tax liability"))
         language = cells.text("Language").lowercased()
+        paymentMethodCode = cells.text("Payment method").lowercased()
         paymentMethodHuman = cells.text("Payment method human")
         subject = cells.text("Subject")
         clientName = cells.text("Client name")

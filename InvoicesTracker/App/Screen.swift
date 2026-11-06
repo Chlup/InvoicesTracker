@@ -80,7 +80,7 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
         case .importer:
             return ScreenHeader(
                 title: "Import faktur",
-                subtitle: "CSV export z Fakturoidu · obvykle jen jednou, při přechodu do aplikace")
+                subtitle: "Exporty CSV a ISDOC z Fakturoidu · obvykle jen jednou, při přechodu do aplikace")
         }
     }
 

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// What the import makes of one row.
@@ -14,60 +15,20 @@ nonisolated enum RowClass: Sendable, Hashable {
     case invoice(reviewReason: String?)
 }
 
-/// What an import is going to do, worked out from the rows and from the invoices and clients that are there. Applying
-/// it is a matter of saving what it holds.
-nonisolated struct ImportPlan: Sendable, Hashable {
-    /// Clients the rows have and the app has not, as they are going to be stored: with id 0.
-    var newClients: [Client] = []
-
-    /// Clients that are there, with the fields that were empty filled.
-    var clientUpdates: [Client] = []
-
-    /// Invoices to add, in the order of the rows. Their `clientID` is that of the client that is there already; for
-    /// an invoice of a new client it is nil, and `newClientIndexByDigits` says which one.
-    var inserts: [Invoice] = []
-
-    /// Imported invoices to replace, each with the `id` of the invoice it replaces. An invoice that is only held for
-    /// review because the rows of the import for it differ is one of them, with all it holds as it was.
-    var updates: [Invoice] = []
-
-    /// The numbers of the rows whose invoice is there as the row has it.
-    var unchanged: [String] = []
-
-    /// A line for each row that is not applied because its invoice was changed in the app: "20260902 — změněno v
-    /// aplikaci — ponecháno".
-    var kept: [String] = []
-
-    /// A line for each row that cannot be added: the number is taken by an invoice made in the app, by an invoice in
-    /// another currency or by another invoice of the import, the invoice came under another number, another invoice
-    /// already has a number without a digit, or the row has no day of issue or no currency code to make an invoice of.
-    var conflicts: [String] = []
-
-    /// Imported invoices that are cancelled in Fakturoid now: the invoices as they are, held for review. One that was
-    /// changed in the app keeps all it has, its payment too.
-    var flaggedCancelled: [Invoice] = []
-
-    /// A line for each invoice that is added or updated in review and for each invoice flagged as cancelled ("20261003
-    /// — záporná částka"), and a note for each country that is neither a code nor a name the import knows.
-    var reviewItems: [String] = []
-
-    /// A line for each proforma invoice and for each cancelled invoice that has no imported invoice in the app.
-    var skipped: [String] = []
-
-    /// For the invoices of `inserts` and `updates` whose client is new, by the digits of their number: the index of
-    /// that client in `newClients`.
-    var newClientIndexByDigits: [String: Int] = [:]
-}
-
-/// Works out an import without touching the database: it is given the rows of the files and what the database holds.
+/// Works out an import without touching the database: it is given the rows and the ISDOC invoices of the files and what
+/// the database holds. The pass that makes the plan is `ImportPlanner.Pass`, the clients are matched and made in
+/// `ImportPlanner.ClientBook`, and what an ISDOC invoice sets is in `ImportPlanner+Isdoc.swift`.
 nonisolated enum ImportPlanner {
     /// Why an invoice imported earlier that is cancelled in Fakturoid now is held for review.
     static let cancelledReason = "zrušeno ve Fakturoidu"
 
-    /// Why an invoice is held for review when the import has several rows of it that differ.
+    /// Why an invoice is held for review when the import has several rows, or several ISDOC files, of it that differ.
+    /// While an invoice carries it, a later import ends the hold only when it brings, without differing, every kind of
+    /// file the invoice is held for (see `plan`).
     static let differingRowsReason = "v importu vícekrát s různým obsahem"
 
-    /// The description of the one item of an imported invoice whose row has no subject.
+    /// The description of the one item of an invoice imported from a CSV row alone: the row has no lines, and its
+    /// `Subject` is the id of the client in Fakturoid, not a description.
     static let defaultItemDescription = "Import z Fakturoidu"
 
     /// The currency of an invoice whose row says none: `XXX`, the code for no currency. The invoice is held for review,
@@ -118,6 +79,8 @@ nonisolated enum ImportPlanner {
         return .invoice(reviewReason: reason)
     }
 
+    /// Why the invoice of `row` is held for review, or nil: the first of the conditions `classify` lists that the row
+    /// meets.
     private static func reviewReason(
         of row: FakturoidRow, knownCurrencies: Set<CurrencyCode>, invoiceRates: [String: StoredRate]
     ) -> String? {
@@ -165,7 +128,7 @@ nonisolated enum ImportPlanner {
 
     /// Why no invoice can be made of the row at all, or nil: an invoice needs a day of issue and a currency code (a
     /// row that says no currency is given `noCurrency`, and held for review).
-    private static func unstorableReason(_ row: FakturoidRow) -> String? {
+    static func unstorableReason(_ row: FakturoidRow) -> String? {
         if row.issuedOn == nil {
             return "chybí datum vystavení"
         }
@@ -177,7 +140,7 @@ nonisolated enum ImportPlanner {
 
     /// The currency of the invoice of `row`: the code the row says, `noCurrency` when it says none, and nil for text
     /// that is no code. Crowns are never assumed.
-    private static func currency(of row: FakturoidRow) -> CurrencyCode? {
+    static func currency(of row: FakturoidRow) -> CurrencyCode? {
         row.currency.isEmpty ? noCurrency : CurrencyCode(row.currency)
     }
 
@@ -200,13 +163,14 @@ nonisolated enum ImportPlanner {
     /// code). It has no id, no link to a client and no payment, which are for the plan to give. It carries the review
     /// flag `classify` gives.
     ///
-    /// It is issued, with one item: the subject of the invoice (or "Import z Fakturoidu") for one unit, at the
-    /// subtotal. The DUZP is the day of the taxable supply or the day of issue, and the due day is the one in the
-    /// export or the day of issue and the days until due. The rate of an invoice in a foreign currency is the one of
-    /// the export, declared on the business day the rate of the DUZP is declared on; without one it is the rate of
-    /// `invoiceRates` for the row, with the day that rate was declared on. An invoice of a row that says no currency
-    /// has no rate. The QR code is off. The invoice is in Czech for `cz` and in English for any other language, and it
-    /// prints the client of its own row.
+    /// It is issued, with one item: "Import z Fakturoidu" (`defaultItemDescription`) for one unit, at the subtotal.
+    /// The `Subject` of the row is never used. The DUZP is the day of the taxable supply or the day of issue, and the
+    /// due day is the one in the export or the day of issue and the days until due. The rate of an invoice in a foreign
+    /// currency is the one of the export, declared on the business day the rate of the DUZP is declared on; without one
+    /// it is the rate of `invoiceRates` for the row, with the day that rate was declared on. An invoice of a row that
+    /// says no currency has no rate. The QR code is off. The invoice is in Czech for `cz` and in English for any other
+    /// language, its payment method is the one `paymentMethod(code:human:language:)` gives, and it prints the client of
+    /// its own row.
     static func invoice(
         from row: FakturoidRow, knownCurrencies: Set<CurrencyCode>, invoiceRates: [String: StoredRate] = [:]
     ) -> Invoice? {
@@ -227,21 +191,41 @@ nonisolated enum ImportPlanner {
             }
         }
         let reason = reviewReason(of: row, knownCurrencies: knownCurrencies, invoiceRates: invoiceRates)
+        let language = Self.language(of: row)
         return Invoice(
             number: row.number, clientID: nil, client: snapshot(of: row), currency: currency, issueDate: issued,
             duzp: duzp, dueDate: due,
             items: [
                 InvoiceItem(
-                    description: row.subject.isEmpty ? defaultItemDescription : row.subject, quantity: Decimal(1),
-                    unit: "", unitPriceMinor: row.subtotalMinor ?? 0)
+                    description: defaultItemDescription, quantity: Decimal(1), unit: "",
+                    unitPriceMinor: row.subtotalMinor ?? 0)
             ],
             vatMode: vatMode(of: row) ?? VatMode.none, invoiceRate: rate, qrEnabled: false, note: "",
-            language: row.language == "cz" ? .cs : .en, paymentMethod: row.paymentMethodHuman, status: .issued,
-            review: reason.map { ReviewFlag(reason: $0) }, payment: nil,
+            language: language,
+            paymentMethod: paymentMethod(
+                code: row.paymentMethodCode, human: row.paymentMethodHuman, language: language),
+            status: .issued, review: reason.map { ReviewFlag(reason: $0) }, payment: nil,
             source: .imported(fakturoidID: row.fakturoidID, fingerprint: row.fingerprint, changedInApp: false)
         )
     }
 
+    /// The language of the invoice of `row`: Czech for `cz`, and English for any other language or none.
+    static func language(of row: FakturoidRow) -> InvoiceLanguage {
+        row.language == "cz" ? .cs : .en
+    }
+
+    /// The payment method an invoice in `language` prints for the method of a row: `bank`, a payment to a bank
+    /// account, is "Převodem" in Czech and "Bank transfer" in English, as Fakturoid prints it; any other method, such
+    /// as a custom one, is `human`, the words of the export, as they are typed.
+    static func paymentMethod(code: String, human: String, language: InvoiceLanguage) -> String {
+        guard code == "bank" else { return human }
+        switch language {
+        case .cs: return "Převodem"
+        case .en: return "Bank transfer"
+        }
+    }
+
+    /// What the invoice of `row` prints of its client: the client columns of the row.
     private static func snapshot(of row: FakturoidRow) -> ClientSnapshot {
         ClientSnapshot(
             name: row.clientName, street: street(of: row), postcode: row.clientZip, city: row.clientCity,
@@ -251,13 +235,14 @@ nonisolated enum ImportPlanner {
     }
 
     /// The street of the client with the second line of the address after it.
-    private static func street(of row: FakturoidRow) -> String {
+    static func street(of row: FakturoidRow) -> String {
         [row.clientStreet, row.clientStreet2].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     // MARK: VAT
 
-    private static let euCountries: Set<String> = [
+    /// The countries of the European Union, as ISO 3166-1 alpha-2 codes.
+    static let euCountries: Set<String> = [
         "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU",
         "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK",
     ]
@@ -297,7 +282,7 @@ nonisolated enum ImportPlanner {
     // MARK: Country
 
     /// What the country of a row is.
-    private enum Country {
+    enum Country {
         /// The row does not say.
         case absent
 
@@ -323,7 +308,8 @@ nonisolated enum ImportPlanner {
         country(text).text
     }
 
-    private static func country(_ text: String) -> Country {
+    /// What `text`, the country of a row, is: absent, a code, or a text the import does not know.
+    static func country(_ text: String) -> Country {
         if text.isEmpty {
             return .absent
         }
@@ -359,49 +345,208 @@ nonisolated enum ImportPlanner {
         return codes
     }()
 
+    // MARK: Held invoices
+
+    /// What the fingerprint of a set of files an invoice is held for starts with (`fingerprint(ofAll:)`). The
+    /// fingerprint of a single file is plain hexadecimal, so it never starts so.
+    static let heldSetPrefix = "held:"
+
+    /// What the marker of a row an invoice has taken and is held for starts with (`fingerprint(ofTakenRow:)`).
+    static let takenRowPrefix = "taken:"
+
+    /// What the settled form of the fingerprint of a set of files starts with (`releasedFingerprint(_:)`): the same
+    /// hash as after `heldSetPrefix`, for a set whose hold is over.
+    static let settledSetPrefix = "settled:"
+
+    /// The fingerprint an invoice held for review is stored under for a kind of file (CSV rows, or ISDOC invoices) it
+    /// is held for and has taken no file of: `heldSetPrefix`, then the SHA-256 of a marker line and the distinct
+    /// fingerprints, sorted and each with its length before it, as lowercase hexadecimal. The order of the files does
+    /// not change it, so the same files in another import give it again. It stands for the files of a kind that
+    /// differed in an import, and for a kind whose files are alike but were not taken, such as the row of a new invoice
+    /// whose payment the hold took away.
+    ///
+    /// It is never the fingerprint of a single file, also for a set of one file, so that a later import that has one of
+    /// them alone applies it. A kind whose single file the held invoice has taken is stored under the fingerprint of
+    /// that file, or under `fingerprint(ofTakenRow:)` when the invoice is held for its rows all the same (see `plan`).
+    /// It holds the invoice only while the hold that wrote it lasts: once the person has resolved it, the next import
+    /// that stores the invoice settles it (`releasedFingerprint(_:)`). Holds made before the prefix existed were never
+    /// released, so nothing is migrated.
+    static func fingerprint(ofAll fingerprints: [String]) -> String {
+        let distinct = Set(fingerprints).sorted()
+        var hasher = SHA256()
+        hasher.update(data: Data("held for files that differ\n".utf8))
+        for fingerprint in distinct {
+            hasher.update(data: Data("\(fingerprint.utf8.count):\(fingerprint)\n".utf8))
+        }
+        let digits = Array("0123456789abcdef")
+        var text = heldSetPrefix
+        for byte in hasher.finalize() {
+            text.append(digits[Int(byte >> 4)])
+            text.append(digits[Int(byte & 0x0F)])
+        }
+        return text
+    }
+
+    /// The marker an invoice held for review is stored under for its CSV row when it is held for its rows although it
+    /// has taken `row`, the fingerprint of that row, already: when the hold displaces a flag of the invoice's own that
+    /// only the row brings back, or when the invoice was held for its rows already. It is `takenRowPrefix` and then the
+    /// fingerprint, so it equals neither a plain fingerprint nor that of a set (`fingerprint(ofAll:)`).
+    ///
+    /// While the invoice carries the hold's flag, the marker holds it for its rows, and an import that brings a row
+    /// applies it. Once the person has resolved the flag, the marker counts as the row it carries
+    /// (`takenFingerprint(_:)`), so the same row again is unchanged and another one is applied as usual. The next
+    /// import that stores the invoice without holding it for its rows writes the fingerprint of that row back in its
+    /// place, so a later hold for ISDOC files alone does not hold the rows as well.
+    static func fingerprint(ofTakenRow row: String) -> String {
+        takenRowPrefix + row
+    }
+
+    /// Whether `fingerprint`, one an invoice is stored under for a kind of file, holds the invoice for that kind while
+    /// it carries the hold's flag: the fingerprint of a set of files (`fingerprint(ofAll:)`) or the marker of a taken
+    /// row (`fingerprint(ofTakenRow:)`), not the plain fingerprint of a single file, and not the settled form of a set
+    /// (`releasedFingerprint(_:)`).
+    static func isHoldingFingerprint(_ fingerprint: String) -> Bool {
+        fingerprint.hasPrefix(heldSetPrefix) || fingerprint.hasPrefix(takenRowPrefix)
+    }
+
+    /// The fingerprint an invoice stored under `stored` for a kind of file is stored under once no hold holds it for
+    /// that kind: the hold that wrote `stored` is over, as the person has resolved it, or the import ends it.
+    ///
+    /// - The marker of a taken row (`fingerprint(ofTakenRow:)`) becomes the fingerprint of that row.
+    /// - The fingerprint of a set of files (`fingerprint(ofAll:)`) becomes its settled form: the same hash after
+    ///   `settledSetPrefix`. It holds nothing (`isHoldingFingerprint(_:)`), so a later hold for the other kind of file
+    ///   is not held for this one too. It still stands for the same files, so they leave the invoice as it is when
+    ///   they come again, and it is still never the fingerprint of a single file, so the next file of that kind alone
+    ///   is applied (`takenFingerprint(_:)` is nil for it). As `Invoice.isdocFingerprint` it still means that the
+    ///   invoice is imported from ISDOC.
+    /// - Any other fingerprint, a plain one or one settled already, stays as it is.
+    static func releasedFingerprint(_ stored: String) -> String {
+        if stored.hasPrefix(heldSetPrefix) {
+            return settledSetPrefix + String(stored.dropFirst(heldSetPrefix.count))
+        }
+        if stored.hasPrefix(takenRowPrefix) {
+            return String(stored.dropFirst(takenRowPrefix.count))
+        }
+        return stored
+    }
+
+    /// The fingerprint of the single file that an invoice stored under `stored` for a kind of file has taken: `stored`
+    /// itself when it is plain, the fingerprint of the row a marker of a taken row carries, and nil for the fingerprint
+    /// of a set of files, held or settled, none of which the invoice has taken.
+    static func takenFingerprint(_ stored: String) -> String? {
+        if stored.hasPrefix(heldSetPrefix) || stored.hasPrefix(settledSetPrefix) {
+            return nil
+        }
+        if stored.hasPrefix(takenRowPrefix) {
+            return String(stored.dropFirst(takenRowPrefix.count))
+        }
+        return stored
+    }
+
     // MARK: The plan
 
-    /// What importing `rows` does, given the invoices and the clients that are there.
+    /// What importing `sources` does, given the invoices and the clients that are there. Each format sets only the
+    /// fields it is the valid source of.
     ///
-    /// Rows with the same digits in the number and the same currency are one invoice, whichever file they come from and
-    /// in whatever order. If one of them is cancelled in Fakturoid, the cancellation wins and the others are not
-    /// applied. Otherwise rows that are alike are taken once, and rows that differ hold the invoice for review, without
-    /// a payment: the import cannot tell which of them is right, so the invoice has the content of the first one.
+    /// **Grouping.** The rows and the ISDOC invoices with the same digits in the number and the same currency are one
+    /// invoice, whichever file they come from and in whatever order. A row whose number has no digit says nothing about
+    /// its invoice, so it is grouped by its Fakturoid id; an ISDOC invoice without a digit cannot be matched and is not
+    /// added. If a row of a group is cancelled in Fakturoid, the cancellation wins and the other rows and the ISDOC
+    /// invoices of the group are not applied. Otherwise sources that are alike are taken once, and rows that differ, or
+    /// ISDOC invoices that differ, hold the invoice for review without a payment: the import cannot tell which of them
+    /// is right, so a new invoice has the content of the first ones, and an invoice that is there keeps all it holds.
+    /// For each kind of file, the held invoice is stored under the fingerprint of the set of its files
+    /// (`fingerprint(ofAll:)`), so the same files again leave it as it is, also once the person has resolved it. That
+    /// fingerprint is never that of a single file, so an import whose files of the invoice no longer differ applies
+    /// that kind. A kind whose files are alike and whose file the invoice holds already keeps the fingerprint of that
+    /// file instead, so that the file alone is not applied again over what the person did in the app: on an invoice
+    /// that is there, the file it was last imported from; on a new one, its ISDOC file, which made it. The rows of a
+    /// new invoice are always stored under the fingerprint of their set, since the hold takes the payment and the
+    /// review of its row away. A fingerprint that holds the invoice is recognizable (`isHoldingFingerprint(_:)`), so it
+    /// tells which kind of file the invoice is held for; an invoice with the flag and no such fingerprint was held by
+    /// the import as it was before ISDOC files, for its rows. A hold never drops a kind the invoice is held for
+    /// already, and a hold that displaces a flag of the invoice's own, such as "zrušeno ve Fakturoidu", holds its rows
+    /// too, so that the hold ends only with an import that brings its row, which brings that flag back. Rows the
+    /// invoice has taken already are held under the marker of that row (`fingerprint(ofTakenRow:)`): once the person
+    /// has resolved the hold, the same row is unchanged again, and a later hold that is not for the rows stores the
+    /// row itself again, so it does not hold them. While the invoice still carries that flag, an import whose files of
+    /// it do not differ ends the hold only when it brings every kind the invoice is held for: the files of those kinds
+    /// are applied whatever the invoice is stored under, the row's status, payment and review replace the flag, and
+    /// without a row applied the flag goes. An import that lacks a held kind applies no file of a held kind, applies
+    /// the other kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
     ///
-    /// An invoice is matched to its row by the digits of its number and its currency. A row without a match is added
-    /// (unless an imported invoice has its Fakturoid id under another number: that invoice came under a new number,
-    /// and adding it would count it twice). A row that is the one an imported invoice was made from leaves it as it
-    /// is, except that a review flag the row no longer has is taken away (a flag is never put on an invoice for a row
-    /// that has not changed). A row that differs updates an imported invoice that was not changed in the app since,
-    /// and leaves one that was, listed as kept. An invoice made in the app is never touched, and its row is a conflict.
-    /// A cancelled row turns an imported invoice into one held for review, and an invoice changed in the app keeps all
-    /// it has, its payment too. Rows of an imported invoice that differ leave what it holds and hold it for review,
-    /// unless it was changed in the app: that one is kept as it is.
+    /// A hold's fingerprints count only while the invoice carries its flag. Every import that stores the invoice
+    /// without that flag, or holds it anew once the person has resolved it, first releases both kinds
+    /// (`releasedFingerprint(_:)`): a taken row becomes the row, and the fingerprint of a set becomes its settled form,
+    /// which holds nothing. A hold the person has resolved therefore never makes a later hold for the other kind of
+    /// file wait for this kind as well, while the same set of files again still leaves the invoice as it is.
     ///
-    /// Numbers are unique by their digits, so only one invoice can have a number without a digit. That one is added
-    /// in review, and a later import finds it by its Fakturoid id, since its number says nothing about which invoice
-    /// it is; a row of another invoice with such a number is a conflict. For the same reason the same digits in two
-    /// currencies are one invoice and a conflict, and so is a row whose Fakturoid id is another than that of the
-    /// imported invoice with its digits (when both are known): two invoices of Fakturoid, of which the stored one is
-    /// left as it is.
+    /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
+    /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
+    /// its row under another number: that invoice came under a new number, and adding it would count it twice). The
+    /// same digits in another currency, another invoice without a digit, and a row whose Fakturoid id is another than
+    /// that of the stored invoice (when both are known) are conflicts, which leave the stored invoice as it is.
     ///
-    /// Clients are matched by company number, then VAT number, then folded name. A client that is not there is made
-    /// from the rows of the client, the newest (by day of issue) giving the values and the older ones filling what
-    /// it leaves empty. A client that is there gets only its empty fields filled. The clients of the rows of an
-    /// invoice that is cancelled are not used.
+    /// **Applying.** The ISDOC invoice is applied first, when there is no stored invoice, the file differs from the one
+    /// the invoice was last imported from (`Invoice.isdocFingerprint`), or the invoice is held for its ISDOC files and
+    /// this import ends the hold. It sets the lines, the note, the number, the dates, the currency, the rate (a foreign
+    /// file without one keeps the rate the invoice has), the printed client but its e-mail, and the VAT mode. Then the
+    /// row is applied, when there is no stored invoice, the invoice was made in the app, the row differs from the one
+    /// the invoice was last imported from, or the invoice is held for its rows and this import ends the hold. Until the
+    /// hold ends, no file of a kind the invoice is held for is applied. On an invoice the ISDOC owns (it was imported
+    /// from an ISDOC file, or one is in this group) the row sets only the state: the status and the payment, the review
+    /// flag, the language, the payment method, the e-mail of the client, the kind of a VAT of 0 % and the Fakturoid id
+    /// with the fingerprint of the row. On any other invoice the row gives all of it, with one item
+    /// "Import z Fakturoidu" at the subtotal. A group of which nothing is applied is unchanged. Whether the invoice was
+    /// changed in the app is not asked: Fakturoid is the source of truth, and every invoice the plan updates is saved
+    /// as not changed in the app, an invoice made in the app as an imported one.
+    ///
+    /// **The payment.** A row with a review reason holds the invoice and gives no payment, and so does a row that is
+    /// not paid. A paid row keeps the stored payment when it was received on the day of the row, which keeps how the
+    /// person converted it; otherwise it gives the payment of `payments`. Either payment is converted again, the way
+    /// it was, when the amounts of the invoice are not the ones it was converted for. When no row is applied the
+    /// stored payment stays, converted again the same way when the lines of the ISDOC changed the amounts. No review
+    /// flag is set for that.
+    ///
+    /// **An ISDOC invoice alone** adds an unpaid, issued invoice without the QR code. Its language is that of the
+    /// client it matches, or else Czech for a client in CZ and English otherwise; its payment method is a transfer for
+    /// code 42, or else the client's, or else none; its client's e-mail is the one of the file. A foreign one without
+    /// a rate is not added.
+    ///
+    /// **Notes.** A row whose subtotal or VAT disagrees with the lines of an invoice the ISDOC owns, a line of an
+    /// ISDOC file taken as one times its amount, and a country that is neither a code nor a name the import knows are
+    /// noted in `notes`; they do not hold the invoice.
+    ///
+    /// **Clients** are matched by company number, then VAT number, then folded name, the customers of the ISDOC
+    /// invoices as the clients of the rows. A client that is not there is made from its files, the newest (by day of
+    /// issue) giving the values and the older ones filling what it leaves empty; on one day an ISDOC invoice comes
+    /// before the row of its invoice. The language and the payment method of a new client are those its rows say, or
+    /// else those an invoice of an ISDOC file alone takes. A client that is there gets only its empty fields filled.
+    /// The clients of an invoice that is cancelled are not used. An invoice is linked to the client of the file that
+    /// owns its printed client, when the import applies that file: the customer of the ISDOC invoice once one is
+    /// imported for it, also together with its row, and the client of its row until then. An import that applies only
+    /// the row of an invoice the ISDOC owns, or only holds the invoice, leaves its link, and so does an applied ISDOC
+    /// invoice whose customer names no client: the client of the row never stands in for it. Every order of the two
+    /// files therefore links the invoice to the same client.
+    ///
+    /// **Counting.** Each document, by the digits of its number and its currency, is counted once in the outcomes of
+    /// the plan: a proforma invoice in both exports is skipped once, and a source that is skipped is not counted when
+    /// its invoice is added, overwritten, unchanged or not added for another source. A proforma invoice is a document
+    /// of its own, apart from the invoice with the same digits, as it never joins that invoice's group.
     ///
     /// - Parameters:
-    ///   - rows: The rows of the files, in the order of the files.
-    ///   - existingInvoices: The invoices that may be the invoices of the rows: those with the digits of the number of
-    ///     a row and those with the Fakturoid id of a row, with their items and payments.
+    ///   - sources: The rows and the ISDOC invoices of the files, each in the order of the files.
+    ///   - existingInvoices: The invoices that may be the invoices of the sources: those with the digits of the number
+    ///     of a source and those with the Fakturoid id of a row, with their items and payments.
     ///   - clients: All the clients.
     ///   - knownCurrencies: The currencies the ČNB quotes, crowns among them (see `quotedCurrencies`).
-    ///   - payments: The payment of each row that has one, by the fingerprint of the row. An invoice held for review
-    ///     gets none, for whoever resolves it decides.
+    ///   - payments: The payment of each paid row, by the fingerprint of the row, converted for the invoice the row
+    ///     makes (`invoice(from:knownCurrencies:invoiceRates:)`). An invoice held for review gets none, for whoever
+    ///     resolves it decides.
     ///   - invoiceRates: The rate of the invoice of each paid row in a foreign currency whose export has none, by the
     ///     fingerprint of the row (see `invoice`).
     static func plan(
-        rows: [FakturoidRow],
+        sources: ImportSources,
         existingInvoices: [Invoice],
         clients: [Client],
         knownCurrencies: Set<CurrencyCode>,
@@ -409,604 +554,9 @@ nonisolated enum ImportPlanner {
         invoiceRates: [String: StoredRate] = [:]
     ) -> ImportPlan {
         var pass = Pass(
-            rows: rows, existingInvoices: existingInvoices, clients: clients, knownCurrencies: knownCurrencies,
+            sources: sources, existingInvoices: existingInvoices, clients: clients, knownCurrencies: knownCurrencies,
             payments: payments, invoiceRates: invoiceRates)
         pass.run()
         return pass.plan
-    }
-
-    /// One run of `plan`: the plan as it is made, and what it is made from.
-    private nonisolated struct Pass {
-        /// The rows of the import that are one invoice: those with the same digits in the number and the same
-        /// currency, and for a number without a digit (which says nothing about the invoice) the same Fakturoid id.
-        struct Group {
-            let digits: String
-            let currency: CurrencyCode
-
-            /// The offsets of the rows, in the order of the rows.
-            var offsets: [Int] = []
-
-            /// The offset of the first row that is cancelled in Fakturoid, if one is.
-            var cancelledOffset: Int?
-        }
-
-        private static let anotherWithoutDigits = "jiná faktura už má číslo bez číslic"
-        private static let anotherCurrency = "číslo už používá faktura v jiné měně"
-        private static let anotherFakturoidInvoice = "číslo už používá jiná faktura z Fakturoidu"
-
-        private enum Addition {
-            case insert
-            case update
-        }
-
-        private let rows: [FakturoidRow]
-        private let knownCurrencies: Set<CurrencyCode>
-        private let payments: [String: Payment]
-        private let invoiceRates: [String: StoredRate]
-        private let existingByDigits: [String: Invoice]
-        private let existingByFakturoidID: [String: Invoice]
-        private var book: ClientBook
-        private(set) var plan = ImportPlan()
-
-        /// The digits of the numbers of the invoices this import adds. A number belongs to one invoice.
-        private var addedDigits: Set<String> = []
-
-        /// The place in the book of the client of each row that has one, by the offset of the row.
-        private var entryOfRow: [Int: Int] = [:]
-
-        /// The place in the book of the client of each invoice that is added or updated, by the digits of its number.
-        private var entryOfInvoice: [String: Int] = [:]
-
-        /// The countries noted as no code already.
-        private var notedCountries: Set<String> = []
-
-        init(
-            rows: [FakturoidRow], existingInvoices: [Invoice], clients: [Client], knownCurrencies: Set<CurrencyCode>,
-            payments: [String: Payment], invoiceRates: [String: StoredRate]
-        ) {
-            self.rows = rows
-            self.knownCurrencies = knownCurrencies
-            self.payments = payments
-            self.invoiceRates = invoiceRates
-            existingByDigits = Dictionary(
-                existingInvoices.map { ($0.numberDigits, $0) }, uniquingKeysWith: { first, _ in first })
-            existingByFakturoidID = Dictionary(
-                existingInvoices.compactMap { invoice -> (String, Invoice)? in
-                    guard case .imported(let id, _, _) = invoice.source, !id.isEmpty else { return nil }
-                    return (id, invoice)
-                }, uniquingKeysWith: { first, _ in first })
-            book = ClientBook(clients: clients, knownCurrencies: knownCurrencies)
-        }
-
-        mutating func run() {
-            let classes = rows.map {
-                ImportPlanner.classify($0, knownCurrencies: knownCurrencies, invoiceRates: invoiceRates)
-            }
-            let (groups, groupOfRow) = Self.groups(of: rows, classes: classes)
-            placeClients(of: groups)
-            for (offset, row) in rows.enumerated() {
-                if let index = groupOfRow[offset] {
-                    // A group is dealt with where its first row is.
-                    if groups[index].offsets[0] == offset {
-                        visit(groups[index])
-                    }
-                    continue
-                }
-                switch classes[offset] {
-                case .skipProforma:
-                    plan.skipped.append("\(label(of: row)) — zálohová faktura")
-                case .skipCancelled:
-                    plan.skipped.append("\(label(of: row)) — \(ImportPlanner.cancelledReason)")
-                case .invoice:
-                    if let reason = ImportPlanner.unstorableReason(row) {
-                        addConflict(label(of: row), reason)
-                    }
-                }
-            }
-            finishClients()
-        }
-
-        // MARK: Groups
-
-        /// The groups of the rows, in the order of their first rows, and the group each row is in. A row is in none
-        /// when it is a proforma invoice, when no invoice can be made of it (it is a conflict by itself) or when it is
-        /// cancelled and says a currency that is no code (it is skipped by itself).
-        private static func groups(
-            of rows: [FakturoidRow], classes: [RowClass]
-        ) -> (groups: [Group], groupOfRow: [Int: Int]) {
-            struct Key: Hashable {
-                let digits: String
-                let currency: CurrencyCode
-
-                /// Of a number without a digit: the Fakturoid id, and the row when it has none.
-                let fakturoidID: String
-                let offset: Int
-            }
-            var indexOfKey: [Key: Int] = [:]
-            var groups: [Group] = []
-            var groupOfRow: [Int: Int] = [:]
-            for (offset, row) in rows.enumerated() {
-                let cancelled: Bool
-                switch classes[offset] {
-                case .skipProforma:
-                    continue
-                case .skipCancelled:
-                    cancelled = true
-                case .invoice:
-                    guard ImportPlanner.unstorableReason(row) == nil else { continue }
-                    cancelled = false
-                }
-                guard let currency = ImportPlanner.currency(of: row) else { continue }
-                let digits = InvoiceNumbering.digits(of: row.number)
-                let withoutDigits = digits.isEmpty
-                let key = Key(
-                    digits: digits, currency: currency, fakturoidID: withoutDigits ? row.fakturoidID : "",
-                    offset: withoutDigits && row.fakturoidID.isEmpty ? offset : -1)
-                let index: Int
-                if let known = indexOfKey[key] {
-                    index = known
-                } else {
-                    index = groups.count
-                    indexOfKey[key] = index
-                    groups.append(Group(digits: digits, currency: currency))
-                }
-                groups[index].offsets.append(offset)
-                if cancelled && groups[index].cancelledOffset == nil {
-                    groups[index].cancelledOffset = offset
-                }
-                groupOfRow[offset] = index
-            }
-            return (groups, groupOfRow)
-        }
-
-        private mutating func visit(_ group: Group) {
-            if let cancelled = group.cancelledOffset {
-                visitCancelled(group, row: rows[cancelled])
-            } else {
-                visitInvoice(group)
-            }
-        }
-
-        // MARK: Clients
-
-        /// Puts the client of every row that is going to be an invoice in the book, whatever becomes of the invoice,
-        /// the oldest row first: the newest gives the values. The rows of an invoice that is cancelled are not.
-        private mutating func placeClients(of groups: [Group]) {
-            let offsets = groups
-                .filter { $0.cancelledOffset == nil }
-                .flatMap(\.offsets)
-                .sorted { first, second in
-                    guard let firstDay = rows[first].issuedOn, let secondDay = rows[second].issuedOn else {
-                        return first < second
-                    }
-                    return (firstDay, first) < (secondDay, second)
-                }
-            for offset in offsets {
-                entryOfRow[offset] = book.place(rows[offset])
-            }
-        }
-
-        /// Makes the clients and gives the added and updated invoices their clients: the id of one that is there, the
-        /// index of one that is new.
-        private mutating func finishClients() {
-            let finished = book.finish()
-            plan.newClients = finished.newClients
-            plan.clientUpdates = finished.updates
-            for index in plan.inserts.indices {
-                linkClient(ofInsert: index, finished)
-            }
-            for index in plan.updates.indices {
-                linkClient(ofUpdate: index, finished)
-            }
-        }
-
-        private mutating func linkClient(ofInsert index: Int, _ finished: ClientBook.Finished) {
-            let digits = plan.inserts[index].numberDigits
-            switch entryOfInvoice[digits].flatMap({ finished.references[$0] }) {
-            case .existing(let id)?: plan.inserts[index].clientID = id
-            case .new(let position)?: plan.newClientIndexByDigits[digits] = position
-            case nil: break
-            }
-        }
-
-        private mutating func linkClient(ofUpdate index: Int, _ finished: ClientBook.Finished) {
-            let digits = plan.updates[index].numberDigits
-            switch entryOfInvoice[digits].flatMap({ finished.references[$0] }) {
-            case .existing(let id)?:
-                plan.updates[index].clientID = id
-            case .new(let position)?:
-                plan.updates[index].clientID = nil
-                plan.newClientIndexByDigits[digits] = position
-            case nil:
-                // No client could be made of the row, or the invoice is only held for review: it keeps its link.
-                break
-            }
-        }
-
-        // MARK: Invoices
-
-        private func label(of row: FakturoidRow) -> String {
-            row.number.isEmpty ? "(bez čísla)" : row.number
-        }
-
-        /// The line of the summary for an invoice held for review.
-        private func reviewLine(_ label: String, _ reason: String) -> String {
-            reason == ImportPlanner.differingRowsReason ? "\(label) — \(reason) — ke kontrole" : "\(label) — \(reason)"
-        }
-
-        /// An invoice that is not cancelled. Its first row gives it, unless the rows of the invoice differ: it is held
-        /// for review then, without a payment.
-        private mutating func visitInvoice(_ group: Group) {
-            let offset = group.offsets[0]
-            let row = rows[offset]
-            let label = label(of: row)
-            guard
-                var invoice = ImportPlanner.invoice(
-                    from: row, knownCurrencies: knownCurrencies, invoiceRates: invoiceRates)
-            else {
-                return
-            }
-            let digits = group.digits
-            let differing = group.offsets.count > 1 && Set(group.offsets.map { rows[$0].fingerprint }).count > 1
-            if differing {
-                invoice.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
-            } else if invoice.review == nil {
-                invoice.payment = payments[row.fingerprint]
-            }
-            // Another invoice of this import has the number already: in another currency, or without a digit.
-            guard !addedDigits.contains(digits) else {
-                addConflict(label, digits.isEmpty ? Self.anotherWithoutDigits : Self.anotherCurrency)
-                return
-            }
-            guard let existing = existingByDigits[digits] else {
-                if !row.fakturoidID.isEmpty, let renumbered = existingByFakturoidID[row.fakturoidID] {
-                    addConflict(label, "už importováno pod číslem \(renumbered.number)")
-                } else {
-                    add(invoice, at: offset, as: .insert)
-                }
-                return
-            }
-            // A number without a digit says nothing about which invoice it is: only the invoice with the Fakturoid
-            // id of the row is the invoice of the row.
-            if digits.isEmpty && !isInvoice(existing, ofFakturoidID: row.fakturoidID) {
-                addConflict(label, Self.anotherWithoutDigits)
-                return
-            }
-            guard existing.currency == invoice.currency else {
-                addConflict(label, Self.anotherCurrency)
-                return
-            }
-            guard case .imported(let storedID, let fingerprint, let changedInApp) = existing.source else {
-                addConflict(label, "číslo už používá faktura vytvořená v aplikaci")
-                return
-            }
-            // Two invoices of Fakturoid whose numbers have the same digits: the stored one is not the row's.
-            guard !Self.areOtherFakturoidInvoices(storedID, row.fakturoidID) else {
-                addConflict(label, Self.anotherFakturoidInvoice)
-                return
-            }
-            if differing {
-                holdForDifferingRows(existing, changedInApp: changedInApp, label: label)
-            } else if fingerprint == row.fingerprint {
-                // The row the invoice was made from brings nothing, whatever has been done with the invoice since. Only
-                // a flag that the row does not have any more is taken away, such as when the rates of a currency are
-                // there now: a flag is never put on an invoice that has none for a row that has not changed.
-                if !changedInApp && existing.review != nil && invoice.review == nil {
-                    invoice.id = existing.id
-                    invoice.clientID = existing.clientID
-                    add(invoice, at: offset, as: .update)
-                } else {
-                    plan.unchanged.append(label)
-                }
-            } else if changedInApp {
-                plan.kept.append("\(label) — změněno v aplikaci — ponecháno")
-            } else {
-                invoice.id = existing.id
-                invoice.clientID = existing.clientID
-                add(invoice, at: offset, as: .update)
-            }
-        }
-
-        /// The rows of the import for an imported invoice differ, so none of them is applied: the invoice keeps all it
-        /// holds, and is held for review, unless it is held for these rows already. An invoice changed in the app is
-        /// left as the app has it.
-        private mutating func holdForDifferingRows(_ existing: Invoice, changedInApp: Bool, label: String) {
-            if changedInApp {
-                plan.kept.append("\(label) — změněno v aplikaci — ponecháno")
-            } else if existing.review?.reason == ImportPlanner.differingRowsReason {
-                plan.unchanged.append(label)
-            } else {
-                var held = existing
-                held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
-                plan.updates.append(held)
-                plan.reviewItems.append(reviewLine(label, ImportPlanner.differingRowsReason))
-            }
-        }
-
-        /// Whether `invoice` was imported from the invoice with the Fakturoid id `id`.
-        private func isInvoice(_ invoice: Invoice, ofFakturoidID id: String) -> Bool {
-            guard case .imported(let importedID, _, _) = invoice.source else { return false }
-            return !id.isEmpty && importedID == id
-        }
-
-        /// Whether the Fakturoid ids `stored` and `row` say they are two invoices: both are known, and they differ. An
-        /// id that is missing tells nothing, and the digits of the number decide then.
-        private static func areOtherFakturoidInvoices(_ stored: String, _ row: String) -> Bool {
-            !stored.isEmpty && !row.isEmpty && stored != row
-        }
-
-        /// A row that cannot be added: the number of the row, why, and what became of it.
-        private mutating func addConflict(_ label: String, _ reason: String) {
-            plan.conflicts.append("\(label) — \(reason) — nepřidáno")
-        }
-
-        private mutating func add(_ invoice: Invoice, at offset: Int, as addition: Addition) {
-            switch addition {
-            case .insert:
-                plan.inserts.append(invoice)
-                addedDigits.insert(invoice.numberDigits)
-            case .update:
-                plan.updates.append(invoice)
-            }
-            entryOfInvoice[invoice.numberDigits] = entryOfRow[offset]
-            let row = rows[offset]
-            if let review = invoice.review {
-                plan.reviewItems.append(reviewLine(label(of: row), review.reason))
-            }
-            if case .unknown(let text) = ImportPlanner.country(row.clientCountry) {
-                if notedCountries.insert(text).inserted {
-                    plan.reviewItems.append("země „\(text)“ — není kód země, ponecháno jak je")
-                }
-            }
-        }
-
-        // MARK: Cancelled invoices
-
-        /// An invoice with a row that is cancelled in Fakturoid, which wins over the other rows of the invoice. An
-        /// imported invoice is held for review: one that was changed in the app keeps all it has, and the line says
-        /// both. Without an imported invoice the row is skipped, and the row of another invoice of Fakturoid whose
-        /// number has the same digits is a conflict, which leaves the stored invoice as it is.
-        private mutating func visitCancelled(_ group: Group, row: FakturoidRow) {
-            let label = label(of: row)
-            guard let existing = existingByDigits[group.digits], existing.currency == group.currency,
-                case .imported(let storedID, let fingerprint, let changedInApp) = existing.source,
-                !group.digits.isEmpty || isInvoice(existing, ofFakturoidID: row.fakturoidID)
-            else {
-                plan.skipped.append("\(label) — \(ImportPlanner.cancelledReason)")
-                return
-            }
-            guard !Self.areOtherFakturoidInvoices(storedID, row.fakturoidID) else {
-                addConflict(label, Self.anotherFakturoidInvoice)
-                return
-            }
-            if fingerprint == row.fingerprint {
-                plan.unchanged.append(label)
-                return
-            }
-            var flagged = existing
-            flagged.review = ReviewFlag(reason: ImportPlanner.cancelledReason)
-            flagged.source = .imported(
-                fakturoidID: row.fakturoidID.isEmpty ? storedID : row.fakturoidID, fingerprint: row.fingerprint,
-                changedInApp: changedInApp)
-            plan.flaggedCancelled.append(flagged)
-            let reason = ImportPlanner.cancelledReason
-            plan.reviewItems.append(
-                changedInApp
-                    ? "\(label) — \(reason) a změněno v aplikaci — ponecháno ke kontrole" : "\(label) — \(reason)")
-        }
-    }
-
-    // MARK: Clients
-
-    /// The clients that are there and the clients the rows have, matched and made from the rows one by one.
-    private nonisolated struct ClientBook {
-        /// A client of the book: one that is there, or a new one that the rows are making.
-        struct Entry {
-            /// The client as it is stored, or a blank client for a new one.
-            let client: Client
-            let isNew: Bool
-
-            /// What the rows of the client say so far, the newest last.
-            var values = Values()
-
-            /// The keys a row is matched by: the company number and the VAT number without white space (and the VAT
-            /// number in capitals), and the name folded. What is empty in a client that is there but the rows say is
-            /// counted, since that is what the client is filled with.
-            private(set) var icoKey = ""
-            private(set) var dicKey = ""
-            private(set) var nameKey = ""
-
-            init(client: Client, isNew: Bool) {
-                self.client = client
-                self.isNew = isNew
-                refreshKeys()
-            }
-
-            mutating func refreshKeys() {
-                icoKey = ClientBook.compact(client.ico.isEmpty ? values.ico : client.ico)
-                dicKey = ClientBook.compact(client.dic.isEmpty ? values.dic : client.dic).uppercased()
-                nameKey = SearchFolding.fold(isNew ? values.name : client.name)
-            }
-
-            /// Whether the client has another company number or another VAT number than the row, so that equal names
-            /// are two companies.
-            func disagrees(icoKey ico: String, dicKey dic: String) -> Bool {
-                (!ico.isEmpty && !icoKey.isEmpty && icoKey != ico) || (!dic.isEmpty && !dicKey.isEmpty && dicKey != dic)
-            }
-
-            /// The client the rows make: the newest row's values, with the defaults of a new client for the rest.
-            func madeClient() -> Client {
-                var made = Client()
-                made.name = values.name
-                made.street = values.street
-                made.postcode = values.postcode
-                made.city = values.city
-                made.country = values.country
-                made.ico = values.ico
-                made.dic = values.dic
-                made.email = values.email
-                made.phone = values.phone
-                made.currency = values.currency ?? made.currency
-                made.vatMode = values.vatMode ?? made.vatMode
-                made.dueDays = values.dueDays ?? made.dueDays
-                if !values.paymentMethod.isEmpty {
-                    made.paymentMethod = values.paymentMethod
-                }
-                made.language = values.language ?? made.language
-                made.origin = .imported
-                made.editedAfterImport = false
-                return made
-            }
-
-            /// The client with its empty fields filled from the rows, or nil when the rows fill none.
-            func filledClient() -> Client? {
-                var filled = client
-                func fill(_ field: inout String, with value: String) {
-                    if field.isEmpty {
-                        field = value
-                    }
-                }
-                fill(&filled.street, with: values.street)
-                fill(&filled.postcode, with: values.postcode)
-                fill(&filled.city, with: values.city)
-                fill(&filled.country, with: values.country)
-                fill(&filled.ico, with: values.ico)
-                fill(&filled.dic, with: values.dic)
-                fill(&filled.email, with: values.email)
-                fill(&filled.phone, with: values.phone)
-                fill(&filled.paymentMethod, with: values.paymentMethod)
-                return filled == client ? nil : filled
-            }
-        }
-
-        /// What the rows of a client say. A newer row's value replaces an older one's, unless it is empty (or a
-        /// currency without rates): the client takes what the newest row that has a value has.
-        struct Values {
-            var name = ""
-            var street = ""
-            var postcode = ""
-            var city = ""
-            var country = ""
-            var ico = ""
-            var dic = ""
-            var email = ""
-            var phone = ""
-            var paymentMethod = ""
-            var currency: CurrencyCode?
-            var vatMode: VatMode?
-            var dueDays: Int?
-            var language: InvoiceLanguage?
-
-            mutating func absorb(_ row: FakturoidRow, knownCurrencies: Set<CurrencyCode>) {
-                func take(_ field: inout String, _ value: String) {
-                    if !value.isEmpty {
-                        field = value
-                    }
-                }
-                take(&name, row.clientName)
-                take(&street, ImportPlanner.street(of: row))
-                take(&postcode, row.clientZip)
-                take(&city, row.clientCity)
-                take(&country, ImportPlanner.country(row.clientCountry).text)
-                take(&ico, row.clientRegistrationNo)
-                take(&dic, row.clientVatNo)
-                take(&email, row.clientEmail)
-                take(&phone, row.clientPhone)
-                take(&paymentMethod, row.paymentMethodHuman)
-                if let code = CurrencyCode(row.currency), code.isCZK || knownCurrencies.contains(code) {
-                    currency = code
-                }
-                if let mode = ImportPlanner.vatMode(of: row) {
-                    vatMode = mode
-                }
-                if let days = row.dueDays {
-                    dueDays = days
-                }
-                if !row.language.isEmpty {
-                    language = row.language == "cz" ? .cs : .en
-                }
-            }
-        }
-
-        enum Reference {
-            case existing(Int64)
-            case new(Int)
-        }
-
-        struct Finished {
-            var newClients: [Client] = []
-            var updates: [Client] = []
-
-            /// By the place of the entry in the book.
-            var references: [Int: Reference] = [:]
-        }
-
-        private var entries: [Entry]
-        private let knownCurrencies: Set<CurrencyCode>
-
-        init(clients: [Client], knownCurrencies: Set<CurrencyCode>) {
-            self.knownCurrencies = knownCurrencies
-            entries = clients.map { Entry(client: $0, isNew: false) }
-        }
-
-        /// Puts the client of `row` in the book: the client it is matched to, or a new one, with the values of the
-        /// row. Returns the place of the entry, or nil when the row names no client that is there and has no name to
-        /// make one of.
-        mutating func place(_ row: FakturoidRow) -> Int? {
-            let index: Int
-            if let found = match(row) {
-                index = found
-            } else if !row.clientName.isEmpty {
-                entries.append(Entry(client: Client(), isNew: true))
-                index = entries.count - 1
-            } else {
-                return nil
-            }
-            entries[index].values.absorb(row, knownCurrencies: knownCurrencies)
-            entries[index].refreshKeys()
-            return index
-        }
-
-        /// The first client with the company number of the row, otherwise the first with its VAT number, otherwise
-        /// the first with its name (folded) that does not have another number.
-        private func match(_ row: FakturoidRow) -> Int? {
-            let ico = Self.compact(row.clientRegistrationNo)
-            let dic = Self.compact(row.clientVatNo).uppercased()
-            let name = SearchFolding.fold(row.clientName)
-            if !ico.isEmpty, let index = entries.firstIndex(where: { $0.icoKey == ico }) {
-                return index
-            }
-            if !dic.isEmpty, let index = entries.firstIndex(where: { $0.dicKey == dic }) {
-                return index
-            }
-            if !name.isEmpty,
-                let index = entries.firstIndex(where: { $0.nameKey == name && !$0.disagrees(icoKey: ico, dicKey: dic) })
-            {
-                return index
-            }
-            return nil
-        }
-
-        /// The new clients, the clients that are filled, and where each entry of the book went.
-        func finish() -> Finished {
-            var finished = Finished()
-            for (index, entry) in entries.enumerated() {
-                if entry.isNew {
-                    finished.references[index] = .new(finished.newClients.count)
-                    finished.newClients.append(entry.madeClient())
-                } else {
-                    finished.references[index] = .existing(entry.client.id)
-                    if let filled = entry.filledClient() {
-                        finished.updates.append(filled)
-                    }
-                }
-            }
-            return finished
-        }
-
-        /// `text` without any white space.
-        static func compact(_ text: String) -> String {
-            String(String.UnicodeScalarView(text.unicodeScalars.filter { !$0.properties.isWhitespace }))
-        }
     }
 }

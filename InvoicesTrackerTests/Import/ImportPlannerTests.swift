@@ -19,8 +19,8 @@ struct ImportPlannerTests {
         invoiceRates: [String: StoredRate] = [:]
     ) -> ImportPlan {
         ImportPlanner.plan(
-            rows: rows, existingInvoices: existing, clients: clients, knownCurrencies: known, payments: payments,
-            invoiceRates: invoiceRates
+            sources: ImportSources(rows: rows, isdocs: []), existingInvoices: existing, clients: clients,
+            knownCurrencies: known, payments: payments, invoiceRates: invoiceRates
         )
     }
 
@@ -228,15 +228,16 @@ struct ImportPlannerTests {
         #expect(
             invoice.items == [
                 InvoiceItem(
-                    description: "Vývoj software, září 2026", quantity: decimal("1"), unit: "",
-                    unitPriceMinor: 450_000)
+                    description: "Import z Fakturoidu", quantity: decimal("1"), unit: "", unitPriceMinor: 450_000)
             ])
         #expect(invoice.netMinor == 450_000 && invoice.vatMinor == 94_500 && invoice.totalMinor == 544_500)
         #expect(invoice.vatMode == .domestic21)
         #expect(invoice.invoiceRate == nil)
         #expect(invoice.status == .issued && !invoice.qrEnabled && invoice.note.isEmpty)
         #expect(invoice.language == .cs)
-        #expect(invoice.paymentMethod == "Banka")
+        // The method is `bank`, which a Czech invoice prints as Fakturoid does, not as the export's "Banka".
+        #expect(invoice.paymentMethod == "Převodem")
+        #expect(invoice.isdocFingerprint == nil)
         #expect(invoice.review == nil && invoice.payment == nil)
         #expect(invoice.source == .imported(fakturoidID: "5001", fingerprint: row.fingerprint, changedInApp: false))
         #expect(
@@ -280,12 +281,13 @@ struct ImportPlannerTests {
         #expect(invoice.numberDigits == "20261001")
     }
 
-    @Test func theItemTakesItsDescriptionFromTheSubjectOrSaysWhereItCameFrom() throws {
-        #expect(try invoiceOf(["Subject": "Vývoj"]).items[0].description == "Vývoj")
+    @Test func theItemSaysWhereItCameFromWhateverTheSubject() throws {
+        // The subject is the id of the client in Fakturoid, not a description of the invoice.
+        #expect(try invoiceOf(["Subject": "Vývoj"]).items[0].description == "Import z Fakturoidu")
         #expect(try invoiceOf(["Subject": ""]).items[0].description == "Import z Fakturoidu")
         #expect(try invoiceOf(["Subject": "   "]).items[0].description == "Import z Fakturoidu")
         let quoted = try invoiceOf(["Subject": "Konzultace \"říjen\", 2. část"])
-        #expect(quoted.items[0].description == "Konzultace \"říjen\", 2. část")
+        #expect(quoted.items[0].description == "Import z Fakturoidu")
     }
 
     @Test func aNegativeAmountIsANegativePriceOfOneUnit() throws {
@@ -386,21 +388,28 @@ struct ImportPlannerTests {
                 == .invoice(reviewReason: "měna XYZ bez kurzů ČNB"))
     }
 
-    @Test func aFlagForAMissingRateIsClearedWhenTheCacheHasOneAndOtherwiseLeftAlone() throws {
+    @Test func aFlagForAMissingRateStaysUntilTheRowChangesAndGoesWithAChangedRowThatHasARate() throws {
         let row = try FakturoidCSV.parsed(Self.dollarsPaid)
         let cached = storedRate("USD", "21.5", declaredOn: "2026-09-30")
-        let payment = Payment.fixture(on: "2026-10-15", conversion: .cnbDaily, net: 100, vat: 0, rate: cached)
         var held = try #require(ImportPlanner.invoice(from: row, knownCurrencies: Self.known))
         held.id = 4
         #expect(held.review == ReviewFlag(reason: "chybí kurz faktury"))
+        let changed = try FakturoidCSV.parsed(Self.dollarsPaid.merging(["Due on": "2026-10-31"]) { $1 })
+        let payment = Payment.fixture(on: "2026-10-15", conversion: .cnbDaily, net: 100, vat: 0, rate: cached)
 
         let stillMissing = plan([row], existing: [held])
-        let arrived = plan(
+        // The same row is not applied again, even though its rate is there now: re-importing a file changes nothing.
+        let sameRowArrived = plan(
             [row], existing: [held], payments: [row.fingerprint: payment], invoiceRates: [row.fingerprint: cached])
+        let changedRowArrived = plan(
+            [changed], existing: [held], payments: [changed.fingerprint: payment],
+            invoiceRates: [changed.fingerprint: cached])
 
-        #expect(stillMissing.unchanged == ["20261001"] && stillMissing.updates.isEmpty)
-        #expect(arrived.updates.map(\.id) == [4] && arrived.updates.first?.review == nil)
-        #expect(arrived.updates.first?.payment == payment && arrived.updates.first?.invoiceRate == cached)
+        #expect(stillMissing.unchangedNumbers == ["20261001"] && stillMissing.updates.isEmpty)
+        #expect(sameRowArrived.unchangedNumbers == ["20261001"] && sameRowArrived.updates.isEmpty)
+        #expect(changedRowArrived.updates.map(\.id) == [4] && changedRowArrived.updates.first?.review == nil)
+        #expect(changedRowArrived.updates.first?.payment == payment)
+        #expect(changedRowArrived.updates.first?.invoiceRate == cached)
     }
 
     @Test func aFlagIsNotChangedToAnotherReasonWhenTheRowHasNotChanged() throws {
@@ -412,7 +421,7 @@ struct ImportPlannerTests {
 
         let plan = plan([row], existing: [stored])
 
-        #expect(plan.unchanged == ["20261001"] && plan.updates.isEmpty)
+        #expect(plan.unchangedNumbers == ["20261001"] && plan.updates.isEmpty)
     }
 
     // MARK: VAT
@@ -495,7 +504,9 @@ struct ImportPlannerTests {
 
         #expect(plan.inserts.map(\.client.country) == ["Švýcarsko", "Švýcarsko", "CZ"])
         #expect(plan.newClients.map(\.country) == ["CZ"])  // Alfa is one client, and its newest row says CZ
-        #expect(plan.reviewItems == ["země „Švýcarsko“ — není kód země, ponecháno jak je"])
+        // The note does not hold an invoice, so it is not a line to check.
+        #expect(plan.notes == ["země „Švýcarsko“ — není kód země, ponecháno jak je"])
+        #expect(plan.reviewItems.isEmpty)
     }
 
     // MARK: The sample, planned against an empty database
@@ -509,7 +520,7 @@ struct ImportPlannerTests {
                 "20261008", "20261009", "20261010",
             ])
         #expect(plan.skipped == ["Z20261001 — zálohová faktura", "20261099 — zrušeno ve Fakturoidu"])
-        #expect(plan.updates.isEmpty && plan.unchanged.isEmpty && plan.kept.isEmpty)
+        #expect(plan.updates.isEmpty && plan.unchangedNumbers.isEmpty)
         #expect(plan.conflicts.isEmpty && plan.flaggedCancelled.isEmpty && plan.clientUpdates.isEmpty)
     }
 
@@ -580,7 +591,7 @@ struct ImportPlannerTests {
         #expect(alfa.email == "fakturace@alfa.example")
         // Only row 3 has the phone: the older row 1 has none, and the rows after it leave it out.
         #expect(alfa.phone == "+420 111 222 333")
-        #expect(alfa.currency == .czk && alfa.paymentMethod == "Banka" && alfa.language == .cs)
+        #expect(alfa.currency == .czk && alfa.paymentMethod == "Převodem" && alfa.language == .cs)
         // The newest invoice of Alfa is the one of 8 October: 12 % VAT and 15 days (row 1 had 21 % and 30 days).
         #expect(alfa.vatMode == .domestic12 && alfa.dueDays == 15)
     }
@@ -808,11 +819,12 @@ struct ImportPlannerTests {
         let rows = try FakturoidCSV.rows([
             FakturoidCSV.row([
                 "Number": "20260101", "Issued on": "2026-01-10", "Client city": "Praha", "Client phone": "111",
-                "Client email": "old@example.com", "Due": "30", "Payment method human": "Hotově", "Language": "en",
+                "Client email": "old@example.com", "Due": "30", "Payment method": "cash",
+                "Payment method human": "Hotově", "Language": "en",
             ]),
             FakturoidCSV.row([
                 "Number": "20260301", "Issued on": "2026-03-10", "Client city": "Brno", "Client phone": "",
-                "Client email": "", "Due": "", "Payment method human": "", "Language": "",
+                "Client email": "", "Due": "", "Payment method": "", "Payment method human": "", "Language": "",
             ]),
         ])
 
@@ -841,10 +853,10 @@ struct ImportPlannerTests {
 
         let second = plan(rows, existing: invoices, clients: clients)
 
-        #expect(second.unchanged.count == 11)
-        #expect(second.unchanged == first.inserts.map(\.number))
+        #expect(second.unchangedNumbers.count == 11)
+        #expect(second.unchangedNumbers == first.inserts.map(\.number))
         #expect(second.skipped.count == 2)
-        #expect(second.inserts.isEmpty && second.updates.isEmpty && second.kept.isEmpty)
+        #expect(second.inserts.isEmpty && second.updates.isEmpty)
         #expect(second.conflicts.isEmpty && second.flaggedCancelled.isEmpty && second.reviewItems.isEmpty)
         #expect(second.newClients.isEmpty && second.clientUpdates.isEmpty)
     }
@@ -880,7 +892,7 @@ struct ImportPlannerTests {
         let plan = plan(changed, existing: [stored], clients: [alfa], payments: [changed[0].fingerprint: payment])
 
         let updated = try #require(plan.updates.first)
-        #expect(plan.updates.count == 1 && plan.inserts.isEmpty && plan.unchanged.isEmpty && plan.kept.isEmpty)
+        #expect(plan.updates.count == 1 && plan.inserts.isEmpty && plan.unchangedNumbers.isEmpty)
         #expect(updated.id == 41)
         #expect(updated.clientID == 9)
         #expect(updated.netMinor == 460_000 && updated.vatMinor == 96_600)
@@ -905,18 +917,23 @@ struct ImportPlannerTests {
 
         let plan = plan(same, existing: [stored])
 
-        #expect(plan.unchanged == ["20260902"])
+        #expect(plan.unchangedNumbers == ["20260902"])
         #expect(plan.updates.isEmpty && plan.inserts.isEmpty)
     }
 
-    @Test func aChangedRowForAnInvoiceChangedInTheAppIsKeptAndListed() throws {
-        let stored = try imported(["Number": "20260902"], changedInApp: true)
+    @Test func aChangedRowUpdatesAnInvoiceChangedInTheAppTooAndItIsNotMarkedChangedAnyMore() throws {
+        // Fakturoid is the source of truth: what was changed in the app is overwritten.
+        var stored = try imported(["Number": "20260902"], changedInApp: true)
+        stored.note = "Domluveno telefonicky"
         let changed = try rows(["Number": "20260902", "Subtotal": "4600,0", "Vat": "966.0"])
 
         let plan = plan(changed, existing: [stored])
 
-        #expect(plan.kept == ["20260902 — změněno v aplikaci — ponecháno"])
-        #expect(plan.updates.isEmpty && plan.unchanged.isEmpty && plan.inserts.isEmpty)
+        let updated = try #require(plan.updates.first)
+        #expect(updated.id == stored.id && updated.netMinor == 460_000 && updated.note.isEmpty)
+        #expect(updated.source == .imported(fakturoidID: "1", fingerprint: changed[0].fingerprint, changedInApp: false))
+        #expect(plan.overwrittenNumbers == ["20260902"])
+        #expect(plan.unchangedNumbers.isEmpty && plan.inserts.isEmpty)
     }
 
     @Test func aRowThatHasNotChangedLeavesAnInvoiceChangedInTheAppAlone() throws {
@@ -925,19 +942,24 @@ struct ImportPlannerTests {
 
         let plan = plan(try rows(["Number": "20260902"]), existing: [stored])
 
-        #expect(plan.unchanged == ["20260902"])
-        #expect(plan.kept.isEmpty && plan.updates.isEmpty)
+        #expect(plan.unchangedNumbers == ["20260902"])
+        #expect(plan.updates.isEmpty)
     }
 
-    @Test func anInvoiceMadeInTheAppIsNeverTouchedAndTheRowIsAConflict() throws {
-        let appInvoice = Invoice.fixture(number: "20261102", currency: .czk, duzp: "2026-11-02")
+    @Test func aRowUpdatesAnInvoiceMadeInTheAppWithItsNumberAndMakesItImported() throws {
+        var appInvoice = Invoice.fixture(number: "20261102", currency: .czk, duzp: "2026-11-02")
+        appInvoice.id = 8
         let changed = try rows(["Number": "20261102", "Issued on": "2026-11-02"])
 
-        let plan = plan(changed, existing: [appInvoice])
+        let first = plan(changed, existing: [appInvoice])
+        let updated = try #require(first.updates.first)
+        let again = plan(changed, existing: [updated])
 
-        #expect(
-            plan.conflicts == ["20261102 — číslo už používá faktura vytvořená v aplikaci — nepřidáno"])
-        #expect(plan.inserts.isEmpty && plan.updates.isEmpty && plan.unchanged.isEmpty && plan.kept.isEmpty)
+        #expect(updated.id == 8 && updated.issueDate == civilDate("2026-11-02") && updated.netMinor == 450_000)
+        #expect(updated.source == .imported(fakturoidID: "1", fingerprint: changed[0].fingerprint, changedInApp: false))
+        #expect(first.conflicts.isEmpty && first.inserts.isEmpty && first.unchangedNumbers.isEmpty)
+        // The same row again leaves it as it is now.
+        #expect(again.unchangedNumbers == ["20261102"] && again.updates.isEmpty)
     }
 
     @Test func aNumberThatAnInvoiceInAnotherCurrencyHasIsAConflict() throws {
@@ -978,7 +1000,7 @@ struct ImportPlannerTests {
         let plan = plan(other, existing: [stored])
 
         #expect(plan.conflicts == ["2026-09-02 — číslo už používá jiná faktura z Fakturoidu — nepřidáno"])
-        #expect(plan.updates.isEmpty && plan.inserts.isEmpty && plan.unchanged.isEmpty && plan.kept.isEmpty)
+        #expect(plan.updates.isEmpty && plan.inserts.isEmpty && plan.unchangedNumbers.isEmpty)
         #expect(plan.flaggedCancelled.isEmpty && plan.reviewItems.isEmpty)
     }
 
@@ -1005,17 +1027,21 @@ struct ImportPlannerTests {
         #expect(plan(same, existing: [storedWithoutID]).updates.map(\.id) == [41])
     }
 
-    @Test func aChangeOfTheReviewUpdatesAnInvoiceThatWasNotChangedInTheApp() throws {
-        // The currency had no rates at the first import, so the invoice was held; the rates are there now.
+    @Test func aFlagTheSameRowWouldNotSetNowStaysUntilTheRowChanges() throws {
+        // The currency had no rates at the first import, so the invoice was held; the rates are there now. The same
+        // row is not applied again, so the flag stays for the person to resolve, and a changed row takes it away.
         let row = ["Number": "20260902", "Currency": "USD", "Vat": "0.0", "Client country": "US"]
         let held = try imported(row, known: [.czk])
         #expect(held.review == ReviewFlag(reason: "měna USD bez kurzů ČNB"))
+        let changed = row.merging(["Due on": "2026-10-31"]) { $1 }
 
-        let plan = plan(try rows(row), existing: [held])
+        let same = plan(try rows(row), existing: [held])
+        let updated = plan(try rows(changed), existing: [held])
 
-        #expect(plan.updates.count == 1 && plan.unchanged.isEmpty)
-        #expect(plan.updates.first?.review == nil)
-        #expect(plan.updates.first?.id == held.id)
+        #expect(same.unchangedNumbers == ["20260902"] && same.updates.isEmpty)
+        #expect(updated.updates.count == 1 && updated.unchangedNumbers.isEmpty)
+        #expect(updated.updates.first?.review == nil)
+        #expect(updated.updates.first?.id == held.id)
     }
 
     @Test func aChangeOfTheReviewDoesNotTouchAnInvoiceChangedInTheApp() throws {
@@ -1025,8 +1051,8 @@ struct ImportPlannerTests {
 
         let plan = plan(try rows(row), existing: [resolved])
 
-        #expect(plan.unchanged == ["20260902"])
-        #expect(plan.updates.isEmpty && plan.kept.isEmpty)
+        #expect(plan.unchangedNumbers == ["20260902"])
+        #expect(plan.updates.isEmpty)
     }
 
     @Test func aFlagThatTheAppLeftOnAnInvoiceItChangedIsNotTakenAwayByTheImport() throws {
@@ -1036,8 +1062,8 @@ struct ImportPlannerTests {
 
         let plan = plan(try rows(row), existing: [stored])
 
-        #expect(plan.unchanged == ["20260902"])
-        #expect(plan.updates.isEmpty && plan.kept.isEmpty)
+        #expect(plan.unchangedNumbers == ["20260902"])
+        #expect(plan.updates.isEmpty)
     }
 
     @Test func aFlagIsNeverSetOnAnInvoiceThatHasNoneWhenTheRowHasNotChanged() throws {
@@ -1049,8 +1075,8 @@ struct ImportPlannerTests {
 
         let plan = plan(try rows(row), existing: [stored], known: [.czk])
 
-        #expect(plan.unchanged == ["20260902"])
-        #expect(plan.updates.isEmpty && plan.reviewItems.isEmpty && plan.kept.isEmpty)
+        #expect(plan.unchangedNumbers == ["20260902"])
+        #expect(plan.updates.isEmpty && plan.reviewItems.isEmpty)
     }
 
     @Test func aFlagOfAnotherReasonIsNotChangedWhenTheRowHasNotChanged() throws {
@@ -1060,7 +1086,7 @@ struct ImportPlannerTests {
 
         let plan = plan(try rows(row), existing: [stored], known: [.czk])
 
-        #expect(plan.unchanged == ["20260902"] && plan.updates.isEmpty)
+        #expect(plan.unchangedNumbers == ["20260902"] && plan.updates.isEmpty)
     }
 
     @Test func aRowThatIsNowInReviewUpdatesTheInvoiceAndIsListed() throws {
@@ -1097,7 +1123,7 @@ struct ImportPlannerTests {
         #expect(flagged.payment == stored.payment)
         #expect(flagged.items == stored.items && flagged.number == "20260901")
         #expect(plan.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
-        #expect(plan.skipped.isEmpty && plan.updates.isEmpty && plan.inserts.isEmpty && plan.unchanged.isEmpty)
+        #expect(plan.skipped.isEmpty && plan.updates.isEmpty && plan.inserts.isEmpty && plan.unchangedNumbers.isEmpty)
     }
 
     @Test func aCancelledRowThatWasFlaggedAlreadyChangesNothing() throws {
@@ -1108,7 +1134,7 @@ struct ImportPlannerTests {
 
         let plan = plan(cancelled, existing: [stored])
 
-        #expect(plan.unchanged == ["20260901"])
+        #expect(plan.unchangedNumbers == ["20260901"])
         #expect(plan.flaggedCancelled.isEmpty && plan.reviewItems.isEmpty && plan.skipped.isEmpty)
     }
 
@@ -1121,12 +1147,14 @@ struct ImportPlannerTests {
         let plan = plan(cancelled, existing: [stored])
 
         // Every field of the app's version stays, the payment too; the flag is new, and so is the row it came from.
+        // The invoice is not marked as changed in the app any more: the import has updated it.
         var expected = stored
         expected.review = ReviewFlag(reason: "zrušeno ve Fakturoidu")
-        expected.source = .imported(fakturoidID: "5002", fingerprint: cancelled[0].fingerprint, changedInApp: true)
+        expected.source = .imported(fakturoidID: "5002", fingerprint: cancelled[0].fingerprint, changedInApp: false)
         #expect(plan.flaggedCancelled == [expected])
-        #expect(plan.kept.isEmpty && plan.skipped.isEmpty && plan.updates.isEmpty && plan.unchanged.isEmpty)
-        #expect(plan.reviewItems == ["20260901 — zrušeno ve Fakturoidu a změněno v aplikaci — ponecháno ke kontrole"])
+        #expect(plan.skipped.isEmpty && plan.updates.isEmpty && plan.unchangedNumbers.isEmpty)
+        #expect(plan.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
+        #expect(plan.overwrittenNumbers == ["20260901"])
     }
 
     @Test func aCancelledRowThatFlaggedAnInvoiceChangedInTheAppChangesNothingTheNextTime() throws {
@@ -1140,8 +1168,8 @@ struct ImportPlannerTests {
         let again = plan(cancelled, existing: [flagged])
         let afterResolving = plan(cancelled, existing: [resolved])
 
-        #expect(again.unchanged == ["20260901"] && again.flaggedCancelled.isEmpty && again.reviewItems.isEmpty)
-        #expect(afterResolving.unchanged == ["20260901"] && afterResolving.flaggedCancelled.isEmpty)
+        #expect(again.unchangedNumbers == ["20260901"] && again.flaggedCancelled.isEmpty && again.reviewItems.isEmpty)
+        #expect(afterResolving.unchangedNumbers == ["20260901"] && afterResolving.flaggedCancelled.isEmpty)
     }
 
     @Test func aCancelledRowForNoInvoiceInTheAppIsSkipped() throws {
@@ -1151,13 +1179,18 @@ struct ImportPlannerTests {
         #expect(plan.flaggedCancelled.isEmpty && plan.inserts.isEmpty)
     }
 
-    @Test func aCancelledRowNeverTouchesAnInvoiceMadeInTheApp() throws {
-        let appInvoice = Invoice.fixture(number: "20260901", currency: .czk)
+    @Test func aCancelledRowFlagsAnInvoiceMadeInTheAppWithItsNumberAndMakesItImported() throws {
+        var appInvoice = Invoice.fixture(number: "20260901", currency: .czk)
+        appInvoice.id = 6
+        let cancelled = try cancelledRow()
 
-        let plan = plan(try cancelledRow(), existing: [appInvoice])
+        let plan = plan(cancelled, existing: [appInvoice])
 
-        #expect(plan.skipped == ["20260901 — zrušeno ve Fakturoidu"])
-        #expect(plan.flaggedCancelled.isEmpty && plan.conflicts.isEmpty)
+        var expected = appInvoice
+        expected.review = ReviewFlag(reason: "zrušeno ve Fakturoidu")
+        expected.source = .imported(fakturoidID: "1", fingerprint: cancelled[0].fingerprint, changedInApp: false)
+        #expect(plan.flaggedCancelled == [expected])
+        #expect(plan.skipped.isEmpty && plan.conflicts.isEmpty)
     }
 
     @Test func aCancelledRowOfAnotherCurrencyThanTheInvoiceInTheAppIsSkipped() throws {
@@ -1233,12 +1266,13 @@ struct ImportPlannerTests {
 
         let unchanged = plan(same, existing: [stored])
         let updated = plan(changed, existing: [stored])
-        let kept = plan(changed, existing: [changedInApp])
+        let updatedOverTheApp = plan(changed, existing: [changedInApp])
 
-        #expect(unchanged.unchanged == ["ABC"] && unchanged.updates.isEmpty && unchanged.conflicts.isEmpty)
+        #expect(unchanged.unchangedNumbers == ["ABC"] && unchanged.updates.isEmpty && unchanged.conflicts.isEmpty)
         #expect(updated.updates.map(\.id) == [5] && updated.updates.first?.number == "ABC")
         #expect(updated.updates.first?.netMinor == 460_000 && updated.inserts.isEmpty)
-        #expect(kept.kept == ["ABC — změněno v aplikaci — ponecháno"] && kept.updates.isEmpty)
+        // A change in the app does not keep the row out.
+        #expect(updatedOverTheApp.updates.map(\.id) == [5] && updatedOverTheApp.updates.first?.netMinor == 460_000)
     }
 
     @Test func aNumberWithoutADigitIsNeverTheInvoiceOfAnotherRowOrOfTheApp() throws {
@@ -1284,7 +1318,7 @@ struct ImportPlannerTests {
         let plan = plan(twice)
 
         #expect(plan.inserts.map(\.number) == ["20261001"])
-        #expect(plan.conflicts.isEmpty && plan.unchanged.isEmpty)
+        #expect(plan.conflicts.isEmpty && plan.unchangedNumbers.isEmpty)
     }
 
     // MARK: One invoice in several rows of the import
@@ -1329,7 +1363,7 @@ struct ImportPlannerTests {
         let plan = plan(rows, payments: paymentsOf(rows))
 
         #expect(plan.skipped == ["20260901 — zrušeno ve Fakturoidu"])
-        #expect(plan.inserts.isEmpty && plan.updates.isEmpty && plan.unchanged.isEmpty && plan.kept.isEmpty)
+        #expect(plan.inserts.isEmpty && plan.updates.isEmpty && plan.unchangedNumbers.isEmpty)
         #expect(plan.conflicts.isEmpty && plan.reviewItems.isEmpty && plan.flaggedCancelled.isEmpty)
         // The invoice is not one of the client's, as far as this import knows.
         #expect(plan.newClients.isEmpty)
@@ -1362,7 +1396,7 @@ struct ImportPlannerTests {
         // The paid row is the one the invoice was made from, and it does not matter: the invoice is cancelled.
         #expect(plan.flaggedCancelled.map(\.id) == [12])
         #expect(plan.flaggedCancelled.first?.review == ReviewFlag(reason: "zrušeno ve Fakturoidu"))
-        #expect(plan.unchanged.isEmpty && plan.updates.isEmpty && plan.inserts.isEmpty && plan.conflicts.isEmpty)
+        #expect(plan.unchangedNumbers.isEmpty && plan.updates.isEmpty && plan.inserts.isEmpty && plan.conflicts.isEmpty)
         #expect(plan.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
     }
 
@@ -1391,9 +1425,15 @@ struct ImportPlannerTests {
         #expect(held.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
         #expect(held.payment == nil)
         #expect(plan.reviewItems == ["\(rows[0].number) — v importu vícekrát s různým obsahem — ke kontrole"])
-        // It has the content of the row that comes first.
+        // It has the content of the row that comes first, and it is stored under the fingerprint of both rows,
+        // whatever their order, so that the same rows again are known.
         #expect(held.number == rows[0].number && held.netMinor == rows[0].subtotalMinor)
-        #expect(held.source == .imported(fakturoidID: "5002", fingerprint: rows[0].fingerprint, changedInApp: false))
+        let both = ImportPlanner.fingerprint(ofAll: rows.map(\.fingerprint))
+        #expect(both == ImportPlanner.fingerprint(ofAll: rows.reversed().map(\.fingerprint)))
+        #expect(both != rows[0].fingerprint && both != rows[1].fingerprint)
+        #expect(held.source == .imported(fakturoidID: "5002", fingerprint: both, changedInApp: false))
+        // A held kind of files is never stored under the fingerprint of one file, also when its files are alike.
+        #expect(ImportPlanner.fingerprint(ofAll: [rows[0].fingerprint, rows[0].fingerprint]) != rows[0].fingerprint)
     }
 
     @Test func oneRowThatDiffersAmongRepeatsHoldsTheInvoiceToo() throws {
@@ -1416,43 +1456,95 @@ struct ImportPlannerTests {
         let plan = plan(rows, existing: [stored], payments: paymentsOf(rows))
 
         // Neither row is applied: the invoice keeps its content and its payment, and is not counted until resolved.
+        // It is stored under the fingerprint of both rows.
         var expected = stored
         expected.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
+        expected.source = .imported(
+            fakturoidID: "5002", fingerprint: ImportPlanner.fingerprint(ofAll: rows.map(\.fingerprint)),
+            changedInApp: false)
         #expect(plan.updates == [expected])
-        #expect(plan.inserts.isEmpty && plan.conflicts.isEmpty && plan.unchanged.isEmpty && plan.kept.isEmpty)
+        #expect(plan.inserts.isEmpty && plan.conflicts.isEmpty && plan.unchangedNumbers.isEmpty)
         #expect(plan.reviewItems == ["\(rows[0].number) — v importu vícekrát s různým obsahem — ke kontrole"])
     }
 
-    @Test func theInvoiceThatWasFlaggedForItsRowsIsLeftAloneTheNextTime() throws {
-        var stored = try imported(
+    @Test func theInvoiceHeldForItsRowsIsLeftAloneByTheSameRowsBeforeAndAfterItIsResolved() throws {
+        let stored = try imported(
             ["Id": "5002", "Number": "20260901", "Status": "paid", "Paid on": "2026-10-02"], id: 12)
-        stored.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
-        var changedInApp = stored
-        changedInApp.review = nil
-        if case .imported(let id, let fingerprint, _) = stored.source {
-            changedInApp.source = .imported(fakturoidID: id, fingerprint: fingerprint, changedInApp: true)
-        }
         let rows = try twoVersions(reversed: false)
+        let held = try #require(plan(rows, existing: [stored]).updates.first)
+        #expect(held.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
+        // The person has resolved it in the app since: the flag is gone, the payment is entered, and the invoice is
+        // marked as changed there.
+        var resolved = held
+        resolved.review = nil
+        resolved.payment = Payment.fixture(on: "2026-10-02")
+        if case .imported(let id, let fingerprint, _) = held.source {
+            resolved.source = .imported(fakturoidID: id, fingerprint: fingerprint, changedInApp: true)
+        }
 
-        let again = plan(rows, existing: [stored])
-        let resolved = plan(rows, existing: [changedInApp])
+        let again = plan(rows, existing: [held])
+        let againReversed = plan(try twoVersions(reversed: true), existing: [held])
+        let afterResolving = plan(rows, existing: [resolved])
 
-        #expect(again.unchanged == [rows[0].number] && again.updates.isEmpty && again.reviewItems.isEmpty)
-        #expect(resolved.kept == ["\(rows[0].number) — změněno v aplikaci — ponecháno"] && resolved.updates.isEmpty)
+        // The same rows, in either order, change nothing: not before the invoice is resolved, and not after.
+        for plan in [again, againReversed, afterResolving] {
+            #expect(plan.unchangedNumbers.count == 1 && plan.updates.isEmpty && plan.reviewItems.isEmpty)
+            #expect(plan.inserts.isEmpty && plan.overwrittenNumbers.isEmpty)
+        }
     }
 
-    @Test func aFlagForRowsThatDifferedIsClearedWhenTheRowIsTheSameAgain() throws {
-        // Only one of the exports is imported now, and it is the one the invoice was made from.
+    @Test func aHeldInvoiceIsComparedAsUsualOnceItsRowsStopDifferingOrDifferOtherwise() throws {
+        let rows = try twoVersions(reversed: false)
+        var held = try #require(plan(rows).inserts.first)
+        held.id = 12
+        let third = try FakturoidCSV.parsed([
+            "Id": "5002", "Number": "20260901", "Status": "paid", "Paid on": "2026-10-02", "Subtotal": "4700,0",
+            "Total": "5687,0", "Vat": "987.0",
+        ])
+        let payment = Payment.fixture(on: "2026-10-02")
+
+        let alone = plan([rows[0]], existing: [held], payments: [rows[0].fingerprint: payment])
+        let otherwise = plan([rows[0], third], existing: [held])
+
+        // One of the rows alone is a change of what the invoice is stored under: it is applied, and the flag goes.
+        #expect(alone.updates.map(\.id) == [12] && alone.updates.first?.review == nil)
+        #expect(alone.updates.first?.payment == payment && alone.unchangedNumbers.isEmpty)
+        // Rows that differ otherwise hold it again, under their own fingerprint.
+        let heldAgain = try #require(otherwise.updates.first)
+        #expect(heldAgain.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
+        let both = ImportPlanner.fingerprint(ofAll: [third.fingerprint, rows[0].fingerprint])
+        #expect(heldAgain.source == .imported(fakturoidID: "5002", fingerprint: both, changedInApp: false))
+        #expect(otherwise.unchangedNumbers.isEmpty)
+    }
+
+    @Test func anInvoiceHeldUnderTheRowItWasMadeFromTakesEitherRowWhileItIsHeld() throws {
+        // An earlier version of the import stored an invoice held for its rows under the fingerprint of the row it was
+        // made from, without a payment. Only one of the exports is imported now. While the invoice is still held,
+        // either row is applied: its state and its payment replace the flag.
         let rows = try twoVersions(reversed: false)
         var stored = try imported(
             ["Id": "5002", "Number": "20260901", "Status": "paid", "Paid on": "2026-10-02"], id: 12)
         stored.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
-        let payment = Payment.fixture(on: "2026-10-02")
+        #expect(stored.payment == nil)
+        #expect(stored.source == .imported(fakturoidID: "5002", fingerprint: rows[0].fingerprint, changedInApp: false))
+        let payment = Payment.fixture(on: "2026-10-02", net: 460_000, vat: 96_600)
 
-        let plan = plan([rows[0]], existing: [stored], payments: [rows[0].fingerprint: payment])
+        let first = plan([rows[0]], existing: [stored], payments: [rows[0].fingerprint: payment])
+        let other = plan([rows[1]], existing: [stored], payments: [rows[1].fingerprint: payment])
 
-        #expect(plan.updates.map(\.id) == [12] && plan.updates.first?.review == nil)
-        #expect(plan.updates.first?.payment == payment && plan.unchanged.isEmpty)
+        for (plan, row) in [(first, rows[0]), (other, rows[1])] {
+            let updated = try #require(plan.updates.first)
+            #expect(plan.updates.map(\.id) == [12] && updated.review == nil && updated.payment == payment)
+            #expect(updated.source == .imported(fakturoidID: "5002", fingerprint: row.fingerprint, changedInApp: false))
+            #expect(plan.overwrittenNumbers == [row.number] && plan.unchangedNumbers.isEmpty)
+            #expect(plan.reviewItems.isEmpty)
+        }
+        // Once the person has resolved the flag, the row the invoice is stored under is unchanged again.
+        var resolved = stored
+        resolved.review = nil
+        resolved.payment = Payment.fixture(on: "2026-10-02")
+        let afterResolving = plan([rows[0]], existing: [resolved], payments: [rows[0].fingerprint: payment])
+        #expect(afterResolving.unchangedNumbers == ["20260901"] && afterResolving.updates.isEmpty)
     }
 
     @Test func theSameDigitsInTwoCurrenciesInOneImportAreOneInvoiceAndOneConflict() throws {
@@ -1482,11 +1574,13 @@ struct ImportPlannerTests {
         let reimport = try sample("fakturoid_reimport")
         let first = plan(try sample())
         var (invoices, clients) = applied(first)
-        // Invoice 20260902 was changed in the app, and an invoice of the app has the number of row 14.
+        // Invoice 20260902 was changed in the app, and an invoice of the app in euros has the number of row 14.
         if case .imported(let id, let fingerprint, _) = invoices[0].source {
             invoices[0].source = .imported(fakturoidID: id, fingerprint: fingerprint, changedInApp: true)
         }
-        invoices.append(Invoice.fixture(number: "20261102", currency: .czk, duzp: "2026-11-02"))
+        var euros = Invoice.fixture(number: "20261102", currency: .eur, duzp: "2026-11-02", vatMode: VatMode.none)
+        euros.id = 99
+        invoices.append(euros)
         clients[0].phone = ""
 
         let plan = plan(reimport, existing: invoices, clients: clients)
@@ -1494,10 +1588,12 @@ struct ImportPlannerTests {
         let summary = ImportSummary(plan: plan, files: ["a.csv", "b.csv"], exportSupplier: supplier)
 
         #expect(summary.files == ["a.csv", "b.csv"])
-        #expect(summary.added == 0 && summary.updated == 1 && summary.unchanged == 8 && summary.skipped == 2)
-        #expect(summary.keptChangedInApp == 1)
-        #expect(summary.keptItems == ["20260902 — změněno v aplikaci — ponecháno"])
-        #expect(summary.conflicts == 1 && summary.conflictItems.count == 1)
+        // Row 1 overwrites what was changed in the app, row 3 is a change too, row 2 is flagged as cancelled (which
+        // counts among the overwritten) and row 14 is a conflict.
+        #expect(summary.added == 0 && summary.updated == 3 && summary.unchanged == 8 && summary.skipped == 2)
+        #expect(summary.keptChangedInApp == 0 && summary.keptItems.isEmpty)
+        #expect(summary.conflicts == 1)
+        #expect(summary.conflictItems == ["20261102 — číslo už používá faktura v jiné měně — nepřidáno"])
         #expect(summary.flaggedCancelled == 1 && summary.needsReview == 0)
         #expect(summary.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
         #expect(summary.newClients == 0 && summary.filledClients == 1)
@@ -1513,6 +1609,31 @@ struct ImportPlannerTests {
 
         #expect(try JSONDecoder().decode(ImportSummary.self, from: data) == summary)
         #expect(summary.newestYear == 2026)
+    }
+
+    @Test func theSummaryKeepsTheNotesOfThePlan() throws {
+        let rows = try FakturoidCSV.rows([FakturoidCSV.row(["Client country": "Švýcarsko", "Vat": "0.0"])])
+
+        let summary = ImportSummary(plan: plan(rows), files: [], exportSupplier: nil)
+
+        #expect(summary.notes == ["země „Švýcarsko“ — není kód země, ponecháno jak je"])
+        #expect(summary.reviewItems.isEmpty && summary.needsReview == 0)
+    }
+
+    @Test func aSummaryOfAnOlderLogWithoutNotesIsStillRead() throws {
+        var summary = ImportSummary(plan: plan(try sample()), files: ["x.csv"], exportSupplier: nil)
+        summary.notes = ["20260902 — částka v CSV nesouhlasí s položkami z ISDOC — ponechány položky"]
+        let encoded = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(summary))
+        var object = try #require(encoded as? [String: Any])
+        // The log of an import made before the summary kept its notes has every other key.
+        object["notes"] = nil
+
+        let data = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(ImportSummary.self, from: data)
+
+        #expect(decoded.notes.isEmpty && decoded.added == 11 && decoded.files == ["x.csv"])
+        #expect(try JSONDecoder().decode(ImportSummary.self, from: try JSONEncoder().encode(summary)) == summary)
     }
 
     @Test func aSummaryOfAnOlderLogWithoutTheNewestYearIsStillRead() throws {

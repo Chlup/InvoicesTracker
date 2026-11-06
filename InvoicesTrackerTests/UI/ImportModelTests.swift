@@ -2,19 +2,20 @@ import Foundation
 import Testing
 @testable import InvoicesTracker
 
-/// The model of the Import screen: what it says of the files while they are read and once the import is done, the
-/// summary with the lines of the clients, the line of the last import, the sidebar badge while an import runs, the one
-/// step at a time that the import shares with the restore and the change of the keys, filling an empty supplier from
-/// the export, and Zobrazit faktury. The files are the invented fixtures `fakturoid_sample.csv` (13 rows: 11 invoices,
-/// 4 of them to check, 2 skipped) and `fakturoid_reimport.csv`; the server of the ČNB is a stub with the file of 2026.
-/// The clock is at noon of 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
+/// The model of the Import screen: the files it collects and the preview it makes of them without writing anything, the
+/// import it runs when it is asked to and what it says once that is done, the summary with the lines of the clients,
+/// the line of the last import, the sidebar badge while an import runs, the one step at a time that the import shares
+/// with the restore and the change of the keys, filling an empty supplier from the export, and Zobrazit faktury.
+/// The files are the invented fixtures `fakturoid_sample.csv` (13 rows: 11 invoices, 4 of them to check, 2 skipped)
+/// and `fakturoid_reimport.csv`; the server of the ČNB is a stub with the file of 2026. The clock is at noon of
+/// 17. 10. 2026. In every expected string `\u{00A0}` is the no-break space.
 @Suite(.settlesBackups)
 @MainActor
 struct ImportModelTests {
     // MARK: Helpers
 
     /// The counts of the sample, as the lines of the summary and of the file say them.
-    private static let sampleCounts = "nové 11, aktualizované 0, beze změny 0, přeskočené 2, ke kontrole 4"
+    private static let sampleCounts = "nové 11, přepsané 0, beze změny 0, přeskočené 2"
 
     /// The server of the ČNB with the yearly file of 2026, which the paid invoices of the sample need.
     private func cnb() throws -> StubHTTPClient {
@@ -54,10 +55,11 @@ struct ImportModelTests {
         let model = ImportModel(app: app)
         let version = app.dataVersion
 
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
 
         #expect(model.failure == nil)
         #expect(!model.running && app.importBadge == nil && !app.securityStepRunning)
+        #expect(model.files.isEmpty && model.preview == nil && model.progress == nil)
         #expect(
             model.summaryLines == [
                 "Hotovo – " + Self.sampleCounts + ".",
@@ -65,7 +67,7 @@ struct ImportModelTests {
             ])
         #expect(model.summaryLines.contains { $0.contains("nové 11") })
         #expect(model.summaryLines.contains { $0.contains("přeskočené 2") })
-        #expect(model.summaryLines.contains { $0.contains("ke kontrole 4") })
+        #expect(!model.summaryLines.contains { $0.contains("ke kontrole") })
         #expect(model.summaryLines.contains { $0.contains("noví odběratelé 4") })
         #expect(model.summary?.added == 11 && model.summary?.skipped == 2 && model.summary?.needsReview == 4)
         #expect(try await #require(app.database).invoiceCount() == 11)
@@ -77,7 +79,7 @@ struct ImportModelTests {
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
 
         let lists = model.summaryLists
 
@@ -88,41 +90,118 @@ struct ImportModelTests {
 
     // MARK: The files
 
-    @Test func theFileIsListedWithItsSizeAndTheCountsOfTheImport() async throws {
+    @Test func addingFilesPreviewsThemAndWritesNothing() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
         let model = ImportModel(app: app)
+        let version = app.dataVersion
+        let writes = await database.writeCount
 
-        await model.importFiles([try sampleURL()])
+        await model.addFiles([try sampleURL()])
 
-        #expect(model.fileProgress.map(\.name) == ["fakturoid_sample.csv"])
-        #expect(model.fileProgress.map(\.counts) == [Self.sampleCounts])
-        #expect(model.fileRows.map(\.size) == ["5,5\u{00A0}kB"])
-        #expect(model.fileRows.map(\.stage) == [.done])
-        // The file has 13 rows.
-        #expect(model.fileRows.map(\.rows) == [13])
-        #expect(model.statusText(of: model.fileRows[0]) == "Hotovo · 13\u{00A0}řádků")
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"])
+        #expect(model.failure == nil && !model.running && model.progress == nil && model.summary == nil)
+        #expect(model.preview?.newNumbers.count == 11 && model.preview?.skippedNumbers.count == 2)
+        #expect(model.outcomeRows.map(\.label) == ["Nové", "Přeskočí se"])
+        #expect(model.outcomeRows.map(\.count) == [11, 2])
+        #expect(model.importButtonTitle == "Importovat 11\u{00A0}faktur")
+        #expect(model.canImport)
+        #expect(await database.writeCount == writes && app.dataVersion == version)
+        #expect(try await database.invoiceCount() == 0)
+        #expect(try await database.clients().isEmpty)
     }
 
-    @Test func severalFilesAreOneImportListedOneByOneAndCountedTogether() async throws {
+    @Test func aFileOfTheSameNameReplacesTheEarlierOne() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let model = ImportModel(app: app)
+        let first = try file([openRow("20261201", issued: "2026-12-01")], named: "export.csv", in: directory)
+        await model.addFiles([first, try sampleURL()])
+        #expect(model.files.map(\.name) == ["export.csv", "fakturoid_sample.csv"])
+        #expect(model.preview?.newNumbers.count == 12)
+
+        // The same name again, with other rows in it, in the folder of the first.
+        _ = try file(
+            [openRow("20261202", issued: "2026-12-02"), openRow("20261203", issued: "2026-12-03")],
+            named: "export.csv", in: directory)
+        await model.addFiles([first])
+
+        #expect(model.files.map(\.name) == ["export.csv", "fakturoid_sample.csv"])
+        #expect(model.preview?.newNumbers.count == 13)
+        #expect(model.preview?.newNumbers.contains("20261201") == false)
+    }
+
+    @Test func removingAFileAndCancellingChangeThePreview() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let model = ImportModel(app: app)
+        await model.addFiles([try sampleURL(), try sampleURL("fakturoid_reimport")])
+        // The proforma invoice of both files is skipped once.
+        #expect(model.preview?.skippedNumbers.count == 3)
+
+        await model.removeFile(named: "fakturoid_reimport.csv")
+
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"])
+        #expect(model.preview?.skippedNumbers.count == 2)
+        // A name that is not collected changes nothing.
+        await model.removeFile(named: "other.csv")
+        #expect(model.files.count == 1)
+
+        model.cancel()
+
+        #expect(model.files.isEmpty && model.preview == nil && model.outcomeRows.isEmpty)
+        #expect(!model.canImport && model.importButtonTitle == "Importovat")
+    }
+
+    @Test func removingTheLastFileLeavesNoPreview() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let model = ImportModel(app: app)
+        await model.addFiles([try sampleURL()])
+
+        await model.removeFile(named: "fakturoid_sample.csv")
+
+        #expect(model.files.isEmpty && model.preview == nil && !model.canImport)
+    }
+
+    @Test func aFileThatIsNoExportIsListedWithItsErrorAndLeftOutOfTheImport() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let model = ImportModel(app: app)
+        let bank = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
+
+        await model.addFiles([try sampleURL(), bank])
+
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv", "bank.csv"])
+        #expect(ImportPreviewText.fileDetail(of: model.files[1]).hasPrefix("Nevypadá to jako export faktur"))
+        #expect(model.failure == nil)
+        #expect(model.preview?.newNumbers.count == 11)
+
+        await model.importCollected()
+
+        // The file that failed is left out and the others are imported.
+        #expect(model.failure == nil && model.summary?.added == 11)
+        #expect(try await #require(app.database).invoiceCount() == 11)
+    }
+
+    @Test func severalFilesAreOneImportCountedTogether() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
 
-        await model.importFiles([try sampleURL(), try sampleURL("fakturoid_reimport")])
+        await model.importAll([try sampleURL(), try sampleURL("fakturoid_reimport")])
 
-        #expect(model.fileProgress.map(\.name) == ["fakturoid_sample.csv", "fakturoid_reimport.csv"])
-        // The files are one import, so its counts are not those of a file.
-        #expect(model.fileProgress.map(\.counts) == ["", ""])
-        #expect(model.fileRows.map(\.stage) == [.done, .done])
-        // Each file says how many rows it had, though the counts of the import are not those of a file.
-        #expect(model.fileRows.map(\.rows) == [13, 14])
-        #expect(model.fileRows.map { model.statusText(of: $0) } == ["Hotovo · 13\u{00A0}řádků", "Hotovo · 14\u{00A0}řádků"])
         #expect(model.summary?.files == ["fakturoid_sample.csv", "fakturoid_reimport.csv"])
-        #expect(model.summary?.added == 11 && model.summary?.skipped == 4)
+        #expect(model.summary?.added == 11 && model.summary?.skipped == 3)
         #expect(model.lastImportLine?.contains("2\u{00A0}soubory") == true)
+        #expect(model.files.isEmpty && model.preview == nil)
     }
 
     // MARK: The last import
@@ -135,7 +214,7 @@ struct ImportModelTests {
         await model.load()
         #expect(model.lastImportLine == nil)
 
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
 
         let expected = "Poslední import 17.\u{00A0}10.\u{00A0}2026 · 1\u{00A0}soubor · " + Self.sampleCounts
         #expect(model.lastImportLine == expected)
@@ -143,7 +222,7 @@ struct ImportModelTests {
         let later = ImportModel(app: app)
         await later.load()
         #expect(later.lastImportLine == expected)
-        #expect(later.fileProgress.isEmpty && later.summary == nil && later.summaryLines.isEmpty)
+        #expect(later.files.isEmpty && later.summary == nil && later.summaryLines.isEmpty)
     }
 
     @Test func theAppHoldsTheModelWhileTheScreensChangeAndMakesANewOneForOtherData() async throws {
@@ -152,7 +231,7 @@ struct ImportModelTests {
         let app = try await makeApp(in: directory, http: try cnb())
         let model = app.importModel
         #expect(app.importModel === model)
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
         app.screen = .overview
         #expect(app.importModel.summary != nil)
 
@@ -179,39 +258,45 @@ struct ImportModelTests {
         #expect(released == nil)
         // What is left of the model has nothing to work with, and does nothing.
         let orphan = try #require(held)
-        await orphan.importFiles([try sampleURL()])
+        await orphan.addFiles([try sampleURL()])
+        await orphan.importCollected()
+        await orphan.removeFile(named: "fakturoid_sample.csv")
         await orphan.load()
         await orphan.fillSupplierFromExport()
         orphan.showInvoices()
-        #expect(!orphan.running && orphan.fileRows.isEmpty && orphan.failure == nil && orphan.summary == nil)
+        #expect(!orphan.running && orphan.files.isEmpty && orphan.preview == nil)
+        #expect(orphan.failure == nil && orphan.summary == nil)
     }
 
     // MARK: An import that runs
 
     @Test(.hangGuard)
-    func anImportThatRunsShowsItsProgressInTheBadgeAndKeepsOtherStepsOut() async throws {
+    func importingShowsProgressInTheModelAndTheBadgeAndKeepsOtherStepsOut() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let gate = Gate()
         let app = try await makeApp(in: directory, http: GatedHTTPClient(base: try cnb(), gate: gate))
         let model = ImportModel(app: app)
-        let urls = [try sampleURL(), try sampleURL("fakturoid_reimport")]
+        await model.addFiles([try sampleURL(), try sampleURL("fakturoid_reimport")])
+        let total = try #require(model.preview?.invoiceCount)
+        #expect(total == 11)
 
-        let run = Task { await model.importFiles(urls) }
-        // The files are read, and the importer asks for the ČNB file of 2026, which is held back.
+        let run = Task { await model.importCollected() }
+        // The importer asks for the ČNB file of 2026, which is held back.
         await gate.untilARequestWaits()
 
         #expect(model.running)
-        // Rows imported of the rows of the two files (13 and 14): none is imported before the import is stored.
-        #expect(app.importBadge == "0/27")
+        // None is stored before the rates are there.
+        #expect(app.importBadge == "0/\(total)")
+        #expect(model.progress?.done == 0 && model.progress?.total == total)
         #expect(app.securityStepRunning)
-        #expect(model.fileRows.map(\.stage) == [.read, .read])
-        #expect(model.fileRows.map(\.rows) == [13, 14])
-        #expect(model.statusText(of: model.fileRows[0]) == "Zpracovávám…")
-        #expect(!model.canFillSupplier)
-        // Another import asked for meanwhile does nothing, and a change of the keys or a restore is refused.
-        await model.importFiles([try sampleURL()])
-        #expect(model.fileRows.count == 2)
+        #expect(!model.canImport && !model.canFillSupplier)
+        // The files stay as they were and cannot be changed meanwhile, and another import does nothing.
+        await model.addFiles([try sampleURL()])
+        await model.removeFile(named: "fakturoid_sample.csv")
+        model.cancel()
+        await model.importCollected()
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv", "fakturoid_reimport.csv"])
         await #expect(throws: VaultError.busy) { _ = try await app.setTouchID(false) }
         app.request(.restoreBackup)
         #expect(app.settingsAction == nil)
@@ -220,70 +305,93 @@ struct ImportModelTests {
         await run.value
 
         #expect(!model.running && app.importBadge == nil && !app.securityStepRunning)
+        #expect(model.progress == nil)
         #expect(model.summary?.added == 11)
+        #expect(model.files.isEmpty && model.preview == nil)
+    }
+
+    @Test func importingWithNothingToDoIsNotOffered() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        await model.importAll([try sampleURL()])
+
+        // The same export again: every invoice is as it is, so there is nothing to import.
+        await model.addFiles([try sampleURL()])
+        let logged = try await database.lastImportLog()
+
+        #expect(model.preview?.invoiceCount == 0)
+        #expect(!model.canImport && model.importButtonTitle == "Importovat")
+        #expect(model.outcomeRows.map(\.label) == ["Beze změny", "Přeskočí se"])
+        await model.importCollected()
+        // Nothing was imported, so no import was logged.
+        #expect(try await database.lastImportLog()?.json == logged?.json)
+        #expect(try await database.invoiceCount() == 11)
+        #expect(model.files.count == 1 && model.summary == nil && model.failure == nil)
     }
 
     @Test(.hangGuard)
-    func anImportAskedForWhileAStepOfTheVaultRunsSaysSoAndChangesNothing() async throws {
+    func anImportAskedForWhileAStepOfTheVaultRunsSaysSoAndKeepsTheFiles() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
+        await model.addFiles([try sampleURL()])
         let gate = Gate()
         let step = Task { try await app.runSecurityStep { await gate.pass() } }
         await gate.untilARequestWaits()
 
-        await model.importFiles([try sampleURL()])
+        await model.importCollected()
 
         #expect(model.failure == "Aplikace ještě dokončuje jiný krok s daty. Zkuste to za chvíli znovu.")
-        #expect(model.fileProgress.isEmpty && model.summary == nil && !model.running)
+        #expect(model.files.count == 1 && model.preview != nil && model.summary == nil && !model.running)
         #expect(app.importBadge == nil)
         #expect(try await #require(app.database).invoiceCount() == 0)
+        // Adding a file forgets the failure of the import that was asked for.
+        await model.addFiles([try sampleURL()])
+        #expect(model.failure == nil && model.files.count == 1)
 
         await gate.open()
         try await step.value
-        await model.importFiles([try sampleURL()])
-        #expect(model.failure == nil && model.summary?.added == 11)
+        await model.importCollected()
+        #expect(model.failure == nil && model.summary?.added == 11 && model.files.isEmpty)
     }
 
-    @Test func anImportWhileTheDataIsLockedSaysSo() async throws {
+    @Test func aLockedVaultKeepsTheCollectedFilesAndSaysSo() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        await model.addFiles([try sampleURL()])
+        let writes = await database.writeCount
+        app.database = nil
+
+        await model.importCollected()
+
+        #expect(model.failure == "Data jsou zamčená. Nejdřív je odemkněte.")
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"] && model.preview != nil)
+        #expect(model.summary == nil && !model.running && app.importBadge == nil)
+        #expect(await database.writeCount == writes)
+    }
+
+    @Test func filesAddedWhileTheDataIsLockedAreListedAndSayTheyCannotBeChecked() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
         app.database = nil
 
-        await model.importFiles([try sampleURL()])
+        await model.addFiles([try sampleURL()])
 
         #expect(model.failure == "Data jsou zamčená. Nejdřív je odemkněte.")
-        #expect(model.fileProgress.isEmpty && !model.running)
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"])
+        #expect(model.preview == nil && !model.canImport && !model.running)
     }
 
-    // MARK: Files that fail
-
-    @Test func aFileThatIsNoFakturoidExportStopsTheImportAndNothingIsImported() async throws {
-        let directory = try makeTemporaryDirectory()
-        defer { removeTemporaryDirectory(directory) }
-        let app = try await makeApp(in: directory, http: try cnb())
-        let model = ImportModel(app: app)
-        let bank = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
-        let later = try file([openRow("20261201", issued: "2026-12-01")], named: "later.csv", in: directory)
-
-        await model.importFiles([try sampleURL(), bank, later])
-
-        #expect(model.failure == "bank.csv: Nevypadá to jako export faktur z Fakturoidu. Nic se neimportovalo.")
-        #expect(
-            model.fileRows.map(\.stage) == [.read, .failed("Nevypadá to jako export faktur z Fakturoidu."), .waiting])
-        #expect(model.statusText(of: model.fileRows[0]) == "Přečteno")
-        #expect(model.statusText(of: model.fileRows[1]) == "Nevypadá to jako export faktur z Fakturoidu.")
-        #expect(model.statusText(of: model.fileRows[2]) == "Nepřečteno")
-        #expect(model.summary == nil && model.summaryLines.isEmpty && model.summaryLists.isEmpty)
-        #expect(!model.running && app.importBadge == nil && !app.securityStepRunning)
-        #expect(try await #require(app.database).invoiceCount() == 0)
-        #expect(model.lastImportLine == nil)
-    }
-
-    @Test func anImportThatFailsInTheDatabaseLeavesTheDataAsItWasAndSaysSo() async throws {
+    @Test func anImportThatFailsInTheDatabaseLeavesTheDataAsItWasAndKeepsTheFiles() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
@@ -295,41 +403,110 @@ struct ImportModelTests {
             BEGIN SELECT RAISE(ABORT, 'refused'); END
             """
         )
+        await model.addFiles([try sampleURL()])
 
-        await model.importFiles([try sampleURL()])
+        await model.importCollected()
 
         #expect(model.failure == "Import se nepodařilo dokončit. Data zůstala beze změny.")
         #expect(model.summary == nil && !model.running && app.importBadge == nil && !app.securityStepRunning)
+        #expect(model.progress == nil)
         #expect(try await database.invoiceCount() == 0)
         #expect(try await database.clients().isEmpty)
-        #expect(model.fileRows.map(\.stage) == [.read])
-        #expect(model.statusText(of: model.fileRows[0]) == "Přečteno")
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"] && model.preview != nil)
     }
 
-    @Test func aNewImportForgetsTheFailureAndTheFilesOfTheOneBefore() async throws {
+    @Test func addingFilesAfterAnImportShowsTheReviewAndForgetsTheResultAndTheFailure() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
-        let bank = try writeCSV("Date,Amount\n2026-10-01,5\n", named: "bank.csv", in: directory)
-        await model.importFiles([bank])
-        #expect(model.failure != nil)
+        await model.importAll([try sampleURL()])
+        #expect(model.summary != nil && !model.summaryLines.isEmpty && model.lastImportLine != nil)
 
-        await model.importFiles([try sampleURL()])
+        await model.addFiles([try sampleURL("fakturoid_reimport")])
 
-        #expect(model.failure == nil)
-        #expect(model.fileProgress.map(\.name) == ["fakturoid_sample.csv"])
+        #expect(model.summary == nil && model.summaryLines.isEmpty && model.summaryLists.isEmpty)
+        #expect(model.files.map(\.name) == ["fakturoid_reimport.csv"] && model.preview != nil)
+        #expect(!model.canFillSupplier)
     }
 
-    @Test func noFilesIsNoImport() async throws {
+    @Test(.hangGuard)
+    func importIsNotOfferedWhileThePreviewIsMadeAndNoStalePreviewLandsAfterwards() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        await model.addFiles([try sampleURL()])
+        #expect(model.canImport)
+        let url = try sampleURL("fakturoid_reimport")
+
+        // The database is held, so the preview of the file added now cannot read it, and cannot end, until the hold
+        // ends. Nothing the test waits for meanwhile needs the database: the refused import does not reach it.
+        let hold = DatabaseHold(database)
+        defer { hold.end() }
+        // The file is listed at once and its preview is still being made.
+        let adding = Task { await model.addFiles([url]) }
+        try await waitUntil { model.files.count == 2 }
+        #expect(model.previewing && !model.canImport)
+        await model.importCollected()
+        #expect(!model.running && model.summary == nil && model.files.count == 2)
+
+        hold.end()
+        await adding.value
+
+        #expect(!model.previewing && model.canImport)
+        #expect(model.preview?.skippedNumbers.count == 3)
+        await model.importCollected()
+        #expect(model.summary?.added == 11 && model.files.isEmpty && model.preview == nil)
+        #expect(model.failure == nil && !model.previewing)
+    }
+
+    @Test func filesWhosePreviewFailedAreNotImportedAndStayCollected() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        try await database.execute("ALTER TABLE invoice RENAME TO invoice_moved")
+
+        await model.addFiles([try sampleURL()])
+
+        #expect(model.preview == nil && model.failure == ImportModel.previewFailedText)
+        await model.importCollected()
+        #expect(model.files.map(\.name) == ["fakturoid_sample.csv"] && model.summary == nil && !model.running)
+        #expect(model.failure == ImportModel.previewFailedText && app.importBadge == nil)
+        try await database.execute("ALTER TABLE invoice_moved RENAME TO invoice")
+        #expect(try await database.invoiceCount() == 0)
+    }
+
+    @Test func filesAddedWhileLockedAreNotImportedOnceTheDataIsBack() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory, http: try cnb())
+        let database = try #require(app.database)
+        let model = ImportModel(app: app)
+        app.database = nil
+        await model.addFiles([try sampleURL()])
+        app.database = database
+
+        await model.importCollected()
+
+        #expect(model.preview == nil && model.summary == nil && model.files.count == 1)
+        #expect(try await database.invoiceCount() == 0)
+    }
+
+    @Test func noFilesIsNoImportAndNoPreview() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
 
-        await model.importFiles([])
+        await model.addFiles([])
+        await model.importCollected()
 
-        #expect(!model.running && model.fileProgress.isEmpty && model.failure == nil && model.summary == nil)
+        #expect(!model.running && model.files.isEmpty && model.preview == nil)
+        #expect(model.failure == nil && model.summary == nil)
     }
 
     // MARK: The supplier of the export
@@ -343,7 +520,7 @@ struct ImportModelTests {
         app.screen = .importer
         #expect(!model.canFillSupplier)
 
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
 
         #expect(model.canFillSupplier)
         let version = app.dataVersion
@@ -371,7 +548,7 @@ struct ImportModelTests {
         try await database.saveSupplier(Supplier(name: "Vlastní jméno", ico: "99999999"))
         let model = ImportModel(app: app)
 
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
         await model.fillSupplierFromExport()
 
         #expect(!model.canFillSupplier)
@@ -386,7 +563,7 @@ struct ImportModelTests {
         let app = try await makeApp(in: directory, http: try cnb())
         let database = try #require(app.database)
         let model = ImportModel(app: app)
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
         #expect(model.canFillSupplier)
 
         // Typed in Nastavení while the summary was on the screen.
@@ -411,7 +588,7 @@ struct ImportModelTests {
         ]
         let url = try file([FakturoidCSV.row(blank)], named: "plain.csv", in: directory)
 
-        await model.importFiles([url])
+        await model.importAll([url])
 
         #expect(model.summary?.exportSupplier == nil)
         #expect(!model.canFillSupplier)
@@ -427,7 +604,7 @@ struct ImportModelTests {
         app.selectYear(2025)
         app.screen = .importer
         app.pendingDetailInvoiceID = 42
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
         #expect(model.summary?.newestYear == 2026)
 
         model.showInvoices()
@@ -444,7 +621,7 @@ struct ImportModelTests {
         let model = ImportModel(app: app)
         app.pickAsOf(civilDate("2026-06-30"))
         app.screen = .importer
-        await model.importFiles([try sampleURL()])
+        await model.importAll([try sampleURL()])
 
         model.showInvoices()
 
@@ -461,7 +638,7 @@ struct ImportModelTests {
             [openRow("20230101", issued: "2023-01-01"), openRow("20250310", issued: "2025-03-10")], named: "old.csv",
             in: directory)
         app.screen = .importer
-        await model.importFiles([url])
+        await model.importAll([url])
 
         model.showInvoices()
 
@@ -475,7 +652,7 @@ struct ImportModelTests {
         let app = try await makeApp(in: directory, http: StubHTTPClient())
         let model = ImportModel(app: app)
         let url = try file([openRow("20270301", issued: "2027-03-01")], named: "future.csv", in: directory)
-        await model.importFiles([url])
+        await model.importAll([url])
 
         model.showInvoices()
 
@@ -488,8 +665,10 @@ struct ImportModelTests {
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory, http: try cnb())
         let model = ImportModel(app: app)
-        await model.importFiles([try sampleURL()])
-        await model.importFiles([try sampleURL()])
+        await model.addFiles([try sampleURL()])
+        // The same invoices are imported by another model meanwhile, so the preview of this one is out of date.
+        await ImportModel(app: app).importAll([try sampleURL()])
+        await model.importCollected()
         #expect(model.summary?.added == 0 && model.summary?.unchanged == 11)
         app.selectYear(2025)
         app.screen = .importer

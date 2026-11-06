@@ -279,7 +279,7 @@ private struct ImportOfferStep: View {
             VStack(spacing: 10) {
                 WelcomeOptionRow(
                     systemImage: "square.and.arrow.down", tone: .accent, title: "Importovat z Fakturoidu",
-                    detail: "CSV export faktur, klidně za víc let najednou.", showsChevron: false
+                    detail: "Exporty CSV a ISDOC, klidně za víc let najednou.", showsChevron: false
                 ) {
                     model.finishOnboarding(importNow: true)
                 }

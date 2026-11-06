@@ -74,7 +74,9 @@ The code is layered, bottom to top:
   `AppModel.budgetInvoices()` (`AppModel+Budget.swift`) loads the invoices the screen draws on.
 - **Feature services**, used by the models:
   - `ExchangeRates/`: ČNB daily rates, and the GFŘ uniform rate of a year;
-  - `Import/`: Fakturoid CSV import;
+  - `Import/`: Fakturoid import of CSV exports and ISDOC invoices. The ISDOC sets what an invoice prints, the CSV
+    sets its status, payment, language and payment method, and each file is applied only when it changed since its
+    last import;
   - `Invoices/`: numbering, PDF and the QR payment code;
   - `Search/`.
 - **Updates** (`Updates/`). Sparkle 2 updates the app from the feed
@@ -83,9 +85,11 @@ The code is layered, bottom to top:
     publishes releases;
   - the public key (`SUPublicEDKey`) is committed. The appcast and every archive must be signed with its private half,
     which is never committed (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`);
-  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. Xcode merges it with the
-    generated Info.plist, and it stays outside the synchronized `InvoicesTracker/` folder so that it is not copied into
-    the app. The sandbox exception for Sparkle's installer is in `InvoicesTracker.entitlements`;
+  - Sparkle's keys are in the partial `InvoicesTracker-Info.plist` at the repository root. It also declares the
+    `.isdoc` file type that the Import screen accepts (`UTImportedTypeDeclarations`,
+    `info.chlup.InvoicesTracker.isdoc`). Xcode merges it with the generated Info.plist, and it stays outside the
+    synchronized `InvoicesTracker/` folder so that it is not copied into the app. The sandbox exception for Sparkle's
+    installer is in `InvoicesTracker.entitlements`;
   - `AppUpdater` starts Sparkle's updater once at launch, never under the test host, and is its delegate. It is the only
     code that imports Sparkle. An `UpdatesModel` mirrors an `AppUpdating` (the tests use `FakeUpdater`), and the person
     reaches it in two places:

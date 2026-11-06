@@ -180,10 +180,10 @@
     "Evidence" : {
 
     },
-    "Export faktur z Fakturoidu · lze vybrat víc souborů najednou" : {
+    "Exportovat zálohu…" : {
 
     },
-    "Exportovat zálohu…" : {
+    "Exporty faktur z Fakturoidu · lze vybrat víc souborů najednou" : {
 
     },
     "Faktury, daň a pojištění na jednom místě. Data zůstávají jen v tomto Macu – aplikace je šifruje a klíč k nim chrání Secure Enclave tohoto Macu." : {
@@ -491,7 +491,7 @@
     "Přeskočit" : {
 
     },
-    "Přetáhněte CSV sem nebo klikněte a vyberte soubory" : {
+    "Přetáhněte sem soubory CSV nebo ISDOC, nebo klikněte a vyberte je" : {
 
     },
     "Převzít ze Záloh a odpočtů %@" : {
@@ -530,7 +530,7 @@
     "Pro potvrzení napište číslo faktury %@" : {
 
     },
-    "Průběh importu %@" : {
+    "Průběh importu" : {
 
     },
     "Průkaz ZTP/P – sleva dvojnásobná" : {

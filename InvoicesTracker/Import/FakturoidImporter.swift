@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Errors
 
 /// Why a file is not imported. The messages are the copy of the Import screen.
-nonisolated enum ImportError: Error, Equatable, LocalizedError {
+nonisolated enum ImportError: Error, Hashable, LocalizedError {
     /// The file is a CSV, but not an export of invoices from Fakturoid: it has no `Number` or no `Issued on` column.
     case notAFakturoidExport
 
@@ -18,56 +18,45 @@ nonisolated enum ImportError: Error, Equatable, LocalizedError {
     /// The file cannot be opened, or it is not text in UTF-8.
     case unreadableFile
 
+    /// The file is not an ISDOC invoice: it is damaged XML, or its root is not an `Invoice` of the ISDOC namespace.
+    case notAnIsdocInvoice
+
+    /// The ISDOC invoice has no `ID`, the number of the invoice.
+    case isdocWithoutNumber
+
+    /// The ISDOC invoice has no `InvoiceLine`.
+    case isdocWithoutLines
+
+    /// The file is neither a CSV nor an ISDOC file, going by its name.
+    case unsupportedFile
+
     var errorDescription: String? {
         switch self {
         case .notAFakturoidExport: "Nevypadá to jako export faktur z Fakturoidu."
         case .emptyFile: "Soubor je prázdný."
         case .damagedFile(let line): "Soubor je poškozený (řádek \(line))."
         case .unreadableFile: "Soubor se nepodařilo přečíst."
+        case .notAnIsdocInvoice: "Nevypadá to jako faktura ve formátu ISDOC."
+        case .isdocWithoutNumber: "V souboru ISDOC chybí číslo faktury."
+        case .isdocWithoutLines: "Ve faktuře ISDOC nejsou žádné položky."
+        case .unsupportedFile: "Tento soubor není CSV ani ISDOC."
         }
-    }
-}
-
-/// An `ImportError` and the file it is about: nothing of the files is imported then.
-nonisolated struct FileImportError: Error, Equatable, LocalizedError {
-    let file: String
-    let reason: ImportError
-
-    var errorDescription: String? {
-        "\(file): \(reason.errorDescription ?? "")"
-    }
-}
-
-// MARK: - Progress
-
-/// How far the reading of the files of an import is, as the importer reports it after each file is read.
-nonisolated struct ImportProgress: Equatable, Sendable {
-    /// The rows of each file read so far, in the order of the files: the lines under the header of the export.
-    var rowCounts: [Int]
-
-    /// How many files the import has.
-    var fileCount: Int
-
-    /// How many files are read.
-    var filesRead: Int {
-        rowCounts.count
-    }
-
-    /// How many rows the files read so far have.
-    var rowsRead: Int {
-        rowCounts.reduce(0, +)
     }
 }
 
 // MARK: - Importer
 
-/// Imports the invoices of Fakturoid exports into the database.
+/// Imports the invoices of Fakturoid's CSV exports and ISDOC files into the database, in two steps.
 ///
-/// All the files are read first, so a file that cannot be read stops the import before anything is changed. The ČNB
-/// rates of the years the invoices were paid in are fetched when they are not there (an invoice that is not paid needs
-/// no rate), the rows are converted to invoices and clients, and the whole plan is applied in one transaction with the
-/// import log. A paid invoice in a foreign currency whose row has no rate gets the latest rate in the database at its
-/// DUZP, and is held for review when there is none.
+/// - **The preview** (`preview(_:)`) plans the import against what the database holds and writes nothing: no rate is
+///   fetched for it, and nothing is logged.
+/// - **The import** (`importFiles(_:progress:)`) fetches the ČNB rates of the years the invoices were paid in when they
+///   are not there (an invoice that is not paid needs no rate), converts the payments, and then plans the import
+///   again and applies it in one transaction with the import log, so that it is applied to the data as they are then.
+///   A paid invoice in a foreign currency whose row has no rate gets the latest rate in the database at its DUZP, and
+///   is held for review when there is none.
+///
+/// A file that cannot be used is left out of both, and the other files are imported.
 @MainActor
 final class FakturoidImporter {
     private let database: Database
@@ -93,87 +82,111 @@ final class FakturoidImporter {
         self.clock = clock
     }
 
-    /// Imports the invoices in `urls`, and keeps the years whose payments it changed (`yearsOfChangedPayments`).
+    /// The plan of an import of `files` against what the database holds now, for the Import screen to show before the
+    /// person imports: the invoices that would be added, overwritten, left unchanged, skipped or not added, and the
+    /// notes. The files that failed are left out.
     ///
-    /// - Parameter progress: Called after each file is read, with the rows of the files read so far and the number of
-    ///   files (`ImportProgress`).
-    /// - Returns: What was done. Without files nothing is done and the summary is empty.
-    /// - Throws: `FileImportError` for a file that cannot be read as an export (and nothing is imported), and the
-    ///   errors of the database, which leave it as it was.
-    func importFiles(_ urls: [URL], progress: @MainActor (ImportProgress) -> Void) async throws -> ImportSummary {
-        yearsOfChangedPayments = []
-        guard !urls.isEmpty else { return ImportSummary() }
-        var rows: [FakturoidRow] = []
-        var names: [String] = []
-        var rowCounts: [Int] = []
-        for url in urls {
-            let name = url.lastPathComponent
-            do {
-                let read = try await Self.rows(of: url)
-                rows += read
-                rowCounts.append(read.count)
-            } catch let error as ImportError {
-                throw FileImportError(file: name, reason: error)
-            }
-            names.append(name)
-            progress(ImportProgress(rowCounts: rowCounts, fileCount: urls.count))
-        }
-        try await fetchMissingRates(for: rows)
+    /// Nothing is written: no rate is fetched and nothing is logged. The plan is made without the payments of the rows
+    /// and without the rates of the invoices that have none of their own, which changes only the payments and the
+    /// review flags of the invoices it holds, and the preview shows neither. The import makes its own plan
+    /// (`importFiles(_:progress:)`).
+    func preview(_ files: [ImportFile]) async throws -> ImportPlan {
         let knownCurrencies = ImportPlanner.quotedCurrencies(cached: try await database.cnbCurrencies())
-        let invoiceRates = try await invoiceRatesOfRowsWithoutOne(in: rows)
+        return try await database.previewFakturoidImport(files.sources, knownCurrencies: knownCurrencies)
+    }
+
+    /// Imports the invoices of the files of `files` that did not fail, and keeps the years whose payments it changed
+    /// (`yearsOfChangedPayments`).
+    ///
+    /// The missing ČNB rates of the days of the payments are fetched first, and the payments are converted. Then the
+    /// import is planned again and applied in one transaction, on the data as they are then: when they changed since
+    /// the preview, the counts of the summary are not those of the preview.
+    ///
+    /// - Parameters:
+    ///   - files: The files of the import as they were read. A file that failed is left out, and the others import.
+    ///   - progress: Called after each invoice the import saves (those it adds, those it updates and those it flags
+    ///     as cancelled, in that order), with how many are saved and how many the import saves
+    ///     (`ImportPlan.invoiceCount`), from 1 to the whole. It is called inside the transaction on the database's
+    ///     actor, so the caller brings what it reports to its own actor. An import that then fails has saved nothing.
+    /// - Returns: What was done. Without a file that did not fail nothing is done and the summary is empty.
+    /// - Throws: The errors of the database, which leave it as it was, and `CancellationError` for an import cancelled
+    ///   before its plan is applied.
+    func importFiles(
+        _ files: [ImportFile], progress: @escaping @Sendable (_ done: Int, _ total: Int) -> Void
+    ) async throws -> ImportSummary {
+        yearsOfChangedPayments = []
+        let usable = files.filter { !Self.failed($0) }
+        guard !usable.isEmpty else { return ImportSummary() }
+        let sources = usable.sources
+        try await fetchMissingRates(for: sources.rows)
+        let knownCurrencies = ImportPlanner.quotedCurrencies(cached: try await database.cnbCurrencies())
+        let invoiceRates = try await invoiceRatesOfRowsWithoutOne(in: sources.rows)
         let payments = try await convertedPayments(
-            of: rows, knownCurrencies: knownCurrencies, invoiceRates: invoiceRates)
+            of: sources.rows, knownCurrencies: knownCurrencies, invoiceRates: invoiceRates)
         // After this the plan is made and applied in one go, which cannot be taken back.
         try Task.checkCancellation()
         let applied = try await database.applyFakturoidImport(
             FakturoidImportJob(
-                rows: rows, payments: payments, invoiceRates: invoiceRates, knownCurrencies: knownCurrencies,
-                files: names, exportSupplier: rows.first.flatMap { Self.supplier(of: $0) }, at: clock.now()
-            )
+                sources: sources, payments: payments, invoiceRates: invoiceRates, knownCurrencies: knownCurrencies,
+                files: usable.map(\.name), exportSupplier: Self.exportSupplier(of: sources), at: clock.now()
+            ),
+            progress: progress
         )
         yearsOfChangedPayments = applied.paymentYears
         return applied.summary
     }
 
-    // MARK: Reading
+    /// Whether `file` could not be used.
+    private nonisolated static func failed(_ file: ImportFile) -> Bool {
+        if case .failed = file.content { true } else { false }
+    }
 
-    /// The rows of the file, read away from the main actor.
-    @concurrent
-    private nonisolated static func rows(of url: URL) async throws -> [FakturoidRow] {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer {
-            if scoped {
-                url.stopAccessingSecurityScopedResource()
-            }
+    // MARK: The supplier of the export
+
+    /// The supplier the import offers to fill an empty profile with: the one the first row that has "Your …" columns
+    /// prints in them, or else the supplier of the first ISDOC invoice. Nil when neither has one.
+    private nonisolated static func exportSupplier(of sources: ImportSources) -> Supplier? {
+        if let supplier = sources.rows.lazy.compactMap({ supplier(of: $0) }).first {
+            return supplier
         }
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            throw ImportError.unreadableFile
-        }
-        guard let text = String(data: data, encoding: .utf8) else { throw ImportError.unreadableFile }
-        return try FakturoidRow.rows(from: CSVTable.parse(text))
+        return sources.isdocs.first?.supplier.flatMap { supplier(of: $0) }
     }
 
     /// The supplier the row prints, or nil when its "Your …" columns are all empty.
     private nonisolated static func supplier(of row: FakturoidRow) -> Supplier? {
-        let street = [row.yourStreet, row.yourStreet2].filter { !$0.isEmpty }.joined(separator: ", ")
-        let texts = [
-            row.yourName, street, row.yourCity, row.yourZip, row.yourCountry, row.yourRegistrationNo, row.yourVatNo,
-        ]
-        guard texts.contains(where: { !$0.isEmpty }) else { return nil }
+        supplier(
+            name: row.yourName,
+            street: [row.yourStreet, row.yourStreet2].filter { !$0.isEmpty }.joined(separator: ", "),
+            postcode: row.yourZip, city: row.yourCity, country: row.yourCountry, ico: row.yourRegistrationNo,
+            dic: row.yourVatNo
+        )
+    }
+
+    /// The supplier of an ISDOC invoice, or nil when the party has none of the fields a supplier takes.
+    private nonisolated static func supplier(of party: IsdocParty) -> Supplier? {
+        supplier(
+            name: party.name, street: party.street, postcode: party.postcode, city: party.city,
+            country: party.country, ico: party.ico, dic: party.dic
+        )
+    }
+
+    /// A supplier of these fields, or nil when they are all empty. The country is stored as a code where the import
+    /// knows it (`ImportPlanner.countryCode(of:)`), and an empty one leaves the supplier's default.
+    private nonisolated static func supplier(
+        name: String, street: String, postcode: String, city: String, country: String, ico: String, dic: String
+    ) -> Supplier? {
+        guard [name, street, city, postcode, country, ico, dic].contains(where: { !$0.isEmpty }) else { return nil }
         var supplier = Supplier()
-        supplier.name = row.yourName
+        supplier.name = name
         supplier.street = street
-        supplier.postcode = row.yourZip
-        supplier.city = row.yourCity
-        let country = ImportPlanner.countryCode(of: row.yourCountry)
-        if !country.isEmpty {
-            supplier.country = country
+        supplier.postcode = postcode
+        supplier.city = city
+        let code = ImportPlanner.countryCode(of: country)
+        if !code.isEmpty {
+            supplier.country = code
         }
-        supplier.ico = row.yourRegistrationNo
-        supplier.dic = row.yourVatNo
+        supplier.ico = ico
+        supplier.dic = dic
         return supplier
     }
 
@@ -314,9 +327,10 @@ nonisolated struct FakturoidImportResult: Sendable {
     let paymentYears: Set<Int>
 }
 
-/// Everything the database needs to make an import: the rows, and what is worked out from outside of it.
+/// Everything the database needs to make an import: the rows and ISDOC invoices, and what is worked out from outside
+/// of it.
 nonisolated struct FakturoidImportJob: Sendable {
-    let rows: [FakturoidRow]
+    let sources: ImportSources
 
     /// The payment of each row that has one, by the fingerprint of the row.
     let payments: [String: Payment]
@@ -327,16 +341,20 @@ nonisolated struct FakturoidImportJob: Sendable {
 
     /// The currencies the ČNB has rates of in the database, crowns among them.
     let knownCurrencies: Set<CurrencyCode>
+
+    /// The names of the files of the import that did not fail.
     let files: [String]
+
+    /// The supplier the import offers to fill an empty profile with (`ImportSummary.exportSupplier`).
     let exportSupplier: Supplier?
 
     /// The time of the import, for the import log.
     let at: Date
 }
 
-/// The statements that find the invoices the rows of an import may be. They are conditions of `InvoiceQueries`, so a
-/// test can ask SQLite how each finds its rows: by the unique index of the digits of the number, and by the index of
-/// the Fakturoid id.
+/// The statements that find the invoices the rows and ISDOC invoices of an import may be. They are conditions of
+/// `InvoiceQueries`, so a test can ask SQLite how each finds its rows: by the unique index of the digits of the number,
+/// and by the index of the Fakturoid id.
 nonisolated enum ImportQueries {
     /// The invoices with one of `count` numbers (by digits). Arguments: the digits.
     static func byNumberDigits(count: Int) -> String {
@@ -357,24 +375,46 @@ nonisolated enum ImportQueries {
 }
 
 extension Database {
-    /// Makes the import of `job`: the rows are planned against what the database holds, the plan is applied and the
-    /// summary is put in the import log, all in one transaction. When anything fails, nothing is changed. Returns the
-    /// summary, and the years of the payments the import added, changed or took away.
+    /// The plan of an import of `sources` against what the database holds now, made without writing anything: the
+    /// preview of the import (`FakturoidImporter.preview(_:)`).
+    ///
+    /// It is made without payments and without the rates of the invoices that have none of their own, which changes
+    /// only the payments and the review flags of the invoices it holds.
+    func previewFakturoidImport(_ sources: ImportSources, knownCurrencies: Set<CurrencyCode>) throws -> ImportPlan {
+        try read { connection in
+            ImportPlanner.plan(
+                sources: sources,
+                existingInvoices: try invoicesOfSources(sources, in: connection),
+                clients: try clients(),
+                knownCurrencies: knownCurrencies,
+                payments: [:],
+                invoiceRates: [:]
+            )
+        }
+    }
+
+    /// Makes the import of `job`: its rows and ISDOC invoices are planned against what the database holds, the plan is
+    /// applied and the summary is put in the import log, all in one transaction. When anything fails, nothing is
+    /// changed. Returns the summary, and the years of the payments the import added, changed or took away.
     ///
     /// The planning is in the transaction too, so what the plan was made from is what it is applied to: an invoice
-    /// cannot change between the two.
-    func applyFakturoidImport(_ job: FakturoidImportJob) throws -> FakturoidImportResult {
+    /// cannot change between the two, and whatever changed since the preview is planned as it is now.
+    ///
+    /// - Parameter progress: Called after each invoice is saved, in the transaction (see `apply(_:in:progress:)`).
+    func applyFakturoidImport(
+        _ job: FakturoidImportJob, progress: @Sendable (_ done: Int, _ total: Int) -> Void
+    ) throws -> FakturoidImportResult {
         try write { connection in
-            let existing = try invoicesOfRows(job.rows, in: connection)
+            let existing = try invoicesOfSources(job.sources, in: connection)
             let plan = ImportPlanner.plan(
-                rows: job.rows,
+                sources: job.sources,
                 existingInvoices: existing,
                 clients: try clients(),
                 knownCurrencies: job.knownCurrencies,
                 payments: job.payments,
                 invoiceRates: job.invoiceRates
             )
-            try apply(plan, in: connection)
+            try apply(plan, in: connection, progress: progress)
             let summary = ImportSummary(plan: plan, files: job.files, exportSupplier: job.exportSupplier)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
@@ -399,11 +439,12 @@ extension Database {
         return years
     }
 
-    /// The invoices that have the digits of the number of one of `rows` (the invoice with no digit in its number, if a
-    /// row has none), and those imported with the Fakturoid id of one.
-    private func invoicesOfRows(_ rows: [FakturoidRow], in connection: SQLiteConnection) throws -> [Invoice] {
-        let digits = Set(rows.map { InvoiceNumbering.digits(of: $0.number) })
-        let ids = Set(rows.map(\.fakturoidID).filter { !$0.isEmpty })
+    /// The invoices that have the digits of the number of a row or an ISDOC invoice of `sources` (the invoice with no
+    /// digit in its number, if one has none), and those imported with the Fakturoid id of a row.
+    private func invoicesOfSources(_ sources: ImportSources, in connection: SQLiteConnection) throws -> [Invoice] {
+        let numbers = sources.rows.map(\.number) + sources.isdocs.map(\.number)
+        let digits = Set(numbers.map { InvoiceNumbering.digits(of: $0) })
+        let ids = Set(sources.rows.map(\.fakturoidID).filter { !$0.isEmpty })
         let found =
             try invoices(whereIn: ImportQueries.byNumberDigits, values: Array(digits), in: connection)
             + invoices(whereIn: ImportQueries.byFakturoidIDs, values: Array(ids), in: connection)
@@ -426,8 +467,12 @@ extension Database {
     }
 
     /// Saves what `plan` holds: the clients, then the invoices (with the search documents), in the transaction of
-    /// `connection`. An invoice of a new client gets the id the client was given.
-    private func apply(_ plan: ImportPlan, in connection: SQLiteConnection) throws {
+    /// `connection`. An invoice of a new client gets the id the client was given. `progress` is told after each
+    /// invoice is saved: the invoices to add, then those to update, then those flagged as cancelled, with how many are
+    /// saved of `plan.invoiceCount`.
+    private func apply(
+        _ plan: ImportPlan, in connection: SQLiteConnection, progress: @Sendable (_ done: Int, _ total: Int) -> Void
+    ) throws {
         var newClientIDs: [Int64] = []
         for client in plan.newClients {
             newClientIDs.append(try client.store(in: connection))
@@ -436,16 +481,21 @@ extension Database {
             let id = try client.store(in: connection)
             try rebuildSearchDocuments(ofClient: id, in: connection)
         }
+        var saved = 0
         for var invoice in plan.inserts + plan.updates {
             if let index = plan.newClientIndexByDigits[invoice.numberDigits] {
                 invoice.clientID = newClientIDs[index]
             }
             let id = try invoice.store(in: connection)
             try rebuildSearchDocument(invoiceID: id, in: connection)
+            saved += 1
+            progress(saved, plan.invoiceCount)
         }
         for invoice in plan.flaggedCancelled {
             let id = try invoice.store(in: connection)
             try rebuildSearchDocument(invoiceID: id, in: connection)
+            saved += 1
+            progress(saved, plan.invoiceCount)
         }
     }
 }

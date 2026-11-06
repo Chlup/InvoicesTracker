@@ -5,7 +5,9 @@ import Foundation
 /// checks, cascades) that must not depend on a repository. The values are invented.
 enum SchemaRows {
     /// With `id` nil the database picks the id.
-    static func client(_ c: SQLiteConnection, id: Int64?) throws {
+    static func client(
+        _ c: SQLiteConnection, id: Int64?, paymentMethod: String = "Převodem", language: String = "cs"
+    ) throws {
         try c.run(
             """
             INSERT INTO client(
@@ -13,15 +15,19 @@ enum SchemaRows {
                 payment_method, language, origin, edited_after_import)
             VALUES (
                 ?, 'Alfa Systems s.r.o.', 'Hlavní 1', '261 01', 'Příbram', 'CZ', '12345678', 'CZ12345678',
-                'alfa@example.com', '', 'CZK', 'domestic21', 14, 'Převodem', 'cs', 'app', 0)
+                'alfa@example.com', '', 'CZK', 'domestic21', 14, ?, ?, 'app', 0)
             """,
-            [id.map { SQLValue.integer($0) } ?? .null]
+            [id.map { SQLValue.integer($0) } ?? .null, .text(paymentMethod), .text(language)]
         )
     }
 
     /// An issued CZK invoice. `digits` is both its number and the digits the number is unique by. With `id` nil the
-    /// database picks the id.
-    static func invoice(_ c: SQLiteConnection, id: Int64?, digits: String, clientID: Int64? = nil) throws {
+    /// database picks the id. The language and the payment method are those of a Czech invoice paid by transfer unless
+    /// the arguments say otherwise.
+    static func invoice(
+        _ c: SQLiteConnection, id: Int64?, digits: String, clientID: Int64? = nil, language: String = "cs",
+        paymentMethod: String = "Převodem"
+    ) throws {
         try c.run(
             """
             INSERT INTO invoice(
@@ -36,12 +42,12 @@ enum SchemaRows {
                 'Alfa Systems s.r.o.', 'Hlavní 1', '261 01', 'Příbram', 'CZ', '12345678', 'CZ12345678',
                 'alfa@example.com', 'CZK', '2026-09-30', '2026-09-30', '2026-10-14', 'domestic21',
                 NULL, NULL, NULL, NULL,
-                1, '', 'cs', 'Převodem', 'issued', NULL,
+                1, '', ?, ?, 'issued', NULL,
                 NULL, NULL, 0, 450000, 94500, 544500)
             """,
             [
                 id.map { SQLValue.integer($0) } ?? .null, .text(digits), .text(digits),
-                clientID.map { SQLValue.integer($0) } ?? .null,
+                clientID.map { SQLValue.integer($0) } ?? .null, .text(language), .text(paymentMethod),
             ]
         )
     }

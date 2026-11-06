@@ -20,5 +20,26 @@
 	<integer>86400</integer>
 	<key>SUVerifyUpdateBeforeExtraction</key>
 	<true/>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Faktura ISDOC</string>
+			<key>UTTypeIdentifier</key>
+			<string>info.chlup.InvoicesTracker.isdoc</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>isdoc</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

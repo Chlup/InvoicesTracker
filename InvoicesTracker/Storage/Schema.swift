@@ -46,6 +46,7 @@ nonisolated enum Schema {
         Migration(version: 1, apply: createVersion1),
         Migration(version: 2, apply: createVersion2),
         Migration(version: 3, apply: createVersion3),
+        Migration(version: 4, apply: createVersion4),
     ]
 
     /// The version a database has after all migrations ran.
@@ -534,4 +535,59 @@ private nonisolated extension Schema {
     static let dropMinimumChoice = """
         ALTER TABLE year_settings DROP COLUMN minimum_mode;
         """
+}
+
+// MARK: - Version 4
+
+private nonisolated extension Schema {
+    /// The fingerprint of the ISDOC file an invoice was imported from, and Fakturoid's wording for a payment by bank
+    /// transfer. The new column is added in place, so the table is not rebuilt and the rows that refer to it stay.
+    ///
+    /// The search documents of the invoices whose wording changes are made again through today's `Invoice.load`
+    /// (`Database.rebuildSearchDocument(invoiceID:in:)`). It reads the invoice and payment columns as the newest
+    /// schema has them, while the database it reads here is only at version 4. A later change to those columns must
+    /// therefore keep databases and backups of version 3 migrating through this step: `SchemaTests` and `BackupTests`
+    /// migrate data of version 3 with "Banka" in it, and guard it.
+    static func createVersion4(_ connection: SQLiteConnection, _ searchIndex: SearchIndexKind) throws {
+        try connection.execute(isdocFingerprintColumn)
+        try writeFakturoidsWordingForBank(connection)
+    }
+
+    /// NULL means the invoice was never imported from an ISDOC file.
+    static let isdocFingerprintColumn = """
+        ALTER TABLE invoice ADD COLUMN isdoc_fingerprint TEXT;
+        """
+
+    /// Every invoice and every client whose payment method is exactly "Banka" gets what Fakturoid writes for a
+    /// payment by bank transfer: "Převodem" in Czech and "Bank transfer" otherwise. Unchanged rows are no longer
+    /// applied by a later import, so it would never reach them. The search documents of the invoices that changed are
+    /// made again, as every save of an invoice makes them.
+    static func writeFakturoidsWordingForBank(_ connection: SQLiteConnection) throws {
+        let czech = InvoiceLanguage.cs.rawValue
+        let changed = try connection.query(
+            "SELECT id FROM invoice WHERE payment_method = ?", [.text(oldBankWording)]
+        ).map { $0.int64(0) }
+        let wording = "CASE language WHEN ? THEN ? ELSE ? END"
+        let arguments: [SQLValue] = [.text(czech), .text(czechBankWording), .text(englishBankWording)]
+        try connection.run(
+            "UPDATE invoice SET payment_method = \(wording) WHERE payment_method = ?",
+            arguments + [.text(oldBankWording)]
+        )
+        try connection.run(
+            "UPDATE client SET payment_method = \(wording) WHERE payment_method = ?",
+            arguments + [.text(oldBankWording)]
+        )
+        for id in changed {
+            try Database.rebuildSearchDocument(invoiceID: id, in: connection)
+        }
+    }
+
+    /// What the app wrote for a payment by bank transfer before version 4.
+    static let oldBankWording = "Banka"
+
+    /// What Fakturoid writes for it on a Czech invoice.
+    static let czechBankWording = "Převodem"
+
+    /// What Fakturoid writes for it on an English invoice.
+    static let englishBankWording = "Bank transfer"
 }

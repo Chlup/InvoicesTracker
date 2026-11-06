@@ -67,6 +67,13 @@ extension Database {
     /// The printed data of the client with `id` as they are now, or nil if there is none. For code that already runs in
     /// a `write`, so it takes the connection of it. Only the columns an invoice prints are read.
     func printedData(ofClient id: Int64, in connection: SQLiteConnection) throws -> ClientSnapshot? {
+        try Self.printedClientData(ofClient: id, in: connection)
+    }
+
+    /// `printedData(ofClient:in:)` for code that has no `Database`, such as a migration.
+    nonisolated static func printedClientData(ofClient id: Int64, in connection: SQLiteConnection) throws
+        -> ClientSnapshot?
+    {
         let rows = try connection.query(
             "SELECT \(ClientSnapshot.columns) FROM client WHERE id = ?", [.integer(id)])
         return rows.first.map { ClientSnapshot(row: $0, from: 0) }
