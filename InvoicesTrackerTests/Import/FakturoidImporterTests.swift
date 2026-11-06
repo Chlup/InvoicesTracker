@@ -283,8 +283,8 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, [try sampleURL("fakturoid_reimport")])
 
-        // Rows 1, 3 and 14 are updated, row 2 is flagged and rows 4 and 5 are skipped.
-        #expect(summary.added == 0 && summary.updated == 3 && summary.unchanged == 8 && summary.skipped == 2)
+        // Rows 1, 3 and 14 are updated, row 2 is flagged (and counts among the overwritten) and rows 4 and 5 are skipped.
+        #expect(summary.added == 0 && summary.updated == 4 && summary.unchanged == 8 && summary.skipped == 2)
         #expect(summary.keptChangedInApp == 0 && summary.keptItems.isEmpty)
         #expect(summary.conflicts == 0 && summary.conflictItems.isEmpty)
         #expect(summary.flaggedCancelled == 1 && summary.needsReview == 0)
@@ -867,7 +867,7 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, urls)
 
-        #expect(summary.flaggedCancelled == 1 && summary.added == 0 && summary.updated == 0 && summary.conflicts == 0)
+        #expect(summary.flaggedCancelled == 1 && summary.added == 0 && summary.updated == 1 && summary.conflicts == 0)
         #expect(summary.reviewItems == ["20260901 — zrušeno ve Fakturoidu"])
         let flagged = try await invoice("20260901", .usd, in: database)
         #expect(flagged.review == ReviewFlag(reason: "zrušeno ve Fakturoidu"))
@@ -919,7 +919,7 @@ struct FakturoidImporterTests {
 
         let summary = try await importFiles(importer, [url])
 
-        #expect(summary.flaggedCancelled == 1 && summary.keptChangedInApp == 0 && summary.updated == 0)
+        #expect(summary.flaggedCancelled == 1 && summary.keptChangedInApp == 0 && summary.updated == 1)
         #expect(summary.reviewItems == ["20260902 — zrušeno ve Fakturoidu"])
         let stored = try await invoice("20260902", in: database)
         var expected = edited
@@ -1172,11 +1172,11 @@ struct FakturoidImporterTests {
         // each is reported as it is saved.
         #expect(plan.newNumbers.count == 1 && plan.overwrittenNumbers.count == 3 && plan.invoiceCount == 4)
         #expect(progress.steps == ["1/4", "2/4", "3/4", "4/4"])
-        #expect(summary.added == 1 && summary.updated == 2 && summary.flaggedCancelled == 1)
+        #expect(summary.added == 1 && summary.updated == 3 && summary.flaggedCancelled == 1)
         #expect(summary.unchanged == 8 && summary.skipped == 2)
         // The import does what the preview said, as nothing changed in between.
         #expect(summary.added == plan.newNumbers.count)
-        #expect(summary.updated + summary.flaggedCancelled == plan.overwrittenNumbers.count)
+        #expect(summary.updated == plan.overwrittenNumbers.count)
         #expect(summary.unchanged == plan.unchangedNumbers.count && summary.skipped == plan.skippedNumbers.count)
         #expect(summary.reviewItems == plan.reviewItems && summary.conflictItems == plan.conflicts)
     }
