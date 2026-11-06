@@ -5,14 +5,15 @@ import os
 /// The model of the Import screen: it imports the Fakturoid exports the person chose or dropped, says how far each file
 /// is, and, once the import is done, says what it did.
 ///
-/// - Several files are one import (`FakturoidImporter`): they are all read before anything is changed, and a file that
-///   cannot be read stops the import, which then changes nothing. So the counts are those of the import, not of a file;
-///   they are listed with a file only when the import has the one.
+/// - Several files are one import (`FakturoidImporter`): they are all read, one by one, before anything is changed, and
+///   a file that cannot be read stops the import before the importer is asked, so it changes nothing. So the counts
+///   are those of the import, not of a file; they are listed with a file only when the import has the one.
 /// - The import runs while other screens are shown. The app holds this model (`AppModel.importModel`), so that the
-///   screen finds the progress, or the summary, when it comes back, and the sidebar shows the rows meanwhile, "0/27":
-///   the rows imported of the rows of the files read so far (`AppModel.importBadge`). The importer stores everything in
-///   one go once it has read the files, so none is imported before that, and the badge goes with the import. The model
-///   does not hold the app back: one that outlives it has nothing to work with.
+///   screen finds the progress, or the summary, when it comes back, and the sidebar shows the progress meanwhile
+///   (`AppModel.importBadge`). While the files are read and the rates fetched it shows "0/27": none imported of the
+///   rows of the files read so far. The importer stores everything in one go, and while it does the badge shows the
+///   invoices it has stored of those it stores, "3/11". The badge goes with the import. The model does not hold the app
+///   back: one that outlives it has nothing to work with.
 /// - It is one step at a time with a change of the keys and a restore (`AppModel.runSecurityStep(_:)`): an import asked
 ///   for while one of them runs is refused, and so are they while the import runs.
 /// - When the export carries the supplier's details and the supplier profile is empty, the details can be filled in
@@ -155,7 +156,8 @@ final class ImportModel {
     // MARK: Importing
 
     /// Imports the invoices in `urls`: the files are read, the ČNB rates of the years the invoices were paid in are
-    /// fetched when they are missing, and everything is saved in one go, which `didWrite()` then tells the app of.
+    /// fetched when they are missing, and everything is saved in one go, which `didWrite()` then tells the app of. A
+    /// file that cannot be read stops the import before anything is saved.
     /// The years whose payments the import changed are converted again by the method each uses then, as the payments
     /// may change what they have the uniform rate for, and the import converted them before it wrote them, by the
     /// method their year used then (`AppModel.recomputePaymentsAfterChanges(inYears:)`). Returns when it is done. Does
@@ -172,12 +174,20 @@ final class ImportModel {
             return
         }
         begin(urls, in: app)
+        // The importer reports each invoice it stores from the database: the badge shows them on the main actor.
+        let (stored, reportStored) = AsyncStream.makeStream(of: StoredInvoices.self)
+        let badge = Task {
+            for await progress in stored {
+                app.importBadge = "\(progress.done)/\(progress.total)"
+            }
+        }
         do {
             let result = try await app.runSecurityStep {
+                let files = try await read(urls, in: app)
                 let importer = FakturoidImporter(
                     database: database, fetcher: CNBFetcher(http: dependencies.http), clock: dependencies.clock)
-                let summary = try await importer.importFiles(urls) { progress in
-                    noteRead(progress, in: app)
+                let summary = try await importer.importFiles(files) { done, total in
+                    reportStored.yield(StoredInvoices(done: done, total: total))
                 }
                 await app.recomputePaymentsAfterChanges(inYears: importer.yearsOfChangedPayments)
                 return summary
@@ -186,6 +196,9 @@ final class ImportModel {
         } catch {
             stop(because: error)
         }
+        // Every invoice reported is shown before the badge goes.
+        reportStored.finish()
+        await badge.value
         running = false
         app.importBadge = nil
         guard summary != nil else { return }
@@ -206,15 +219,44 @@ final class ImportModel {
         app.importBadge = nil
     }
 
-    /// The files of `progress` are read: each says how many rows it has, and the badge counts the rows read so far, of
-    /// which none is imported yet.
-    private func noteRead(_ progress: ImportProgress, in app: AppModel) {
-        filesRead = progress.filesRead
-        for (index, rows) in progress.rowCounts.enumerated() where fileRows.indices.contains(index) {
-            fileRows[index].stage = .read
-            fileRows[index].rows = rows
+    /// How many invoices the importer has stored of those it stores.
+    private struct StoredInvoices: Sendable {
+        let done: Int
+        let total: Int
+    }
+
+    /// Reads the files and folders of `urls` one by one. After each, its line says it is read and how many rows it has
+    /// (all the rows of its files, for a folder), and the badge counts the rows read so far, of which none is imported
+    /// yet.
+    ///
+    /// - Throws: `FileImportError` for the first file that cannot be used, which stops the import before anything is
+    ///   changed. The files after it are not read.
+    private func read(_ urls: [URL], in app: AppModel) async throws -> [ImportFile] {
+        var files: [ImportFile] = []
+        var rowsRead = 0
+        for (index, url) in urls.enumerated() {
+            let filesOfURL = await ImportFile.read([url])
+            for file in filesOfURL {
+                if case .failed(let reason) = file.content {
+                    throw FileImportError(file: file.name, reason: reason)
+                }
+            }
+            files += filesOfURL
+            let rows = filesOfURL.map(Self.rowCount(of:)).reduce(0, +)
+            filesRead = index + 1
+            if fileRows.indices.contains(index) {
+                fileRows[index].stage = .read
+                fileRows[index].rows = rows
+            }
+            rowsRead += rows
+            app.importBadge = "0/\(rowsRead)"
         }
-        app.importBadge = "0/\(progress.rowsRead)"
+        return files
+    }
+
+    /// The rows of a file read from a CSV export, or none for another file.
+    private nonisolated static func rowCount(of file: ImportFile) -> Int {
+        if case .rows(let rows) = file.content { rows.count } else { 0 }
     }
 
     private func finish(with result: ImportSummary) {

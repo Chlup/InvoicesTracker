@@ -227,7 +227,7 @@ struct AppModelRefreshTests {
         let offline = StubHTTPClient(failures: [CNBEndpoints.yearly(2025): HTTPError.offline])
         let importer = FakturoidImporter(
             database: database, fetcher: CNBFetcher(http: offline), clock: ManualClock(localNoon(2026, 10, 16)))
-        let summary = try await importer.importFiles([url]) { _ in }
+        let summary = try await importer.importFiles(await ImportFile.read([url])) { _, _ in }
         #expect(summary.added == 1 && summary.needsReview == 0)
         let imported = try #require(try await database.invoice(numberDigits: "20250301", currency: .usd))
         // 10 000,00 USD at the rate 23,5 of the export: 235 000,00 Kč of income in 2025, for now.
