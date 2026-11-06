@@ -439,23 +439,34 @@ nonisolated extension ImportPlanner {
         /// from the file the invoice was last imported from, and the row when the invoice was made in the app or the
         /// row differs from the one it was last imported from. When neither is, the invoice is unchanged.
         ///
-        /// An invoice still held because files of it differed (`ImportPlanner.differingRowsReason`) takes every file
-        /// of the group, whatever it is stored under, since such a group ends the hold. The row's status, payment and
-        /// review replace the flag, and a group without a row takes the flag away. Each file is stored as any applied
-        /// file is. A flag the person has resolved, or a flag of another reason, does not count: the invoice is
-        /// compared as usual then.
+        /// An invoice still held because files of it differed ends its hold only with a group that brings every kind of
+        /// file it is held for (`heldKinds(of:)`). Such a group applies the files of those kinds whatever the invoice
+        /// is stored under, and each file is stored as any applied file is. The row's status, payment and review then
+        /// replace the flag, and the flag goes when no row is applied. A group that lacks a kind the invoice is held
+        /// for settles nothing: it applies no file of a held kind and leaves the flag, while a kind the invoice is not
+        /// held for is applied as usual. A flag the person has resolved, or a flag of another reason, does not count:
+        /// the invoice is compared as usual then.
         private mutating func update(
             _ existing: Invoice, group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, label: String
         ) {
-            let stillHeld = existing.review?.reason == ImportPlanner.differingRowsReason
-            let applyingIsdoc = isdoc.map { stillHeld || $0.fingerprint != existing.isdocFingerprint } ?? false
+            var applyingIsdoc = isdoc.map { $0.fingerprint != existing.isdocFingerprint } ?? false
             var applyingRow = false
             if let row {
                 switch existing.source {
                 case .app:
                     applyingRow = true
                 case .imported(_, let fingerprint, _):
-                    applyingRow = stillHeld || fingerprint != row.fingerprint
+                    applyingRow = fingerprint != row.fingerprint
+                }
+            }
+            let held = Self.heldKinds(of: existing)
+            let ending = held.map { (!$0.rows || row != nil) && (!$0.isdocs || isdoc != nil) } ?? false
+            if let held {
+                if held.rows {
+                    applyingRow = ending
+                }
+                if held.isdocs {
+                    applyingIsdoc = ending
                 }
             }
             guard applyingIsdoc || applyingRow else {
@@ -469,10 +480,27 @@ nonisolated extension ImportPlanner {
             else {
                 return
             }
-            if stillHeld && !applyingRow {
-                made.invoice.review = nil
+            if held != nil {
+                if !ending {
+                    made.invoice.review = existing.review
+                } else if !applyingRow {
+                    made.invoice.review = nil
+                }
             }
             add(made.invoice, notes: made.notes, of: group, label: label, as: .update)
+        }
+
+        /// The kinds of file an invoice is held for because files of that kind differed in an import, or nil when the
+        /// invoice is not held so: it has no flag (`ImportPlanner.differingRowsReason`), the person has resolved it, or
+        /// it has a flag of another reason. A kind is held when the invoice's fingerprint of it is that of the files
+        /// that differed (`ImportPlanner.isFingerprintOfDifferingFiles(_:)`). An invoice with the flag and neither was
+        /// held by the import as it was before ISDOC files, which held an invoice only for its rows and stored it under
+        /// the row it was made from: it is held for its rows.
+        private static func heldKinds(of invoice: Invoice) -> (rows: Bool, isdocs: Bool)? {
+            guard invoice.review?.reason == ImportPlanner.differingRowsReason else { return nil }
+            let rows = rowFingerprint(of: invoice).map { ImportPlanner.isFingerprintOfDifferingFiles($0) } ?? false
+            let isdocs = invoice.isdocFingerprint.map { ImportPlanner.isFingerprintOfDifferingFiles($0) } ?? false
+            return rows || isdocs ? (rows: rows, isdocs: isdocs) : (rows: true, isdocs: false)
         }
 
         /// The invoice the files of a group make over `stored` (nil for a new invoice), and the notes on it; nil when

@@ -891,6 +891,97 @@ struct ImportPlannerIsdocTests {
         }
     }
 
+    /// The flag of an invoice held because files of it differ.
+    private static let differingFlag = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
+
+    @Test func anInvoiceHeldForItsRowsStaysHeldThroughItsIsdocAloneAndIsReleasedByOneCleanRow() throws {
+        let open = try FakturoidCSV.parsed(Self.crownRow.merging(["Status": "open", "Paid on": ""]) { $1 })
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let other = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let file = try isdoc("czk-21")
+        let payments = [row.fingerprint: try payment(of: row)]
+        let fromOpen = applied(plan(rows: [open]))
+        // Held now for two rows that differ, and held the way the import used to hold an invoice for its rows: under
+        // the row it was made from, with the flag.
+        let heldNow = try #require(
+            plan(rows: [row, other], existing: fromOpen.invoices, clients: fromOpen.clients).updates.first)
+        var heldTheOldWay = try #require(fromOpen.invoices.first)
+        heldTheOldWay.review = Self.differingFlag
+
+        for held in [heldNow, heldTheOldWay] {
+            let isdocAlone = plan(isdocs: [file], existing: [held], clients: fromOpen.clients)
+            let cleanRow = plan(rows: [row], existing: [held], clients: fromOpen.clients, payments: payments)
+
+            // The ISDOC file is new to the invoice, so it is applied, but it settles nothing about the rows.
+            let withLines = try #require(isdocAlone.updates.first)
+            #expect(withLines.items == IsdocInvoiceBuilder.items(of: file).items)
+            #expect(withLines.isdocFingerprint == file.fingerprint)
+            #expect(withLines.review == Self.differingFlag && withLines.payment == nil)
+            // One clean row ends the hold: its state and its payment replace the flag.
+            let released = try #require(cleanRow.updates.first)
+            #expect(released.review == nil && released.payment == payments[row.fingerprint])
+            #expect(cleanRow.reviewItems.isEmpty)
+            #expect(
+                released.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+        }
+    }
+
+    @Test func anInvoiceHeldForItsIsdocFilesStaysHeldThroughItsRowAloneAndIsReleasedByOneCleanIsdoc() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let changed = try FakturoidCSV.parsed(Self.crownRow.merging(["Client email": "nova@doubek.example"]) { $1 })
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row), changed.fingerprint: try payment(of: changed)]
+        let fromCsv = applied(plan(rows: [row], payments: payments))
+        let held = try #require(
+            plan(isdocs: [file, other], existing: fromCsv.invoices, clients: fromCsv.clients).updates.first)
+        #expect(held.review == Self.differingFlag && held.payment == payments[row.fingerprint])
+
+        let sameRow = plan(rows: [row], existing: [held], clients: fromCsv.clients, payments: payments)
+        let changedRow = plan(rows: [changed], existing: [held], clients: fromCsv.clients, payments: payments)
+        let cleanIsdoc = plan(isdocs: [file], existing: [held], clients: fromCsv.clients)
+
+        // The row the invoice was imported from is not applied again, and the invoice stays held.
+        #expect(sameRow.unchangedNumbers == ["20260902"] && sameRow.invoiceCount == 0)
+        // A changed row is applied as usual, but it settles nothing about the ISDOC files: the flag stays.
+        let fromChanged = try #require(changedRow.updates.first)
+        #expect(fromChanged.client.email == "nova@doubek.example" && fromChanged.review == Self.differingFlag)
+        #expect(
+            fromChanged.source
+                == .imported(fakturoidID: "7001", fingerprint: changed.fingerprint, changedInApp: false))
+        // One clean ISDOC file ends the hold.
+        let released = try #require(cleanIsdoc.updates.first)
+        #expect(released.review == nil && cleanIsdoc.reviewItems.isEmpty)
+        #expect(released.items == IsdocInvoiceBuilder.items(of: file).items)
+        #expect(released.payment == payments[row.fingerprint])
+    }
+
+    @Test func anInvoiceHeldForBothKindsOfFileIsReleasedOnlyByAnImportThatBringsBoth() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let otherRow = try FakturoidCSV.parsed(Self.crownRow.merging(["Due on": "2026-09-30"]) { $1 })
+        let file = try isdoc("czk-21")
+        let otherFile = copy(of: file, note: "Druhé znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row)]
+        let added = applied(plan(rows: [row, otherRow], isdocs: [file, otherFile], payments: payments))
+        let held = try #require(added.invoices.first)
+        #expect(held.review == Self.differingFlag && held.payment == nil)
+
+        let rowAlone = plan(rows: [row], existing: [held], clients: added.clients, payments: payments)
+        let isdocAlone = plan(isdocs: [file], existing: [held], clients: added.clients)
+        let both = plan(rows: [row], isdocs: [file], existing: [held], clients: added.clients, payments: payments)
+
+        // Either kind alone leaves the invoice held as it is.
+        for alone in [rowAlone, isdocAlone] {
+            #expect(alone.unchangedNumbers == ["20260902"] && alone.invoiceCount == 0)
+        }
+        // Both together end the hold: the lines of the ISDOC, and the state and the payment of the row.
+        let released = try #require(both.updates.first)
+        #expect(released.review == nil && released.payment == payments[row.fingerprint])
+        #expect(released.items == IsdocInvoiceBuilder.items(of: file).items)
+        #expect(released.isdocFingerprint == file.fingerprint)
+        #expect(released.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+    }
+
     @Test func mixedVatIsNotAddedWithItsReason() throws {
         let plan = plan(isdocs: [try isdoc("mixed-vat")])
 
