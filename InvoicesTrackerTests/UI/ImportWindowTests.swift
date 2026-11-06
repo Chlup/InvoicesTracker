@@ -133,7 +133,7 @@ struct ImportWindowTests {
                     picture.count(near: accentText, in: fill, by: 6) > 15,
                     "\(scheme): the words of the button are not in the accent text")
 
-                let updated = try textFrame(startingWith: "aktualizované", in: window)
+                let updated = try textFrame(startingWith: "přepsané", in: window)
                 #expect(
                     picture.count(near: accentText, in: updated, by: 6) > 10,
                     "\(scheme): the count of what was updated is not in the accent text")

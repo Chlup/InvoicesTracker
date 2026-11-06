@@ -173,7 +173,7 @@ private struct FileRowView: View {
         case .added: Palette.greenText
         case .updated: Palette.accentText
         case .unchanged: Palette.text2
-        case .skipped, .review: Palette.orangeText
+        case .skipped: Palette.orangeText
         }
     }
 }

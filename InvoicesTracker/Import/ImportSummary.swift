@@ -43,8 +43,8 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// on countries that are no codes here; `notes` has them now.
     var reviewItems: [String] = []
 
-    /// The rows kept as the app had them, as the logs of older imports say. An import writes none now; the field stays
-    /// so that those logs still decode.
+    /// The rows kept as the app had them, as the logs of older imports say. An import writes none now and no code
+    /// reads the field; it stays so that those logs still decode.
     var keptItems: [String] = []
 
     /// The rows that could not be added.
@@ -61,6 +61,10 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// The notes that do not hold an invoice ("Upozornění"), such as a country that is no code or a CSV row whose
     /// amount disagrees with the lines of its ISDOC file. A log stored before the summary kept them has none.
     var notes: [String] = []
+
+    /// The numbers of the invoices the import overwrote ("Přepsané"): those it updated and those it flagged as
+    /// cancelled. A log stored before the summary kept them has none.
+    var overwrittenItems: [String] = []
 }
 
 nonisolated extension ImportSummary {
@@ -74,12 +78,13 @@ nonisolated extension ImportSummary {
             newClients: plan.newClients.count, filledClients: plan.clientUpdates.count, reviewItems: plan.reviewItems,
             conflictItems: plan.conflicts, exportSupplier: exportSupplier,
             newestYear: (plan.inserts + plan.updates + plan.flaggedCancelled).map(\.issueDate.year).max(),
-            notes: plan.notes
+            notes: plan.notes, overwrittenItems: plan.overwrittenNumbers
         )
     }
 
     /// Reads a summary from the import log. A log stored before a field was added to the summary does not have it:
-    /// the year (`newestYear`) and the supplier are nil then, and `notes` is empty. Every other field must be there.
+    /// the year (`newestYear`) and the supplier are nil then, and `notes` and `overwrittenItems` are
+    /// empty. Every other field must be there.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -99,7 +104,8 @@ nonisolated extension ImportSummary {
             conflictItems: try container.decode([String].self, forKey: .conflictItems),
             exportSupplier: try container.decodeIfPresent(Supplier.self, forKey: .exportSupplier),
             newestYear: try container.decodeIfPresent(Int.self, forKey: .newestYear),
-            notes: try container.decodeIfPresent([String].self, forKey: .notes) ?? []
+            notes: try container.decodeIfPresent([String].self, forKey: .notes) ?? [],
+            overwrittenItems: try container.decodeIfPresent([String].self, forKey: .overwrittenItems) ?? []
         )
     }
 }

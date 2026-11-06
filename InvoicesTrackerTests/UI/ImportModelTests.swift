@@ -14,7 +14,7 @@ struct ImportModelTests {
     // MARK: Helpers
 
     /// The counts of the sample, as the lines of the summary and of the file say them.
-    private static let sampleCounts = "nové 11, aktualizované 0, beze změny 0, přeskočené 2, ke kontrole 4"
+    private static let sampleCounts = "nové 11, přepsané 0, beze změny 0, přeskočené 2"
 
     /// The server of the ČNB with the yearly file of 2026, which the paid invoices of the sample need.
     private func cnb() throws -> StubHTTPClient {
@@ -65,7 +65,7 @@ struct ImportModelTests {
             ])
         #expect(model.summaryLines.contains { $0.contains("nové 11") })
         #expect(model.summaryLines.contains { $0.contains("přeskočené 2") })
-        #expect(model.summaryLines.contains { $0.contains("ke kontrole 4") })
+        #expect(!model.summaryLines.contains { $0.contains("ke kontrole") })
         #expect(model.summaryLines.contains { $0.contains("noví odběratelé 4") })
         #expect(model.summary?.added == 11 && model.summary?.skipped == 2 && model.summary?.needsReview == 4)
         #expect(try await #require(app.database).invoiceCount() == 11)

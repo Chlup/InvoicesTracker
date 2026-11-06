@@ -17,32 +17,29 @@ nonisolated enum ImportText {
             case updated
             case unchanged
             case skipped
-            case review
         }
 
         var text: String
         var tone: Tone
     }
 
-    /// The counts of an import in the order of the card: "nové 11", "aktualizované 0", "beze změny 0", "přeskočené 2"
-    /// and "ke kontrole 4". The invoices to check are those added or updated in review, and those that Fakturoid
-    /// cancelled after they were imported: all of them are held for review.
+    /// The counts of an import in the order of the card: "nové 11", "přepsané 0", "beze změny 0" and "přeskočené 2".
+    /// The invoices to check have no count of their own: they are listed under "Ke kontrole".
     static func countParts(of summary: ImportSummary) -> [CountPart] {
         [
             CountPart(text: "nové \(summary.added)", tone: .added),
-            CountPart(text: "aktualizované \(summary.updated)", tone: .updated),
+            CountPart(text: "přepsané \(summary.updated)", tone: .updated),
             CountPart(text: "beze změny \(summary.unchanged)", tone: .unchanged),
             CountPart(text: "přeskočené \(summary.skipped)", tone: .skipped),
-            CountPart(text: "ke kontrole \(summary.needsReview + summary.flaggedCancelled)", tone: .review),
         ]
     }
 
-    /// "nové 11, aktualizované 0, beze změny 0, přeskočené 2, ke kontrole 4".
+    /// "nové 11, přepsané 0, beze změny 0, přeskočené 2".
     static func counts(of summary: ImportSummary) -> String {
         countParts(of: summary).map(\.text).joined(separator: ", ")
     }
 
-    /// "Hotovo – nové 11, aktualizované 0, beze změny 0, přeskočené 2, ke kontrole 4."
+    /// "Hotovo – nové 11, přepsané 0, beze změny 0, přeskočené 2."
     static func headline(of summary: ImportSummary) -> String {
         "Hotovo – " + counts(of: summary) + "."
     }
@@ -57,11 +54,18 @@ nonisolated enum ImportText {
         [headline(of: summary), clientsLine(of: summary)]
     }
 
-    /// The lists under the summary: what is to check, and what could not be added. A list with no item is left out.
-    /// The rows that the logs of older imports kept as the app had them are not listed: an import overwrites what was
-    /// changed in the app now.
+    /// The lists under the summary: the invoices the import overwrote (one line of their numbers), what is to check,
+    /// what could not be added, and the notes. A list with no item is left out. The rows that the logs of older imports
+    /// kept as the app had them are not listed: an import overwrites what was changed in the app now.
     static func lists(of summary: ImportSummary) -> [ImportList] {
         var lists: [ImportList] = []
+        if !summary.overwrittenItems.isEmpty {
+            lists.append(
+                ImportList(
+                    title: "Přepsané (\(summary.overwrittenItems.count))",
+                    note: "U těchto faktur nahradila data ze souborů to, co jste změnili v aplikaci.",
+                    items: [summary.overwrittenItems.joined(separator: ", ")]))
+        }
         if !summary.reviewItems.isEmpty {
             lists.append(
                 ImportList(
@@ -76,11 +80,17 @@ nonisolated enum ImportText {
                     title: "Nepřidáno (\(summary.conflictItems.count))",
                     note: "Tyto řádky se nepodařilo přidat, důvod je u každého.", items: summary.conflictItems))
         }
+        if !summary.notes.isEmpty {
+            lists.append(
+                ImportList(
+                    title: "Upozornění (\(summary.notes.count))",
+                    note: "Tyto faktury se započítají. Zkontrolujte u nich uvedený údaj.", items: summary.notes))
+        }
         return lists
     }
 
-    /// "Poslední import 17. 10. 2026 · 2 soubory · nové 11, aktualizované 0, beze změny 0, přeskočené 2, ke kontrole
-    /// 4": the import of `summary`, made on `day`.
+    /// "Poslední import 17. 10. 2026 · 2 soubory · nové 11, přepsané 0, beze změny 0, přeskočené 2": the
+    /// import of `summary`, made on `day`.
     static func lastImportLine(of summary: ImportSummary, on day: CivilDate) -> String {
         let files = CzechCount.counted(
             summary.files.count, one: "soubor", few: "soubory", many: "souborů", separator: CzechFormat.noBreakSpace)
