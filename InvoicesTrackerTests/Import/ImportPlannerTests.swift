@@ -1517,21 +1517,34 @@ struct ImportPlannerTests {
         #expect(otherwise.unchangedNumbers.isEmpty)
     }
 
-    @Test func aFlagForRowsThatDifferedStaysForTheRowTheInvoiceWasMadeFromAndGoesWithTheOtherRow() throws {
-        // Only one of the exports is imported now. The one the invoice was made from is the same as the last import,
-        // so it is not applied again; the other one is a change, and it is applied.
+    @Test func anInvoiceHeldUnderTheRowItWasMadeFromTakesEitherRowWhileItIsHeld() throws {
+        // An earlier version of the import stored an invoice held for its rows under the fingerprint of the row it was
+        // made from, without a payment. Only one of the exports is imported now. While the invoice is still held,
+        // either row is applied: its state and its payment replace the flag.
         let rows = try twoVersions(reversed: false)
         var stored = try imported(
             ["Id": "5002", "Number": "20260901", "Status": "paid", "Paid on": "2026-10-02"], id: 12)
         stored.review = ReviewFlag(reason: "v importu vícekrát s různým obsahem")
+        #expect(stored.payment == nil)
+        #expect(stored.source == .imported(fakturoidID: "5002", fingerprint: rows[0].fingerprint, changedInApp: false))
         let payment = Payment.fixture(on: "2026-10-02", net: 460_000, vat: 96_600)
 
         let first = plan([rows[0]], existing: [stored], payments: [rows[0].fingerprint: payment])
         let other = plan([rows[1]], existing: [stored], payments: [rows[1].fingerprint: payment])
 
-        #expect(first.unchangedNumbers == ["20260901"] && first.updates.isEmpty)
-        #expect(other.updates.map(\.id) == [12] && other.updates.first?.review == nil)
-        #expect(other.updates.first?.payment == payment && other.unchangedNumbers.isEmpty)
+        for (plan, row) in [(first, rows[0]), (other, rows[1])] {
+            let updated = try #require(plan.updates.first)
+            #expect(plan.updates.map(\.id) == [12] && updated.review == nil && updated.payment == payment)
+            #expect(updated.source == .imported(fakturoidID: "5002", fingerprint: row.fingerprint, changedInApp: false))
+            #expect(plan.overwrittenNumbers == [row.number] && plan.unchangedNumbers.isEmpty)
+            #expect(plan.reviewItems.isEmpty)
+        }
+        // Once the person has resolved the flag, the row the invoice is stored under is unchanged again.
+        var resolved = stored
+        resolved.review = nil
+        resolved.payment = Payment.fixture(on: "2026-10-02")
+        let afterResolving = plan([rows[0]], existing: [resolved], payments: [rows[0].fingerprint: payment])
+        #expect(afterResolving.unchangedNumbers == ["20260901"] && afterResolving.updates.isEmpty)
     }
 
     @Test func theSameDigitsInTwoCurrenciesInOneImportAreOneInvoiceAndOneConflict() throws {

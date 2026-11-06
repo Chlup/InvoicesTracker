@@ -22,7 +22,9 @@ nonisolated enum ImportPlanner {
     /// Why an invoice imported earlier that is cancelled in Fakturoid now is held for review.
     static let cancelledReason = "zrušeno ve Fakturoidu"
 
-    /// Why an invoice is held for review when the import has several rows of it that differ.
+    /// Why an invoice is held for review when the import has several rows, or several ISDOC files, of it that differ.
+    /// While an invoice carries it, the next import whose files of the invoice do not differ applies them all (see
+    /// `plan`).
     static let differingRowsReason = "v importu vícekrát s různým obsahem"
 
     /// The description of the one item of an invoice imported from a CSV row alone: the row has no lines, and its
@@ -388,7 +390,9 @@ nonisolated enum ImportPlanner {
     /// file instead, so that the file alone is not applied again over what the person did in the app: on an invoice
     /// that is there, the file it was last imported from; on a new one, its ISDOC file, which made it. The rows of a
     /// new invoice are always stored under the fingerprint of their set, since the hold takes the payment and the
-    /// review of its row away.
+    /// review of its row away. While the invoice still carries that flag, an import whose files of it do not differ
+    /// ends the hold: all of them are applied, whatever the invoice is stored under. The row's status, payment and
+    /// review replace the flag, and without a row the flag goes. A flag the person has resolved is not asked about.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
@@ -396,17 +400,18 @@ nonisolated enum ImportPlanner {
     /// same digits in another currency, another invoice without a digit, and a row whose Fakturoid id is another than
     /// that of the stored invoice (when both are known) are conflicts, which leave the stored invoice as it is.
     ///
-    /// **Applying.** The ISDOC invoice is applied first, when there is no stored invoice or the file differs from the
-    /// one the invoice was last imported from (`Invoice.isdocFingerprint`). It sets the lines, the note, the number,
-    /// the dates, the currency, the rate (a foreign file without one keeps the rate the invoice has), the printed
-    /// client but its e-mail, and the VAT mode. Then the row is applied, when there is no stored invoice, the invoice
-    /// was made in the app, or the row differs from the one the invoice was last imported from. On an invoice the
-    /// ISDOC owns (it was imported from an ISDOC file, or one is in this group) the row sets only the state: the status
-    /// and the payment, the review flag, the language, the payment method, the e-mail of the client, the kind of a VAT
-    /// of 0 % and the Fakturoid id with the fingerprint of the row. On any other invoice the row gives all of it, with
-    /// one item "Import z Fakturoidu" at the subtotal. A group of which nothing is applied is unchanged. Whether the
-    /// invoice was changed in the app is not asked: Fakturoid is the source of truth, and every invoice the plan
-    /// updates is saved as not changed in the app, an invoice made in the app as an imported one.
+    /// **Applying.** The ISDOC invoice is applied first, when there is no stored invoice, the file differs from the one
+    /// the invoice was last imported from (`Invoice.isdocFingerprint`), or the invoice is still held for files that
+    /// differed. It sets the lines, the note, the number, the dates, the currency, the rate (a foreign file without one
+    /// keeps the rate the invoice has), the printed client but its e-mail, and the VAT mode. Then the row is applied,
+    /// when there is no stored invoice, the invoice was made in the app, the row differs from the one the invoice was
+    /// last imported from, or the invoice is still held for files that differed. On an invoice the ISDOC owns (it was
+    /// imported from an ISDOC file, or one is in this group) the row sets only the state: the status and the payment,
+    /// the review flag, the language, the payment method, the e-mail of the client, the kind of a VAT of 0 % and the
+    /// Fakturoid id with the fingerprint of the row. On any other invoice the row gives all of it, with one item
+    /// "Import z Fakturoidu" at the subtotal. A group of which nothing is applied is unchanged. Whether the invoice was
+    /// changed in the app is not asked: Fakturoid is the source of truth, and every invoice the plan updates is saved
+    /// as not changed in the app, an invoice made in the app as an imported one.
     ///
     /// **The payment.** A row with a review reason holds the invoice and gives no payment, and so does a row that is
     /// not paid. A paid row keeps the stored payment when it was received on the day of the row, which keeps how the

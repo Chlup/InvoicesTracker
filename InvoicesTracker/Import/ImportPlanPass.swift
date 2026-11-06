@@ -435,20 +435,27 @@ nonisolated extension ImportPlanner {
             add(invoice, notes: made.notes, of: group, label: label, as: .insert)
         }
 
-        /// A group whose invoice is there: the ISDOC invoice is applied when it differs from the file the invoice was
-        /// last imported from, and the row when the invoice was made in the app or the row differs from the one it was
-        /// last imported from. When neither is, the invoice is unchanged.
+        /// A group whose invoice is there and whose files do not differ: the ISDOC invoice is applied when it differs
+        /// from the file the invoice was last imported from, and the row when the invoice was made in the app or the
+        /// row differs from the one it was last imported from. When neither is, the invoice is unchanged.
+        ///
+        /// An invoice still held because files of it differed (`ImportPlanner.differingRowsReason`) takes every file
+        /// of the group, whatever it is stored under, since such a group ends the hold. The row's status, payment and
+        /// review replace the flag, and a group without a row takes the flag away. Each file is stored as any applied
+        /// file is. A flag the person has resolved, or a flag of another reason, does not count: the invoice is
+        /// compared as usual then.
         private mutating func update(
             _ existing: Invoice, group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, label: String
         ) {
-            let applyingIsdoc = isdoc.map { $0.fingerprint != existing.isdocFingerprint } ?? false
+            let stillHeld = existing.review?.reason == ImportPlanner.differingRowsReason
+            let applyingIsdoc = isdoc.map { stillHeld || $0.fingerprint != existing.isdocFingerprint } ?? false
             var applyingRow = false
             if let row {
                 switch existing.source {
                 case .app:
                     applyingRow = true
                 case .imported(_, let fingerprint, _):
-                    applyingRow = fingerprint != row.fingerprint
+                    applyingRow = stillHeld || fingerprint != row.fingerprint
                 }
             }
             guard applyingIsdoc || applyingRow else {
@@ -456,11 +463,14 @@ nonisolated extension ImportPlanner {
                 return
             }
             guard
-                let made = composed(
+                var made = composed(
                     over: existing, row: row, applyingRow: applyingRow, isdoc: isdoc, applyingIsdoc: applyingIsdoc,
                     entry: entry(of: group), label: label)
             else {
                 return
+            }
+            if stillHeld && !applyingRow {
+                made.invoice.review = nil
             }
             add(made.invoice, notes: made.notes, of: group, label: label, as: .update)
         }

@@ -861,6 +861,36 @@ struct ImportPlannerIsdocTests {
         }
     }
 
+    @Test func anInvoiceHeldForIsdocFilesImportedWithoutItsRowIsReleasedByTheNextCleanImport() throws {
+        let row = try FakturoidCSV.parsed(Self.crownRow)
+        let file = try isdoc("czk-21")
+        let other = copy(of: file, note: "Druhé znění poznámky.")
+        let payments = [row.fingerprint: try payment(of: row)]
+        let fromCsv = applied(plan(rows: [row], payments: payments))
+        let held = try #require(
+            plan(isdocs: [file, other], existing: fromCsv.invoices, clients: fromCsv.clients).updates.first)
+        #expect(held.review == ReviewFlag(reason: "v importu vícekrát s různým obsahem"))
+        #expect(held.payment == payments[row.fingerprint])
+        #expect(held.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+
+        let withRow = plan(
+            rows: [row], isdocs: [file], existing: [held], clients: fromCsv.clients, payments: payments)
+        let isdocAlone = plan(isdocs: [file], existing: [held], clients: fromCsv.clients)
+
+        // While the invoice is held, a clean import applies its files, whether or not the row comes with them, and
+        // the flag goes.
+        for clean in [withRow, isdocAlone] {
+            let updated = try #require(clean.updates.first)
+            #expect(updated.review == nil && clean.reviewItems.isEmpty)
+            #expect(clean.overwrittenNumbers == ["20260902"] && clean.unchangedNumbers.isEmpty)
+            #expect(updated.payment == payments[row.fingerprint])
+            #expect(updated.items == IsdocInvoiceBuilder.items(of: file).items)
+            #expect(updated.isdocFingerprint == file.fingerprint)
+            #expect(
+                updated.source == .imported(fakturoidID: "7001", fingerprint: row.fingerprint, changedInApp: false))
+        }
+    }
+
     @Test func mixedVatIsNotAddedWithItsReason() throws {
         let plan = plan(isdocs: [try isdoc("mixed-vat")])
 
