@@ -136,4 +136,8 @@ nonisolated struct Invoice: Identifiable, Sendable, Hashable, Codable {
     var review: ReviewFlag?
     var payment: Payment?
     var source: InvoiceSource
+
+    /// The fingerprint of the ISDOC file the invoice was last imported from, so that the same file again changes
+    /// nothing. Nil means the invoice was never imported from ISDOC.
+    var isdocFingerprint: String? = nil
 }

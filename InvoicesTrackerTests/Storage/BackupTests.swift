@@ -1499,7 +1499,7 @@ struct BackupTests {
 
         let restored = try await vault.restore(from: backup, recoveryCode: code)
 
-        #expect(try await restored.schemaVersion() == 3)
+        #expect(try await restored.schemaVersion() == 4)
         #expect(try await restored.invoiceCount() == 1)
         #expect(try await restored.clientCount() == 1)
         #expect(try await restored.storedSettingsYears() == [2025, 2026])
@@ -1516,6 +1516,50 @@ struct BackupTests {
         // The restored data keeps changes of months from now on.
         try await restored.setExpectedInvoiceMonth(year: 2026, clientID: 1, month: 7, expected: false)
         #expect(try await restored.expectedInvoiceMonths(year: 2026) == [1: [7: false]])
+        await restored.close()
+    }
+
+    @Test func aVersionThreeBackupRestoresAndMigrates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        // The database of a backup made before the ISDOC fingerprint was kept: schema version 3, with a client and an
+        // invoice that both name the bank transfer "Banka".
+        let key = randomKey()
+        let file = directory.appending(path: "version3.sqlite")
+        let old = try SQLiteConnection(path: file.path(percentEncoded: false), key: key)
+        try Migrator.migrate(old, searchIndex: .plain, upTo: 3)
+        try old.transaction {
+            try SchemaRows.client(old, id: 1, paymentMethod: "Banka")
+            try SchemaRows.invoice(old, id: 1, digits: "20260901", clientID: 1, paymentMethod: "Banka")
+            try SchemaRows.yearSettings(old, year: 2026)
+        }
+        old.close()
+        let (keys, code) = try BackupFixtures.keys(for: key)
+        let backup = directory.appending(path: "Version 3.ttbackup")
+        try BackupFormat.write(
+            header: BackupHeader(
+                created: BackupFixtures.localDate(2026, 10, 20, 9, 30, 0), appVersion: "1.0", schemaVersion: 3,
+                invoiceCount: 1, deviceName: BackupFixtures.deviceName, keys: keys
+            ),
+            databaseFile: file, to: backup
+        )
+        let clock = ManualClock(BackupFixtures.localDate(2026, 10, 24, 12, 0, 0))
+        let paths = VaultPaths(directory: directory.appending(path: "Data", directoryHint: .isDirectory))
+        let vault = Vault(
+            paths: paths, device: SoftwareKeyProtector(),
+            backups: BackupService(
+                backupsDirectory: paths.backups, clock: clock, appVersion: "1.0", deviceName: BackupFixtures.deviceName
+            ),
+            clock: clock
+        )
+
+        let restored = try await vault.restore(from: backup, recoveryCode: code)
+
+        #expect(try await restored.schemaVersion() == 4)
+        let invoice = try #require(try await restored.invoice(id: 1))
+        #expect(invoice.isdocFingerprint == nil)
+        #expect(invoice.paymentMethod == "Převodem")
+        #expect(try await restored.client(id: 1)?.paymentMethod == "Převodem")
         await restored.close()
     }
 

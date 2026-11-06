@@ -155,6 +155,34 @@ struct InvoiceRepositoryTests {
         #expect(try await database.invoice(id: savedDraft.id)?.items.isEmpty == true)
     }
 
+    @Test func anInvoiceKeepsItsIsdocFingerprintThroughSaveAndLoad() async throws {
+        let (database, directory) = try makeDatabase()
+        defer { removeTemporaryDirectory(directory) }
+        var fromIsdoc = Invoice.fixture(number: "Z20261003", duzp: "2026-10-03")
+        fromIsdoc.source = .imported(fakturoidID: "", fingerprint: "", changedInApp: false)
+        fromIsdoc.isdocFingerprint = "c0ffee"
+        var fromBoth = Invoice.fixture(number: "Z20261004", duzp: "2026-10-04")
+        fromBoth.source = .imported(fakturoidID: "F-10", fingerprint: "ab", changedInApp: false)
+        fromBoth.isdocFingerprint = "decade"
+        let plain = Invoice.fixture(number: "20261005", duzp: "2026-10-05")
+
+        let savedIsdoc = try await save(fromIsdoc, in: database)
+        let savedBoth = try await save(fromBoth, in: database)
+        let savedPlain = try await save(plain, in: database)
+
+        #expect(try await database.invoice(id: savedIsdoc.id) == savedIsdoc)
+        #expect(try await database.invoice(id: savedIsdoc.id)?.isdocFingerprint == "c0ffee")
+        #expect(try await database.invoice(id: savedIsdoc.id)?.source
+            == .imported(fakturoidID: "", fingerprint: "", changedInApp: false))
+        #expect(try await database.invoice(id: savedBoth.id)?.isdocFingerprint == "decade")
+        #expect(try await database.invoice(id: savedPlain.id)?.isdocFingerprint == nil)
+        // A later save can clear it again.
+        var cleared = savedIsdoc
+        cleared.isdocFingerprint = nil
+        _ = try await database.saveInvoice(cleared)
+        #expect(try await database.invoice(id: savedIsdoc.id)?.isdocFingerprint == nil)
+    }
+
     @Test func eachNewInvoiceGetsItsOwnIdAndAnUnknownIdIsNil() async throws {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }

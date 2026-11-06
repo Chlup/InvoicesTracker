@@ -183,12 +183,18 @@ extension Database {
     /// The document is that of the invoice with the printed data of its client, and for an invoice that is still linked
     /// to a client the client's data as they are now as well.
     func rebuildSearchDocument(invoiceID: Int64, in connection: SQLiteConnection) throws {
+        try Self.rebuildSearchDocument(invoiceID: invoiceID, in: connection)
+    }
+
+    /// `rebuildSearchDocument(invoiceID:in:)` for code that has no `Database`, such as a migration. It is the one way a
+    /// search document is made.
+    nonisolated static func rebuildSearchDocument(invoiceID: Int64, in connection: SQLiteConnection) throws {
         try connection.run("DELETE FROM invoice_search WHERE rowid = ?", [.integer(invoiceID)])
         let found = try Invoice.load(where: InvoiceQueries.byID, [.integer(invoiceID)], in: connection)
         guard let invoice = found.first else { return }
         var current: ClientSnapshot?
         if let clientID = invoice.clientID {
-            current = try printedData(ofClient: clientID, in: connection)
+            current = try printedClientData(ofClient: clientID, in: connection)
         }
         try insertSearchDocument(of: invoice, currentClient: current, in: connection)
     }
@@ -209,12 +215,12 @@ extension Database {
             let clients = try printedDataOfAllClients(in: connection)
             for invoice in try Invoice.load(where: InvoiceQueries.all, [], in: connection) {
                 let current = invoice.clientID.flatMap { clients[$0] }
-                try insertSearchDocument(of: invoice, currentClient: current, in: connection)
+                try Self.insertSearchDocument(of: invoice, currentClient: current, in: connection)
             }
         }
     }
 
-    private func insertSearchDocument(
+    private nonisolated static func insertSearchDocument(
         of invoice: Invoice, currentClient: ClientSnapshot?, in connection: SQLiteConnection
     ) throws {
         var document = SearchDocumentBuilder.document(for: invoice)

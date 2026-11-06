@@ -691,14 +691,14 @@ private nonisolated extension Invoice {
         invoice.due_date, invoice.vat_mode, invoice.rate_currency, invoice.rate_amount, invoice.rate_value, \
         invoice.rate_declared_on, invoice.qr_enabled, invoice.note, invoice.language, invoice.payment_method, \
         invoice.status, invoice.review_reason, invoice.fakturoid_id, invoice.import_fingerprint, \
-        invoice.changed_in_app, \
+        invoice.changed_in_app, invoice.isdoc_fingerprint, \
         payment.date, payment.conversion, payment.czk_net_halere, payment.czk_vat_halere, payment.rate_currency, \
         payment.rate_amount, payment.rate_value, payment.rate_declared_on, payment.provisional, \
         payment.bank_czk_total_halere
         """
 
     /// The column of a row of `columns` where the payment starts.
-    static let firstPaymentColumn = 29
+    static let firstPaymentColumn = 30
 
     /// A row of `columns` with the items of the invoice.
     init(row: SQLRow, items: [InvoiceItem]) throws {
@@ -721,7 +721,8 @@ private nonisolated extension Invoice {
             invoiceRate: try row.optionalStoredRate(16), qrEnabled: row.bool(20), note: row.text(21),
             language: try row.choice(22), paymentMethod: row.text(23), status: try row.choice(24),
             review: row.optionalText(25).map { ReviewFlag(reason: $0) },
-            payment: try Payment(row: row, from: Self.firstPaymentColumn), source: source
+            payment: try Payment(row: row, from: Self.firstPaymentColumn), source: source,
+            isdocFingerprint: row.optionalText(29)
         )
     }
 
@@ -770,6 +771,7 @@ private nonisolated extension Invoice {
             ("fakturoid_id", fakturoidID),
             ("import_fingerprint", fingerprint),
             ("changed_in_app", .flag(changedInApp)),
+            ("isdoc_fingerprint", .optionalText(isdocFingerprint)),
             ("net_minor", .integer(net)),
             ("vat_minor", .integer(vat)),
             ("total_minor", .integer(net + vat)),
