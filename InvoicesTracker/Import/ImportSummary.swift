@@ -11,7 +11,8 @@ nonisolated struct ImportSummary: Codable, Sendable, Hashable {
     /// Invoices added.
     var added = 0
 
-    /// Invoices replaced by the changed row of the export.
+    /// Invoices the import overwrote: those replaced by the changed row or invoice of the files and those flagged as
+    /// cancelled in Fakturoid ("přepsané").
     var updated = 0
 
     /// Rows whose invoice is there as the row has it.
@@ -71,7 +72,7 @@ nonisolated extension ImportSummary {
     /// The summary of an import that does what `plan` says.
     init(plan: ImportPlan, files: [String], exportSupplier: Supplier?) {
         self.init(
-            files: files, added: plan.inserts.count, updated: plan.updates.count,
+            files: files, added: plan.inserts.count, updated: plan.overwrittenNumbers.count,
             unchanged: plan.unchangedNumbers.count, skipped: plan.skipped.count,
             needsReview: (plan.inserts + plan.updates).filter { $0.review != nil }.count,
             conflicts: plan.conflicts.count, flaggedCancelled: plan.flaggedCancelled.count,

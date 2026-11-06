@@ -15,9 +15,16 @@ nonisolated struct ImportOutcomeRow: Hashable, Sendable {
         case neutral
     }
 
+    /// The title of the row: "Nové", "Přepíší se" …
     var label: String
+
+    /// How many invoices the row is about.
     var count: Int
+
+    /// The colour of the dot of the row.
     var tone: Tone
+
+    /// The numbers of the invoices and what becomes of them, in a sentence.
     var note: String
 }
 

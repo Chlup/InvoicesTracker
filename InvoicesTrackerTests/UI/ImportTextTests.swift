@@ -52,6 +52,21 @@ struct ImportTextTests {
         #expect(ImportText.lists(of: ImportSummary(keptItems: ["x"])).isEmpty)
     }
 
+    @Test func anInvoiceCancelledInFakturoidCountsAmongTheOverwrittenOnesInTheHeadlineAndTheList() throws {
+        let made = ImportPlanner.plan(
+            sources: ImportSources(rows: try fakturoidFixtureRows(), isdocs: []), existingInvoices: [], clients: [],
+            knownCurrencies: [.czk, .usd, .eur], payments: [:], invoiceRates: [:])
+        var plan = ImportPlan()
+        plan.updates = [made.inserts[0]]
+        plan.flaggedCancelled = [made.inserts[1]]
+        plan.overwrittenNumbers = [made.inserts[0].number, made.inserts[1].number]
+
+        let summary = ImportSummary(plan: plan, files: ["a.csv"], exportSupplier: nil)
+
+        #expect(ImportText.headline(of: summary).contains("přepsané 2"))
+        #expect(ImportText.lists(of: summary).first?.title == "Přepsané (2)")
+    }
+
     // MARK: A stored log
 
     @Test func aLogStoredBeforeTheseFieldsStillDecodes() throws {
