@@ -1432,6 +1432,8 @@ struct ImportPlannerTests {
         #expect(both == ImportPlanner.fingerprint(ofAll: rows.reversed().map(\.fingerprint)))
         #expect(both != rows[0].fingerprint && both != rows[1].fingerprint)
         #expect(held.source == .imported(fakturoidID: "5002", fingerprint: both, changedInApp: false))
+        // A held kind of files is never stored under the fingerprint of one file, also when its files are alike.
+        #expect(ImportPlanner.fingerprint(ofAll: [rows[0].fingerprint, rows[0].fingerprint]) != rows[0].fingerprint)
     }
 
     @Test func oneRowThatDiffersAmongRepeatsHoldsTheInvoiceToo() throws {

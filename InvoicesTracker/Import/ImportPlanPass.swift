@@ -540,8 +540,10 @@ nonisolated extension ImportPlanner {
             plan.reviewItems.append(reviewLine(label, ImportPlanner.differingRowsReason))
         }
 
-        /// The fingerprints the files of `group` are stored under (`ImportPlanner.fingerprint(ofAll:)`): one for its
-        /// rows and one for its ISDOC invoices, each nil when the group has none of that kind.
+        /// The fingerprints an invoice held for the files of `group` is stored under
+        /// (`ImportPlanner.fingerprint(ofAll:)`): one for its rows and one for its ISDOC invoices, each nil when the
+        /// group has none of that kind. Neither is the fingerprint of a single file, also for a kind whose files are
+        /// alike, since no file of the group is applied.
         private func fingerprints(of group: Group) -> (rows: String?, isdocs: String?) {
             let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
             let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
@@ -554,8 +556,10 @@ nonisolated extension ImportPlanner {
         /// `invoice` held for review because the files of `group` differ, and stored under their fingerprints, so
         /// that the same files in a later import leave it alone: the fingerprint of the rows as the fingerprint of the
         /// CSV row, with the Fakturoid id of the first row (or the one the invoice has), and the fingerprint of the
-        /// ISDOC invoices as `isdocFingerprint`. A kind of file the group has none of leaves its fingerprint as it is,
-        /// and an imported invoice is not marked as changed in the app any more.
+        /// ISDOC invoices as `isdocFingerprint`. Both kinds are stored this way, also the one whose files are alike:
+        /// neither was applied, so an import whose files no longer differ applies both. A kind of file the group has
+        /// none of leaves its fingerprint as it is, and an imported invoice is not marked as changed in the app any
+        /// more.
         private func heldForDifferingFiles(_ invoice: Invoice, of group: Group) -> Invoice {
             var held = invoice
             held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)

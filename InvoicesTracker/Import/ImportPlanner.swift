@@ -345,14 +345,17 @@ nonisolated enum ImportPlanner {
 
     // MARK: Files that differ
 
-    /// The fingerprint an invoice is stored under when the files of one kind (CSV rows, or ISDOC invoices) that an
-    /// import has of it differ: the one fingerprint when they are all alike, and otherwise the SHA-256 of the distinct
-    /// fingerprints, sorted and each with its length before it, as lowercase hexadecimal. The order of the files does
-    /// not change it, so the same files in another import give it again.
+    /// The fingerprint an invoice held for files that differ is stored under, for each kind of file (CSV rows, or ISDOC
+    /// invoices) the import has of it: the SHA-256 of a marker line and the distinct fingerprints, sorted and each with
+    /// its length before it, as lowercase hexadecimal. The order of the files does not change it, so the same files in
+    /// another import give it again.
+    ///
+    /// It is never the fingerprint of a single file, also when the files of that kind are all alike: none of them has
+    /// been applied, so a later import that has one of them alone applies it.
     static func fingerprint(ofAll fingerprints: [String]) -> String {
         let distinct = Set(fingerprints).sorted()
-        guard distinct.count > 1 else { return distinct.first ?? "" }
         var hasher = SHA256()
+        hasher.update(data: Data("held for files that differ\n".utf8))
         for fingerprint in distinct {
             hasher.update(data: Data("\(fingerprint.utf8.count):\(fingerprint)\n".utf8))
         }
@@ -377,8 +380,9 @@ nonisolated enum ImportPlanner {
     /// ISDOC invoices of the group are not applied. Otherwise sources that are alike are taken once, and rows that
     /// differ, or ISDOC invoices that differ, hold the invoice for review without a payment: the import cannot tell
     /// which of them is right, so a new invoice has the content of the first ones, and an invoice that is there keeps
-    /// all it holds. The held invoice is stored under the fingerprints of those files (`fingerprint(ofAll:)`), so the
-    /// same files again leave it as it is, also once the person has resolved it.
+    /// all it holds. The held invoice is stored under the fingerprints of those files (`fingerprint(ofAll:)`), of both
+    /// kinds, so the same files again leave it as it is, also once the person has resolved it. Such a fingerprint is
+    /// never that of a single file, so an import whose files of the invoice no longer differ applies both kinds.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
