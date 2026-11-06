@@ -410,8 +410,9 @@ nonisolated extension ImportPlanner {
         }
 
         /// A group the app has no invoice of: the invoice its files make is added, held for review without a payment
-        /// when its rows or its ISDOC invoices differ (`heldForDifferingFiles(_:of:)`). A foreign invoice of an ISDOC
-        /// file alone that has no rate is a conflict.
+        /// when its rows or its ISDOC invoices differ (`heldForDifferingFiles(_:of:isNew:)`). The first row and the
+        /// first ISDOC invoice make it then, as they make any new invoice, and the hold takes the payment and the
+        /// review of the row away. A foreign invoice of an ISDOC file alone that has no rate is a conflict.
         private mutating func addNew(
             _ group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, differing: Bool, label: String
         ) {
@@ -428,7 +429,7 @@ nonisolated extension ImportPlanner {
                 return
             }
             if differing {
-                invoice = heldForDifferingFiles(invoice, of: group)
+                invoice = heldForDifferingFiles(invoice, of: group, isNew: true)
                 invoice.payment = nil
             }
             add(invoice, notes: made.notes, of: group, label: label, as: .insert)
@@ -566,72 +567,106 @@ nonisolated extension ImportPlanner {
         }
 
         /// The rows or the ISDOC invoices of the import for an invoice that is there differ, so none of them is
-        /// applied: the invoice keeps all it holds, and is held for review (`heldForDifferingFiles(_:of:)`). When it
-        /// is stored under the fingerprints of these very files already, it is unchanged, whatever its flag: it was
-        /// held for them by an earlier import, and whatever the person did with it since stays until Fakturoid's data
-        /// changes.
+        /// applied: the invoice keeps all it holds, and is held for review (`heldForDifferingFiles(_:of:isNew:)`).
+        /// When it is stored under these very files already (`isStored(_:underTheFilesOf:)`), it is unchanged,
+        /// whatever its flag: it was held for them by an earlier import, and whatever the person did with it since
+        /// stays until Fakturoid's data changes.
         private mutating func holdForDifferingFiles(_ existing: Invoice, of group: Group, label: String) {
             if isStored(existing, underTheFilesOf: group) {
                 plan.unchangedNumbers.append(label)
                 return
             }
-            plan.updates.append(heldForDifferingFiles(existing, of: group))
+            plan.updates.append(heldForDifferingFiles(existing, of: group, isNew: false))
             plan.overwrittenNumbers.append(label)
             plan.reviewItems.append(reviewLine(label, ImportPlanner.differingRowsReason))
         }
 
-        /// The fingerprints an invoice held for the files of `group` is stored under
-        /// (`ImportPlanner.fingerprint(ofAll:)`): one for its rows and one for its ISDOC invoices, each nil when the
-        /// group has none of that kind. Neither is the fingerprint of a single file, also for a kind whose files are
-        /// alike, since no file of the group is applied.
-        private func fingerprints(of group: Group) -> (rows: String?, isdocs: String?) {
-            let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
-            let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
-            return (
-                rows: rowPrints.isEmpty ? nil : ImportPlanner.fingerprint(ofAll: rowPrints),
-                isdocs: isdocPrints.isEmpty ? nil : ImportPlanner.fingerprint(ofAll: isdocPrints)
-            )
-        }
-
-        /// `invoice` held for review because the files of `group` differ, and stored under their fingerprints, so
-        /// that the same files in a later import leave it alone: the fingerprint of the rows as the fingerprint of the
-        /// CSV row, with the Fakturoid id of the first row (or the one the invoice has), and the fingerprint of the
-        /// ISDOC invoices as `isdocFingerprint`. Both kinds are stored this way, also the one whose files are alike:
-        /// neither was applied, so an import whose files no longer differ applies both. A kind of file the group has
-        /// none of leaves its fingerprint as it is, and an imported invoice is not marked as changed in the app any
-        /// more.
-        private func heldForDifferingFiles(_ invoice: Invoice, of group: Group) -> Invoice {
+        /// `invoice` held for review because the files of `group` differ, and stored so that the same files in a later
+        /// import leave it alone (`isStored(_:underTheFilesOf:)`). `isNew` tells whether the group's files have just
+        /// made `invoice` (`addNew`), or whether it is the invoice that is there.
+        ///
+        /// Each kind of file the group has (the rows, or the ISDOC invoices) is stored under the fingerprint of the set
+        /// of its files (`ImportPlanner.fingerprint(ofAll:)`), which is never the fingerprint of a single file, so
+        /// that an import whose files of that kind no longer differ applies them. A kind whose files are all alike is
+        /// stored under the fingerprint of that file instead when the invoice holds the file already, so that the same
+        /// file alone is not applied again over what the person did in the app since:
+        /// - on an invoice that is there, when it was last imported from that file, as its CSV row or its
+        ///   `isdocFingerprint` says;
+        /// - on a new invoice, for its ISDOC invoices, whose file made the invoice. Its rows are stored under the
+        ///   fingerprint of their set even when they are alike: the hold takes the payment and the review of the row
+        ///   away, so a later import whose files no longer differ applies the row again.
+        ///
+        /// The fingerprint of the rows goes with the Fakturoid id of the first row (or the one the invoice has). A kind
+        /// of file the group has none of leaves its fingerprint as it is, and an imported invoice is not marked as
+        /// changed in the app any more.
+        private func heldForDifferingFiles(_ invoice: Invoice, of group: Group, isNew: Bool) -> Invoice {
             var held = invoice
             held.review = ReviewFlag(reason: ImportPlanner.differingRowsReason)
-            let prints = fingerprints(of: group)
-            if let rowPrint = prints.rows {
+            let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
+            let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
+            if !rowPrints.isEmpty {
                 let rowID = group.rowOffsets.first.map { rows[$0].fakturoidID } ?? ""
+                let stored = isNew ? nil : Self.rowFingerprint(of: invoice)
+                let rowPrint = Self.heldFingerprint(of: rowPrints, holding: stored)
                 held.source = .imported(
                     fakturoidID: rowID.isEmpty ? Self.fakturoidID(of: invoice) : rowID, fingerprint: rowPrint,
                     changedInApp: false)
             } else if case .imported = invoice.source {
                 held.source = Self.unmarked(invoice.source)
             }
-            if let isdocPrint = prints.isdocs {
-                held.isdocFingerprint = isdocPrint
+            if !isdocPrints.isEmpty {
+                held.isdocFingerprint = Self.heldFingerprint(of: isdocPrints, holding: invoice.isdocFingerprint)
             }
             return held
         }
 
-        /// Whether `invoice` is stored under the fingerprints of the files of `group`: the fingerprint of its CSV row
-        /// is that of the rows of the group, when the group has rows, and its `isdocFingerprint` is that of the ISDOC
-        /// invoices of the group, when it has ISDOC invoices.
-        private func isStored(_ invoice: Invoice, underTheFilesOf group: Group) -> Bool {
-            let prints = fingerprints(of: group)
-            if let rowPrint = prints.rows {
-                guard case .imported(_, let fingerprint, _) = invoice.source, fingerprint == rowPrint else {
-                    return false
-                }
+        /// The fingerprint an invoice held for files of one kind, with the fingerprints `prints`, is stored under for
+        /// that kind. When the files are all alike and their fingerprint is `stored`, the invoice's fingerprint of that
+        /// kind, the invoice holds that file already and keeps its fingerprint. Otherwise it is the fingerprint of
+        /// their set (`ImportPlanner.fingerprint(ofAll:)`).
+        private static func heldFingerprint(of prints: [String], holding stored: String?) -> String {
+            if let single = alike(prints), single == stored {
+                return single
             }
-            if let isdocPrint = prints.isdocs, invoice.isdocFingerprint != isdocPrint {
+            return ImportPlanner.fingerprint(ofAll: prints)
+        }
+
+        /// Whether `invoice` is stored under the files of `group` the way `heldForDifferingFiles(_:of:isNew:)` stores
+        /// an invoice held for them, so that they bring nothing new: for each kind of file the group has, the invoice's
+        /// fingerprint of that kind (of its CSV row, or `isdocFingerprint`) is the fingerprint of the set of those
+        /// files, or, when they are all alike, the fingerprint of that one file. An invoice that has never been held
+        /// for these files is not stored so, since a kind whose files differ has only the fingerprint of their set.
+        private func isStored(_ invoice: Invoice, underTheFilesOf group: Group) -> Bool {
+            let rowPrints = group.rowOffsets.map { rows[$0].fingerprint }
+            let isdocPrints = group.isdocOffsets.map { isdocs[$0].fingerprint }
+            if !rowPrints.isEmpty && !Self.isHeld(Self.rowFingerprint(of: invoice), for: rowPrints) {
+                return false
+            }
+            if !isdocPrints.isEmpty && !Self.isHeld(invoice.isdocFingerprint, for: isdocPrints) {
                 return false
             }
             return true
+        }
+
+        /// Whether `stored`, an invoice's fingerprint of one kind of file, is one that an invoice held for files of
+        /// that kind, with the fingerprints `prints`, is stored under: the fingerprint of their set, or the fingerprint
+        /// of those files when they are all alike.
+        private static func isHeld(_ stored: String?, for prints: [String]) -> Bool {
+            guard let stored else { return false }
+            return stored == ImportPlanner.fingerprint(ofAll: prints) || stored == alike(prints)
+        }
+
+        /// The fingerprint of `prints` when they are all alike, or nil when they differ or there are none.
+        private static func alike(_ prints: [String]) -> String? {
+            let distinct = Set(prints)
+            return distinct.count == 1 ? distinct.first : nil
+        }
+
+        /// The fingerprint of the CSV row `invoice` was last imported from, or nil when no row has been imported for
+        /// it, such as an invoice made in the app or one known only from an ISDOC file.
+        private static func rowFingerprint(of invoice: Invoice) -> String? {
+            guard case .imported(_, let fingerprint, _) = invoice.source, !fingerprint.isEmpty else { return nil }
+            return fingerprint
         }
 
         /// Whether `invoice` was imported from the invoice with the Fakturoid id `id`.
