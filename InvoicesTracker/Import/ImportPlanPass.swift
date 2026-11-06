@@ -58,6 +58,14 @@ nonisolated extension ImportPlanner {
             case update
         }
 
+        /// A kind of file of a group, by the client it names: the client of a row, or the customer of an ISDOC
+        /// invoice. The invoice of the group is linked to the client of the file that owns its printed client, and
+        /// only when the plan applies that file (`composed(over:row:applyingRow:isdoc:applyingIsdoc:entry:label:)`).
+        private enum ClientFile {
+            case row
+            case isdoc
+        }
+
         private let rows: [FakturoidRow]
         private let isdocs: [IsdocInvoice]
         private let rowClasses: [RowClass]
@@ -76,7 +84,9 @@ nonisolated extension ImportPlanner {
         /// The place in the book of the client of each source that has one.
         private var entryOfSource: [Source: Int] = [:]
 
-        /// The place in the book of the client of each invoice that is added or updated, by the digits of its number.
+        /// The place in the book of the client each invoice that is added or updated is linked to, by the digits of its
+        /// number: the client of the file that owns its printed client, when the plan applies that file. An invoice
+        /// without one keeps the link it has, which is none for a new invoice.
         private var entryOfInvoice: [String: Int] = [:]
 
         /// The countries noted as no code already.
@@ -289,13 +299,16 @@ nonisolated extension ImportPlanner {
             }
         }
 
-        /// The place in the book of the client of `group`: the customer of its ISDOC invoice, which owns the printed
-        /// client, or else the client of its first row.
-        private func entry(of group: Group) -> Int? {
-            if let offset = group.isdocOffsets.first, let entry = entryOfSource[.isdoc(offset)] {
-                return entry
+        /// The place in the book of the client that the first file of `group` of the kind `file` names: the customer of
+        /// its first ISDOC invoice, or the client of its first row. Nil when the group has no file of that kind, or the
+        /// file names no client the book could place.
+        private func entry(of group: Group, _ file: ClientFile) -> Int? {
+            switch file {
+            case .isdoc:
+                group.isdocOffsets.first.flatMap { entryOfSource[.isdoc($0)] }
+            case .row:
+                group.rowOffsets.first.flatMap { entryOfSource[.row($0)] }
             }
-            return group.rowOffsets.first.flatMap { entryOfSource[.row($0)] }
         }
 
         /// Makes the clients and gives the added and updated invoices their clients: the id of one that is there, the
@@ -332,7 +345,8 @@ nonisolated extension ImportPlanner {
                 plan.updates[index].clientID = nil
                 plan.newClientIndexByDigits[digits] = position
             case nil:
-                // No client could be made of the files, or the invoice is only held for review: it keeps its link.
+                // The plan applies no file that owns the printed client, such as only the row of an invoice the ISDOC
+                // owns, or only holds the invoice for review; or that file names no client. The invoice keeps its link.
                 break
             }
         }
@@ -412,14 +426,16 @@ nonisolated extension ImportPlanner {
         /// A group the app has no invoice of: the invoice its files make is added, held for review without a payment
         /// when its rows or its ISDOC invoices differ (`heldForDifferingFiles(_:of:isNew:)`). The first row and the
         /// first ISDOC invoice make it then, as they make any new invoice, and the hold takes the payment and the
-        /// review of the row away. A foreign invoice of an ISDOC file alone that has no rate is a conflict.
+        /// review of the row away. A foreign invoice of an ISDOC file alone that has no rate is a conflict. The invoice
+        /// is linked to the client it prints: the customer of the ISDOC invoice when the group has one, and otherwise
+        /// the client of the row.
         private mutating func addNew(
             _ group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, differing: Bool, label: String
         ) {
             guard
                 let made = composed(
                     over: nil, row: row, applyingRow: row != nil, isdoc: isdoc, applyingIsdoc: isdoc != nil,
-                    entry: entry(of: group), label: label)
+                    entry: entry(of: group, .isdoc), label: label)
             else {
                 return
             }
@@ -432,7 +448,7 @@ nonisolated extension ImportPlanner {
                 invoice = heldForDifferingFiles(invoice, of: group, isNew: true)
                 invoice.payment = nil
             }
-            add(invoice, notes: made.notes, of: group, label: label, as: .insert)
+            add(invoice, notes: made.notes, of: group, label: label, as: .insert, linking: made.clientFile)
         }
 
         /// A group whose invoice is there and whose files do not differ: the ISDOC invoice is applied when it differs
@@ -447,6 +463,10 @@ nonisolated extension ImportPlanner {
         /// held for is applied as usual. A flag the person has resolved, or a flag of another reason, does not count:
         /// the invoice is compared as usual then. An invoice the group leaves not held for its rows is stored under the
         /// row it has taken, not under the marker of it that a resolved hold left (`released(_:)`).
+        ///
+        /// The invoice is linked to the client of the file that owns its printed client only when that file is applied:
+        /// an ISDOC invoice that is applied, or a row that is applied to an invoice the ISDOC does not own. A row
+        /// applied to an invoice the ISDOC owns sets only the state, and the invoice keeps its link.
         private mutating func update(
             _ existing: Invoice, group: Group, row: FakturoidRow?, isdoc: IsdocInvoice?, label: String
         ) {
@@ -477,7 +497,7 @@ nonisolated extension ImportPlanner {
             guard
                 var made = composed(
                     over: existing, row: row, applyingRow: applyingRow, isdoc: isdoc, applyingIsdoc: applyingIsdoc,
-                    entry: entry(of: group), label: label)
+                    entry: entry(of: group, .isdoc), label: label)
             else {
                 return
             }
@@ -491,7 +511,7 @@ nonisolated extension ImportPlanner {
             if held?.rows != true {
                 made.invoice.source = Self.released(made.invoice.source)
             }
-            add(made.invoice, notes: made.notes, of: group, label: label, as: .update)
+            add(made.invoice, notes: made.notes, of: group, label: label, as: .update, linking: made.clientFile)
         }
 
         /// The kinds of file an invoice held for review by a hold (`ImportPlanner.differingRowsReason`) is held for, or
@@ -508,18 +528,22 @@ nonisolated extension ImportPlanner {
             return rows || isdocs ? (rows: rows, isdocs: isdocs) : (rows: true, isdocs: false)
         }
 
-        /// The invoice the files of a group make over `stored` (nil for a new invoice), and the notes on it; nil when
-        /// there is nothing to make it of.
+        /// The invoice the files of a group make over `stored` (nil for a new invoice), the notes on it, and the kind
+        /// of the applied file whose client it prints (`clientFile`); nil when there is nothing to make it of.
         ///
         /// A new invoice starts as the invoice of the row, or else as the invoice of the ISDOC file alone, in the
-        /// language and with the payment method of the client at `entry`. The ISDOC file is applied first when
-        /// `applyingIsdoc` is set, then the row when `applyingRow` is: only its own fields on an invoice the ISDOC
-        /// owns, the whole invoice of the row on any other. The payment and the source follow the row that is applied,
-        /// or stay with the stored invoice when none is.
+        /// language and with the payment method of the client at `entry`, the place in the book of the customer of the
+        /// ISDOC file. The ISDOC file is applied first when `applyingIsdoc` is set, then the row when `applyingRow` is:
+        /// only its own fields on an invoice the ISDOC owns, the whole invoice of the row on any other. The payment and
+        /// the source follow the row that is applied, or stay with the stored invoice when none is.
+        ///
+        /// `clientFile` is the ISDOC when its file is applied, and the row when the whole invoice of the row is. It is
+        /// nil when neither is: the file that owns the printed client is not applied, and the client stays as `stored`
+        /// prints it.
         private func composed(
             over stored: Invoice?, row: FakturoidRow?, applyingRow: Bool, isdoc: IsdocInvoice?, applyingIsdoc: Bool,
             entry: Int?, label: String
-        ) -> (invoice: Invoice, notes: [String])? {
+        ) -> (invoice: Invoice, notes: [String], clientFile: ClientFile?)? {
             let csv = row.flatMap {
                 ImportPlanner.invoice(from: $0, knownCurrencies: knownCurrencies, invoiceRates: invoiceRates)
             }
@@ -552,7 +576,9 @@ nonisolated extension ImportPlanner {
                 let applied = ImportPlanner.applying(isdoc, to: result, keepingZeroMode: true)
                 result = applied.invoice
                 notes += applied.notes
+                isdocApplied = true
             }
+            var clientFile: ClientFile? = isdocApplied ? .isdoc : nil
             if applyingRow, let row, let csv {
                 if result.isdocFingerprint != nil {
                     result = ImportPlanner.applyingOwnFields(of: row, csv: csv, to: result)
@@ -561,6 +587,7 @@ nonisolated extension ImportPlanner {
                     replaced.id = result.id
                     replaced.clientID = result.clientID
                     result = replaced
+                    clientFile = .row
                 }
                 result.payment = payment(of: row, csv: csv, stored: stored, final: result)
                 result.source = .imported(
@@ -577,7 +604,7 @@ nonisolated extension ImportPlanner {
             {
                 notes.append("\(label) — \(ImportPlanner.amountsDisagreeNote)")
             }
-            return (result, notes)
+            return (result, notes, clientFile)
         }
 
         /// The payment the applied `row` gives `final`, the invoice it ends in: none when the row holds the invoice for
@@ -805,9 +832,11 @@ nonisolated extension ImportPlanner {
         }
 
         /// Puts `invoice` of `group` in the plan, to add or to update, with its notes, its line of review, and the note
-        /// on a country of its row that is no code.
+        /// on a country of its row that is no code. It is linked to the client of the file of the kind `clientFile`,
+        /// the applied file whose client it prints, and keeps the link it has when that is nil (`finishClients()`).
         private mutating func add(
-            _ invoice: Invoice, notes: [String], of group: Group, label: String, as addition: Addition
+            _ invoice: Invoice, notes: [String], of group: Group, label: String, as addition: Addition,
+            linking clientFile: ClientFile?
         ) {
             switch addition {
             case .insert:
@@ -818,7 +847,7 @@ nonisolated extension ImportPlanner {
                 plan.updates.append(invoice)
                 plan.overwrittenNumbers.append(label)
             }
-            entryOfInvoice[invoice.numberDigits] = entry(of: group)
+            entryOfInvoice[invoice.numberDigits] = clientFile.flatMap { entry(of: group, $0) }
             plan.notes += notes
             if let review = invoice.review {
                 plan.reviewItems.append(reviewLine(label, review.reason))

@@ -488,7 +488,12 @@ nonisolated enum ImportPlanner {
     /// issue) giving the values and the older ones filling what it leaves empty; on one day an ISDOC invoice comes
     /// before the row of its invoice. The language and the payment method of a new client are those its rows say, or
     /// else those an invoice of an ISDOC file alone takes. A client that is there gets only its empty fields filled.
-    /// The clients of an invoice that is cancelled are not used.
+    /// The clients of an invoice that is cancelled are not used. An invoice is linked to the client of the file that
+    /// owns its printed client, when the import applies that file: the customer of the ISDOC invoice once one is
+    /// imported for it, also together with its row, and the client of its row until then. An import that applies only
+    /// the row of an invoice the ISDOC owns, or only holds the invoice, leaves its link, and so does an applied ISDOC
+    /// invoice whose customer names no client: the client of the row never stands in for it. Every order of the two
+    /// files therefore links the invoice to the same client.
     ///
     /// **Counting.** Each document, by the digits of its number and its currency, is counted once in the outcomes of
     /// the plan: a proforma invoice in both exports is skipped once, and a source that is skipped is not counted when

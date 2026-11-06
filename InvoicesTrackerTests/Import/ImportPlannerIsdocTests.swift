@@ -60,6 +60,7 @@ struct ImportPlannerIsdocTests {
         documentType: Int? = nil,
         number: String? = nil,
         note: String? = nil,
+        customer: IsdocParty? = nil,
         paymentMeansCode: String? = nil,
         withoutIssueDate: Bool = false,
         withoutRate: Bool = false
@@ -68,7 +69,7 @@ struct ImportPlannerIsdocTests {
             documentType: documentType ?? isdoc.documentType, number: number ?? isdoc.number, uuid: isdoc.uuid,
             issueDate: withoutIssueDate ? nil : isdoc.issueDate, taxPointDate: isdoc.taxPointDate,
             dueDate: isdoc.dueDate, note: note ?? isdoc.note, currency: isdoc.currency,
-            rate: withoutRate ? nil : isdoc.rate, customer: isdoc.customer, supplier: isdoc.supplier,
+            rate: withoutRate ? nil : isdoc.rate, customer: customer ?? isdoc.customer, supplier: isdoc.supplier,
             lines: isdoc.lines, paymentMeansCode: paymentMeansCode ?? isdoc.paymentMeansCode
         )
     }
@@ -261,6 +262,153 @@ struct ImportPlannerIsdocTests {
         #expect(filled.street == "1450 Alder Ridge Rd" && filled.city == "Boise")
         // What the client has is kept, and an ISDOC says nothing of the client's own payment method.
         #expect(filled.language == .cs && filled.paymentMethod == "")
+    }
+
+    // MARK: The link to the client
+
+    /// The client the customer of the ISDOC fixture `czk-21` and `crownRow` are, as the app has it.
+    private static let doubek = Client(id: 1, name: "Truhlářství Doubek s.r.o.", ico: "17392047")
+
+    /// Another client the app has, which some rows of the invoice of `czk-21` name (`kovarColumns`).
+    private static let kovar = Client(id: 2, name: "Pekárna Kovář s.r.o.", ico: "28441234")
+
+    /// A third client the app has, which some ISDOC files of that invoice name (`hlinskoParty`).
+    private static let hlinsko = Client(id: 3, name: "Sklárna Hlinsko a.s.", ico: "26781234")
+
+    /// The client columns of a row that names `kovar`.
+    private static let kovarColumns: FakturoidCSV.Row = [
+        "Client name": "Pekárna Kovář s.r.o.", "Client street": "Mlýnská 8", "Client city": "Tábor",
+        "Client zip": "39001", "Client country": "CZ", "Client registration no": "28441234",
+        "Client vat no": "CZ28441234",
+    ]
+
+    /// The customer of an ISDOC file that names `hlinsko`.
+    private static let hlinskoParty = IsdocParty(
+        name: "Sklárna Hlinsko a.s.", street: "Skelná 3", postcode: "53901", city: "Hlinsko", country: "CZ",
+        ico: "26781234", dic: "CZ26781234", email: "")
+
+    @Test func aCsvOnlyUpdateKeepsTheClientLinkOfAnInvoiceOwnedByIsdoc() throws {
+        let clients = [Self.doubek, Self.kovar]
+        let fromIsdoc = applied(plan(isdocs: [try isdoc("czk-21")], clients: clients), clients: clients)
+        #expect(fromIsdoc.invoices.first?.clientID == 1)
+        // Rows of the invoice that name another client: one the app has, and one it has not.
+        let toKovar = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+        let toUnknown = try FakturoidCSV.parsed(
+            Self.crownRow.merging([
+                "Client name": "Mlékárna Brodek s.r.o.", "Client registration no": "29115634",
+                "Client vat no": "CZ29115634",
+            ]) { $1 })
+
+        let known = plan(rows: [toKovar], existing: fromIsdoc.invoices, clients: fromIsdoc.clients)
+        let unknown = plan(rows: [toUnknown], existing: fromIsdoc.invoices, clients: fromIsdoc.clients)
+
+        // The row sets the state of the invoice, but the ISDOC owns its printed client, and so its link.
+        for plan in [known, unknown] {
+            let updated = try #require(plan.updates.first)
+            #expect(updated.client.name == "Truhlářství Doubek s.r.o." && updated.client.ico == "17392047")
+            #expect(updated.clientID == 1 && plan.newClientIndexByDigits.isEmpty)
+        }
+        // The client book still takes the client of the row, as it takes that of any row.
+        #expect(unknown.newClients.map(\.name) == ["Mlékárna Brodek s.r.o."])
+    }
+
+    @Test func theThreeImportOrdersLinkTheSameClientWhenTheRowAndTheIsdocNameDifferentClients() throws {
+        let file = try isdoc("czk-21")
+        let row = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+
+        // With both clients in the app, and with neither, which the imports then make.
+        for clients in [[Self.doubek, Self.kovar], []] {
+            let csvFirst = applied(plan(rows: [row], clients: clients), clients: clients)
+            let csvThenIsdoc = applied(
+                plan(isdocs: [file], existing: csvFirst.invoices, clients: csvFirst.clients),
+                over: csvFirst.invoices, clients: csvFirst.clients)
+            let isdocFirst = applied(plan(isdocs: [file], clients: clients), clients: clients)
+            let isdocThenCsv = applied(
+                plan(rows: [row], existing: isdocFirst.invoices, clients: isdocFirst.clients),
+                over: isdocFirst.invoices, clients: isdocFirst.clients)
+            let together = applied(plan(rows: [row], isdocs: [file], clients: clients), clients: clients)
+
+            // Each order links the invoice to the client it prints: the customer of the ISDOC.
+            for result in [csvThenIsdoc, isdocThenCsv, together] {
+                let invoice = try #require(result.invoices.first)
+                let linked = result.clients.first { $0.id == invoice.clientID }
+                #expect(invoice.client.ico == "17392047" && linked?.ico == "17392047")
+                #expect(clients.isEmpty || invoice.clientID == 1)
+            }
+        }
+    }
+
+    @Test func anIsdocWithANewCustomerRelinksTheInvoice() throws {
+        let file = try isdoc("czk-21")
+        let clients = [Self.doubek, Self.kovar, Self.hlinsko]
+        let fromIsdoc = applied(plan(isdocs: [file], clients: clients), clients: clients)
+        #expect(fromIsdoc.invoices.first?.clientID == 1)
+        let toHlinsko = copy(of: file, customer: Self.hlinskoParty)
+        let toKovar = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+
+        let alone = plan(isdocs: [toHlinsko], existing: fromIsdoc.invoices, clients: fromIsdoc.clients)
+        let withRow = plan(
+            rows: [toKovar], isdocs: [toHlinsko], existing: fromIsdoc.invoices, clients: fromIsdoc.clients)
+
+        // The ISDOC owns the printed client, so the invoice follows its new customer, whatever client a row names.
+        for plan in [alone, withRow] {
+            let updated = try #require(plan.updates.first)
+            #expect(updated.client.ico == "26781234" && updated.clientID == 3)
+        }
+    }
+
+    @Test func anUpdateThatOnlyHoldsTheInvoiceKeepsItsClientLink() throws {
+        let file = try isdoc("czk-21")
+        let clients = [Self.doubek, Self.kovar, Self.hlinsko]
+        let first = applied(
+            plan(rows: [try FakturoidCSV.parsed(Self.crownRow)], isdocs: [file], clients: clients), clients: clients)
+        #expect(first.invoices.first?.clientID == 1)
+        // Two ISDOC files of the invoice that differ, both for another customer, and a row for a third client.
+        let toHlinsko = copy(of: file, customer: Self.hlinskoParty)
+        let otherToHlinsko = copy(of: toHlinsko, note: "Druhé znění poznámky.")
+        let toKovar = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+
+        let withRow = plan(
+            rows: [toKovar], isdocs: [toHlinsko, otherToHlinsko], existing: first.invoices, clients: first.clients)
+        let isdocsAlone = applied(
+            plan(isdocs: [toHlinsko, otherToHlinsko], existing: first.invoices, clients: first.clients),
+            over: first.invoices, clients: first.clients)
+        let rowWhileHeld = plan(rows: [toKovar], existing: isdocsAlone.invoices, clients: isdocsAlone.clients)
+
+        // The files that differ hold the invoice, and nothing that owns its printed client is applied.
+        let held = try #require(withRow.updates.first)
+        #expect(held.review == Self.differingFlag && held.clientID == 1)
+        // While it stays held for its ISDOC files, a row for another client sets only the state.
+        let stillHeld = try #require(rowWhileHeld.updates.first)
+        #expect(stillHeld.review == Self.differingFlag && stillHeld.client.ico == "17392047")
+        #expect(stillHeld.clientID == 1)
+        for plan in [withRow, rowWhileHeld] {
+            #expect(plan.newClientIndexByDigits.isEmpty)
+        }
+    }
+
+    @Test func anIsdocWhoseCustomerNamesNoClientLeavesTheLinkAsItIs() throws {
+        let file = try isdoc("czk-21")
+        let nameless = copy(
+            of: file,
+            customer: IsdocParty(
+                name: "", street: "", postcode: "", city: "", country: "CZ", ico: "", dic: "", email: ""))
+        let toKovar = try FakturoidCSV.parsed(Self.crownRow.merging(Self.kovarColumns) { $1 })
+        let clients = [Self.doubek, Self.kovar]
+        let fromIsdoc = applied(plan(isdocs: [file], clients: clients), clients: clients)
+
+        let added = plan(rows: [toKovar], isdocs: [nameless], clients: clients)
+        let updated = plan(
+            rows: [toKovar], isdocs: [nameless], existing: fromIsdoc.invoices, clients: fromIsdoc.clients)
+
+        // The invoice prints the customer of the ISDOC, which gives no client: the client of the row does not stand
+        // in for it, so a new invoice has no link, and an invoice that is there keeps its own.
+        let new = try #require(added.inserts.first)
+        #expect(new.client.name.isEmpty)
+        #expect(new.clientID == nil && added.newClientIndexByDigits.isEmpty)
+        let changed = try #require(updated.updates.first)
+        #expect(changed.client.name.isEmpty)
+        #expect(changed.clientID == 1 && updated.newClientIndexByDigits.isEmpty)
     }
 
     // MARK: Both formats
