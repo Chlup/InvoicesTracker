@@ -74,7 +74,9 @@ The code is layered, bottom to top:
   `AppModel.budgetInvoices()` (`AppModel+Budget.swift`) loads the invoices the screen draws on.
 - **Feature services**, used by the models:
   - `ExchangeRates/`: ČNB daily rates, and the GFŘ uniform rate of a year;
-  - `Import/`: Fakturoid CSV import;
+  - `Import/`: Fakturoid import of CSV exports and ISDOC invoices. The ISDOC sets what an invoice prints, the CSV
+    sets its status, payment, language and payment method, and each file is applied only when it changed since its
+    last import;
   - `Invoices/`: numbering, PDF and the QR payment code;
   - `Search/`.
 - **Updates** (`Updates/`). Sparkle 2 updates the app from the feed

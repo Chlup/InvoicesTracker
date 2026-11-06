@@ -42,6 +42,25 @@ struct InvoicePDFTests {
 
     // MARK: A Czech invoice in crowns
 
+    /// The items of an invoice imported from ISDOC come from the real reader and builder, and the page prints each
+    /// item's quantity, unit and description.
+    @Test func anInvoiceImportedFromIsdocPrintsItsQuantityUnitAndDescription() throws {
+        let isdoc = try IsdocReader.read(Data(contentsOf: fixtureURL("czk-21", "isdoc")))
+        let items = IsdocInvoiceBuilder.items(of: isdoc).items
+        let invoice = Invoice.fixture(number: isdoc.number, items: items)
+
+        let (_, pdf) = try Probe.render(invoice)
+
+        let text = try Probe.text(of: pdf)
+        for expected in ["7", "hod", "Správa IT a podpora – září 2026"] {
+            #expect(text.contains(expected), "\(expected) is missing from the page")
+        }
+        let printed = try #require(items.first)
+        #expect(printed.quantity == decimal("7"))
+        #expect(printed.unit == "hod")
+    }
+
+
     @Test func aCzechInvoiceInCrownsIsOneA4PageWithItsTextAndQRCode() throws {
         let (_, pdf) = try Probe.render(Fixtures.crownInvoice())
 
