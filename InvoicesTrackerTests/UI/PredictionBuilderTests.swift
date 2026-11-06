@@ -7,7 +7,7 @@ import Testing
 /// prediction sample as of Saturday 17. 10. 2026, and its closed years 2025 and 2024; the incomes and the levies are
 /// those of `PredictionGoldenTests`. Below the income line the figures are the engine's own, which rounds the income
 /// to whole crowns first: the profit of 2026 is 1 543 157 Kč and the base of the health insurance 771 578,50 Kč. The
-/// years the engine has no rules for, 2021 and 2027, take the settings of the sample's 2024 and 2026. In every
+/// years the engine has no rules for, 2021 and 2028, take the settings of the sample's 2024 and 2026. In every
 /// expected string `\u{A0}` is the no-break space.
 struct PredictionBuilderTests {
     // MARK: Helpers
@@ -68,12 +68,13 @@ struct PredictionBuilderTests {
         return try PredictionOutcome.make(prediction: IncomePrediction.make(input), yearInput: yearInput)
     }
 
-    /// The outcome of 2027 on 15. 1. 2027, a year in progress that the engine has no rules for: the settings, the
-    /// deductions, the advances and the family of the sample's 2026, and the prediction of the sample's 2027.
-    private func outcomeOf2027() throws -> PredictionOutcome {
-        let input = PredictionSample.input(year: 2027, today: civilDate("2027-01-15"))
+    /// The outcome of 2028 on 15. 1. 2028, a year in progress that the engine has no rules for: the settings, the
+    /// deductions, the advances and the family of the sample's 2026, and the prediction of the sample's 2028. The
+    /// sample's invoices end in November 2026, so the prediction of 2028 has hardly any clients left.
+    private func outcomeOf2028() throws -> PredictionOutcome {
+        let input = PredictionSample.input(year: 2028, today: civilDate("2028-01-15"))
         var yearInput = PredictionSample.yearInput(year: 2026)
-        yearInput.year = 2027
+        yearInput.year = 2028
         return try PredictionOutcome.make(prediction: IncomePrediction.make(input), yearInput: yearInput)
     }
 
@@ -325,11 +326,11 @@ struct PredictionBuilderTests {
     /// says that the rules are another year's.
     @Test func theIncomeTotalHasNoEstimateSign() throws {
         let sample = try makePage()
-        let page2027 = PredictionBuilder.page(try outcomeOf2027())
+        let page2028 = PredictionBuilder.page(try outcomeOf2028())
 
         #expect(!sample.incomeTotal.contains("≈"))
-        #expect(!page2027.keyFigure.figure.contains("≈"))
-        #expect(!page2027.incomeTotal.contains("≈"))
+        #expect(!page2028.keyFigure.figure.contains("≈"))
+        #expect(!page2028.incomeTotal.contains("≈"))
     }
 
     /// The annual daily conversion explanation remains the same under a uniform payment preference.
@@ -1386,22 +1387,22 @@ struct PredictionBuilderTests {
                     sentenceEmphasis: "0\u{A0}Kč"))
     }
 
-    /// The first weeks of 2027 are in progress, and the engine has no rules for the year yet: it works the levies out
-    /// with those of 2026. The result card is an estimate as a whole ("Odhad odvodů za celý rok 2027"), so none of its
+    /// The first weeks of 2028 are in progress, and the engine has no rules for the year yet: it works the levies out
+    /// with those of 2027. The result card is an estimate as a whole ("Odhad odvodů za celý rok 2028"), so none of its
     /// figures has the sign "≈", and the warning above the page says that the rules are another year's: not the sum of
     /// the levies, not the legend, rows and readings of the bar, not what is left to settle ("Odhad přeplatku záloh")
     /// and not the figures of the net income, which sit in a card that is an estimate too. The label and the banner are
     /// those of a year in progress, and so is the caption of the net income.
     @Test func aYearInProgressWithoutItsOwnRulesHasNoApproximationInItsResultCard() throws {
-        let outcome = try outcomeOf2027()
+        let outcome = try outcomeOf2028()
         let page = PredictionBuilder.page(outcome)
 
         #expect(outcome.result.rulesAreEstimate)
-        #expect(outcome.result.rules.year == 2026)
+        #expect(outcome.result.rules.year == 2027)
         #expect(outcome.owedTotal == 0)
         #expect(outcome.overpaidTotal > 0)
-        #expect(page.keyFigure.eyebrow == "Odhad odvodů za celý rok 2027")
-        #expect(page.levyBar.header == "Odvody za celý rok 2027 podle úřadů")
+        #expect(page.keyFigure.eyebrow == "Odhad odvodů za celý rok 2028")
+        #expect(page.levyBar.header == "Odvody za celý rok 2028 podle úřadů")
         #expect(page.due.eyebrow == "Odhad přeplatku záloh")
         #expect(page.due.figure == CzechFormat.wholeKc(outcome.overpaidTotal))
         #expect(
@@ -1410,8 +1411,8 @@ struct PredictionBuilderTests {
                 + " převýší odvody – rozdíl se vrátí po podání přiznání a přehledů.")
         let marked = resultTexts(of: page) + incomeTexts(of: page)
         #expect(marked.filter { $0.contains("≈") }.isEmpty, "\(marked.filter { $0.contains("≈") })")
-        #expect(page.calculation.rows[0].label == "Příjmy za rok 2027")
-        #expect(page.banner.hasPrefix("Odhad vychází z faktur do 15.\u{A0}1.\u{A0}2027"))
+        #expect(page.calculation.rows[0].label == "Příjmy za rok 2028")
+        #expect(page.banner.hasPrefix("Odhad vychází z faktur do 15.\u{A0}1.\u{A0}2028"))
     }
 
     // MARK: A year with a payment at a provisional rate
@@ -1768,7 +1769,7 @@ struct PredictionBuilderTests {
             try makePage(), try makePage(changes: [foxtrot: [11: false], sierra: [11: true, 12: true]]),
             try makePage(of: single),
         ]
-        let page2027 = PredictionBuilder.page(try outcomeOf2027())
+        let page2028 = PredictionBuilder.page(try outcomeOf2028())
 
         for page in pages {
             let all = texts(of: page)
@@ -1777,8 +1778,8 @@ struct PredictionBuilderTests {
             // None of them is in the result card or in the card Příjmy.
             #expect((resultTexts(of: page) + incomeTexts(of: page)).filter { $0.contains("≈") }.isEmpty)
         }
-        #expect(approximationsWithoutNoBreakSpace(in: texts(of: page2027)).isEmpty)
-        #expect((resultTexts(of: page2027) + incomeTexts(of: page2027)).filter { $0.contains("≈") }.isEmpty)
+        #expect(approximationsWithoutNoBreakSpace(in: texts(of: page2028)).isEmpty)
+        #expect((resultTexts(of: page2028) + incomeTexts(of: page2028)).filter { $0.contains("≈") }.isEmpty)
     }
 
     /// An annual CZK caption explains the qualifying payments and their separate daily conversions.

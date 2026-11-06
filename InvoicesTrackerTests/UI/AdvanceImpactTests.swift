@@ -332,6 +332,18 @@ struct AdvanceImpactTests {
         #expect(capped.hints.giftsAllowed == "120\u{00A0}000\u{00A0}Kč")
     }
 
+    /// From 2027 gifts take off at most 15 % of the base: of a profit of 400 000 Kč (1 000 000 Kč at 60 %) that is
+    /// 60 000 Kč, where 2026 allows 30 %, 120 000 Kč.
+    @Test func theGiftsOf2027TakeOffAtMost15PercentOfTheProfit() throws {
+        let in2027 = try Self.build(Self.input(year: 2027, crowns: 1_000_000, deductions: Deductions(gifts: 200_000)))
+        #expect(in2027.hints.giftsAllowed == "60\u{00A0}000\u{00A0}Kč")
+        #expect(in2027.hints.giftsNote == "od 1 000 Kč (nebo nad 2 % základu), nejvýš 15 % základu")
+
+        let in2026 = try Self.build(Self.input(year: 2026, crowns: 1_000_000, deductions: Deductions(gifts: 200_000)))
+        #expect(in2026.hints.giftsAllowed == "120\u{00A0}000\u{00A0}Kč")
+        #expect(in2026.hints.giftsNote == "od 1 000 Kč (nebo nad 2 % základu), nejvýš 30 % základu")
+    }
+
     // MARK: Which deductions are kept
 
     @Test func aSelectionOfDeductionsKeepsOnlyTheClaimsOfThoseAndTheRestOfTheSettings() {

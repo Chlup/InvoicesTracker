@@ -192,12 +192,12 @@ struct OverviewModelTests {
         #expect(years.map(\.issuedNetHalere) == [450_000, 219_177_135])
         #expect(years.map(\.receivedNetHalere) == [450_000, 219_177_135])
 
-        // At New Year the app moves to 2027, whose rules the app does not have yet.
-        app.handleDayChanged(civilDate("2027-01-01"))
+        // At the New Year of 2028 the app moves to a year whose rules the app does not have yet.
+        app.handleDayChanged(civilDate("2028-01-01"))
         await model.load()
 
         #expect(
-            model.rulesWarning == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
+            model.rulesWarning == "Pravidla pro rok 2028 zatím nejsou v aplikaci – výpočet je odhad podle roku 2027.")
     }
 
     /// Přehled and Výpočet show one bar of the levies: loaded from the same app, in a year in progress, in a year that
@@ -229,18 +229,18 @@ struct OverviewModelTests {
         #expect(try #require(overview.data).levies.header == "Odvody za rok 2025")
     }
 
-    @Test func theNewYearIsAnEstimateWithTheRulesOfTheYearBeforeIt() async throws {
+    @Test func theYearAfterTheLastRulesIsAnEstimateWithTheRulesOfTheLastYear() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
         let model = await loadedModel(of: app)
         #expect(model.rulesWarning == nil)
 
-        app.handleDayChanged(civilDate("2027-01-01"))
+        app.handleDayChanged(civilDate("2028-01-01"))
         await model.load()
 
         #expect(
-            model.rulesWarning == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
+            model.rulesWarning == "Pravidla pro rok 2028 zatím nejsou v aplikaci – výpočet je odhad podle roku 2027.")
         let data = try #require(model.data)
         #expect(data.levies.header == "Odvody z příjmů do 1.\u{00A0}1.")
         #expect(data.latestReceipts.isEmpty)
@@ -1020,16 +1020,16 @@ struct OverviewModelTests {
         }
     }
 
-    /// Last December's invoice that is due in January counts in January. The year in progress, 2027, has no rules in
-    /// the app yet and is worked out with those of 2026 as an estimate, but the calculation does not mark its figures
+    /// Last December's invoice that is due in January counts in January. The year in progress, 2028, has no rules in
+    /// the app yet and is worked out with those of 2027 as an estimate, but the calculation does not mark its figures
     /// for that, so the average has the one sign of the invoices it counts.
     @Test func lastDecembersInvoiceDueInJanuaryCountsInJanuary() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
-        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2027, 1, 15)))
+        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2028, 1, 15)))
         try await startFresh(app)
-        try await store([dueInvoice("20261201", issued: "2026-12-20", due: "2027-01-05")], in: app)
-        #expect(app.today == civilDate("2027-01-15"))
+        try await store([dueInvoice("20271201", issued: "2027-12-20", due: "2028-01-05")], in: app)
+        #expect(app.today == civilDate("2028-01-15"))
 
         let model = await loadedModel(of: app)
 
@@ -1238,7 +1238,7 @@ struct OverviewModelTests {
 
         #expect(model.data?.levies.header == "Odvody z příjmů do 1.\u{00A0}1.")
         #expect(model.data?.latestReceipts.isEmpty == true)
-        #expect(model.rulesWarning != nil)
+        #expect(model.rulesWarning == nil)
     }
 
     // MARK: When the data cannot be loaded

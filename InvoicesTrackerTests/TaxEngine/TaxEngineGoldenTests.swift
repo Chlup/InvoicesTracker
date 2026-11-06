@@ -16,8 +16,8 @@ struct TaxEngineGoldenTests {
     /// Guards the filter above, so a typo in the vectors cannot quietly drop cases from the test.
     @Test func mainActivityCasesAreSixScenariosOfEveryYear() {
         let cases = TaxEngineGoldenTests.mainActivityCases
-        #expect(cases.count == 30)
-        for year in 2022...2026 {
+        #expect(cases.count == 36)
+        for year in 2022...2027 {
             let names = cases.filter { $0.year == year }.map(\.name)
             #expect(names == ["S1", "S2", "S3", "S4", "S8", "S8g"], "\(year)")
         }

@@ -1391,30 +1391,30 @@ struct OverviewBuilderTests {
         #expect(columns[1].netAverage?.note == nil)
     }
 
-    /// 2027 is after the newest year the app has rules for, so the engine works it out with the rules of 2026. Once
-    /// 2026 is finished and 2027 has begun, the chart by years marks 2027 as an estimate and keeps its point on the
+    /// 2028 is after the newest year the app has rules for, so the engine works it out with the rules of 2027. Once
+    /// 2027 is finished and 2028 has begun, the chart by years marks 2028 as an estimate and keeps its point on the
     /// line, and leaves 2026, which has rules of its own, as it was.
     @Test func aLaterYearComputedWithTheRulesOfTheSelectedOneIsMarkedWhenThatYearIsFinished() {
         let january = Receipt(
-            day: civilDate("2027-01-10"), czkNetHalere: 20_000_000, czkVatHalere: 0, source: .synthetic)
-        let r2027 = TaxEngine.compute(
-            yearInput(year: 2027, receipts: [january], advances: .empty), asOf: civilDate("2027-01-15"))
-        #expect(r2027.rulesAreEstimate)
-        #expect(r2027.rules.year == 2026)
+            day: civilDate("2028-01-10"), czkNetHalere: 20_000_000, czkVatHalere: 0, source: .synthetic)
+        let r2028 = TaxEngine.compute(
+            yearInput(year: 2028, receipts: [january], advances: .empty), asOf: civilDate("2028-01-15"))
+        #expect(r2028.rulesAreEstimate)
+        #expect(r2028.rules.year == 2027)
         let whole2026 = TaxEngine.compute(PredictionSample.yearInput(year: 2026), asOf: civilDate("2026-12-31"))
 
         let columns = build(
             input(
-                year: 2026, asOf: "2026-12-31", today: "2027-01-15", result: whole2026, chartMode: .years,
-                chartYears: [2026, 2027], netIncomeResults: [2026: whole2026, 2027: r2027])
+                year: 2026, asOf: "2026-12-31", today: "2028-01-15", result: whole2026, chartMode: .years,
+                chartYears: [2026, 2028], netIncomeResults: [2026: whole2026, 2028: r2028])
         ).columns
 
-        #expect(columns[1].netIncomeHalere == NetIncome(r2027).yearKc * 100)
+        #expect(columns[1].netIncomeHalere == NetIncome(r2028).yearKc * 100)
         #expect(columns[1].netIncomeText?.hasPrefix("≈\u{00A0}") == true, "\(columns[1])")
         #expect(columns[1].netAverage?.value.hasPrefix("≈\u{00A0}") == true, "\(columns[1])")
         #expect(
             columns[1].netAverage?.note
-                == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
+                == "Pravidla pro rok 2028 zatím nejsou v aplikaci – výpočet je odhad podle roku 2027.")
         #expect(columns[0].netIncomeText == "1\u{00A0}933\u{00A0}471\u{00A0}Kč")
         #expect(columns[0].netAverage?.note == nil)
     }
@@ -1542,8 +1542,8 @@ struct OverviewBuilderTests {
         }
     }
 
-    /// 2027 is after the newest year the app has rules for, so the engine works it out with the rules of 2026. In
-    /// January 2027, 200 000 Kč received on 10. 1. and 100 000 Kč of unpaid invoices due by 31. 1. counted as paid on
+    /// 2028 is after the newest year the app has rules for, so the engine works it out with the rules of 2027. In
+    /// January 2028, 200 000 Kč received on 10. 1. and 100 000 Kč of unpaid invoices due by 31. 1. counted as paid on
     /// 15. 1. make the profit of 120 000 Kč (the expenses are 60 %): the 15 % tax of 18 000 Kč is below the taxpayer
     /// credit, the social insurance is 19 272 Kč (29,2 % of the 55 % of the profit) and the health insurance 8 100 Kč
     /// (13,5 % of the 50 %), together 27 372 Kč, so the 300 000 Kč leave 272 628 Kč, the average of the one month. The
@@ -1552,23 +1552,23 @@ struct OverviewBuilderTests {
     /// the warning above the page says it.
     @Test func aDueAverageWithTheRulesOfAnotherYearHasOneSignAndBothNotes() {
         let received = Receipt(
-            day: civilDate("2027-01-10"), czkNetHalere: 20_000_000, czkVatHalere: 0, source: .synthetic)
-        let year2027 = yearInput(year: 2027, receipts: [received], advances: .empty)
-        let soFar = TaxEngine.compute(year2027, asOf: civilDate("2027-01-15"))
-        let due = dueNetIncome(of: year2027, asOf: "2027-01-15", through: "2027-01-31")
+            day: civilDate("2028-01-10"), czkNetHalere: 20_000_000, czkVatHalere: 0, source: .synthetic)
+        let year2028 = yearInput(year: 2028, receipts: [received], advances: .empty)
+        let soFar = TaxEngine.compute(year2028, asOf: civilDate("2028-01-15"))
+        let due = dueNetIncome(of: year2028, asOf: "2028-01-15", through: "2028-01-31")
         #expect(due.result.rulesAreEstimate)
-        #expect(due.result.rules.year == 2026)
+        #expect(due.result.rules.year == 2027)
 
-        let months = build(input(year: 2027, asOf: "2027-01-31", today: "2027-01-15", result: soFar, dueNetIncome: due))
+        let months = build(input(year: 2028, asOf: "2028-01-31", today: "2028-01-15", result: soFar, dueNetIncome: due))
         let years = build(
             input(
-                year: 2027, asOf: "2027-01-31", today: "2027-01-15", result: soFar, chartMode: .years,
-                chartYears: [2026, 2027], netIncomeResults: [2027: soFar], dueNetIncome: due))
+                year: 2028, asOf: "2028-01-31", today: "2028-01-15", result: soFar, chartMode: .years,
+                chartYears: [2027, 2028], netIncomeResults: [2028: soFar], dueNetIncome: due))
 
         let value = "≈\u{00A0}272\u{00A0}628\u{00A0}Kč"
         let note =
             "Včetně nezaplacených faktur splatných do 31.\u{00A0}1. "
-            + RulesWarning.message(year: 2027, rulesYear: 2026)
+            + RulesWarning.message(year: 2028, rulesYear: 2027)
         #expect(months.calculation[3].value == value)
         #expect(months.calculation[3].note == "včetně nezaplacených faktur splatných do 31.\u{00A0}1.")
         #expect(months.calculation[3].period == "·\u{00A0}1\u{00A0}měsíc")
@@ -1578,7 +1578,7 @@ struct OverviewBuilderTests {
         #expect(years.columns.map { $0.netAverage?.note } == [nil, note])
         #expect(
             months.columns[0].accessibilityLabel.hasSuffix(
-                "; Průměrný čistý příjem za měsíc v roce 2027 (leden) " + value + "; " + note),
+                "; Průměrný čistý příjem za měsíc v roce 2028 (leden) " + value + "; " + note),
             "\(months.columns[0].accessibilityLabel)")
     }
 

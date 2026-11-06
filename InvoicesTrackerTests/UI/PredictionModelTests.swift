@@ -138,13 +138,13 @@ struct PredictionModelTests {
     }
 
     /// A load that fails takes the page away with the warnings that stood above it, and a later one that works brings
-    /// the page back. On 15. 1. 2027 the page of 2027 has both warnings, as 2027 has no rules of its own and a payment
+    /// the page back. On 15. 1. 2028 the page of 2028 has both warnings, as 2028 has no rules of its own and a payment
     /// of January is at a provisional rate, so that the test sees them go. The load that fails is the one of 2026, the
     /// year chosen next.
     @Test func aLoadThatFailsTakesThePageAndItsWarningsAwayAndALaterOneRecovers() async throws {
-        try await withSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+        try await withSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
             let database = try #require(app.database)
-            try await database.saveInvoiceWithProvisionalPayment(on: "2027-01-10")
+            try await database.saveInvoiceWithProvisionalPayment(on: "2028-01-10")
             let model = await loadedModel(of: app)
             #expect(model.page != nil)
             #expect(model.rulesWarning != nil)
@@ -189,20 +189,20 @@ struct PredictionModelTests {
         }
     }
 
-    /// The warnings are loaded and dropped with the page, so the newer load decides them too. On 15. 1. 2027 the older
-    /// load is for 2027, which has no rules of its own and a payment at a provisional rate, so it has both warnings.
-    /// The newer one is for 2026, which has neither. Three drafts of 2027 in other currencies give the older load more
+    /// The warnings are loaded and dropped with the page, so the newer load decides them too. On 15. 1. 2028 the older
+    /// load is for 2028, which has no rules of its own and a payment at a provisional rate, so it has both warnings.
+    /// The newer one is for 2026, which has neither. Three drafts of 2028 in other currencies give the older load more
     /// to read, the rates of those currencies, so that it ends last. The page still ends as the newer load made it:
     /// 2026's, without a warning.
     @Test func theWarningsOfLoadsThatOverlapAreThoseOfTheNewerOne() async throws {
-        try await withSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+        try await withSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
             let database = try #require(app.database)
-            try await database.saveInvoiceWithProvisionalPayment(on: "2027-01-10")
-            for (number, code) in [("20270111", "GBP"), ("20270112", "CHF"), ("20270113", "PLN")] {
+            try await database.saveInvoiceWithProvisionalPayment(on: "2028-01-10")
+            for (number, code) in [("20280111", "GBP"), ("20280112", "CHF"), ("20280113", "PLN")] {
                 try await database.saveInvoice(
                     Invoice.fixture(
-                        number: number, currency: CurrencyCode(code)!, issued: "2027-01-12", duzp: "2027-01-12",
-                        dueDate: "2027-01-26", status: .draft))
+                        number: number, currency: CurrencyCode(code)!, issued: "2028-01-12", duzp: "2028-01-12",
+                        dueDate: "2028-01-26", status: .draft))
             }
             let model = await loadedModel(of: app)
             #expect(model.rulesWarning != nil)
@@ -222,7 +222,7 @@ struct PredictionModelTests {
 
     // MARK: The warnings above the page
 
-    /// 2027 has no tax rules of its own yet, so on 15. 1. 2027 its page is an estimate with the rules of 2026, and says
+    /// 2028 has no tax rules of its own yet, so on 15. 1. 2028 its page is an estimate with the rules of 2027, and says
     /// so. On 17. 10. 2026 the page of 2026, which has rules of its own, has no warning.
     @Test func aYearWithoutItsOwnRulesIsSaidAboveThePage() async throws {
         try await withSample { app in
@@ -232,26 +232,26 @@ struct PredictionModelTests {
             #expect(model.rulesWarning == nil)
             #expect(model.provisionalNotice == nil)
         }
-        try await withSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+        try await withSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
             let model = await loadedModel(of: app)
 
-            #expect(model.page?.keyFigure.eyebrow == "Odhad odvodů za celý rok 2027")
+            #expect(model.page?.keyFigure.eyebrow == "Odhad odvodů za celý rok 2028")
             #expect(
                 model.rulesWarning
-                    == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
+                    == "Pravidla pro rok 2028 zatím nejsou v aplikaci – výpočet je odhad podle roku 2027.")
             #expect(model.provisionalNotice == nil)
         }
     }
 
-    /// The warning is about the page it stands above: 2026, chosen after 2027, has rules of its own and takes it away.
-    /// So does the notice of a payment at a provisional rate, which is a payment of 2027 and none of 2026: a load that
+    /// The warning is about the page it stands above: 2026, chosen after 2028, has rules of its own and takes it away.
+    /// So does the notice of a payment at a provisional rate, which is a payment of 2028 and none of 2026: a load that
     /// succeeds sets it to nil as well.
     @Test func theWarningGoesWithAYearThatHasItsOwnRules() async throws {
-        try await withSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+        try await withSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
             let database = try #require(app.database)
-            try await database.saveInvoiceWithProvisionalPayment(on: "2027-01-10")
+            try await database.saveInvoiceWithProvisionalPayment(on: "2028-01-10")
             let model = await loadedModel(of: app)
-            #expect(model.rulesWarning == RulesWarning.message(year: 2027, rulesYear: 2026))
+            #expect(model.rulesWarning == RulesWarning.message(year: 2028, rulesYear: 2027))
             #expect(model.provisionalNotice == RulesWarning.provisionalIncome)
 
             app.selectYear(2026)
@@ -322,14 +322,14 @@ struct PredictionModelTests {
     /// The two warnings are about different things: a year without rules of its own can have a payment at a
     /// provisional rate, and then the page has both.
     @Test func bothWarningsCanShowTogether() async throws {
-        try await withSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+        try await withSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
             let database = try #require(app.database)
-            try await database.saveInvoiceWithProvisionalPayment(on: "2027-01-10")
+            try await database.saveInvoiceWithProvisionalPayment(on: "2028-01-10")
 
             let model = await loadedModel(of: app)
 
             #expect(model.page != nil)
-            #expect(model.rulesWarning == RulesWarning.message(year: 2027, rulesYear: 2026))
+            #expect(model.rulesWarning == RulesWarning.message(year: 2028, rulesYear: 2027))
             #expect(model.provisionalNotice == RulesWarning.provisionalIncome)
         }
     }

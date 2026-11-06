@@ -1208,13 +1208,13 @@ struct YearTabModelTests {
     @Test func aYearWithoutRulesOfItsOwnSaysItIsAnEstimate() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
-        let app = try await makeSettingsApp(in: directory, clock: ManualClock(localNoon(2027, 1, 20)))
+        let app = try await makeSettingsApp(in: directory, clock: ManualClock(localNoon(2028, 1, 20)))
 
         let model = await loadedModel(of: app)
 
-        #expect(model.year == 2027)
-        #expect(model.rulesVersion == "verze 2026.1 · ověřeno 20.\u{00A0}10.\u{00A0}2026")
-        #expect(model.rulesWarning == RulesWarning.message(year: 2027, rulesYear: 2026))
+        #expect(model.year == 2028)
+        #expect(model.rulesVersion == "verze 2027.1 · ověřeno 6.\u{00A0}11.\u{00A0}2026")
+        #expect(model.rulesWarning == RulesWarning.message(year: 2028, rulesYear: 2027))
     }
 
     // MARK: Úpravy příjmů

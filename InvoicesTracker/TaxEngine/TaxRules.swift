@@ -95,7 +95,7 @@ nonisolated struct TaxRules: Sendable, Hashable {
     // MARK: Constants of every supported year
 
     /// The years that have rules.
-    static let supportedYears = 2022...2026
+    static let supportedYears = 2022...2027
 
     /// Income tax rate up to `taxBandThreshold` (§ 16 odst. 1 zákona č. 586/1992 Sb.).
     static let taxRateLow = DecimalMath.decimal("0.15")!
@@ -106,7 +106,7 @@ nonisolated struct TaxRules: Sendable, Hashable {
     /// Social insurance rate of an OSVČ (§ 7 zákona č. 589/1992 Sb.).
     static let socialRate = DecimalMath.decimal("0.292")!
 
-    /// Health insurance rate (§ 2 odst. 2 zákona č. 592/1992 Sb.).
+    /// Health insurance rate (§ 2 odst. 1 zákona č. 592/1992 Sb.).
     static let healthRate = DecimalMath.decimal("0.135")!
 
     /// The share of the profit that is the health insurance assessment base (§ 3a zákona č. 592/1992 Sb.).
@@ -136,8 +136,8 @@ nonisolated struct TaxRules: Sendable, Hashable {
 
     /// The rules of `year`, and whether they are only an estimate.
     ///
-    /// A year outside `supportedYears` gets the rules of the nearest supported year with `isEstimate` set: 2027 uses
-    /// the 2026 rules and 2021 the 2022 rules. The returned rules keep their own `year`.
+    /// A year outside `supportedYears` gets the rules of the nearest supported year with `isEstimate` set: 2028 uses
+    /// the 2027 rules and 2021 the 2022 rules. The returned rules keep their own `year`.
     static func forYear(_ year: Int) -> (rules: TaxRules, isEstimate: Bool) {
         let nearest = min(max(year, supportedYears.lowerBound), supportedYears.upperBound)
         guard let rules = byYear[nearest] else {
