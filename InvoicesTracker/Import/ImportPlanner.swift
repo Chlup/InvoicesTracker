@@ -357,10 +357,10 @@ nonisolated enum ImportPlanner {
     /// not change it, so the same files in another import give it again.
     ///
     /// It is never the fingerprint of a single file, also when the files of that kind are all alike, so that a later
-    /// import that has one of them alone applies it. A kind whose files are alike and whose file the held invoice
-    /// holds already is stored under the fingerprint of that file instead (see `plan`). The prefix tells which kind of
-    /// file an invoice is held for (`isFingerprintOfDifferingFiles(_:)`). Holds made before the prefix existed were
-    /// development data only, never released, so nothing is migrated.
+    /// import that has one of them alone applies it. A kind whose files are alike and whose file the held invoice holds
+    /// already is stored under the fingerprint of that file instead (see `plan`). The prefix tells which kind of file
+    /// an invoice is held for (`isFingerprintOfDifferingFiles(_:)`). Holds made before the prefix existed were never
+    /// released, so nothing is migrated.
     static func fingerprint(ofAll fingerprints: [String]) -> String {
         let distinct = Set(fingerprints).sorted()
         var hasher = SHA256()
@@ -404,12 +404,14 @@ nonisolated enum ImportPlanner {
     /// new invoice are always stored under the fingerprint of their set, since the hold takes the payment and the
     /// review of its row away. The fingerprint of differing files is recognizable
     /// (`isFingerprintOfDifferingFiles(_:)`), so it tells which kind of file the invoice is held for; an invoice with
-    /// the flag and no such fingerprint was held by the import as it was before ISDOC files, for its rows. While the
-    /// invoice still carries that flag, an import whose files of it do not differ ends the hold only when it brings
-    /// every kind the invoice is held for: the files of those kinds are applied whatever the invoice is stored under,
-    /// the row's status, payment and review replace the flag, and without a row applied the flag goes. An import that
-    /// lacks a held kind applies no file of a held kind, applies the other kind as usual, and leaves the flag. A flag
-    /// the person has resolved is not asked about.
+    /// the flag and no such fingerprint was held by the import as it was before ISDOC files, for its rows. A hold never
+    /// drops a kind the invoice is held for already, and a hold that displaces a flag of the invoice's own, such as
+    /// "zrušeno ve Fakturoidu", holds its rows too, so that the hold ends only with an import that brings its row,
+    /// which brings that flag back. While the invoice still carries that flag, an import whose files of it do not
+    /// differ ends the hold only when it brings every kind the invoice is held for: the files of those kinds are
+    /// applied whatever the invoice is stored under, the row's status, payment and review replace the flag, and without
+    /// a row applied the flag goes. An import that lacks a held kind applies no file of a held kind, applies the other
+    /// kind as usual, and leaves the flag. A flag the person has resolved is not asked about.
     ///
     /// **Matching.** An invoice is matched by the digits of its number and its currency, an invoice made in the app as
     /// much as an imported one. A group without a match is added (unless an imported invoice has the Fakturoid id of
@@ -418,18 +420,18 @@ nonisolated enum ImportPlanner {
     /// that of the stored invoice (when both are known) are conflicts, which leave the stored invoice as it is.
     ///
     /// **Applying.** The ISDOC invoice is applied first, when there is no stored invoice, the file differs from the one
-    /// the invoice was last imported from (`Invoice.isdocFingerprint`), or the invoice is still held for files that
-    /// differed and this import ends the hold. It sets the lines, the note, the number, the dates, the currency, the
-    /// rate (a foreign file without one keeps the rate the invoice has), the printed client but its e-mail, and the VAT
-    /// mode. Then the row is applied, when there is no stored invoice, the invoice was made in the app, the row differs
-    /// from the one the invoice was last imported from, or the invoice is still held for files that differed and this
-    /// import ends the hold. Until the hold ends, no file of a kind the invoice is held for is applied. On an invoice
-    /// the ISDOC owns (it was imported from an ISDOC file, or one is in this group) the row sets only the state: the
-    /// status and the payment, the review flag, the language, the payment method, the e-mail of the client, the kind of
-    /// a VAT of 0 % and the Fakturoid id with the fingerprint of the row. On any other invoice the row gives all of it,
-    /// with one item "Import z Fakturoidu" at the subtotal. A group of which nothing is applied is unchanged. Whether
-    /// the invoice was changed in the app is not asked: Fakturoid is the source of truth, and every invoice the plan
-    /// updates is saved as not changed in the app, an invoice made in the app as an imported one.
+    /// the invoice was last imported from (`Invoice.isdocFingerprint`), or the invoice is held for its ISDOC files and
+    /// this import ends the hold. It sets the lines, the note, the number, the dates, the currency, the rate (a foreign
+    /// file without one keeps the rate the invoice has), the printed client but its e-mail, and the VAT mode. Then the
+    /// row is applied, when there is no stored invoice, the invoice was made in the app, the row differs from the one
+    /// the invoice was last imported from, or the invoice is held for its rows and this import ends the hold. Until the
+    /// hold ends, no file of a kind the invoice is held for is applied. On an invoice the ISDOC owns (it was imported
+    /// from an ISDOC file, or one is in this group) the row sets only the state: the status and the payment, the review
+    /// flag, the language, the payment method, the e-mail of the client, the kind of a VAT of 0 % and the Fakturoid id
+    /// with the fingerprint of the row. On any other invoice the row gives all of it, with one item
+    /// "Import z Fakturoidu" at the subtotal. A group of which nothing is applied is unchanged. Whether the invoice was
+    /// changed in the app is not asked: Fakturoid is the source of truth, and every invoice the plan updates is saved
+    /// as not changed in the app, an invoice made in the app as an imported one.
     ///
     /// **The payment.** A row with a review reason holds the invoice and gives no payment, and so does a row that is
     /// not paid. A paid row keeps the stored payment when it was received on the day of the row, which keeps how the
