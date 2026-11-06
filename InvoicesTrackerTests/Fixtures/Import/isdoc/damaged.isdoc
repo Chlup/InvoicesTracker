@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://isdoc.cz/namespace/2013" version="6.0.2">
+  <DocumentType>1</DocumentType>
+  <ID>20260902</ID>
+  <UUID>6f1c2b1e-3d4a-4b5c-8d9e-0a1b2c3d4e5f</UUID>
+  <IssuingSystem>Fakturoid.cz</IssuingSystem>
+  <IssueDate>2026-09-02</IssueDate>
+  <TaxPointDate>2026-09-02</TaxPointDate>
+  <Note>Fakturujeme vám za září.
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <AccountingSupplierParty>
+    <Party>
+      <PartyIdentification>
+        <ID>17392047</ID>
+      </PartyIdentification>
+      <PartyName>
+        <Name>Truhlářství Doubek s.r.o.</Name>
+      </PartyName>
+      <PostalAddress>
+        <StreetName>Na Výsluní</StreetName>
+        <BuildingNumber>112</BuildingNumber>
+        <CityName>Benešov</CityName>
+        <PostalZone>25601</PostalZone>
+        <Country>
+          <IdentificationCode>CZ</IdentificationCode>
+          <Name>CZ</Name>
+        </Country>
+      </PostalAddress>
+      <PartyTaxScheme>
+        <CompanyID>CZ17392047</CompanyID>
+        <TaxScheme>VAT</TaxScheme>
+      </PartyTaxScheme>
+    </Party>
+  </AccountingSupplierParty>
+  <AccountingCustomerParty>
+    <Party>
+      <PartyIdentification>
+        <ID>17392047</ID>
+      </PartyIdentification>
+      <PartyName>
+        <Name>Truhlářství Doubek s.r.o.</Name>
+      </PartyName>
+      <PostalAddress>
+        <StreetName>Na Výsluní</StreetName>
+        <BuildingNumber>112</BuildingNumber>
+        <CityName>Benešov</CityName>
+        <PostalZone>25601</PostalZone>
+        <Country>
+          <IdentificationCode>CZ</IdentificationCode>
+          <Name>CZ</Name>
+        </Country>
+      </PostalAddress>
+      <PartyTaxScheme>
+        <CompanyID>CZ17392047</CompanyID>
+        <TaxScheme>VAT</TaxScheme>
+      </PartyTaxScheme>
+    </Party>
+  </AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine>
+      <ID>1</ID>
+      <InvoicedQuantity unitCode="hod">6.5</InvoicedQuantity>
+      <LineExtensionAmount>5200.0</LineExtensionAmount>
+      <LineExtensionTaxAmount>0.0</LineExtensionTaxAmount>
+      <UnitPrice>800.0</UnitPrice>
+      <ClassifiedTaxCategory>
+        <Percent>21.0</Percent>
+        <VATCalculationMethod>0</VATCalculationMethod>
+      </ClassifiedTaxCategory>
+      <Item>
+        <Description>IT služby</Description>
+      </Item>
+    </InvoiceLine>
+  </InvoiceLines>
+  <PaymentMeans>
+    <Payment>
+      <PaidAmount>0.0</PaidAmount>
+      <PaymentMeansCode>42</PaymentMeansCode>
+      <Details>
+        <PaymentDueDate>2026-09-16</PaymentDueDate>
+        <VariableSymbol>20260902</VariableSymbol>
+      </Details>
+    </Payment>
+  </PaymentMeans>
+</Invoice>

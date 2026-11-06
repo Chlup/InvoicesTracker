@@ -18,12 +18,28 @@ nonisolated enum ImportError: Error, Equatable, LocalizedError {
     /// The file cannot be opened, or it is not text in UTF-8.
     case unreadableFile
 
+    /// The file is not an ISDOC invoice: it is damaged XML, or its root is not an `Invoice` of the ISDOC namespace.
+    case notAnIsdocInvoice
+
+    /// The ISDOC invoice has no `ID`, the number of the invoice.
+    case isdocWithoutNumber
+
+    /// The ISDOC invoice has no `InvoiceLine`.
+    case isdocWithoutLines
+
+    /// The file is neither a CSV nor an ISDOC file, going by its name.
+    case unsupportedFile
+
     var errorDescription: String? {
         switch self {
         case .notAFakturoidExport: "Nevypadá to jako export faktur z Fakturoidu."
         case .emptyFile: "Soubor je prázdný."
         case .damagedFile(let line): "Soubor je poškozený (řádek \(line))."
         case .unreadableFile: "Soubor se nepodařilo přečíst."
+        case .notAnIsdocInvoice: "Nevypadá to jako faktura ve formátu ISDOC."
+        case .isdocWithoutNumber: "V souboru ISDOC chybí číslo faktury."
+        case .isdocWithoutLines: "Ve faktuře ISDOC nejsou žádné položky."
+        case .unsupportedFile: "Tento soubor není CSV ani ISDOC."
         }
     }
 }
