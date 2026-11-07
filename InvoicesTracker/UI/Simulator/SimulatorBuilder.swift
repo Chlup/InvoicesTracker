@@ -155,7 +155,8 @@ nonisolated enum SimulatorBuilder {
                 taxSection(result, choices), socialSection(result, choices), healthSection(result, choices),
                 netIncomeSection(result),
             ],
-            hints: DeductionHints.make(from: result.deductionLines, deductions: choices.deductions),
+            hints: DeductionHints.make(from: result.deductionLines, deductions: choices.deductions,
+                giftsCapPercent: result.rules.giftsCapPercent),
             expenseNote: expenseNote(result, rateFromSettings: rateFromSettings),
             incomePerMonth: choices.incomeKc > 0 ? "≈ " + perMonth(choices.incomeKc) : nil,
             family: FamilyCardsBuilder.content(

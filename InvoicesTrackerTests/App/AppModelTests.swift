@@ -460,7 +460,7 @@ struct AppModelTests {
         #expect(model.years == [2026, 2021])
     }
 
-    @Test func atNewYearAStateThatFollowsTodayMovesToTheNewYearWhichIsAnEstimate() async throws {
+    @Test func atNewYearAStateThatFollowsTodayMovesToTheNewYearWhichHasItsOwnRules() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let model = makeAppModel(in: directory)
@@ -478,7 +478,9 @@ struct AppModelTests {
         let result = try await model.computeSelectedYear()
         #expect(result.year == 2027)
         #expect(result.asOf == civilDate("2027-01-01"))
-        #expect(result.rulesAreEstimate)
+        // 2027 has rules of its own, so the new year is no estimate.
+        #expect(!result.rulesAreEstimate)
+        #expect(result.rules.year == 2027)
     }
 
     @Test func theNewYearIsSaidToVoiceOverOnceWhenItBegins() async throws {

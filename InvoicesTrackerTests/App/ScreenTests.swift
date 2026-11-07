@@ -61,7 +61,7 @@ struct ScreenTests {
         let past = Screen.computation.header(
             year: 2024, asOf: civilDate("2024-12-31"), today: today, incomeFX: .cnbDaily)
         let estimate = Screen.computation.header(
-            year: 2027, asOf: civilDate("2027-01-01"), today: today, incomeFX: .cnbDaily)
+            year: 2028, asOf: civilDate("2028-01-01"), today: today, incomeFX: .cnbDaily)
 
         #expect(past.title == "Výpočet")
         #expect(
@@ -70,10 +70,17 @@ struct ScreenTests {
         #expect(estimate.title == "Výpočet")
         #expect(
             estimate.subtitle
-                == "Rok 2027 · k 1.\u{00A0}1.\u{00A0}2027 · verze 2026.1 · ověřeno 20.\u{00A0}10.\u{00A0}2026")
+                == "Rok 2028 · k 1.\u{00A0}1.\u{00A0}2028 · verze 2027.1 · ověřeno 6.\u{00A0}11.\u{00A0}2026")
         #expect(
             Screen.overview.header(year: 2025, asOf: civilDate("2025-12-31"), today: today, incomeFX: .cnbDaily)
                 .subtitle == "Rok 2025 · příjmy od 1.\u{00A0}1. do 31.\u{00A0}12.\u{00A0}2025")
+    }
+
+    /// 2027 has rules of its own, checked on 6 November 2026, and 2028 borrows them with their version line.
+    @Test func theVersionLineOf2027IsTheOneOf2028() {
+        let line = "verze 2027.1 · ověřeno 6.\u{00A0}11.\u{00A0}2026"
+        #expect(Screen.rulesText(year: 2027) == line)
+        #expect(Screen.rulesText(year: 2028) == line)
     }
 
     /// Odhad odvodů names the day its estimate is made as of, which is today and never the day of "K datu": a year in

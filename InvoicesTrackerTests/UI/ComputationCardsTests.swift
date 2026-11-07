@@ -506,15 +506,16 @@ struct ComputationCardsTests {
     }
 
     @Test func aYearWithoutRulesHasTheThresholdsOfTheYearItIsComputedWith() {
-        // 2027 is computed with the rules of 2026; as of 31. 3. the minimum of three months is the social base.
+        // 2028 is computed with the rules of 2027; as of 31. 3. the minimum of three months is the social base:
+        // 3 × 18 083 = 54 249 Kč, so 2 479 824 − 54 249 = 2 425 575 Kč remain below the social maximum.
         let thresholds = computationPage(
-            computationYearInput(year: 2027), asOf: "2027-03-31", today: "2027-03-31"
+            computationYearInput(year: 2028), asOf: "2028-03-31", today: "2028-03-31"
         ).thresholds
 
-        #expect(thresholds.heading == "Hranice roku 2027")
+        #expect(thresholds.heading == "Hranice roku 2028")
         #expect(
             thresholds.bars.map(\.value) == [
-                "zbývá 2\u{00A0}000\u{00A0}000", "zbývá 1\u{00A0}762\u{00A0}812", "zbývá 2\u{00A0}298\u{00A0}999",
+                "zbývá 2\u{00A0}000\u{00A0}000", "zbývá 1\u{00A0}859\u{00A0}868", "zbývá 2\u{00A0}425\u{00A0}575",
             ])
     }
 

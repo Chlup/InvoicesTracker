@@ -176,25 +176,53 @@ struct SimulatorModelTests {
     }
 
     @Test func aYearWithoutRulesStartsOnTheNearestOne() async throws {
-        #expect(SimulatorModel.startingYear(for: 2027) == 2026)
+        #expect(SimulatorModel.startingYear(for: 2028) == 2027)
+        #expect(SimulatorModel.startingYear(for: 2027) == 2027)
         #expect(SimulatorModel.startingYear(for: 2021) == 2022)
         #expect(SimulatorModel.startingYear(for: 2024) == 2024)
-        #expect(SimulatorModel.years == [2026, 2025, 2024, 2023, 2022])
+        #expect(SimulatorModel.years == [2027, 2026, 2025, 2024, 2023, 2022])
 
         // A model starts on the year the app shows, or the nearest one with rules, and is not moved to one without.
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
-        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2027, 3, 1)))
+        let app = makeAppModel(in: directory, clock: ManualClock(localNoon(2028, 3, 1)))
         let model = SimulatorModel(app: app)
-        #expect(model.year == 2026)
-        #expect(model.page?.summary.keyFigure.eyebrow == "Odvody za rok 2026")
+        #expect(model.year == 2027)
+        #expect(model.page?.summary.keyFigure.eyebrow == "Odvody za rok 2027")
         app.selectYear(2021)
         #expect(SimulatorModel(app: app).year == 2022)
 
+        await model.selectYear(2028)
+
+        #expect(model.year == 2027)
+        #expect(model.errorText == nil)
+    }
+
+    /// The years of the Simulátor are the years with rules, newest first, so a new year with rules is offered without
+    /// a change here.
+    @Test func theYearsAreTheYearsWithRulesNewestFirst() {
+        #expect(SimulatorModel.years == Array(TaxRules.supportedYears.reversed()))
+    }
+
+    /// At the app's day of 17. 10. 2026 the Simulátor may pick 2027, which has rules of its own and no settings of its
+    /// own: the page reads 2027, the copy from Zálohy a odpočty is on offer, and the computation uses the rules of 2027
+    /// and does not take them as an estimate.
+    @Test func the2027SimulationHasItsOwnRulesAndOffersTheCopy() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let model = await loadedModel(of: app)
+        #expect(model.year == 2026)
+
         await model.selectYear(2027)
 
-        #expect(model.year == 2026)
+        #expect(model.year == 2027)
         #expect(model.errorText == nil)
+        #expect(model.page?.summary.keyFigure.eyebrow == "Odvody za rok 2027")
+        #expect(model.canCopyDeductionsAndFamily)
+        let result = try AppModel.compute(SimulatorBuilder.input(choose(year: 2027)), asOf: civilDate("2027-12-31"))
+        #expect(result.rules.year == 2027)
+        #expect(!result.rulesAreEstimate)
     }
 
     // MARK: Typed text

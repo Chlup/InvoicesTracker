@@ -1024,6 +1024,15 @@ struct SimulatorBuilderTests {
                 + " · minimální základ 17\u{00A0}139\u{00A0}Kč měsíčně · ověřeno 20.\u{00A0}10.\u{00A0}2026")
     }
 
+    /// The line of 2027 is typed from the table of its rules: the band above 1 859 868 Kč, the main-activity minimum
+    /// base of 18 083 Kč a month, and the check of 6 November 2026.
+    @Test func theRulesLineOf2027HasItsOwnThresholdMinimumAndCheck() {
+        #expect(
+            SimulatorBuilder.rulesLine(year: 2027)
+                == "Pravidla 2027 · 23\u{00A0}% nad 1\u{00A0}859\u{00A0}868\u{00A0}Kč"
+                + " · minimální základ 18\u{00A0}083\u{00A0}Kč měsíčně · ověřeno 6.\u{00A0}11.\u{00A0}2026")
+    }
+
     @Test func theRulesLineOfEachYearHasThatYearsThresholdAndMinimum() {
         // The band starts at 48 times the average wage until 2023 and at 36 times from 2024.
         let expected = [
@@ -1137,13 +1146,22 @@ struct SimulatorBuilderTests {
         let result = try compute(choices)
         let page = SimulatorBuilder.page(result, choices: choices, rateFromSettings: false)
 
-        #expect(page.hints == DeductionHints.make(from: result.deductionLines, deductions: claims))
+        #expect(page.hints == DeductionHints.make(
+                from: result.deductionLines, deductions: claims, giftsCapPercent: result.rules.giftsCapPercent))
         #expect(page.hints.mortgageAllowed == "150\u{00A0}000\u{00A0}Kč")
         #expect(page.hints.mortgageOverLimit == "50\u{00A0}000\u{00A0}Kč")
         #expect(page.hints.mortgageLimit == "limit 150\u{00A0}000\u{00A0}Kč za 12 měsíců")
         #expect(page.hints.retirementLimits.map(\.usedText) == ["45\u{00A0}000 z 48\u{00A0}000\u{00A0}Kč"])
         #expect(page.hints.retirementAllowed == "45\u{00A0}000\u{00A0}Kč")
         #expect(page.hints.giftsAllowed == "20\u{00A0}000\u{00A0}Kč")
+    }
+
+    /// A 2027 page with gifts that count names the cap of 2027, 15 % of the base.
+    @Test func theGiftsNoteOfA2027PageNamesTheCapOf15Percent() throws {
+        let page = try build(choose(year: 2027, income: 1_000_000, deductions: Deductions(gifts: 200_000)))
+
+        #expect(page.hints.giftsNote.hasSuffix("nejvýš 15 % základu"))
+        #expect(page.hints.giftsAllowed == "60\u{00A0}000\u{00A0}Kč")
     }
 
     // MARK: Every choice of the screen

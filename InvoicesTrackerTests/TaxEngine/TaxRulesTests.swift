@@ -72,6 +72,15 @@ struct TaxRulesTests {
             healthMinimumMonthlyBase: decimal("24483.50"), childCareHealthExemption: false,
             minimumWage: 22_400, spouseNeedsYoungChild: true
         ),
+        Row(
+            year: 2027, averageWage: 51_663, taxBandThreshold: 1_859_868,
+            retirementLimit: .combined(48_000),
+            hasDIPAndLongTermCare: true, socialAssessmentPercent: decimal("0.55"),
+            socialMinimumMonthlyMain: 18_083, socialMinimumMonthlySecondary: 5_683,
+            socialDecisiveAmount: 123_991, socialMaximumAnnualBase: 2_479_824,
+            healthMinimumMonthlyBase: decimal("25831.50"), childCareHealthExemption: false,
+            minimumWage: 24_900, spouseNeedsYoungChild: true
+        ),
     ]
 
     // MARK: The rules table
@@ -105,6 +114,14 @@ struct TaxRulesTests {
         #expect(rules.bonusMinimum == 100, "\(year) bonusMinimum")
     }
 
+    /// The cap on gifts is 30 % of the base for 2022 to 2026 and 15 % from 2027.
+    @Test(arguments: [
+        (2022, "0.30"), (2023, "0.30"), (2024, "0.30"), (2025, "0.30"), (2026, "0.30"), (2027, "0.15"),
+    ] as [(Int, String)])
+    func theCapOnGiftsIsARuleOfTheYear(_ year: Int, _ cap: String) {
+        #expect(TaxRules.forYear(year).rules.giftsCapPercent == decimal(cap))
+    }
+
     /// The 23 % band, the social maximum and the health minimum are fixed multiples of the average wage, so a slip
     /// in any one of those figures shows up against the average wage.
     @Test(arguments: TaxRulesTests.rows)
@@ -123,16 +140,16 @@ struct TaxRulesTests {
     @Test func rulesCompareByValueAndEveryYearDiffers() {
         #expect(TaxRules.forYear(2024).rules == TaxRules.forYear(2024).rules)
         #expect(TaxRules.forYear(2024).rules != TaxRules.forYear(2025).rules)
-        #expect(Set(TaxRulesTests.rows.map { TaxRules.forYear($0.year).rules }).count == 5)
+        #expect(Set(TaxRulesTests.rows.map { TaxRules.forYear($0.year).rules }).count == 6)
     }
 
     // MARK: Years without rules
 
-    @Test func supportedYearsAre2022To2026() {
-        #expect(TaxRules.supportedYears == 2022...2026)
+    @Test func supportedYearsAre2022To2027() {
+        #expect(TaxRules.supportedYears == 2022...2027)
     }
 
-    @Test(arguments: 2022...2026)
+    @Test(arguments: 2022...2027)
     func supportedYearsGiveTheirOwnRulesAndNoEstimate(_ year: Int) {
         let result = TaxRules.forYear(year)
         #expect(result.rules.year == year)
@@ -140,13 +157,13 @@ struct TaxRulesTests {
     }
 
     @Test func aYearAfterTheLastOneUsesTheLastRulesAsAnEstimate() {
-        let last = TaxRules.forYear(2026).rules
-        let next = TaxRules.forYear(2027)
+        let last = TaxRules.forYear(2027).rules
+        let next = TaxRules.forYear(2028)
         #expect(next.rules == last)
         #expect(next.isEstimate)
         // The estimate carries the year of the rules it borrows, so a caller can tell which rules were used.
-        #expect(next.rules.year == 2026)
-        for year in [2028, 2100, Int.max] {
+        #expect(next.rules.year == 2027)
+        for year in [2029, 2100, Int.max] {
             let result = TaxRules.forYear(year)
             #expect(result.rules == last, "\(year)")
             #expect(result.isEstimate, "\(year)")
@@ -178,7 +195,6 @@ struct TaxRulesTests {
         #expect(TaxRules.socialRate == decimal("0.292"))
         #expect(TaxRules.healthRate == decimal("0.135"))
         #expect(TaxRules.healthAssessmentPercent == decimal("0.5"))
-        #expect(TaxRules.giftsCapPercent == decimal("0.30"))
         #expect(TaxRules.giftsMinimumKc == 1_000)
         #expect(TaxRules.giftsMinimumPercent == decimal("0.02"))
     }
@@ -198,7 +214,9 @@ struct TaxRulesTests {
     // MARK: Decisive amount
 
     /// ⌈D ÷ 12⌉ of each year's decisive amount, worked out by hand: 93 387 ÷ 12 = 7 782,25 and so on.
-    @Test(arguments: [(2022, 7_783), (2023, 8_065), (2024, 8_794), (2025, 9_312), (2026, 9_794)] as [(Int, Int64)])
+    @Test(arguments: [
+        (2022, 7_783), (2023, 8_065), (2024, 8_794), (2025, 9_312), (2026, 9_794), (2027, 10_333),
+    ] as [(Int, Int64)])
     func decisiveTwelfthRoundsUpToWholeCrowns(_ year: Int, _ twelfth: Int64) {
         #expect(TaxRules.forYear(year).rules.decisiveTwelfth == twelfth)
     }
@@ -216,11 +234,18 @@ struct TaxRulesTests {
         #expect(rules2022.reducedDecisiveAmount(monthsWithoutSecondary: 1) == 85_604)
     }
 
+    /// 2,4 × 51 662,85 (VVZ × koeficient, unrounded) = 123 990,84 is rounded up to 123 991: the raw product, not the
+    /// rounded 51 663. ⌈123 991 ÷ 12⌉ = 10 333, so six months without secondary activity take off
+    /// 6 × 10 333 = 61 998 and leave 61 993.
+    @Test func the2027DecisiveAmountLosesATwelfthForEachMonthWithoutSecondaryActivity() {
+        #expect(TaxRules.forYear(2027).rules.reducedDecisiveAmount(monthsWithoutSecondary: 6) == 61_993)
+    }
+
     // MARK: The family credits
 
     /// A year's spouse credit and child amounts are twelve monthly ones: 24 840 Kč, and 15 204, 22 320 and 27 840 Kč
     /// for the first, the second and the third and every further child.
-    @Test(arguments: 2022...2026)
+    @Test(arguments: 2022...2027)
     func theYearlyFamilyAmountsAreTwelveMonthlyOnes(_ year: Int) {
         let rules = TaxRules.forYear(year).rules
         #expect(12 * rules.spouseCreditMonthly == 24_840)
@@ -230,6 +255,7 @@ struct TaxRulesTests {
     /// The bonus is paid only with an income of six minimum wages of the year, the minimum wage of 1 January.
     @Test(arguments: [
         (2022, 97_200), (2023, 103_800), (2024, 113_400), (2025, 124_800), (2026, 134_400),
+        (2027, 149_400),
     ] as [(Int, Int64)])
     func theBonusIncomeThresholdIsSixMinimumWages(_ year: Int, _ threshold: Int64) {
         #expect(TaxRules.forYear(year).rules.bonusIncomeThreshold == threshold)
@@ -238,42 +264,63 @@ struct TaxRulesTests {
     // MARK: Verification and sources
 
     @Test(arguments: 2022...2026)
-    func everyYearCarriesTheVerificationDate(_ year: Int) {
+    func everyYearUntil2026CarriesTheVerificationDate(_ year: Int) {
         // The day the rules were last checked, with the spouse credit and the child benefit. The date has a no-break
         // space after each dot, like every date the app shows.
         #expect(TaxRules.forYear(year).rules.verification == "ověřeno 20.\u{00A0}10.\u{00A0}2026")
     }
 
-    @Test(arguments: 2022...2026)
+    /// The 2027 rules were checked on 6 November 2026.
+    @Test func the2027RulesCarryTheirOwnVerificationDate() {
+        #expect(TaxRules.forYear(2027).rules.verification == "ověřeno 6.\u{00A0}11.\u{00A0}2026")
+    }
+
+    @Test(arguments: 2022...2027)
     func everyYearNamesItsLegalSources(_ year: Int) {
         let sources = TaxRules.forYear(year).rules.sources
         let text = sources.joined(separator: "\n")
         #expect(Set(sources).count == sources.count, "\(year) lists a source twice")
-        for number in ["586/1992", "589/1992", "592/1992", "128/2022", "349/2023", "24/2025"] {
+        for number in ["586/1992", "589/1992", "592/1992"] {
             #expect(text.contains(number), "\(year) names \(number)")
         }
+        // The extension of the 30 % cap on gifts is named in the years it applies to.
+        for number in ["128/2022", "349/2023", "24/2025"] {
+            #expect(text.contains(number) == (year <= 2026), "\(year) and \(number)")
+        }
         // Only the government decree of the year itself is named.
-        let decrees = [2022: "356/2021", 2023: "290/2022", 2024: "286/2023", 2025: "282/2024", 2026: "365/2025"]
+        let decrees = [
+            2022: "356/2021", 2023: "290/2022", 2024: "286/2023", 2025: "282/2024", 2026: "365/2025", 2027: "177/2026",
+        ]
         for (decreeYear, number) in decrees {
             #expect(text.contains(number) == (decreeYear == year), "\(year) and decree \(number)")
         }
-        // The change of the 2026 social minimum applies to 2026 only.
-        #expect(text.contains("90/2026") == (year == 2026), "\(year) and zákon 90/2026")
+        // Zákon č. 90/2026 Sb. is named from 2026: its social minimum of 2026, and the flat minimum base from 2027.
+        #expect(text.contains("90/2026") == (year >= 2026), "\(year) and zákon 90/2026")
         // Only the regulation of the minimum wage of the year itself is named: the government decree of the year until
         // 2024, and from 2025 the announcement of the year's amount by the MPSV.
-        let minimumWages = [2022: "405/2021", 2023: "465/2022", 2024: "396/2023", 2025: "286/2024", 2026: "356/2025"]
+        let minimumWages = [
+            2022: "405/2021", 2023: "465/2022", 2024: "396/2023", 2025: "286/2024", 2026: "356/2025", 2027: "171/2026",
+        ]
         for (wageYear, number) in minimumWages {
             #expect(text.contains(number) == (wageYear == year), "\(year) and the minimum wage of \(wageYear)")
         }
         // The government decree that sets the minimum wage from the average wage from 2025 is named in each of those
         // years, in the same line as the year's announcement.
-        #expect(text.contains("285/2024") == (year >= 2025), "\(year) and nařízení vlády č. 285/2024 Sb.")
+        #expect(
+            text.contains("285/2024") == (2025...2026).contains(year), "\(year) and nařízení vlády č. 285/2024 Sb.")
+        // The minimum wage of 2027 has its own government decree.
+        #expect(text.contains("164/2026") == (year == 2027), "\(year) and nařízení vlády č. 164/2026 Sb.")
         let announcements = [2025: "286/2024", 2026: "356/2025"]
         if let announcement = announcements[year] {
             #expect(
                 sources.contains(
                     "nařízení vlády č. 285/2024 Sb. a sdělení MPSV č. \(announcement) Sb. (minimální mzda)"),
                 "\(year) cites the decree with its announcement")
+        }
+        if year == 2027 {
+            #expect(
+                sources.contains("nařízení vlády č. 164/2026 Sb. a sdělení MPSV č. 171/2026 Sb. (minimální mzda)"))
+            #expect(sources.contains("zákon č. 586/1992 Sb., § 15 odst. 1 (strop darů 15 %)"))
         }
         // The child benefit in every year, and the conditions of the spouse credit in § 35bb from 2024.
         #expect(text.contains("§ 35c"), "\(year) names § 35c")

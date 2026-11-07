@@ -4560,16 +4560,18 @@ struct AppWindowLayoutTests {
         return found
     }
 
-    /// Odhad odvodů of a year without rules of its own, 2027 as of 15. 1. 2027 on the prediction sample: the warning
-    /// that the page is an estimate with the rules of 2026 stands above the result card, and none of the figures of the
+    /// Odhad odvodů of a year without rules of its own, 2028 as of 15. 1. 2028 on the prediction sample: the warning
+    /// that the page is an estimate with the rules of 2027 stands above the result card, and none of the figures of the
     /// result card or of the net income has the sign "≈", as the card is an estimate as a whole. At the least room the
     /// page fits the window, with the months of the clients folded and unfolded: its breakdown in two columns (938
     /// points of page), and in one with the sidebar as wide as it goes (850, less than the 856 that two columns need).
+    /// The sample's invoices end in November 2026, so on 15. 1. 2028 it has hardly any clients left and the months card
+    /// is nearly empty.
     @Test func thePredictionOfAYearWithoutItsOwnRulesFitsTheLeastRoom() async throws {
-        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
-            // The page the screen shows. The sample stores no settings of 2027, so the levies are those of the
+        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
+            // The page the screen shows. The sample stores no settings of 2028, so the levies are those of the
             // defaults.
-            let outcome = try await app.predictionOutcome(year: 2027)
+            let outcome = try await app.predictionOutcome(year: 2028)
             let page = PredictionBuilder.page(outcome)
             #expect(outcome.result.rulesAreEstimate)
             #expect(!page.keyFigure.figure.contains("≈"))
@@ -4582,7 +4584,7 @@ struct AppWindowLayoutTests {
                     // The page scrolls; with the data it is far taller than while it loads.
                     try await waitUntil { (scrolledPage(in: window)?.frame.height ?? 0) > 600 }
                     try await waitUntil { frameOfCard(labelled: "Výsledek", in: window) != nil }
-                    #expect(showsText(RulesWarning.message(year: 2027, rulesYear: 2026), in: window))
+                    #expect(showsText(RulesWarning.message(year: 2028, rulesYear: 2027), in: window))
 
                     for widened in [false, true] {
                         if widened {

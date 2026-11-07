@@ -3,7 +3,8 @@ import Foundation
 // The rules of the supported years, checked against the primary sources on 17 October 2026, and checked last on
 // 20 October 2026, when the spouse credit, the child tax benefit and the minimum wage were added: the consolidated
 // texts of the acts, the government decrees on the average wage and the minimum wage, the amending acts, the Finanční
-// správa form instructions and the ČSSZ and VZP publications.
+// správa form instructions and the ČSSZ and VZP publications. The rules of 2027 were checked on 6 November 2026
+// against the same kinds of sources.
 //
 // Where the values come from. The provisions below apply in every year; what is specific to one year is noted at that
 // year's rules.
@@ -17,14 +18,19 @@ import Foundation
 // - Social insurance (assessment share, minimum bases, decisive amount, maximum base): zákon č. 589/1992 Sb., § 5b,
 //   § 7, § 14 and § 15a. The maximum is 48 times the average wage and is not prorated. The decisive amounts are the
 //   values of the official tables: they are ⌈2.4 × VVZ × koeficient⌉ of the unrounded product, so they are not 2.4
-//   times the rounded average wage, which would be 1 Kč too high in 2023 to 2025.
+//   times the rounded average wage, which would be 1 Kč too high in 2023 to 2025 and in 2027.
+// - Rounding of the average wage. "Průměrná mzda" is rounded up by its definition in § 23b odst. 4 zákona
+//   č. 589/1992 Sb., so the minimum bases, which are shares of it, use the rounded average wage, while the decisive
+//   amount uses the raw product of the decree (in 2027 51 663 Kč and 123 991 Kč).
 // - Health insurance (healthMinimumMonthlyBase, childCareHealthExemption): zákon č. 592/1992 Sb., § 3a. The minimum
 //   base is half of the average wage, and it does not apply to a month in which, for the whole month, the person was
 //   in one of the situations that exempt it (§ 3a odst. 3 and 4).
-// - Rates, flat-rate expense caps and gift limits are the same in every year, so they are constants of `TaxRules`
-//   with their sources: § 16 odst. 1, § 7 odst. 7 and § 15 odst. 1 zákona č. 586/1992 Sb., § 7 zákona č. 589/1992
-//   Sb., § 2 odst. 2 zákona č. 592/1992 Sb., and for the 30 % cap on gifts zákon č. 128/2022 Sb., § 1 odst. 1,
-//   extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb., Čl. X.
+// - Rates, flat-rate expense caps and the gift minimums are the same in every year, so they are constants of
+//   `TaxRules` with their sources: § 16 odst. 1, § 7 odst. 7 and § 15 odst. 1 zákona č. 586/1992 Sb., § 7 zákona
+//   č. 589/1992 Sb. and § 2 odst. 1 zákona č. 592/1992 Sb. (the health insurance rate).
+// - The cap on gifts (giftsCapPercent) is a rule of each year: 30 % for 2022 to 2026 under zákon č. 128/2022 Sb.,
+//   § 1 odst. 1, extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb., Čl. X, and 15 % from 2027,
+//   as § 15 odst. 1 zákona č. 586/1992 Sb. says again.
 // - Spouse credit and child tax benefit, checked on 20 October 2026: § 35ba odst. 1 písm. b) and odst. 3 and § 35c
 //   zákona č. 586/1992 Sb. The amounts are the same in every year: the spouse credit is 24 840 Kč a year (2 070 Kč a
 //   month), the child benefit 15 204, 22 320 and 27 840 Kč a year (1 267, 1 860 and 2 320 Kč a month) for the first,
@@ -38,7 +44,7 @@ nonisolated extension TaxRules {
     /// The rules of every supported year, by year. Adding a year means adding its rules here and widening
     /// `supportedYears`.
     static let byYear: [Int: TaxRules] = Dictionary(
-        uniqueKeysWithValues: [rules2022, rules2023, rules2024, rules2025, rules2026].map { ($0.year, $0) }
+        uniqueKeysWithValues: [rules2022, rules2023, rules2024, rules2025, rules2026, rules2027].map { ($0.year, $0) }
     )
 
     /// The day the rules were last checked: with the spouse credit, the child tax benefit and the minimum wage.
@@ -55,10 +61,14 @@ nonisolated extension TaxRules {
             "zákon č. 592/1992 Sb. (zdravotní pojištění), § 2, § 3a",
             "nařízení vlády č. \(decree) Sb. (průměrná mzda)",
             "\(minimumWage) (minimální mzda)",
-            "zákon č. 128/2022 Sb., § 1 odst. 1, prodloužený zákonem č. 349/2023 Sb., Čl. CVII, "
-                + "a zákonem č. 24/2025 Sb., Čl. X (strop darů)",
         ] + other
     }
+
+    /// The source of the 30 % cap on gifts, which applies to 2022 to 2026 only. Those years pass it first in `other`,
+    /// where it stood among the shared lines, so their lists are unchanged.
+    private static let giftsCapUntil2026 =
+        "zákon č. 128/2022 Sb., § 1 odst. 1, prodloužený zákonem č. 349/2023 Sb., Čl. CVII, "
+        + "a zákonem č. 24/2025 Sb., Čl. X (strop darů)"
 
     /// From 2024 the conditions of the spouse credit are in a section of their own.
     private static let spouseCreditFrom2024 = "zákon č. 586/1992 Sb., § 35bb (sleva na manžela od roku 2024)"
@@ -75,6 +85,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .separate(pensionSavings: 24_000, lifeInsurance: 24_000),
         hasDIPAndLongTermCare: false,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.50")!,
         socialMinimumMonthlyMain: 9_728,
         socialMinimumMonthlySecondary: 3_892,
@@ -89,7 +100,10 @@ nonisolated extension TaxRules {
         spouseNeedsYoungChild: false,
         bonusMinimum: 100,
         verification: commonVerification,
-        sources: legalSources(averageWageDecree: "356/2021", minimumWage: "nařízení vlády č. 405/2021 Sb.")
+        sources: legalSources(
+            averageWageDecree: "356/2021", minimumWage: "nařízení vlády č. 405/2021 Sb.",
+            other: [giftsCapUntil2026]
+        )
     )
 
     // MARK: 2023
@@ -103,6 +117,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .separate(pensionSavings: 24_000, lifeInsurance: 24_000),
         hasDIPAndLongTermCare: false,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.50")!,
         socialMinimumMonthlyMain: 10_081,
         socialMinimumMonthlySecondary: 4_033,
@@ -117,7 +132,10 @@ nonisolated extension TaxRules {
         spouseNeedsYoungChild: false,
         bonusMinimum: 100,
         verification: commonVerification,
-        sources: legalSources(averageWageDecree: "290/2022", minimumWage: "nařízení vlády č. 465/2022 Sb.")
+        sources: legalSources(
+            averageWageDecree: "290/2022", minimumWage: "nařízení vlády č. 465/2022 Sb.",
+            other: [giftsCapUntil2026]
+        )
     )
 
     // MARK: 2024
@@ -133,6 +151,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .combined(48_000),
         hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.55")!,
         socialMinimumMonthlyMain: 13_191,
         socialMinimumMonthlySecondary: 4_837,
@@ -149,7 +168,7 @@ nonisolated extension TaxRules {
         verification: commonVerification,
         sources: legalSources(
             averageWageDecree: "286/2023", minimumWage: "nařízení vlády č. 396/2023 Sb.",
-            other: [spouseCreditFrom2024]
+            other: [giftsCapUntil2026, spouseCreditFrom2024]
         )
     )
 
@@ -164,6 +183,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .combined(48_000),
         hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.55")!,
         socialMinimumMonthlyMain: 16_295,
         socialMinimumMonthlySecondary: 5_122,
@@ -180,7 +200,7 @@ nonisolated extension TaxRules {
         verification: commonVerification,
         sources: legalSources(
             averageWageDecree: "282/2024", minimumWage: "nařízení vlády č. 285/2024 Sb. a sdělení MPSV č. 286/2024 Sb.",
-            other: [spouseCreditFrom2024]
+            other: [giftsCapUntil2026, spouseCreditFrom2024]
         )
     )
 
@@ -198,6 +218,7 @@ nonisolated extension TaxRules {
         taxpayerCredit: 30_840,
         retirementLimit: .combined(48_000),
         hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.30")!,
         socialAssessmentPercent: DecimalMath.decimal("0.55")!,
         socialMinimumMonthlyMain: 17_139,
         socialMinimumMonthlySecondary: 5_387,
@@ -215,7 +236,51 @@ nonisolated extension TaxRules {
         sources: legalSources(
             averageWageDecree: "365/2025", minimumWage: "nařízení vlády č. 285/2024 Sb. a sdělení MPSV č. 356/2025 Sb.",
             other: [
-                spouseCreditFrom2024, "zákon č. 90/2026 Sb., Čl. II bod 5 (minimální vyměřovací základ za rok 2026)",
+                giftsCapUntil2026, spouseCreditFrom2024,
+                "zákon č. 90/2026 Sb., Čl. II bod 5 (minimální vyměřovací základ za rok 2026)",
+            ]
+        )
+    )
+
+    // MARK: 2027
+
+    /// Average wage: nařízení vlády č. 177/2026 Sb.; minimum wage: nařízení vlády č. 164/2026 Sb. with sdělení MPSV
+    /// č. 171/2026 Sb. The average wage is the rounded 51 663 Kč, from which the minimum bases follow, and the decisive
+    /// amount of 123 991 Kč is the rounded-up raw product 2,4 × 51 662,85. The main-activity social minimum of
+    /// 18 083 Kč a month is the flat 35 % of the average wage of zákon č. 90/2026 Sb., Čl. I; the secondary one of
+    /// 5 683 Kč is 11 % of it (§ 14 odst. 5 věta 3 zákona č. 589/1992 Sb.). Gifts take off at most 15 % of the base,
+    /// the cap of § 15 odst. 1 zákona č. 586/1992 Sb. The taxpayer credit, the family amounts, the spouse's income
+    /// limit and the retirement limit are those of 2026; the band, the maximum base, the health minimum and the
+    /// decisive amount differ.
+    private static let rules2027 = TaxRules(
+        year: 2027,
+        averageWage: 51_663,
+        taxBandThreshold: 1_859_868,
+        taxpayerCredit: 30_840,
+        retirementLimit: .combined(48_000),
+        hasDIPAndLongTermCare: true,
+        giftsCapPercent: DecimalMath.decimal("0.15")!,
+        socialAssessmentPercent: DecimalMath.decimal("0.55")!,
+        socialMinimumMonthlyMain: 18_083,
+        socialMinimumMonthlySecondary: 5_683,
+        socialDecisiveAmount: 123_991,
+        socialMaximumAnnualBase: 2_479_824,
+        healthMinimumMonthlyBase: DecimalMath.decimal("25831.50")!,
+        childCareHealthExemption: false,
+        spouseCreditMonthly: 2_070,
+        childMonthly: [1_267, 1_860, 2_320],
+        minimumWage: 24_900,
+        spouseIncomeLimit: 68_000,
+        spouseNeedsYoungChild: true,
+        bonusMinimum: 100,
+        verification: "ověřeno 6.\u{00A0}11.\u{00A0}2026",
+        sources: legalSources(
+            averageWageDecree: "177/2026",
+            minimumWage: "nařízení vlády č. 164/2026 Sb. a sdělení MPSV č. 171/2026 Sb.",
+            other: [
+                spouseCreditFrom2024,
+                "zákon č. 90/2026 Sb., Čl. I (minimální vyměřovací základ 35 % průměrné mzdy)",
+                "zákon č. 586/1992 Sb., § 15 odst. 1 (strop darů 15 %)",
             ]
         )
     )

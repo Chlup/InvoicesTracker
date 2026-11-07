@@ -36,6 +36,11 @@ nonisolated struct TaxRules: Sendable, Hashable {
     /// exist from 2024.
     let hasDIPAndLongTermCare: Bool
 
+    /// The most of the tax base that gifts may take off: `0.30` is 30 %. It is 30 % for 2022 to 2026 under zákon
+    /// č. 128/2022 Sb., § 1 odst. 1, as extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb.,
+    /// Čl. X. From 2027 it is the 15 % of § 15 odst. 1 zákona č. 586/1992 Sb.
+    let giftsCapPercent: Decimal
+
     /// The share of the profit that is the social insurance assessment base: `0.55` is 55 %.
     let socialAssessmentPercent: Decimal
 
@@ -90,7 +95,7 @@ nonisolated struct TaxRules: Sendable, Hashable {
     // MARK: Constants of every supported year
 
     /// The years that have rules.
-    static let supportedYears = 2022...2026
+    static let supportedYears = 2022...2027
 
     /// Income tax rate up to `taxBandThreshold` (§ 16 odst. 1 zákona č. 586/1992 Sb.).
     static let taxRateLow = DecimalMath.decimal("0.15")!
@@ -101,16 +106,11 @@ nonisolated struct TaxRules: Sendable, Hashable {
     /// Social insurance rate of an OSVČ (§ 7 zákona č. 589/1992 Sb.).
     static let socialRate = DecimalMath.decimal("0.292")!
 
-    /// Health insurance rate (§ 2 odst. 2 zákona č. 592/1992 Sb.).
+    /// Health insurance rate (§ 2 odst. 1 zákona č. 592/1992 Sb.).
     static let healthRate = DecimalMath.decimal("0.135")!
 
     /// The share of the profit that is the health insurance assessment base (§ 3a zákona č. 592/1992 Sb.).
     static let healthAssessmentPercent = DecimalMath.decimal("0.5")!
-
-    /// The most of the tax base that gifts may take off, in every year from 2022 to 2026. The income tax act's own cap
-    /// is 15 %, but the special act prevails (zákon č. 128/2022 Sb., § 1 odst. 1, extended by zákon č. 349/2023 Sb.,
-    /// Čl. CVII, and zákon č. 24/2025 Sb., Čl. X).
-    static let giftsCapPercent = DecimalMath.decimal("0.30")!
 
     /// Gifts are deductible when their total is at least this many Kč; below that, the total must be more than
     /// `giftsMinimumPercent` of the tax base (§ 15 odst. 1 zákona č. 586/1992 Sb.).
@@ -136,8 +136,8 @@ nonisolated struct TaxRules: Sendable, Hashable {
 
     /// The rules of `year`, and whether they are only an estimate.
     ///
-    /// A year outside `supportedYears` gets the rules of the nearest supported year with `isEstimate` set: 2027 uses
-    /// the 2026 rules and 2021 the 2022 rules. The returned rules keep their own `year`.
+    /// A year outside `supportedYears` gets the rules of the nearest supported year with `isEstimate` set: 2028 uses
+    /// the 2027 rules and 2021 the 2022 rules. The returned rules keep their own `year`.
     static func forYear(_ year: Int) -> (rules: TaxRules, isEstimate: Bool) {
         let nearest = min(max(year, supportedYears.lowerBound), supportedYears.upperBound)
         guard let rules = byYear[nearest] else {

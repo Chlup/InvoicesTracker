@@ -41,8 +41,8 @@ nonisolated struct DeductionHints: Sendable, Hashable {
     var giftsAllowed: String
 
     /// The hints for the deductions in `lines`, the lines of a result of the engine, and the months of interest in
-    /// `deductions`.
-    static func make(from lines: [DeductionLine], deductions: Deductions) -> DeductionHints {
+    /// `deductions`. `giftsCapPercent` is the year's cap on gifts (`0.30` is 30 %), which the gifts note names.
+    static func make(from lines: [DeductionLine], deductions: Deductions, giftsCapPercent: Decimal) -> DeductionHints {
         let mortgage = lines.first { $0.kind == .mortgageInterest }
         let mortgageLimit = mortgage?.limit ?? 0
         let mortgageClaimed = mortgage?.claimed ?? 0
@@ -59,6 +59,7 @@ nonisolated struct DeductionHints: Sendable, Hashable {
         let gifts = lines.first { $0.kind == .gifts }
         let giftsClaimed = gifts?.claimed ?? 0
         let giftsAllowed = gifts?.allowed ?? 0
+        let capPercent = NSDecimalNumber(decimal: giftsCapPercent * 100).intValue
         return DeductionHints(
             mortgageAllowed: CzechFormat.wholeKc(mortgage?.allowed ?? 0),
             mortgageOverLimit: mortgageClaimed > mortgageLimit
@@ -67,7 +68,8 @@ nonisolated struct DeductionHints: Sendable, Hashable {
             retirementLimits: limits,
             retirementAllowed: CzechFormat.wholeKc(retirement.reduce(0) { $0 + $1.allowed }),
             giftsNote: giftsClaimed > 0 && giftsAllowed == 0
-                ? "pod minimem – neuplatní se" : "od 1 000 Kč (nebo nad 2 % základu), nejvýš 30 % základu",
+                ? "pod minimem – neuplatní se"
+                : "od 1 000 Kč (nebo nad 2 % základu), nejvýš \(capPercent) % základu",
             giftsAllowed: CzechFormat.wholeKc(giftsAllowed))
     }
 

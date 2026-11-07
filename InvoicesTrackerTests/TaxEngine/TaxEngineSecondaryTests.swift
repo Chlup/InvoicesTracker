@@ -19,8 +19,8 @@ struct TaxEngineSecondaryTests {
     /// Guards the filter above, so a typo in the vectors cannot quietly drop cases from the test.
     @Test func secondaryAndPartYearCasesAreFourScenariosOfEveryYear() {
         let cases = TaxEngineSecondaryTests.secondaryAndPartYearCases
-        #expect(cases.count == 20)
-        for year in 2022...2026 {
+        #expect(cases.count == 24)
+        for year in 2022...2027 {
             let names = cases.filter { $0.year == year }.map(\.name)
             #expect(names == ["S5a", "S5b", "S6", "S7"], "\(year)")
         }
@@ -54,6 +54,19 @@ struct TaxEngineSecondaryTests {
         #expect(missed.secondaryInsured == false)
         #expect(missed.base == 0)
         #expect(missed.insurance == 0)
+    }
+
+    /// A secondary activity of the whole of 2027 is insured from a profit of 123 991 Kč, the decisive amount, and not
+    /// from 123 990 Kč. The figures are the oracle's: at 123 991 Kč the base is 68 196 Kč, the insurance
+    /// ⌈0,292 × 68 196⌉ = 19 914 Kč, and at 123 990 Kč nothing is assessed.
+    @Test func the2027DecisiveAmountIsWhereASecondaryActivityBecomesInsured() {
+        let cases = GoldenCases.decisiveBoundary2027
+        #expect(cases.map(\.name) == ["D+", "D-"])
+        for c in cases {
+            let result = TaxEngine.compute(input(for: c), asOf: civilDate("2027-12-31"))
+            #expect(result.DZ == c.DZ, "\(c.name) profit")
+            expectResult(result, matches: c)
+        }
     }
 
     // MARK: The rows of the assessment
@@ -176,9 +189,9 @@ struct TaxEngineSecondaryTests {
     /// the first year's rules, and a supported year uses its own.
     @Test func unsupportedYears() {
         let expected: [(year: Int, rulesYear: Int, isEstimate: Bool)] = [
-            (2027, 2026, true),
+            (2028, 2027, true),
             (2021, 2022, true),
-            (2026, 2026, false),
+            (2027, 2027, false),
         ]
         for (year, rulesYear, isEstimate) in expected {
             let input = yearInput(year, receipts: [payment("\(year)-02-01", kc: 100_000)])

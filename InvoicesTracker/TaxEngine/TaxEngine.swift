@@ -567,9 +567,11 @@ nonisolated enum TaxEngine {
         }
 
         // Gifts count when they are more than 2 % of the tax base or at least 1 000 Kč (§ 15 odst. 1 zákona
-        // č. 586/1992 Sb.), up to 30 % of the tax base rounded down to whole Kč (zákon č. 128/2022 Sb., § 1 odst. 1,
-        // extended by zákon č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb., Čl. X).
-        let giftsLimit = DecimalMath.floor(TaxRules.giftsCapPercent * Decimal(max(0, taxBase)))
+        // č. 586/1992 Sb.), up to the year's share of the tax base (`rules.giftsCapPercent`) rounded down to whole
+        // Kč. That share is 30 % for 2022 to 2026 (zákon č. 128/2022 Sb., § 1 odst. 1, extended by zákon
+        // č. 349/2023 Sb., Čl. CVII, and zákon č. 24/2025 Sb., Čl. X) and 15 % from 2027 (§ 15 odst. 1 zákona
+        // č. 586/1992 Sb.).
+        let giftsLimit = DecimalMath.floor(rules.giftsCapPercent * Decimal(max(0, taxBase)))
         let giftsCount = claims.gifts >= TaxRules.giftsMinimumKc
             || Decimal(claims.gifts) > TaxRules.giftsMinimumPercent * Decimal(taxBase)
         lines.append(

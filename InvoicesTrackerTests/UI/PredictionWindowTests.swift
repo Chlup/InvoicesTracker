@@ -18,8 +18,8 @@ import Testing
 ///   datu" on another internal day, which leaves the reporting cutoff alone while the reload key follows today.
 /// - The toolbar offers the working year menu and new-invoice action without date controls. Switching screens leaves
 ///   an internally picked reporting cutoff alone, and choosing the current year resumes its automatic month end.
-/// - The warnings stand above the result card: 2027, on 15. 1. 2027, has no rules of its own, so the page says that it
-///   is an estimate with the rules of 2026, and a payment at a provisional rate has its line under that.
+/// - The warnings stand above the result card: 2028, on 15. 1. 2028, has no rules of its own, so the page says that it
+///   is an estimate with the rules of 2027, and a payment at a provisional rate has its line under that.
 /// - VoiceOver reads the breakdown of the levies as one group under the name of the screen.
 ///
 /// Parts of the page are also shown alone in a window of their own, with the pages the builder makes for the sample:
@@ -281,16 +281,16 @@ struct PredictionWindowTests {
 
     // MARK: The warnings
 
-    /// 2027 has no tax rules of its own yet, so on 15. 1. 2027 the page says that it is an estimate with the rules of
-    /// 2026, in the box above the result card. No payment is at a provisional rate, so the line about one is not
-    /// there.
+    /// 2028 has no tax rules of its own yet, so on 15. 1. 2028 the page says that it is an estimate with the rules of
+    /// 2027, in the box above the result card. No payment is at a provisional rate, so the line about one is not
+    /// there. The sample's invoices end in November 2026, so on that day it has hardly any clients left to expect.
     @Test func aYearWithoutItsOwnRulesShowsTheWarningAboveTheResultCard() async throws {
-        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
+        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     try await showPrediction(of: app, in: window)
 
-                    let message = RulesWarning.message(year: 2027, rulesYear: 2026)
+                    let message = RulesWarning.message(year: 2028, rulesYear: 2027)
                     #expect(showsText(message, in: window))
                     let warning = try #require(frameOfText(startingWith: message, in: window))
                     let summary = try #require(frameOfCard(labelled: "Výsledek", in: window))
@@ -303,15 +303,15 @@ struct PredictionWindowTests {
     }
 
     /// A payment at a provisional rate has its line under the warning of the rules and above the result card, as on
-    /// Výpočet.
+    /// Výpočet. The sample's invoices end in November 2026, so on 15. 1. 2028 it has hardly any clients left.
     @Test func theLineOfAProvisionalRateStandsUnderTheWarningOfTheRules() async throws {
-        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2027, 1, 15))) { app in
-            try await #require(app.database).saveInvoiceWithProvisionalPayment(on: "2027-01-10")
+        try await PredictionSample.withStoredSample(clock: ManualClock(localNoon(2028, 1, 15))) { app in
+            try await #require(app.database).saveInvoiceWithProvisionalPayment(on: "2028-01-10")
             try await withAppWindow(of: app, size: AppWindowSize.minimum) { window in
                 try await withAccessibilityElements {
                     try await showPrediction(of: app, in: window)
 
-                    let message = RulesWarning.message(year: 2027, rulesYear: 2026)
+                    let message = RulesWarning.message(year: 2028, rulesYear: 2027)
                     let rules = try #require(frameOfText(startingWith: message, in: window))
                     let notice = try #require(frameOfText(startingWith: RulesWarning.provisionalIncome, in: window))
                     let summary = try #require(frameOfCard(labelled: "Výsledek", in: window))

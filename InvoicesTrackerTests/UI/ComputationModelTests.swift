@@ -265,24 +265,24 @@ struct ComputationModelTests {
         #expect(try row("6\u{00A0}měsíců", in: "Čistý příjem", of: model).note == "leden–červen")
     }
 
-    @Test func theNewYearIsAnEstimateWithTheRulesOfTheYearBeforeIt() async throws {
+    @Test func theYearAfterTheLastRulesIsAnEstimateWithTheRulesOfTheLastYear() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
         let app = try await makeApp(in: directory)
         let model = await loadedModel(of: app)
         #expect(model.warning == nil)
 
-        app.handleDayChanged(civilDate("2027-01-01"))
+        app.handleDayChanged(civilDate("2028-01-01"))
         await model.load()
 
         #expect(
-            model.warning == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
+            model.warning == "Pravidla pro rok 2028 zatím nejsou v aplikaci – výpočet je odhad podle roku 2027.")
         // The template of Přehled.
-        #expect(model.warning == RulesWarning.message(year: 2027, rulesYear: 2026))
+        #expect(model.warning == RulesWarning.message(year: 2028, rulesYear: 2027))
         #expect(model.errorText == nil)
         #expect(model.sections.map(\.title) == titles)
         let bands = try row("Sazba 15\u{00A0}%", in: "Daň z příjmů", of: model)
-        #expect(bands.note?.hasSuffix("pravidla 2026 · ověřeno 20.\u{00A0}10.\u{00A0}2026") == true)
+        #expect(bands.note?.hasSuffix("pravidla 2027 · ověřeno 6.\u{00A0}11.\u{00A0}2026") == true)
         // Nothing is received yet in the new year.
         #expect(try row("Příjmy z podnikání (§ 7)", in: "Příjmy a zisk", of: model).value == "0,00")
     }
@@ -329,7 +329,7 @@ struct ComputationModelTests {
         // Follow the automatic cutoff again, so New Year selects the new year rather than keeping the picked day.
         app.goToday()
         // In the new year, which is an estimate, the line of 2026 is not about the year shown.
-        app.handleDayChanged(civilDate("2027-01-01"))
+        app.handleDayChanged(civilDate("2028-01-01"))
         await model.load()
         #expect(model.warning != nil)
         #expect(model.provisionalNotice == nil)
@@ -450,13 +450,13 @@ struct ComputationModelTests {
         #expect(past.levies.header == "Odvody za rok 2025")
         #expect(past.thresholds.heading == "Hranice roku 2025")
 
-        app.selectYear(2027)
+        app.selectYear(2028)
         await model.load()
 
-        // 2027 is an estimate with the rules of 2026, whose band starts at 1 762 812 Kč.
+        // 2028 is an estimate with the rules of 2027, whose band starts at 1 859 868 Kč.
         let estimate = try #require(model.page)
-        #expect(estimate.thresholds.heading == "Hranice roku 2027")
-        #expect(estimate.thresholds.bars[1].value == "zbývá 1\u{00A0}762\u{00A0}812")
+        #expect(estimate.thresholds.heading == "Hranice roku 2028")
+        #expect(estimate.thresholds.bars[1].value == "zbývá 1\u{00A0}859\u{00A0}868")
         #expect(model.warning != nil)
     }
 
@@ -501,15 +501,16 @@ struct ComputationModelTests {
         let model = ComputationModel(app: app)
 
         // The first load is for 2026. It has taken what it is about and waits for the data when the day moves into
-        // 2027 and a second load starts. What the model shows is all of 2027, whichever load ends last.
+        // 2027 and a second load starts. What the model shows is all of 2027, whichever load ends last. 2027 has rules
+        // of its own, so there is no warning to tell the years apart: the heading of the thresholds does.
         let older = Task.immediate { await model.load() }
         app.handleDayChanged(civilDate("2027-01-01"))
         let newer = Task { await model.load() }
         await older.value
         await newer.value
 
-        #expect(
-            model.warning == "Pravidla pro rok 2027 zatím nejsou v aplikaci – výpočet je odhad podle roku 2026.")
+        #expect(model.warning == nil)
+        #expect(model.page?.thresholds.heading == "Hranice roku 2027")
         #expect(try row("Příjmy z podnikání (§ 7)", in: "Příjmy a zisk", of: model).value == "0,00")
         #expect(try row("Daň z dosavadních příjmů", in: "Daň z příjmů", of: model).value == "0")
     }
@@ -545,13 +546,13 @@ struct ComputationModelTests {
         let app = try await makeApp(in: directory)
         let database = try #require(app.database)
         let model = ComputationModel(app: app)
-        app.handleDayChanged(civilDate("2027-01-01"))
+        app.handleDayChanged(civilDate("2028-01-01"))
         await model.load()
         #expect(model.warning != nil)
 
-        // The settings of 2027 are stored with a month that no form saves.
-        try await database.saveYearSettings(YearSettings(year: 2027))
-        try await storeHealthExemptMonths("13", year: 2027, in: database)
+        // The settings of 2028 are stored with a month that no form saves.
+        try await database.saveYearSettings(YearSettings(year: 2028))
+        try await storeHealthExemptMonths("13", year: 2028, in: database)
         await model.load()
 
         #expect(model.sections.isEmpty)

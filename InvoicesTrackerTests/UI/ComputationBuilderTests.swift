@@ -1306,13 +1306,13 @@ struct ComputationBuilderTests {
     // MARK: Years without rules
 
     @Test func anEstimateNamesTheRulesOfTheYearItIsComputedWith() throws {
-        // 2027 has no rules of its own and is computed with those of 2026.
-        let sections = build(yearInput(year: 2027, netHalere: 10_000_150), asOf: "2027-10-17", today: "2027-10-17")
+        // 2028 has no rules of its own and is computed with those of 2027, whose band starts at 1 859 868 Kč.
+        let sections = build(yearInput(year: 2028, netHalere: 10_000_150), asOf: "2028-10-17", today: "2028-10-17")
 
         #expect(
             try row("Sazba 15\u{00A0}%", in: taxCard, of: sections).note
-                == "z 40\u{00A0}000 základu (pásmo do 1\u{00A0}762\u{00A0}812)"
-                + " · pravidla 2026 · ověřeno 20.\u{00A0}10.\u{00A0}2026")
+                == "z 40\u{00A0}000 základu (pásmo do 1\u{00A0}859\u{00A0}868)"
+                + " · pravidla 2027 · ověřeno 6.\u{00A0}11.\u{00A0}2026")
         #expect(
             try Array(labels(taxCard, in: sections).suffix(3)) == ["Daň z dosavadních příjmů", "Zálohy", "Zbývá"])
     }
