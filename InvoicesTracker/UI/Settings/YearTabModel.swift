@@ -403,19 +403,21 @@ final class YearTabModel {
 
     /// Uložit kurz: saves the rates of 1 USD and 1 EUR in crowns typed in `usd` and `eur` (either may be left empty,
     /// not both) with the GFŘ instruction, as rates entered by hand. They replace the year's rates of dollars and
-    /// euros, official or entered by hand before; those of other currencies stay. What the year has is what the
-    /// database holds for it (`Database.uniformRates(year:)`), read once the rates are checked and not taken from what
-    /// the tab last loaded (`uniformRates`), which another path may have changed since: the currencies that stay are
-    /// those stored then, and rates that only the tab still shows are saved. Rates that are the ones the year has
-    /// stored, with the same instruction, are not saved again: an official rate stays official, and the banner says
-    /// that nothing changed. The app then converts the payments of the year again, by the method it uses with these
-    /// rates (`convertPaymentsAgain(of:)`), whatever the tab last read of it: a year set to the uniform rate that
-    /// lacked the rate of a currency it was paid in takes the uniform rate again once it has it. The banner then says,
-    /// from what the year uses then (`showSavedRateBanner(year:)`), that the payments are converted at the rate, or
-    /// where the year is switched to it (`savedRateText(year:convertsAtIt:)`), and the refresh is told, which stops
-    /// looking for the rate. Returns whether the year has the rates of the form now, saved or unchanged; a text that is
-    /// not a rate above zero with at most two decimals is refused with `rateError`, and so is a rate that does not fit
-    /// the year (`implausibility(of:currency:year:cnbMean:previousUniform:)`).
+    /// euros, official, entered by hand before or computed by the app; those of other currencies stay. What the year
+    /// has is what the database holds for it (`Database.uniformRates(year:)`), read once the rates are checked and not
+    /// taken from what the tab last loaded (`uniformRates`), which another path may have changed since: the currencies
+    /// that stay are those stored then, and rates that only the tab still shows are saved. Rates that are the ones the
+    /// year has stored, with the same instruction, are not saved again: an official rate stays official, and the banner
+    /// says that nothing changed. Rates the app computed are never the ones typed: the form replaces them also with
+    /// their own values, as the GFŘ rate typed in over a rate computed from all twelve months may well be. The app then
+    /// converts the payments of the year again, by the method it uses with these rates (`convertPaymentsAgain(of:)`),
+    /// whatever the tab last read of it: a year set to the uniform rate that lacked the rate of a currency it was paid
+    /// in takes the uniform rate again once it has it. The banner then says, from what the year uses then
+    /// (`showSavedRateBanner(year:)`), that the payments are converted at the rate, or where the year is switched to it
+    /// (`savedRateText(year:convertsAtIt:)`), and the refresh is told, which stops looking for the rate. Returns
+    /// whether the year has the rates of the form now, saved or unchanged; a text that is not a rate above zero with at
+    /// most two decimals is refused with `rateError`, and so is a rate that does not fit the year
+    /// (`implausibility(of:currency:year:cnbMean:previousUniform:)`).
     @discardableResult
     func saveManualUniformRates(usd: String, eur: String, instruction: String) async -> Bool {
         let typed: [(CurrencyCode, String)] = [(.usd, usd), (.eur, eur)]
@@ -459,7 +461,8 @@ final class YearTabModel {
             rateError = Self.saveFailureText
             return false
         }
-        guard !Self.areStored(rates, among: Self.dollarAndEuroRates(stored)) else {
+        // A rate the app computed is replaced, whatever its value: what is typed is entered by hand.
+        guard !Self.areStored(rates, among: Self.dollarAndEuroRates(stored.filter { !$0.isComputed })) else {
             rateError = nil
             editsRates = false
             app.showBanner(Self.unchangedRateText(year: year))

@@ -684,6 +684,28 @@ struct YearTabModelTests {
                 + " tlačítkem Odstranit.")
     }
 
+    /// Zadat ručně replaces the computed rate also with the same values, as the GFŘ rate typed in after a search that
+    /// did not find it is expected to be: the rates are stored as entered by hand, and the card is no longer
+    /// preliminary.
+    @Test func ratesTypedOverAComputedRateWithItsValuesReplaceIt() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        try await storeMonthEndRatesOf2026(in: app)
+        let model = await loadedModel(of: app)
+        model.startEditingRates()
+
+        #expect(await model.saveManualUniformRates(usd: "20,96", eur: "24,31", instruction: ""))
+
+        let stored = try await database.uniformRates(year: 2026)
+        #expect(stored.count == 2 && stored.allSatisfy { $0.origin == .manual && $0.computedMonths == nil })
+        #expect(!model.isComputed && model.isManual)
+        #expect(
+            app.banner?.text
+                == "Jednotný kurz 2026 je uložený. Rok 2026 na něj přepnete v liště nahoře nebo tady v Profilu.")
+    }
+
     /// Kurzy ke konci měsíců opens the table of the ČNB rates the computed rate averages: a row for each month, the
     /// day the rate was declared on and the rates of 1 USD and 1 EUR to three places for the months that have ended,
     /// the last day for those that have not, and the average of the months to the haléř. Another year closes it.
