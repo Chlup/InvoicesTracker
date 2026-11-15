@@ -109,6 +109,23 @@ struct PreliminaryRateNoticeWindowTests {
         }
     }
 
+    /// An editor that is held open behind another screen does not hide the notice there.
+    @Test func anEditorHeldBehindPrehledDoesNotHideTheNotice() async throws {
+        try await EditorFixture.with { f in
+            try await storeComputedRateOf2026(in: f.app)
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    f.app.editorRequest = .new(templateID: nil, clientID: nil)
+                    try await waitUntil { f.app.editor != nil && !showsNotice(in: window) }
+                    f.app.screen = .overview
+                    try await waitUntil { showsNotice(in: window) }
+                    #expect(f.app.shownEditorRequest != nil)
+                }
+            }
+        }
+    }
+
     /// The year converted at the daily rates has no notice, whichever screen is shown.
     @Test func aYearOnTheDailyRatesHasNoNotice() async throws {
         try await EditorFixture.with { f in
