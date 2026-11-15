@@ -53,14 +53,17 @@ final class TestLeftovers: Sendable {
 
 extension AppModel {
     /// Waits until the backups that writes started have ended (`backupsAfterWrite`), those of writes made while it
-    /// waits too, and the backup outside the Mac that runs, if one does.
+    /// waits too, and the backup outside the Mac that runs, if one does. The preliminary uniform rates that new days
+    /// compute in tasks of their own (`computedRatesOfNewDays`) are waited for first, as they write and start backups.
     func settleBackups() async {
         while true {
+            let newDays = computedRatesOfNewDays
             let afterWrites = backupsAfterWrite
             let outsideTheMac = offMacBackupRun
+            await newDays?.value
             await afterWrites?.value
             _ = await outsideTheMac?.value
-            if backupsAfterWrite == afterWrites, offMacBackupRun == outsideTheMac {
+            if computedRatesOfNewDays == newDays, backupsAfterWrite == afterWrites, offMacBackupRun == outsideTheMac {
                 return
             }
         }

@@ -151,6 +151,26 @@ struct AppModelComputedRateTests {
                 + " (dříve 21,35). Platby roku 2026 jsou jím přepočtené.")
     }
 
+    /// A new day starts the keeper in a task of its own, which nothing that changed the day waits for. A test that ends
+    /// right after the day changed still waits for it, and for the backups of its write, as its backups are settled
+    /// (`AppModel.settleBackups()`, `.settlesBackups`): nothing of the keeper runs after the test removed its folder.
+    @Test func settlingTheBackupsWaitsForTheKeeperThatANewDayStarted() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        await app.updateComputedUniformRates()
+        try await storeMonthEnds(10...10, in: try #require(app.database))
+        // The backups of the writes so far have ended: none runs that settling could wait for meanwhile.
+        await app.settleBackups()
+        let version = app.dataVersion
+        app.handleDayChanged(civilDate("2026-11-01"))
+
+        await app.settleBackups()
+
+        #expect(try await computedRates(of: 2026, overMonths: 10, in: app) == [decimal("24.36"), decimal("21.38")])
+        #expect(app.dataVersion > version)
+    }
+
     /// The ČNB rate of the end of October is not stored yet on 1 November: the rate stays computed over September, and
     /// the new rates of the ČNB, once the refresh has stored them, compute it over October too.
     @Test func newRatesOfAMonthEndRecomputeTheRate() async throws {

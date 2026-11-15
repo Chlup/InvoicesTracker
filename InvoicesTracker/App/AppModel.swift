@@ -444,6 +444,11 @@ final class AppModel {
     /// it, so this one ends when all of them have. Only tests wait for it.
     @ObservationIgnored var backupsAfterWrite: Task<Void, Never>?
 
+    /// The preliminary uniform rates computed for the new days (`handleDayChanged(_:)`), which nothing that changed the
+    /// day waits for: each waits for the ones before it, so this one ends when all of them have. Only tests wait for
+    /// it.
+    @ObservationIgnored var computedRatesOfNewDays: Task<Void, Never>?
+
     /// What the Touch ID or password prompt gives as the reason when the app opens the data.
     static let unlockReason = "odemknout data InvoicesTracker"
 
@@ -904,7 +909,7 @@ final class AppModel {
     /// tells, and the year menu gets the new current year. The screens load again for the new day whether the cutoff
     /// moved or not (`ReloadKey`). A backup outside the Mac is made when one is due. While the data is open, the
     /// preliminary uniform rates are computed for the new day (`updateComputedUniformRates()`), as a month may have
-    /// ended, or a year.
+    /// ended, or a year, in a task that the change of the day does not wait for (`computedRatesOfNewDays`).
     func handleDayChanged(_ today: CivilDate) {
         self.today = today
         if case .newYear(let finished) = asOf.dayChanged(to: today) {
@@ -915,7 +920,11 @@ final class AppModel {
             Task { await backUpOffMacIfDue() }
         }
         if database != nil {
-            Task { await updateComputedUniformRates() }
+            let previous = computedRatesOfNewDays
+            computedRatesOfNewDays = Task {
+                await previous?.value
+                await updateComputedUniformRates()
+            }
         }
     }
 
