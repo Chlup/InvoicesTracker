@@ -905,23 +905,32 @@ nonisolated enum BuilderText {
         day.year == year ? CzechFormat.dayMonth(day) : CzechFormat.date(day)
     }
 
-    /// A uniform rate as a pill: "1 USD = 21,84 Kč", "100 JPY = 14,59 Kč". The rate has two decimals, as the GFŘ
-    /// publishes it.
+    /// A uniform rate as a pill: "1 USD = 21,84 Kč", "100 JPY = 14,59 Kč", and "1 USD ≈ 21,35 Kč" for a rate the app
+    /// computed, which is preliminary. The rate has two decimals, as the GFŘ publishes it.
     static func uniformRate(_ rate: UniformRate) -> String {
-        uniformRate(rate.rate, of: rate.currency, amount: rate.amount)
+        uniformRate(rate.rate, of: rate.currency, amount: rate.amount, computed: rate.isComputed)
     }
 
-    /// `rate` crowns for `amount` units of `currency` as a pill: "1 USD = 21,84 Kč" (`uniformRate(_:)`).
-    static func uniformRate(_ rate: Decimal, of currency: CurrencyCode, amount: Int) -> String {
-        "\(amount)\u{00A0}\(currency.code) = \(CzechFormat.rate(rate, fractionDigits: 2))\u{00A0}Kč"
+    /// `rate` crowns for `amount` units of `currency` as a pill: "1 USD = 21,84 Kč", or with "≈" instead of "=" when
+    /// `computed` (`uniformRate(_:)`).
+    static func uniformRate(_ rate: Decimal, of currency: CurrencyCode, amount: Int, computed: Bool = false) -> String {
+        let sign = computed ? "≈" : "="
+        return "\(amount)\u{00A0}\(currency.code) \(sign) \(CzechFormat.rate(rate, fractionDigits: 2))\u{00A0}Kč"
     }
 
-    /// Where uniform rates are from (`uniformSource(instruction:origin:)`), each source once, one after the other:
-    /// "pokyn GFŘ-D-75", "pokyn GFŘ-D-80, zadáno ručně", "zadáno ručně". Nil when none says.
+    /// The months from January a computed rate averages: "leden" for 1, "leden–září" for 9.
+    static func monthSpan(_ months: Int) -> String {
+        months == 1 ? "leden" : "leden–" + CzechFormat.monthNames[months - 1]
+    }
+
+    /// Where uniform rates are from (`uniformSource(instruction:origin:computedMonths:)`), each source once, one after
+    /// the other: "pokyn GFŘ-D-75", "pokyn GFŘ-D-80, zadáno ručně", "zadáno ručně", "předběžný · průměr kurzů ČNB za
+    /// leden–září". Nil when none says.
     static func uniformSource(of rates: [UniformRate]) -> String? {
         var sources: [String] = []
         for rate in rates {
-            if let source = uniformSource(instruction: rate.instruction, origin: rate.origin),
+            if let source = uniformSource(
+                instruction: rate.instruction, origin: rate.origin, computedMonths: rate.computedMonths),
                 !sources.contains(source)
             {
                 sources.append(source)
@@ -932,11 +941,19 @@ nonisolated enum BuilderText {
 
     /// Where a uniform rate published by `instruction` (nil or empty when it has none) and from `origin` is from, as
     /// every screen says it: "pokyn GFŘ-D-75" for an official rate; a rate entered by hand says so also when it has an
-    /// instruction, "pokyn GFŘ-D-80, zadáno ručně", or only "zadáno ručně" without one. Nil for an official rate
-    /// without an instruction.
-    static func uniformSource(instruction: String?, origin: UniformRateOrigin) -> String? {
+    /// instruction, "pokyn GFŘ-D-80, zadáno ručně", or only "zadáno ručně" without one. A computed rate is
+    /// "předběžný · průměr kurzů ČNB za leden–září" over `computedMonths` months, or "předběžný · spočítaný ze všech 12
+    /// měsíců" over a whole year. Nil for an official rate without an instruction.
+    static func uniformSource(
+        instruction: String?, origin: UniformRateOrigin, computedMonths: Int? = nil
+    ) -> String? {
         let named = (instruction ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch (named.isEmpty, origin) {
+        case (_, .computed):
+            guard let months = computedMonths, (1...12).contains(months) else { return "předběžný" }
+            return months == 12
+                ? "předběžný · spočítaný ze všech 12 měsíců"
+                : "předběžný · průměr kurzů ČNB za \(monthSpan(months))"
         case (false, .manual):
             return "pokyn \(named), zadáno ručně"
         case (true, .manual):

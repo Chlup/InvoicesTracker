@@ -132,7 +132,7 @@ extension AppModel {
                     confirmedAt: confirmedAt, origin: .fetched)
             }
             // Looked at in the transaction that stores them: rates saved meanwhile are never replaced.
-            guard try await database.storeUniformRatesIfNone(rates, year: finding.year) else {
+            guard try await database.storeUniformRatesIfNone(rates, year: finding.year) != nil else {
                 noteUniformRatesStored(forYear: finding.year)
                 throw UniformRateConfirmationError.alreadyStored(year: finding.year)
             }

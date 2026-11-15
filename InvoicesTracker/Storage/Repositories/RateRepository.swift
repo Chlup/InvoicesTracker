@@ -39,6 +39,19 @@ nonisolated enum UniformRateQueries {
 
 // MARK: - Uniform rates
 
+/// What storing the rates the app computed for a year (`Database.storeComputedUniformRates(_:year:)`) did.
+nonisolated enum ComputedRatesChange: Sendable, Equatable {
+    /// Nothing was stored: the year has an official or typed rate, which a computed one never replaces.
+    case notStored
+
+    /// The year already had exactly these computed rates.
+    case unchanged
+
+    /// The computed rates of the year were replaced: `before` are the ones it had, `after` the ones it has now, each
+    /// by currency. Either may be empty.
+    case changed(before: [UniformRate], after: [UniformRate])
+}
+
 extension Database {
     /// The uniform rates of `year`, ordered by currency. Empty for a year that has none yet.
     func uniformRates(year: Int) throws -> [UniformRate] {
@@ -86,18 +99,42 @@ extension Database {
         try saveUniformRates(table, year: year)
     }
 
-    /// Stores `rates` as the uniform rates of `year` only when the year has none, which is looked at in the same
-    /// transaction that stores them, so that rates saved meanwhile are never replaced. Returns whether they were
-    /// stored: false, with nothing changed, when the year has rates already or `rates` is empty. The rates are checked
-    /// as `saveUniformRates(_:year:)` checks them.
-    func storeUniformRatesIfNone(_ rates: [UniformRate], year: Int) throws -> Bool {
+    /// Stores `rates`, the uniform rates the app computed for `year`, in place of the computed rates the year has, and
+    /// only when the year has no other: a year with an official or typed rate is left as it is (`.notStored`). The
+    /// year is looked at in the same transaction that stores the rates, so that rates saved meanwhile are never
+    /// replaced. Rates equal to the stored ones in currency, amount, rate and months change nothing (`.unchanged`);
+    /// `rates` may be empty, which deletes the computed rates. The rates are checked as `saveUniformRates(_:year:)`
+    /// checks them, and each must be computed.
+    func storeComputedUniformRates(_ rates: [UniformRate], year: Int) throws -> ComputedRatesChange {
         try Self.checkUniformRates(rates, year: year)
-        guard !rates.isEmpty else { return false }
+        guard rates.allSatisfy(\.isComputed) else {
+            throw SQLiteError.constraint("uniform_rate: only computed rates are stored as computed.")
+        }
+        let sorted = rates.sorted { $0.currency < $1.currency }
         return try write { connection in
-            let stored = try connection.query("SELECT count(*) FROM uniform_rate WHERE year = ?", [.int(year)])
-            guard stored[0].int64(0) == 0 else { return false }
+            let stored = try Self.uniformRates(year: year, in: connection)
+            guard stored.allSatisfy(\.isComputed) else { return .notStored }
+            guard !Self.sameComputedRates(stored, sorted) else { return .unchanged }
+            try connection.run("DELETE FROM uniform_rate WHERE year = ?", [.int(year)])
+            try Self.insertUniformRates(sorted, year: year, in: connection)
+            return .changed(before: stored, after: sorted)
+        }
+    }
+
+    /// Stores `rates` as the uniform rates of `year` only when the year has no official or typed rate, which is looked
+    /// at in the same transaction that stores them, so that rates saved meanwhile are never replaced. Computed rates
+    /// do not count as stored: they are deleted in that transaction and returned, by currency, which is empty when the
+    /// year had none. Returns nil, with nothing changed, when the year has an official or typed rate already or
+    /// `rates` is empty. The rates are checked as `saveUniformRates(_:year:)` checks them.
+    func storeUniformRatesIfNone(_ rates: [UniformRate], year: Int) throws -> [UniformRate]? {
+        try Self.checkUniformRates(rates, year: year)
+        guard !rates.isEmpty else { return nil }
+        return try write { connection in
+            let stored = try Self.uniformRates(year: year, in: connection)
+            guard stored.allSatisfy(\.isComputed) else { return nil }
+            try connection.run("DELETE FROM uniform_rate WHERE year = ?", [.int(year)])
             try Self.insertUniformRates(rates, year: year, in: connection)
-            return true
+            return stored
         }
     }
 
@@ -130,12 +167,34 @@ extension Database {
         return try fxState(year: year, today: anyDay).effective
     }
 
+    /// The uniform rates of `year` in `connection`, ordered by currency.
+    private nonisolated static func uniformRates(year: Int, in connection: SQLiteConnection) throws -> [UniformRate] {
+        try connection.query(
+            "SELECT \(UniformRate.columns) FROM uniform_rate WHERE year = ? ORDER BY currency", [.int(year)]
+        ).map { try UniformRate(row: $0) }
+    }
+
+    /// Whether `stored` and `new`, both by currency, are the same computed rates: they have the same currency, amount,
+    /// rate and months. Where they were confirmed or read from does not count, as a computed rate has none.
+    private nonisolated static func sameComputedRates(_ stored: [UniformRate], _ new: [UniformRate]) -> Bool {
+        stored.count == new.count
+            && zip(stored, new).allSatisfy { old, new in
+                old.currency == new.currency && old.amount == new.amount && old.rate == new.rate
+                    && old.computedMonths == new.computedMonths
+            }
+    }
+
     private nonisolated static func checkUniformRates(_ rates: [UniformRate], year: Int) throws {
         guard rates.allSatisfy({ $0.year == year }) else {
             throw SQLiteError.constraint("uniform_rate: every rate must be of the year it is saved for.")
         }
         guard rates.allSatisfy({ $0.rate > 0 }) else {
             throw SQLiteError.constraint("uniform_rate: a rate must be above zero.")
+        }
+        guard rates.allSatisfy({ $0.isComputed ? (1...12).contains($0.computedMonths ?? 0) : $0.computedMonths == nil })
+        else {
+            throw SQLiteError.constraint(
+                "uniform_rate: a computed rate needs the months it averages, 1 to 12, and no other rate has them.")
         }
     }
 
@@ -146,13 +205,13 @@ extension Database {
             try connection.run(
                 """
                 INSERT INTO uniform_rate(
-                    year, currency, amount, rate, instruction, source_url, confirmed_at, origin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    year, currency, amount, rate, instruction, source_url, confirmed_at, origin, computed_months)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     .int(year), .currency(rate.currency), .int(rate.amount), .decimal(rate.rate),
                     .text(rate.instruction), .optionalText(rate.sourceURL), .optionalInstant(rate.confirmedAt),
-                    .choice(rate.origin),
+                    .choice(rate.origin), rate.computedMonths.map { .int($0) } ?? .null,
                 ]
             )
         }
@@ -271,13 +330,13 @@ extension Database {
 
 private nonisolated extension UniformRate {
     /// The columns of a uniform rate row, in the order `init(row:)` reads them.
-    static let columns = "year, currency, amount, rate, instruction, source_url, confirmed_at, origin"
+    static let columns = "year, currency, amount, rate, instruction, source_url, confirmed_at, origin, computed_months"
 
     init(row: SQLRow) throws {
         self.init(
             year: row.int(0), currency: try row.currency(1), amount: row.int(2), rate: try row.decimal(3),
             instruction: row.text(4), sourceURL: row.optionalText(5), confirmedAt: row.optionalInstant(6),
-            origin: try row.choice(7)
+            origin: try row.choice(7), computedMonths: row.optionalInt64(8).map { Int($0) }
         )
     }
 }
