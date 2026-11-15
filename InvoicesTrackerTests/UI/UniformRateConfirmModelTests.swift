@@ -113,6 +113,8 @@ struct UniformRateConfirmModelTests {
         let more = try await makeModel(for: try finding2025(adding: [extra]), in: app)
 
         #expect(same.differenceLines.isEmpty && !same.warnsOfMissingCurrencies)
+        // 2025 has no rates the app computed to compare the table with.
+        #expect(same.computedComparison == nil)
         #expect(
             lacking.differenceLines == [
                 "Oproti roku 2024 v tabulce chybí: CHF. Zkontrolujte ji ve Finančním zpravodaji, než ji použijete."
@@ -134,6 +136,55 @@ struct UniformRateConfirmModelTests {
         let model = try await makeModel(for: later, in: app, deletingRatesOfItsYear: false)
 
         #expect(model.differenceLines.isEmpty && !model.warnsOfMissingCurrencies)
+    }
+
+    // MARK: The rate the app computed
+
+    /// Stores the rates of 2025 that the app computed from the ČNB month-end rates of the whole year in place of the
+    /// table that ships with the app, `usd` and `eur` crowns for one unit, as the year has them before the GFŘ rate.
+    private func storeComputedRates(usd: String, eur: String, in app: AppModel) async throws {
+        let database = try #require(app.database)
+        try await database.execute("DELETE FROM uniform_rate WHERE year = 2025")
+        let rates = [(CurrencyCode.usd, usd), (.eur, eur)].map { currency, rate in
+            UniformRate(
+                year: 2025, currency: currency, amount: 1, rate: decimal(rate), instruction: "", origin: .computed,
+                computedMonths: 12)
+        }
+        _ = try await database.storeComputedUniformRates(rates, year: 2025)
+    }
+
+    @Test func theSheetSaysTheTableAgreesWithTheRateTheAppComputed() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await storeComputedRates(usd: "21.84", eur: "24.66", in: app)
+
+        let model = try await makeModel(for: try gfrFinding2025(), in: app, deletingRatesOfItsYear: false)
+
+        #expect(model.computedComparison == "Shoduje se s předběžným kurzem, který aplikace spočítala.")
+    }
+
+    /// The sheet says by how much the table differs from the rate the app computed, currency by currency, and that the
+    /// payments of the year are converted at it when the year is set to the uniform rate: a year set to the daily rates
+    /// keeps its payments as they are.
+    @Test func theSheetSaysHowTheTableDiffersFromTheRateTheAppComputed() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await storeComputedRates(usd: "21.83", eur: "24.66", in: app)
+
+        let daily = try await makeModel(for: try gfrFinding2025(), in: app, deletingRatesOfItsYear: false)
+
+        #expect(daily.computedComparison == "Od předběžného kurzu se liší: 1\u{00A0}USD 21,83 → 21,84\u{00A0}Kč.")
+
+        try await storeComputedRates(usd: "21.83", eur: "24.70", in: app)
+        try await #require(app.database).updateYearSettings(2025) { $0.incomeFXMethod = .uniform }
+        let uniform = try await makeModel(for: try gfrFinding2025(), in: app, deletingRatesOfItsYear: false)
+
+        #expect(
+            uniform.computedComparison
+                == "Od předběžného kurzu se liší: 1\u{00A0}USD 21,83 → 21,84\u{00A0}Kč, 1\u{00A0}EUR 24,70 →"
+                + " 24,66\u{00A0}Kč. Platby roku 2025 se přepočtou.")
     }
 
     // MARK: Použít

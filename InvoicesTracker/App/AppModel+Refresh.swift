@@ -113,8 +113,10 @@ extension AppModel {
     /// the PDF the table was read from and the day of the confirmation, as rates that were fetched. Then nothing waits
     /// for the rates any more (`noteUniformRatesStored(forYear:)`), the screens load again, the payments of the year
     /// are converted again in their turn (`convertPaymentsAfterUniformRatesChanged(year:)`), and the refresh is told,
-    /// so that Nastavení › Aplikace tells of the rate that is stored. It is one step at a time with the changes of the
-    /// keys, the restores and the imports (`runSecurityStep(_:)`).
+    /// so that Nastavení › Aplikace tells of the rate that is stored. Rates that replace the ones the app computed for
+    /// the year say in the green banner how they compare with them (`showConfirmedBanner(for:replacing:)`); any other
+    /// confirmation shows no banner. It is one step at a time with the changes of the keys, the restores and the
+    /// imports (`runSecurityStep(_:)`).
     ///
     /// Rates are stored only for a year that has none, and never an empty table: what is stored is the person's or was
     /// confirmed before, and a finding does not replace it.
@@ -135,7 +137,7 @@ extension AppModel {
                     confirmedAt: confirmedAt, origin: .fetched)
             }
             // Looked at in the transaction that stores them: rates saved meanwhile are never replaced.
-            guard try await database.storeUniformRatesIfNone(rates, year: finding.year) != nil else {
+            guard let replaced = try await database.storeUniformRatesIfNone(rates, year: finding.year) else {
                 noteUniformRatesStored(forYear: finding.year)
                 throw UniformRateConfirmationError.alreadyStored(year: finding.year)
             }
@@ -146,7 +148,32 @@ extension AppModel {
                 Task { await refresh.refresh(.settingsChanged) }
             }
             guard converted else { throw UniformRateConfirmationError.paymentsNotConverted(year: finding.year) }
+            await showConfirmedBanner(for: finding, replacing: replaced)
         }
+    }
+
+    /// The green banner once `finding` is stored in place of `replaced`, the rates of its year that the app had
+    /// computed: that they agree with the official ones, or how they differ and, for a year that converts at the
+    /// uniform rate now, that its payments are converted at the official ones
+    /// (`UniformRateConfirmText.confirmedBanner(for:replacing:convertsAtIt:)`), read anew from what the year uses. A
+    /// year that had no computed rate shows none, as before the app computed any, and so does a year whose conversion
+    /// cannot be read, which is logged.
+    private func showConfirmedBanner(for finding: GFRFinding, replacing replaced: [UniformRate]) async {
+        guard !replaced.isEmpty else { return }
+        let state: YearFXState
+        do {
+            state = try await fxState(year: finding.year)
+        } catch {
+            Self.log("Reading the conversion of a year whose uniform rate was confirmed", failedWith: error)
+            return
+        }
+        guard
+            let text = UniformRateConfirmText.confirmedBanner(
+                for: finding, replacing: replaced, convertsAtIt: state.effective == .uniform)
+        else {
+            return
+        }
+        showBanner(text)
     }
 
     /// Zadat ručně: closes the sheet of the uniform rate and shows the form of Nastavení › Rok for `year`, the year of

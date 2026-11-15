@@ -118,4 +118,60 @@ struct UniformRateCardWindowTests {
             }
         }
     }
+
+    /// A rate the app computed from the ČNB month-end rates of 2026 carries the orange pill Předběžný by the title and
+    /// offers Zadat ručně in place of Upravit. Kurzy ke konci měsíců opens the table of the twelve months with the
+    /// average under them, a row VoiceOver reads as one phrase each, and Skrýt kurzy ke konci měsíců closes it.
+    @Test func aComputedRateShowsItsPillZadatRucneAndTheTableOfTheMonthEnds() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        let rows = try cnbYearlyRows([2026]).filter { $0.currency == .usd || $0.currency == .eur }
+        try await database.insertCNBRates(rows)
+        await app.updateComputedUniformRates()
+        let enter = "Zadat ručně jednotný kurz 2026"
+        let table = "Kurzy ČNB ke konci měsíců 2026"
+
+        try await withAppWindow(of: app, size: AppWindowSize.large) { window in
+            app.showSettings(.year)
+            try await withAccessibilityElements {
+                try await waitUntil { accessibilityElement(labelled: enter, in: window) != nil }
+                #expect(accessibilityElement(labelled: "Upravit jednotný kurz 2026", in: window) == nil)
+                #expect(showsText("Předběžný", in: window))
+                try await layOut(window)
+                let title = try #require(
+                    accessibilityElement(labelled: "Jednotný kurz 2026", in: window)?.accessibilityFrame?())
+                let pill = try #require(frameOfText(startingWith: "Předběžný", in: window))
+                // The pill stands after the title, on its line.
+                #expect(pill.minX > title.maxX && pill.minX - title.maxX < 20, "\(pill) by \(title)")
+                #expect(abs(pill.midY - title.midY) < 4, "\(pill) by \(title)")
+                #expect(accessibilityElement(labelled: table, in: window) == nil)
+
+                try press("Kurzy ke konci měsíců", in: window)
+                try await waitUntil { accessibilityElement(labelled: table, in: window) != nil }
+
+                let shown = try #require(accessibilityElement(labelled: table, in: window))
+                let readings = accessibilityReadings(under: shown)
+                #expect(readings.contains("Měsíc, Kurz ČNB ze dne, 1\u{00A0}USD, 1\u{00A0}EUR"), "read as \(readings)")
+                let months = [
+                    "Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen",
+                    "Listopad", "Prosinec",
+                ]
+                let monthRows = readings.filter { reading in months.contains { reading.hasPrefix($0 + ", ") } }
+                #expect(monthRows.count == 12, "read as \(readings)")
+                #expect(monthRows.first == "Leden, 30.\u{00A0}1. (platí i 31.\u{00A0}1.), 20,413, 24,330")
+                #expect(monthRows.last == "Prosinec, měsíc skončí 31.\u{00A0}12., —, —")
+                #expect(readings.contains("Průměr 9\u{00A0}měsíců, na haléře, 20,96, 24,31"), "read as \(readings)")
+                #expect(
+                    showsText(
+                        "Kurz ČNB platný k poslednímu dni měsíce; o víkendu a ve svátek ten z posledního pracovního dne"
+                            + " před ním. Měsíc se započítá den po svém konci.", in: window))
+
+                try press("Skrýt kurzy ke konci měsíců", in: window)
+                try await waitUntil { accessibilityElement(labelled: table, in: window) == nil }
+                #expect(accessibilityElement(labelled: "Kurzy ke konci měsíců", in: window) != nil)
+            }
+        }
+    }
 }

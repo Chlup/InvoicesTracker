@@ -58,11 +58,67 @@ nonisolated enum UniformRateConfirmText {
         }
         return differences
     }
+
+    // MARK: The rate the app computed
+
+    /// "1 USD 21,32 → 21,33 Kč": the rates of dollars and euros of `finding` that differ from `computed`, the rates of
+    /// its year that the app computed, each from the computed one to the official one, for one unit, dollars first.
+    /// Empty when they agree, and nil when they have no currency of the two in common.
+    static func changes(from computed: [UniformRate], to finding: GFRFinding) -> [String]? {
+        var compared = false
+        var changes: [String] = []
+        for currency in UniformRate.currenciesEnteredByHand {
+            guard let preliminary = computed.first(where: { $0.currency == currency }),
+                let official = finding.rates.first(where: { $0.currency == currency })
+            else {
+                continue
+            }
+            compared = true
+            let before = preliminary.rate / Decimal(preliminary.amount)
+            let after = official.rate / Decimal(official.amount)
+            guard before != after else { continue }
+            changes.append(
+                "1\u{00A0}\(currency.code) \(CzechFormat.rate(before, fractionDigits: 2)) → "
+                    + CzechFormat.rate(after, fractionDigits: 2) + "\u{00A0}Kč")
+        }
+        return compared ? changes : nil
+    }
+
+    /// What the sheet says of `computed`, the rates of the year of `finding` that the app computed and that the table
+    /// replaces: "Shoduje se s předběžným kurzem, který aplikace spočítala.", or "Od předběžného kurzu se liší: 1 USD
+    /// 21,32 → 21,33 Kč." (`changes(from:to:)`), followed by "Platby roku 2026 se přepočtou." for a year set to the
+    /// uniform rate (`convertsAtIt`), whose payments the table converts; a year set to the daily ČNB rates keeps them.
+    /// Nil when the year has no computed rate of dollars or euros that the table has.
+    static func computedComparison(
+        of finding: GFRFinding, with computed: [UniformRate], convertsAtIt: Bool
+    ) -> String? {
+        guard let changes = changes(from: computed, to: finding) else { return nil }
+        guard !changes.isEmpty else { return "Shoduje se s předběžným kurzem, který aplikace spočítala." }
+        return "Od předběžného kurzu se liší: " + changes.joined(separator: ", ") + "."
+            + (convertsAtIt ? " Platby roku \(finding.year) se přepočtou." : "")
+    }
+
+    /// The green banner once `finding` is confirmed in place of `computed`, the rates of its year that the app had
+    /// computed: "Jednotný kurz 2026 z pokynu GFŘ-D-75 je potvrzený. Shoduje se s předběžným kurzem, částky se
+    /// nezměnily.", or "… Od předběžného se liší (1 USD 21,32 → 21,33 Kč), platby roku 2026 jsou jím přepočtené."
+    /// (`changes(from:to:)`) for a year that converts at the uniform rate (`convertsAtIt`); for a year on the daily ČNB
+    /// rates the sentence ends with the differences, as its payments stay. Nil when the year had no computed rate of
+    /// dollars or euros that the table has.
+    static func confirmedBanner(
+        for finding: GFRFinding, replacing computed: [UniformRate], convertsAtIt: Bool
+    ) -> String? {
+        guard let changes = changes(from: computed, to: finding) else { return nil }
+        let confirmed = "Jednotný kurz \(finding.year) z pokynu \(finding.instruction) je potvrzený. "
+        guard !changes.isEmpty else { return confirmed + "Shoduje se s předběžným kurzem, částky se nezměnily." }
+        return confirmed + "Od předběžného se liší (" + changes.joined(separator: ", ") + ")"
+            + (convertsAtIt ? ", platby roku \(finding.year) jsou jím přepočtené." : ".")
+    }
 }
 
 /// The model of the sheet that asks the person to confirm the uniform rates the refresh found: the table is compared
-/// with the one of the year before, and the person stores it (Použít), enters the rates by hand (Zadat ručně) or puts
-/// the decision off (Později), when the rates stay as they are and come again with the next search.
+/// with the one of the year before, and with the rates of its year that the app computed, which it replaces, and the
+/// person stores it (Použít), enters the rates by hand (Zadat ručně) or puts the decision off (Později), when the rates
+/// stay as they are and come again with the next search.
 @MainActor
 @Observable
 final class UniformRateConfirmModel {
@@ -82,6 +138,12 @@ final class UniformRateConfirmModel {
 
     /// Whether a currency of the year before is missing from the table.
     private(set) var warnsOfMissingCurrencies = false
+
+    /// What the sheet says of the rates of the year that the app computed from the ČNB month-end rates, which the
+    /// table replaces: that they agree, or how they differ
+    /// (`UniformRateConfirmText.computedComparison(of:with:convertsAtIt:)`). Nil while the year has none, and until
+    /// they are read.
+    private(set) var computedComparison: String?
 
     /// Why the rates are not stored, or that their payments are not converted, in Czech; nil otherwise. A failure is
     /// said to VoiceOver as it comes, also one that is the same as the one before: it answers what the person did. One
@@ -118,10 +180,18 @@ final class UniformRateConfirmModel {
         UniformRateConfirmText.currencyCount(finding.rates.count)
     }
 
-    /// Compares the table with the one stored for the year before, when there is one. A failure is logged and leaves
-    /// the table uncompared.
+    /// Compares the table with the one stored for the year before, when there is one, and with the rates of its year
+    /// that the app computed, when there are any (`compareWithComputedRates(in:)`). A failure is logged and leaves that
+    /// comparison out.
     func load() async {
         guard let database = app.database else { return }
+        await compareWithTheYearBefore(in: database)
+        await compareWithComputedRates(in: database)
+    }
+
+    /// Compares the table with the one stored in `database` for the year before, when there is one. A failure is
+    /// logged and leaves the table uncompared.
+    private func compareWithTheYearBefore(in database: Database) async {
         do {
             let previous = try await database.uniformRates(year: finding.year - 1)
             guard !previous.isEmpty else { return }
@@ -132,6 +202,21 @@ final class UniformRateConfirmModel {
             warnsOfMissingCurrencies = differences.warns
         } catch {
             AppModel.log("Comparing the uniform rates with the year before", failedWith: error)
+        }
+    }
+
+    /// Compares the table with the rates of its year that the app computed, stored in `database`, when there are any,
+    /// and says whether the payments of the year are converted at it: they are for a year set to the uniform rate. A
+    /// failure is logged and leaves the rates uncompared.
+    private func compareWithComputedRates(in database: Database) async {
+        do {
+            let computed = try await database.uniformRates(year: finding.year).filter(\.isComputed)
+            guard !computed.isEmpty else { return }
+            let chosen = try await database.yearSettings(finding.year).incomeFXMethod
+            computedComparison = UniformRateConfirmText.computedComparison(
+                of: finding, with: computed, convertsAtIt: chosen == .uniform)
+        } catch {
+            AppModel.log("Comparing the uniform rates with the ones the app computed", failedWith: error)
         }
     }
 

@@ -981,7 +981,8 @@ nonisolated enum BuilderText {
     /// not take the rate of that currency (`UniformRate.currenciesEnteredByHand`). Nil while the year can use its rate.
     ///
     /// One screen shortens it: the choice of the conversion in Nastavení › Rok says only "zatím nevyšel" while the
-    /// GFŘ has not published the rate, as the design draws it, because a menu is as wide as its longest item
+    /// GFŘ has not published the rate, as the design draws it, and "zatím nejde spočítat" while the rate of the
+    /// current year cannot be computed yet, because a menu is as wide as its longest item
     /// (`YearTabModel.uniformOptionLabel`). It gives the reason of this function in every other case.
     ///
     /// The current year (`today`) cannot wait for the GFŘ: the app computes its rate from the ČNB month-end rates. It

@@ -2,19 +2,23 @@ import SwiftUI
 
 // MARK: - Jednotný kurz
 
-/// The uniform rate of the year, in one of three states, and a page of the Finanční zpravodaj that could not be read,
+/// The uniform rate of the year, in one of four states, and a page of the Finanční zpravodaj that could not be read,
 /// with its link:
 /// - official (shipped with the app, or fetched and confirmed): the rates of dollars and euros, where they are from and
 ///   Upravit;
 /// - entered by hand: the same with "zadáno ručně", Upravit and a red Odstranit…, and a grey panel on what the rates
 ///   stand in for, in place of which Odstranit… asks in a red box what removing them leads to;
+/// - computed by the app from the ČNB month-end rates: the orange pill Předběžný by the title, the rates with "≈", how
+///   they were computed with Zadat ručně, the link that unfolds the ČNB rates of the month ends they average
+///   (`MonthEndTable`), and a grey panel on what replaces them;
 /// - none: what the app does about the rate, with Zadat ručně.
 /// Upravit and Zadat ručně open the form to enter the rates by hand in place of all that.
 struct UniformRateCard: View {
     @Bindable var model: YearTabModel
 
     var body: some View {
-        Card(title: "Jednotný kurz \(model.year)", spacing: 10, label: "Jednotný kurz") {
+        Card(spacing: 10, label: "Jednotný kurz") {
+            header
             if let page = model.unreadablePage {
                 Note(
                     .attention, icon: .warning,
@@ -36,6 +40,9 @@ struct UniformRateCard: View {
             } else {
                 rates
                 sourceLine
+                if model.isComputed {
+                    monthEnds
+                }
                 if model.asksToRemove {
                     ConfirmationBox(
                         title: YearTabModel.removalTitle, message: model.removalQuestion, cancelTitle: "Zrušit",
@@ -43,13 +50,24 @@ struct UniformRateCard: View {
                         confirm: remove
                     )
                     .controlSize(.small)
-                } else if let note = model.manualNote {
+                } else if let note = model.manualNote ?? model.computedNote {
                     Text(verbatim: note)
                         .font(Typography.callout)
                         .foregroundStyle(Palette.text2)
                         .fixedSize(horizontal: false, vertical: true)
                         .insetPanel(horizontal: 12, vertical: 10)
                 }
+            }
+        }
+    }
+
+    /// The title of the card, and after it on its line the orange pill Předběžný while the card shows a rate the app
+    /// computed, as the prototype draws it. The form hides the pill, as it replaces the rates.
+    private var header: some View {
+        HStack(alignment: .center, spacing: 8) {
+            CardTitle(text: "Jednotný kurz \(model.year)")
+            if model.isComputed, !model.editsRates {
+                Pill("Předběžný", tone: .estimate)
             }
         }
     }
@@ -75,7 +93,8 @@ struct UniformRateCard: View {
         }
     }
 
-    /// Where the rates are from, with Upravit and, for rates entered by hand, the red Odstranit….
+    /// Where the rates are from, with Upravit, or Zadat ručně for rates the app computed, and, for rates entered by
+    /// hand, the red Odstranit….
     private var sourceLine: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(verbatim: model.rateSource)
@@ -85,9 +104,9 @@ struct UniformRateCard: View {
             Spacer(minLength: 8)
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 // The year is read as it is written, not as a number with its thousands apart.
-                Button("Upravit", action: model.startEditingRates)
+                Button(model.editRatesTitle, action: model.startEditingRates)
                     .calloutLink()
-                    .accessibilityLabel(Text(verbatim: "Upravit jednotný kurz \(model.year)"))
+                    .accessibilityLabel(Text(verbatim: "\(model.editRatesTitle) jednotný kurz \(model.year)"))
                 if model.isManual {
                     Button("Odstranit…", action: model.askToRemoveRates)
                         .calloutLink(.destructive)
@@ -98,8 +117,31 @@ struct UniformRateCard: View {
         }
     }
 
+    /// Kurzy ke konci měsíců: a text button in the blue of a link, with a chevron that turns down while the table of
+    /// the ČNB rates of the month ends shows under it, and Skrýt kurzy ke konci měsíců then. It acts in place, so
+    /// VoiceOver reads it as a button, under what it says.
+    private var monthEnds: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: model.toggleMonthEnds) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(Typography.subheadlineSemibold)
+                        .imageScale(.small)
+                        .rotationEffect(.degrees(model.showsMonthEnds ? 90 : 0))
+                        .accessibilityHidden(true)
+                    Text(verbatim: model.monthEndsTitle)
+                }
+            }
+            .calloutLink(isLink: false)
+            .accessibilityLabel(Text(verbatim: model.monthEndsTitle))
+            if model.showsMonthEnds {
+                MonthEndTable(year: model.year, rows: model.monthEndRows, average: model.monthEndAverage)
+            }
+        }
+    }
+
     /// 1 USD, 1 EUR and the instruction of the GFŘ, with Zrušit and Uložit kurz, which Return in a field presses too.
-    /// Over the table that ships with the app, the form says what saving it does.
+    /// Over a rate the app computed or the table that ships with the app, the form says what saving it does.
     private var form: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let hint = model.formHint {
@@ -137,6 +179,84 @@ struct UniformRateCard: View {
         Task {
             await model.removeManualUniformRates()
         }
+    }
+}
+
+// MARK: - Kurzy ke konci měsíců
+
+/// The table of the ČNB rates of the month ends that a computed uniform rate averages, in callout with digits of one
+/// width: the titles of the columns in semibold secondary text; a row for each month of the year with its name, the day
+/// of its rate and the rates of 1 USD and 1 EUR, the months that have not ended in tertiary text, each under a
+/// hairline; the average of the months under the strong hairline, in semibold; and the caption of how a month takes its
+/// rate. The month and the rates have columns of fixed widths, so that they line up from row to row, and the day takes
+/// the rest. VoiceOver reads the table as a group under its name, "Kurzy ČNB ke konci měsíců 2026", and each row as one
+/// phrase.
+private struct MonthEndTable: View {
+    let year: Int
+    let rows: [YearTabModel.MonthEndRow]
+    let average: (label: String, usd: String, eur: String)?
+
+    /// The widths of the column of the months and of each column of the rates.
+    private static let monthWidth: CGFloat = 80
+    private static let rateWidth: CGFloat = 64
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            let columns = YearTabModel.monthEndColumns
+            row(columns[0], columns[1], columns[2], columns[3])
+                .font(Typography.calloutSemibold)
+                .foregroundStyle(Palette.text2)
+                .padding(.vertical, 6)
+            ForEach(rows, id: \.month) { month in
+                Hairline()
+                row(month.month, month.day, month.usd, month.eur)
+                    .foregroundStyle(month.hasEnded ? Palette.text : Palette.text3)
+                    .padding(.vertical, 5)
+            }
+            if let average {
+                Hairline(isStrong: true)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(verbatim: average.label)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    rate(average.usd)
+                    rate(average.eur)
+                }
+                .font(Typography.calloutSemibold)
+                .foregroundStyle(Palette.text)
+                .padding(.vertical, 6)
+                .accessibilityElement(children: .combine)
+            }
+            Text(verbatim: YearTabModel.monthEndsCaption)
+                .foregroundStyle(Palette.text3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+        }
+        .font(Typography.callout)
+        .monospacedDigit()
+        .accessibilityElement(children: .contain)
+        // The year is read as it is written, not as a number with its thousands apart.
+        .accessibilityLabel(Text(verbatim: "Kurzy ČNB ke konci měsíců \(year)"))
+    }
+
+    /// A row of four cells: the month, the day that takes the rest of the width, and the two rates at the trailing
+    /// edge of their columns. VoiceOver reads it as one phrase.
+    private func row(_ month: String, _ day: String, _ usd: String, _ eur: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(verbatim: month)
+                .frame(width: Self.monthWidth, alignment: .leading)
+            Text(verbatim: day)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            rate(usd)
+            rate(eur)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// A rate in its column, at the trailing edge.
+    private func rate(_ text: String) -> some View {
+        Text(verbatim: text)
+            .frame(width: Self.rateWidth, alignment: .trailing)
     }
 }
 
