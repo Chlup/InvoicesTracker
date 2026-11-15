@@ -269,6 +269,75 @@ struct SettingsModelsTests {
         #expect(rows[1].value == "vyšel, čeká na potvrzení")
     }
 
+    private func computed(_ year: Int, _ code: String, _ rate: String, months: Int) -> UniformRate {
+        UniformRate(
+            year: year, currency: CurrencyCode(code)!, amount: 1, rate: decimal(rate), instruction: "",
+            origin: .computed, computedMonths: months)
+    }
+
+    /// A year whose rate the app computed from some of the months says so in the orange of text: the rates with a
+    /// "≈", and that the rate is preliminary, which months it averages and when the app looks for the official one.
+    @Test func aComputedRateOfThePartOfAYearIsPreliminaryAndNamesItsMonths() {
+        var facts = saturdayFacts()
+        facts.currentYearRates = [computed(2026, "EUR", "24.35", months: 9), computed(2026, "USD", "21.35", months: 9)]
+
+        let row = RatesStatus.rows(facts)[2]
+
+        #expect(
+            row
+                == RateStatusRow(
+                    label: "Jednotný kurz 2026",
+                    value: "1\u{00A0}USD ≈ 21,35\u{00A0}Kč · 1\u{00A0}EUR ≈ 24,35\u{00A0}Kč",
+                    detail: "Předběžný – průměr kurzů ČNB za leden–září. GFŘ vydá oficiální kurz v lednu 2027; aplikace"
+                        + " ho od 2.\u{00A0}1.\u{00A0}2027 jednou denně hledá a dá vám ho potvrdit.",
+                    tone: .warning))
+    }
+
+    /// A rate computed from all twelve months says so, and once the search for the official one is over, it says the
+    /// app did not find it and where to enter it.
+    @Test func aComputedRateOfAllTwelveMonthsSaysWhetherTheSearchIsOver() {
+        var january = saturdayFacts()
+        january.now = pragueTime("2027-01-20", 10, 0)
+        january.currentYear = 2027
+        january.finishedYearRates = [
+            computed(2026, "USD", "21.35", months: 12), computed(2026, "EUR", "24.35", months: 12),
+        ]
+        january.currentYearRates = []
+        var over = january
+        over.now = pragueTime("2027-04-10", 10, 0)
+
+        let looking = RatesStatus.rows(january)[1]
+        let finished = RatesStatus.rows(over)[1]
+
+        #expect(looking.value == "1\u{00A0}USD ≈ 21,35\u{00A0}Kč · 1\u{00A0}EUR ≈ 24,35\u{00A0}Kč")
+        #expect(looking.tone == .warning)
+        #expect(
+            looking.detail == "Předběžný – spočítaný ze všech 12 měsíců. GFŘ vydá oficiální kurz v lednu 2027; aplikace"
+                + " ho od 2.\u{00A0}1.\u{00A0}2027 jednou denně hledá a dá vám ho potvrdit.")
+        #expect(
+            finished.detail == "Předběžný – spočítaný ze všech 12 měsíců. Aplikace kurz GFŘ nenašla – zadejte ho podle"
+                + " pokynu GFŘ v Nastavení › Rok.")
+        #expect(finished.tone == .warning)
+    }
+
+    /// In January of the current year no month has ended, so the rate cannot be computed yet.
+    @Test func inJanuaryTheCurrentYearCannotBeComputedYet() {
+        var january = saturdayFacts()
+        january.now = pragueTime("2027-01-20", 10, 0)
+        january.currentYear = 2027
+        january.finishedYearRates = []
+        january.currentYearRates = []
+
+        let row = RatesStatus.rows(january)[2]
+
+        #expect(row.label == "Jednotný kurz 2027")
+        #expect(row.value == "zatím nejde spočítat")
+        #expect(
+            row.detail == "Leden ještě neskončil. Od 1.\u{00A0}2.\u{00A0}2027 ho aplikace spočítá z kurzů ČNB; GFŘ vydá"
+                + " oficiální kurz v lednu 2028.")
+        #expect(row.tone == .quiet)
+    }
+
     private func manual(_ year: Int, _ code: String, _ rate: String, instruction: String = "") -> UniformRate {
         UniformRate(
             year: year, currency: CurrencyCode(code)!, amount: 1, rate: decimal(rate), instruction: instruction,
