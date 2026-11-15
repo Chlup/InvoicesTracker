@@ -212,8 +212,8 @@ struct PaymentSheetModelTests {
 
         #expect(
             model.notice
-                == "Jednotný kurz 2026: zatím nevyšel – GFŘ ho zveřejní v lednu 2027. Platba i celý rok 2026 se proto"
-                + " zatím přepočtou kurzem ČNB ke dni přijetí.")
+                == "Jednotný kurz 2026: zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho, až je"
+                + " stáhne. Platba i celý rok 2026 se proto zatím přepočtou kurzem ČNB ke dni přijetí.")
         // The year is computed at the ČNB rates of the days until it has its uniform rate: the payment is one at the
         // rate of its day, and waits for nothing.
         let preview = try #require(model.preview)
@@ -248,7 +248,7 @@ struct PaymentSheetModelTests {
                 + " přijetí.")
         // The menu of the rate capsule says the same of the year on the same day.
         let state = try await looking.fxState(year: 2025)
-        #expect(RateMenuBuilder.content(state: state, comparison: nil).items[1].detail == reason)
+        #expect(RateMenuBuilder.content(state: state, comparison: nil, today: looking.today).items[1].detail == reason)
 
         let over = try await makeApp(in: directory.appending(path: "Over", directoryHint: .isDirectory))
         let database = try #require(over.database)

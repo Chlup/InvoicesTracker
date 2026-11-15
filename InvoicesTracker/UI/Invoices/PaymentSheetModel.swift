@@ -84,7 +84,7 @@ final class PaymentSheetModel {
     private(set) var effect: ReceiptEffect?
 
     /// A line under the options: the year set to the uniform rate cannot convert the payment at it, and why, as every
-    /// screen says it on the day of the app (`BuilderText.uniformRateMissing(_:year:)`): the year lacks the uniform
+    /// screen says it on the day of the app (`BuilderText.uniformRateMissing(_:year:today:)`): the year lacks the uniform
     /// rate of the currency of the payment, or has it and lacks that of another currency it was paid in, which the
     /// line names; or no rate is there.
     private(set) var notice: String?
@@ -516,7 +516,7 @@ final class PaymentSheetModel {
                     "Kurz ČNB ke dni přijetí zatím není k dispozici – bez něj nejde příjem přepočítat."
                     + " Počkejte na stažení kurzů nebo zadejte částku v Kč podle banky."
             } else if let missingUniformRate,
-                let reason = BuilderText.uniformRateMissing(missingUniformRate, year: day.year)
+                let reason = BuilderText.uniformRateMissing(missingUniformRate, year: day.year, today: app.today)
             {
                 worked.notice =
                     "Jednotný kurz \(day.year): \(reason). Platba i celý rok \(day.year) se proto zatím přepočtou"

@@ -982,13 +982,22 @@ nonisolated enum BuilderText {
     /// One screen shortens it: the choice of the conversion in Nastavení › Rok says only "zatím nevyšel" while the
     /// GFŘ has not published the rate, as the design draws it, because a menu is as wide as its longest item
     /// (`YearTabModel.uniformOptionLabel`). It gives the reason of this function in every other case.
-    static func uniformRateMissing(_ availability: UniformAvailability, year: Int) -> String? {
+    ///
+    /// The current year (`today`) cannot wait for the GFŘ: the app computes its rate from the ČNB month-end rates. It
+    /// says "zatím nejde spočítat – půjde zvolit od 1. 2. 2027, až skončí leden" in January, when there is no month-end
+    /// rate yet, and in the other months "zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho,
+    /// až je stáhne".
+    static func uniformRateMissing(_ availability: UniformAvailability, year: Int, today: CivilDate) -> String? {
         switch availability {
         case .ready: nil
         case .missingCurrency(let currency):
             UniformRate.currenciesEnteredByHand.contains(currency)
                 ? "chybí jednotný kurz \(currency.code) – zadáte ho v Nastavení › Rok \(year)"
                 : "chybí jednotný kurz \(currency.code) – ručně ho zadat nelze"
+        case .notPublishedYet where year == today.year && today.month == 1:
+            "zatím nejde spočítat – půjde zvolit od 1. 2. \(year), až skončí leden"
+        case .notPublishedYet where year == today.year:
+            "zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho, až je stáhne"
         case .notPublishedYet: "zatím nevyšel – GFŘ ho zveřejní v lednu \(year + 1)"
         case .searchedFor: "zatím nevyšel – aplikace ho jednou denně hledá"
         case .notInApp: "v aplikaci není – zadáte ho v Nastavení › Rok \(year)"

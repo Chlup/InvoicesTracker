@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// The rate capsule of the toolbar: how the year shown converts its income in other currencies, "Denní kurz", or
-/// "Jednotný kurz" tinted blue while the year uses its uniform rate, between an exchange icon and a chevron. VoiceOver
-/// reads it as "Přepočet cizích měn v roce 2025: jednotný kurz". A click opens its menu under it (`RateMenu`), which
-/// switches the year between the daily ČNB rates and its uniform rate.
+/// "Jednotný kurz" tinted blue while the year uses its uniform rate, or "Jednotný kurz · předběžný" tinted orange while
+/// that rate is one the app computed, between an exchange icon and a chevron. VoiceOver reads it as "Přepočet cizích
+/// měn v roce 2025: jednotný kurz". A click opens its menu under it (`RateMenu`), which switches the year between the
+/// daily ČNB rates and its uniform rate.
 ///
 /// It names the method the year uses (`AppModel.shownYearFXMethod`), which the window reads again whenever the year
 /// shown or the data changes, and the menu once a choice in it is stored; until it has been read, the capsule names the
@@ -17,8 +18,16 @@ struct RateCapsule: View {
     /// Whether the menu is open.
     @State private var menuShown = false
 
+    /// Whether the year shown converts at a rate the app computed (`YearFXState.usesComputedRate`), as the window has
+    /// read it: not before it has read the year shown.
+    private var shownYearUsesComputedRate: Bool {
+        guard let state = model.shownYearFX, state.year == model.asOf.year else { return false }
+        return state.usesComputedRate
+    }
+
     var body: some View {
-        let capsule = RateMenuBuilder.capsule(year: model.asOf.year, effective: model.shownYearFXMethod)
+        let capsule = RateMenuBuilder.capsule(
+            year: model.asOf.year, effective: model.shownYearFXMethod, computed: shownYearUsesComputedRate)
         Button {
             menuShown = true
         } label: {
@@ -32,12 +41,12 @@ struct RateCapsule: View {
                     .font(Typography.subheadlineSemibold)
                     .foregroundStyle(Palette.text2)
             }
-            .foregroundStyle(capsule.isTinted ? Palette.accentText : Palette.text)
+            .foregroundStyle(textColor(of: capsule.tone))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background {
-                if capsule.isTinted {
-                    Capsule().fill(Palette.accentTint)
+                if let tint = tintColor(of: capsule.tone) {
+                    Capsule().fill(tint)
                 }
             }
             .contentShape(Capsule())
@@ -48,6 +57,24 @@ struct RateCapsule: View {
             RateMenu(app: model) {
                 menuShown = false
             }
+        }
+    }
+
+    /// The colour of the text of a capsule of `tone`.
+    private func textColor(of tone: RateCapsuleTone) -> Color {
+        switch tone {
+        case .daily: Palette.text
+        case .uniform: Palette.accentText
+        case .preliminary: Palette.orangeText
+        }
+    }
+
+    /// The colour behind a capsule of `tone`, nil for none.
+    private func tintColor(of tone: RateCapsuleTone) -> Color? {
+        switch tone {
+        case .daily: nil
+        case .uniform: Palette.accentTint
+        case .preliminary: Palette.orangeTint
         }
     }
 }

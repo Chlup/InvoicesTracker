@@ -81,11 +81,53 @@ struct RateMenuWindowTests {
                     #expect(uniform.isAccessibilityEnabled?() == false)
                     #expect(
                         accessibilityValue(ofButtonLabelled: "Jednotný kurz 2026", in: menu)
-                            == "zatím nevyšel – GFŘ ho zveřejní v lednu 2027")
+                            == "zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců;"
+                            + " spočítá ho, až je stáhne")
                     _ = try #require(accessibilityButton(labelled: "Denní kurz ČNB", in: menu))
                         .accessibilityPerformPress?()
                     try await waitUntil { !menu.isVisible }
                     #expect(f.app.dataVersion == version)
+                }
+            }
+        }
+    }
+
+    /// A year set to the uniform rate that the app computed from the ČNB month-end rates names it in the capsule as
+    /// preliminary, and the menu writes its rates with "≈" and says how many months they average.
+    @Test func theRateCapsuleOfAYearOnAComputedRateIsPreliminary() async throws {
+        try await EditorFixture.with { f in
+            let database = try #require(f.app.database)
+            let monthEnds = [
+                "2026-01-30", "2026-02-27", "2026-03-31", "2026-04-30", "2026-05-29", "2026-06-30", "2026-07-31",
+                "2026-08-31", "2026-09-30",
+            ]
+            try await database.insertCNBRates(
+                monthEnds.flatMap { day in
+                    [
+                        CNBRateRow(declaredOn: civilDate(day), currency: .usd, amount: 1, rate: decimal("21.35")),
+                        CNBRateRow(declaredOn: civilDate(day), currency: .eur, amount: 1, rate: decimal("24.35")),
+                    ]
+                })
+            await f.app.updateComputedUniformRates()
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                try await withAccessibilityElements {
+                    let daily = "Přepočet cizích měn v roce 2026: denní kurz ČNB"
+                    try await waitUntil { accessibilityButton(labelled: daily, in: window) != nil }
+                    let menu = try await openRateMenu(labelled: daily, in: window)
+                    _ = try #require(accessibilityButton(labelled: "Jednotný kurz 2026", in: menu))
+                        .accessibilityPerformPress?()
+                    let preliminary = "Přepočet cizích měn v roce 2026: jednotný kurz, předběžný"
+                    try await waitUntil { accessibilityButton(labelled: preliminary, in: window) != nil }
+                    try await waitUntil { !menu.isVisible }
+                    #expect(try await database.yearSettings(2026).incomeFXMethod == .uniform)
+
+                    let again = try await openRateMenu(labelled: preliminary, in: window)
+                    #expect(
+                        accessibilityValue(ofButtonLabelled: "Jednotný kurz 2026", in: again)?
+                            .contains("1\u{00A0}USD ≈ 21,35\u{00A0}Kč") == true)
+                    _ = try #require(accessibilityButton(labelled: "Denní kurz ČNB", in: again))
+                        .accessibilityPerformPress?()
+                    try await waitUntil { !again.isVisible }
                 }
             }
         }

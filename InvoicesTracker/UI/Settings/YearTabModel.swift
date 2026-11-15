@@ -180,10 +180,12 @@ final class YearTabModel {
     /// "jednotný kurz za rok – zatím nevyšel". A closed menu is as wide as its longest item, and the reason that the
     /// menu of the rate capsule adds there, when the GFŘ publishes it, would make it that wide for most of the year.
     /// The states the design does not draw give the reason that every screen gives on the day of the app
-    /// (`BuilderText.uniformRateMissing(_:year:)`): "jednotný kurz za rok – v aplikaci není – zadáte ho v Nastavení ›
-    /// Rok 2024".
+    /// (`BuilderText.uniformRateMissing(_:year:today:)`): "jednotný kurz za rok – v aplikaci není – zadáte ho v
+    /// Nastavení › Rok 2024".
     var uniformOptionLabel: String {
-        guard let fxState, let reason = BuilderText.uniformRateMissing(fxState.uniform, year: fxState.year) else {
+        guard let fxState,
+            let reason = BuilderText.uniformRateMissing(fxState.uniform, year: fxState.year, today: app.today)
+        else {
             return "jednotný kurz za rok"
         }
         if case .notPublishedYet = fxState.uniform {
