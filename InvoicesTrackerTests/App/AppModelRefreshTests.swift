@@ -73,6 +73,62 @@ struct AppModelRefreshTests {
         #expect(app.uniformRateOffer == nil)
     }
 
+    /// Rates of 2025 that the app computed from the ČNB month-end rates, in place of the ones that ship with the app.
+    private func storeComputedRates(of year: Int, in database: Database) async throws {
+        try await deleteBuiltInRates(of: year, in: database)
+        let rates = [(CurrencyCode.usd, "21.35"), (.eur, "24.80")].map { currency, rate in
+            UniformRate(
+                year: year, currency: currency, amount: 1, rate: decimal(rate), instruction: "", origin: .computed,
+                computedMonths: 9)
+        }
+        _ = try await database.storeComputedUniformRates(rates, year: year)
+    }
+
+    @Test func aFindingIsOfferedForAYearWithOnlyComputedRates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await storeComputedRates(of: 2025, in: try #require(app.database))
+        let finding = try gfrFinding2025()
+
+        await app.offerUniformRate(finding)
+
+        #expect(app.pendingUniformRate == finding)
+        #expect(app.uniformRateOffer == finding)
+    }
+
+    @Test func confirmingAFindingReplacesTheComputedRates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        try await storeComputedRates(of: 2025, in: database)
+        let finding = try gfrFinding2025()
+        await app.offerUniformRate(finding)
+
+        try await app.confirmUniformRate(finding)
+
+        let stored = try await database.uniformRates(year: 2025)
+        #expect(stored.count == 31)
+        #expect(stored.allSatisfy { $0.origin == .fetched && $0.computedMonths == nil })
+    }
+
+    @Test func theReminderIsRestoredForAYearWithOnlyComputedRates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let before = try await makeApp(in: directory)
+        let database = try #require(before.database)
+        try await storeComputedRates(of: 2025, in: database)
+        var state = RefreshState()
+        state.gaveUpUniform = [2025]
+        try await database.saveRefreshState(state)
+        await database.close()
+        let app = makeAppModel(in: directory)
+        await app.launch()
+
+        #expect(app.uniformRateReminderYear == 2025)
+    }
+
     @Test func aFindingWithNoRateInItIsNotOffered() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }

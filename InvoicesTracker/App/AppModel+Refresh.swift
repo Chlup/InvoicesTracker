@@ -66,15 +66,15 @@ nonisolated enum UniformRateConfirmationError: Error, Equatable {
 extension AppModel {
     /// The refresh found the uniform rates of a year, `finding`: they wait for the person, and a sheet asks them, each
     /// time the refresh finds them, also when the person put the sheet off before, as the rates are not stored. Nothing
-    /// is offered for a year that has rates stored already (typed by hand, say, while the search ran), nor for a table
-    /// with no rate in it, which there would be nothing to confirm in. A failure to read the rates of the year is
-    /// logged and the finding offered: the confirmation looks again before it stores anything. While the app is locked
-    /// after inactivity, the sheet waits until it is unlocked (`unlockAfterIdle()`), as it would show the rates over
-    /// the lock.
+    /// is offered for a year that has rates stored already (typed by hand, say, while the search ran; rates the app
+    /// computed do not count), nor for a table with no rate in it, which there would be nothing to confirm in. A
+    /// failure to read the rates of the year is logged and the finding offered: the confirmation looks again before
+    /// it stores anything. While the app is locked after inactivity, the sheet waits until it is unlocked
+    /// (`unlockAfterIdle()`), as it would show the rates over the lock.
     func offerUniformRate(_ finding: GFRFinding) async {
         guard !finding.rates.isEmpty, let database else { return }
         do {
-            guard try await database.uniformRates(year: finding.year).isEmpty else { return }
+            guard try await database.uniformRates(year: finding.year).allSatisfy(\.isComputed) else { return }
         } catch {
             Self.log("Reading the uniform rates of the year", failedWith: error)
         }
@@ -89,14 +89,15 @@ extension AppModel {
     }
 
     /// The reminder to enter a uniform rate by hand, for the newest finished year that the search gave up on and that
-    /// has no rate stored, as the refresh kept it (`RefreshState.gaveUpUniform`), so that it is there at every launch,
-    /// not only in the session in which the search gave up. A reminder that is there already stays.
+    /// has no rate stored (rates the app computed do not count), as the refresh kept it
+    /// (`RefreshState.gaveUpUniform`), so that it is there at every launch, not only in the session in which the search
+    /// gave up. A reminder that is there already stays.
     func restoreUniformRateReminder(from database: Database) async {
         guard uniformRateReminderYear == nil else { return }
         do {
             guard let state = try await database.refreshState() else { return }
             for year in state.gaveUpUniform.sorted(by: >) {
-                if try await database.uniformRates(year: year).isEmpty {
+                if try await database.uniformRates(year: year).allSatisfy(\.isComputed) {
                     uniformRateReminderYear = year
                     return
                 }
