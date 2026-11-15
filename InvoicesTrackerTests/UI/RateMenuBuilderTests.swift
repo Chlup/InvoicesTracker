@@ -12,7 +12,7 @@ struct RateMenuBuilderTests {
 
     /// The uniform rates of 2025 that ship with the app.
     private let rates2025 = UniformAvailability.ready(
-        usd: decimal("21.84"), eur: decimal("24.66"), instruction: "GFŘ-D-75", origin: .builtIn)
+        usd: decimal("21.84"), eur: decimal("24.66"), instruction: "GFŘ-D-75", origin: .builtIn, computedMonths: nil)
 
     private func state(
         _ year: Int, chosen: IncomeFXMethod = .cnbDaily, effective: IncomeFXMethod = .cnbDaily,
@@ -50,7 +50,7 @@ struct RateMenuBuilderTests {
     }
 
     @Test func aRateEnteredByHandWithoutAnInstructionSaysSo() {
-        let typed = UniformAvailability.ready(usd: decimal("21.9"), eur: nil, instruction: nil, origin: .manual)
+        let typed = UniformAvailability.ready(usd: decimal("21.9"), eur: nil, instruction: nil, origin: .manual, computedMonths: nil)
 
         let uniform = content(of: state(2026, uniform: typed)).items[1]
 
@@ -61,7 +61,7 @@ struct RateMenuBuilderTests {
     /// A rate entered by hand says so also with its instruction, as the other screens say it.
     @Test func aRateEnteredByHandWithAnInstructionSaysSoToo() {
         let typed = UniformAvailability.ready(
-            usd: decimal("21.9"), eur: decimal("24.8"), instruction: "GFŘ-D-80", origin: .manual)
+            usd: decimal("21.9"), eur: decimal("24.8"), instruction: "GFŘ-D-80", origin: .manual, computedMonths: nil)
 
         let uniform = content(of: state(2025, uniform: typed)).items[1]
 
@@ -166,7 +166,7 @@ struct RateMenuBuilderTests {
 
     @Test func aYearWithoutForeignPaymentsSaysTheChoiceChangesNothing() {
         let rates2024 = UniformAvailability.ready(
-            usd: decimal("23.28"), eur: decimal("25.16"), instruction: "GFŘ-D-65", origin: .builtIn)
+            usd: decimal("23.28"), eur: decimal("25.16"), instruction: "GFŘ-D-65", origin: .builtIn, computedMonths: nil)
 
         let menu = content(of: state(2024, uniform: rates2024, foreign: false))
 

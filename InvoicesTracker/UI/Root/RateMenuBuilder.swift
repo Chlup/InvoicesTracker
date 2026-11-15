@@ -90,13 +90,14 @@ nonisolated enum RateMenuBuilder {
     /// The line under the uniform rate: its rates of 1 USD and 1 EUR with where they are from, or why the year cannot
     /// use it (`BuilderText.uniformRateMissing(_:year:)`).
     private static func uniformDetail(of uniform: UniformAvailability, year: Int) -> String {
-        guard case .ready(let usd, let eur, let instruction, let origin) = uniform else {
+        guard case .ready(let usd, let eur, let instruction, let origin, let computedMonths) = uniform else {
             return BuilderText.uniformRateMissing(uniform, year: year) ?? ""
         }
         let rates = [(CurrencyCode.usd, usd), (CurrencyCode.eur, eur)].compactMap { code, rate in
             rate.map { BuilderText.uniformRate($0, of: code, amount: 1) }
         }
-        let source = BuilderText.uniformSource(instruction: instruction, origin: origin)
+        let source = BuilderText.uniformSource(
+            instruction: instruction, origin: origin, computedMonths: computedMonths)
         return (rates + [source].compactMap { $0 }).joined(separator: " · ")
     }
 

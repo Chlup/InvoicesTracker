@@ -227,7 +227,7 @@ struct AppModelFXTests {
             try await app.fxState(year: 2026)
                 == YearFXState(
                     year: 2026, chosen: .cnbDaily, effective: .cnbDaily, uniform: .notPublishedYet(year: 2026),
-                    hasForeignPayments: true))
+                    hasForeignPayments: true, paidCurrencies: [.usd]))
         // The uniform rate cannot be chosen: nothing is stored, and nothing is converted.
         let version = app.dataVersion
         #expect(await app.setFXMethod(.uniform, year: 2026) == .unchanged)
