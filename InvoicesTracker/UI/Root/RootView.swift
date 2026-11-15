@@ -142,9 +142,10 @@ private struct AppWindow: View {
     }
 
     /// The title and the sentence of the notice that the year shown converts at a preliminary uniform rate, when the
-    /// selected screen shows numbers that rate affects and the window has read the year shown.
+    /// selected screen shows numbers that rate affects and the window has read the year shown. The invoice editor, which
+    /// takes the place of the list of Faktury, has none.
     private var preliminaryRateNotice: (title: String, sentence: String)? {
-        guard model.screen.showsPreliminaryRateNotice, let state = model.shownYearFX, state.year == model.asOf.year
+        guard model.screen.showsPreliminaryRateNotice, model.shownEditorRequest == nil, let state = model.shownYearFX, state.year == model.asOf.year
         else { return nil }
         return PreliminaryRateNoticeText.content(state: state, today: model.today)
     }

@@ -91,6 +91,24 @@ struct PreliminaryRateNoticeWindowTests {
         }
     }
 
+    /// While the invoice editor is open in the place of the list of Faktury, the notice is not shown, and it comes back
+    /// with the list.
+    @Test func theInvoiceEditorHasNoNotice() async throws {
+        try await EditorFixture.with { f in
+            try await storeComputedRateOf2026(in: f.app)
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    try await waitUntil { showsNotice(in: window) }
+                    f.app.editorRequest = .new(templateID: nil, clientID: nil)
+                    try await waitUntil { !showsNotice(in: window) }
+                    f.app.editorRequest = nil
+                    try await waitUntil { showsNotice(in: window) }
+                }
+            }
+        }
+    }
+
     /// The year converted at the daily rates has no notice, whichever screen is shown.
     @Test func aYearOnTheDailyRatesHasNoNotice() async throws {
         try await EditorFixture.with { f in
