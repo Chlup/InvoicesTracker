@@ -212,8 +212,8 @@ struct PaymentSheetModelTests {
 
         #expect(
             model.notice
-                == "Jednotný kurz 2026: zatím nevyšel – GFŘ ho zveřejní v lednu 2027. Platba i celý rok 2026 se proto"
-                + " zatím přepočtou kurzem ČNB ke dni přijetí.")
+                == "Jednotný kurz 2026: zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho,"
+                + " až je stáhne. Platba i celý rok 2026 se proto zatím přepočtou kurzem ČNB ke dni přijetí.")
         // The year is computed at the ČNB rates of the days until it has its uniform rate: the payment is one at the
         // rate of its day, and waits for nothing.
         let preview = try #require(model.preview)
@@ -248,7 +248,7 @@ struct PaymentSheetModelTests {
                 + " přijetí.")
         // The menu of the rate capsule says the same of the year on the same day.
         let state = try await looking.fxState(year: 2025)
-        #expect(RateMenuBuilder.content(state: state, comparison: nil).items[1].detail == reason)
+        #expect(RateMenuBuilder.content(state: state, comparison: nil, today: looking.today).items[1].detail == reason)
 
         let over = try await makeApp(in: directory.appending(path: "Over", directoryHint: .isDirectory))
         let database = try #require(over.database)
@@ -818,6 +818,24 @@ struct PaymentSheetModelTests {
                 == PaymentOption(
                     title: "Jednotný kurz za rok 2025", detail: "21,840\u{00A0}Kč/USD · přepočet zvolený pro rok 2025",
                     value: "313\u{00A0}404,00\u{00A0}Kč"))
+    }
+
+    @Test func theUniformOptionOfAComputedRateIsPreliminary() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+        _ = try await #require(app.database).storeComputedUniformRates([computed], year: 2026)
+        try await setMethod(.uniform, in: app)
+        let invoice = try await unpaidInvoice(10, in: app)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        model.date = civilDate("2026-10-02")
+
+        await model.recompute()
+
+        #expect(model.methodOption?.title == "Předběžný jednotný kurz za rok 2026")
     }
 
     @Test func theUniformOptionOfACurrencyQuotedForManyUnitsNamesTheQuantity() async throws {

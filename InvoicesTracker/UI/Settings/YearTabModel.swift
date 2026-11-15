@@ -16,7 +16,8 @@ import Observation
 /// - The form of the uniform rate and the one of an adjustment are saved by their buttons: what is typed is read then,
 ///   with `AmountParser`, and a text that is not a rate or an amount is refused with a message.
 /// - What the card says of a year without an official rate follows the search of the app for it (`UniformRateSearch`)
-///   on the day of the app, as the toolbar does (`UniformAvailability`), so that the two never disagree.
+///   on the day of the app, as the toolbar does (`UniformAvailability`), so that the two never disagree. A rate the
+///   app computed from the ČNB month-end rates is shown with the months it averages (`computation`).
 @MainActor
 @Observable
 final class YearTabModel {
@@ -82,6 +83,17 @@ final class YearTabModel {
     /// Whether the rates entered by hand are being removed: another Odstranit kurz meanwhile does nothing.
     @ObservationIgnored var removesRates = false
 
+    /// The preliminary uniform rates of the year that the app computes from the ČNB month-end rates, as of the day of
+    /// the app (`Database.preliminaryUniformRates(year:today:)`), with the month ends they average: read for the
+    /// current and the finished year, which the app computes a rate for, and for a year whose rates are computed. Nil
+    /// for any other year, and until the first load. The card shows its month ends under a computed rate, and the
+    /// question before rates entered by hand are removed names the rate the year falls back to
+    /// (`YearTabModel+UniformRate.swift`).
+    private(set) var computation: PreliminaryUniformRates.Computation?
+
+    /// Whether the card shows the ČNB rates of the month ends that a computed rate averages (Kurzy ke konci měsíců).
+    var showsMonthEnds = false
+
     /// The form of a new adjustment, and what is wrong with it.
     var adjustmentDate: CivilDate
     var adjustmentAmount = ""
@@ -112,19 +124,25 @@ final class YearTabModel {
         let thisLoad = loadsStarted
         let shown = app.asOf
         let received = app.receivedThrough
+        let today = app.today
         do {
             guard let database = app.database else { throw VaultError.locked }
             let readSettings = try await database.yearSettings(shown.year)
             let readRates = try await database.uniformRates(year: shown.year)
             let readFXState = try await app.fxState(year: shown.year)
             let readAdjustments = try await database.adjustments(year: shown.year)
-            let unreadable = readRates.isEmpty ? await unreadablePage(of: shown.year, in: database) : nil
+            let unreadable =
+                readRates.allSatisfy(\.isComputed) ? await unreadablePage(of: shown.year, in: database) : nil
+            let readComputation =
+                Self.readsComputation(of: shown.year, rates: readRates, today: today)
+                ? try await database.preliminaryUniformRates(year: shown.year, today: today) : nil
             guard thisLoad == loadsStarted else { return }
             if settings?.year != shown.year {
                 // The forms and the question belong to the year they were opened for.
                 editsRates = false
                 rateError = nil
                 asksToRemove = false
+                showsMonthEnds = false
                 adjustmentError = nil
                 adjustmentDate = received
             }
@@ -133,6 +151,7 @@ final class YearTabModel {
             fxState = readFXState
             adjustments = readAdjustments
             unreadablePage = unreadable
+            computation = readComputation
             if !isManual {
                 // The rates entered by hand are gone: there is nothing to ask about.
                 asksToRemove = false
@@ -147,6 +166,13 @@ final class YearTabModel {
             AppModel.log("Loading the settings of the year", failedWith: error)
             errorText = Self.loadFailureText
         }
+    }
+
+    /// Whether the tab reads the computation of the preliminary uniform rates of `year` (`computation`), whose stored
+    /// uniform rates are `rates`, on `today`: for the current and the finished year, the years the app computes a rate
+    /// of (`computesRate(of:today:)`), and for a year whose rates are computed, whose month ends the card shows.
+    private nonisolated static func readsComputation(of year: Int, rates: [UniformRate], today: CivilDate) -> Bool {
+        computesRate(of: year, today: today) || rates.contains(where: \.isComputed)
     }
 
     /// The page of the Finanční zpravodaj that the refresh could not read for `year`, as its state keeps it. A state
@@ -176,18 +202,23 @@ final class YearTabModel {
     }
 
     /// "jednotný kurz za rok", the uniform rate in the menu of Příjmy v cizí měně, and while it cannot be chosen, why.
-    /// While the app waits for the GFŘ to publish the rate the menu says only that it is not out, as the design does:
-    /// "jednotný kurz za rok – zatím nevyšel". A closed menu is as wide as its longest item, and the reason that the
-    /// menu of the rate capsule adds there, when the GFŘ publishes it, would make it that wide for most of the year.
-    /// The states the design does not draw give the reason that every screen gives on the day of the app
-    /// (`BuilderText.uniformRateMissing(_:year:)`): "jednotný kurz za rok – v aplikaci není – zadáte ho v Nastavení ›
-    /// Rok 2024".
+    /// While the year has no rate yet, the menu says only the first words of the reason, as the design does: "jednotný
+    /// kurz za rok – zatím nevyšel" while the app waits for the GFŘ to publish it, and for the current year, whose rate
+    /// the app computes, "jednotný kurz za rok – zatím nejde spočítat", in January as when it lacks ČNB rates, which
+    /// the card says in full (`missingRateText`). A closed menu is as wide as its longest item, and the reason that the
+    /// menu of the rate capsule adds there would make it that wide for most of the year. The states the design does not
+    /// draw give the reason that every screen gives on the day of the app
+    /// (`BuilderText.uniformRateMissing(_:year:today:)`): "jednotný kurz za rok – v aplikaci není – zadáte ho v
+    /// Nastavení › Rok 2024".
     var uniformOptionLabel: String {
-        guard let fxState, let reason = BuilderText.uniformRateMissing(fxState.uniform, year: fxState.year) else {
+        guard let fxState,
+            let reason = BuilderText.uniformRateMissing(fxState.uniform, year: fxState.year, today: app.today)
+        else {
             return "jednotný kurz za rok"
         }
         if case .notPublishedYet = fxState.uniform {
-            return "jednotný kurz za rok – zatím nevyšel"
+            return fxState.year == app.today.year
+                ? "jednotný kurz za rok – zatím nejde spočítat" : "jednotný kurz za rok – zatím nevyšel"
         }
         return "jednotný kurz za rok – " + reason
     }
@@ -298,9 +329,10 @@ final class YearTabModel {
         Self.dollarAndEuroRates(uniformRates)
     }
 
-    /// "21,84 Kč": a rate of the card, with two decimals as the GFŘ publishes it.
+    /// "21,84 Kč": a rate of the card, with two decimals as the GFŘ publishes it, and "≈ 21,35 Kč" for a rate the app
+    /// computed, which is preliminary.
     nonisolated static func rateText(_ rate: UniformRate) -> String {
-        CzechFormat.rate(rate.rate, fractionDigits: 2) + "\u{00A0}Kč"
+        (rate.isComputed ? "≈\u{00A0}" : "") + CzechFormat.rate(rate.rate, fractionDigits: 2) + "\u{00A0}Kč"
     }
 
     /// "1 USD": what a rate of the card is for.
@@ -309,9 +341,9 @@ final class YearTabModel {
     }
 
     /// Zadat ručně, or Upravit: opens the form with the rates and the instruction that are stored, in place of the
-    /// question whether to remove them.
+    /// question whether to remove them. Over a rate the app computed the form opens empty: what is typed replaces it.
     func startEditingRates() {
-        let shown = shownRates
+        let shown = isComputed ? [] : shownRates
         usdText = shown.first { $0.currency == .usd }.map { CzechFormat.rate($0.rate, fractionDigits: 2) } ?? ""
         eurText = shown.first { $0.currency == .eur }.map { CzechFormat.rate($0.rate, fractionDigits: 2) } ?? ""
         instructionText = shown.first?.instruction ?? ""
@@ -372,19 +404,21 @@ final class YearTabModel {
 
     /// Uložit kurz: saves the rates of 1 USD and 1 EUR in crowns typed in `usd` and `eur` (either may be left empty,
     /// not both) with the GFŘ instruction, as rates entered by hand. They replace the year's rates of dollars and
-    /// euros, official or entered by hand before; those of other currencies stay. What the year has is what the
-    /// database holds for it (`Database.uniformRates(year:)`), read once the rates are checked and not taken from what
-    /// the tab last loaded (`uniformRates`), which another path may have changed since: the currencies that stay are
-    /// those stored then, and rates that only the tab still shows are saved. Rates that are the ones the year has
-    /// stored, with the same instruction, are not saved again: an official rate stays official, and the banner says
-    /// that nothing changed. The app then converts the payments of the year again, by the method it uses with these
-    /// rates (`convertPaymentsAgain(of:)`), whatever the tab last read of it: a year set to the uniform rate that
-    /// lacked the rate of a currency it was paid in takes the uniform rate again once it has it. The banner then says,
-    /// from what the year uses then (`showSavedRateBanner(year:)`), that the payments are converted at the rate, or
-    /// where the year is switched to it (`savedRateText(year:convertsAtIt:)`), and the refresh is told, which stops
-    /// looking for the rate. Returns whether the year has the rates of the form now, saved or unchanged; a text that is
-    /// not a rate above zero with at most two decimals is refused with `rateError`, and so is a rate that does not fit
-    /// the year (`implausibility(of:currency:year:cnbMean:previousUniform:)`).
+    /// euros, official, entered by hand before or computed by the app; those of other currencies stay. What the year
+    /// has is what the database holds for it (`Database.uniformRates(year:)`), read once the rates are checked and not
+    /// taken from what the tab last loaded (`uniformRates`), which another path may have changed since: the currencies
+    /// that stay are those stored then, and rates that only the tab still shows are saved. Rates that are the ones the
+    /// year has stored, with the same instruction, are not saved again: an official rate stays official, and the banner
+    /// says that nothing changed. Rates the app computed are never the ones typed: the form replaces them also with
+    /// their own values, as the GFŘ rate typed in over a rate computed from all twelve months may well be. The app then
+    /// converts the payments of the year again, by the method it uses with these rates (`convertPaymentsAgain(of:)`),
+    /// whatever the tab last read of it: a year set to the uniform rate that lacked the rate of a currency it was paid
+    /// in takes the uniform rate again once it has it. The banner then says, from what the year uses then
+    /// (`showSavedRateBanner(year:)`), that the payments are converted at the rate, or where the year is switched to it
+    /// (`savedRateText(year:convertsAtIt:)`), and the refresh is told, which stops looking for the rate. Returns
+    /// whether the year has the rates of the form now, saved or unchanged; a text that is not a rate above zero with at
+    /// most two decimals is refused with `rateError`, and so is a rate that does not fit the year
+    /// (`implausibility(of:currency:year:cnbMean:previousUniform:)`).
     @discardableResult
     func saveManualUniformRates(usd: String, eur: String, instruction: String) async -> Bool {
         let typed: [(CurrencyCode, String)] = [(.usd, usd), (.eur, eur)]
@@ -428,7 +462,8 @@ final class YearTabModel {
             rateError = Self.saveFailureText
             return false
         }
-        guard !Self.areStored(rates, among: Self.dollarAndEuroRates(stored)) else {
+        // A rate the app computed is replaced, whatever its value: what is typed is entered by hand.
+        guard !Self.areStored(rates, among: Self.dollarAndEuroRates(stored.filter { !$0.isComputed })) else {
             rateError = nil
             editsRates = false
             app.showBanner(Self.unchangedRateText(year: year))

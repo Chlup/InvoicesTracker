@@ -36,6 +36,35 @@ struct ContainerNamesTests {
         }
     }
 
+    /// The notice of the preliminary uniform rate, on the screens the rate affects, is named by its title, as a year
+    /// that converts at a rate the app computed shows it.
+    @Test func theNoticeOfThePreliminaryRateIsNamedByItsTitle() async throws {
+        try await EditorFixture.with { f in
+            let database = try #require(f.app.database)
+            let monthEnds = ["2026-01-30", "2026-02-27", "2026-03-31"]
+            try await database.insertCNBRates(
+                monthEnds.map { day in
+                    CNBRateRow(declaredOn: civilDate(day), currency: .usd, amount: 1, rate: decimal("21.35"))
+                })
+            var invoice = Invoice.fixture(
+                number: "20269002", currency: .usd, duzp: "2026-03-31", dueDate: "2026-03-31",
+                items: [.fixture("1", at: 1_000_000)], vatMode: .outsideCountry)
+            invoice.payment = try await f.app.convert(
+                invoice, paidOn: civilDate("2026-03-31"), method: .cnbDaily, in: database)
+            invoice.id = try await database.saveInvoice(invoice)
+            try await database.updateYearSettings(2026) { $0.incomeFXMethod = .uniform }
+            await f.app.didWrite()
+            await f.app.updateComputedUniformRates()
+            try await withAppWindow(of: f.app, size: AppWindowSize.large) { window in
+                f.app.screen = .overview
+                try await waitUntil { window.title == "Přehled" }
+                try await withAccessibilityElements {
+                    try await expectContainers(["Předběžný jednotný kurz 2026"], in: window, "Přehled")
+                }
+            }
+        }
+    }
+
     /// Výpočet names its result, the levies by authority, the cards of the marginal levy and of the limits of the
     /// year, the breakdown and the assumptions of the computation as the prototype names them.
     @Test func theCardsAndTheBreakdownOfVypocetAreNamedAsThePrototypeNamesThem() async throws {
@@ -209,6 +238,31 @@ struct ContainerNamesTests {
                 try await withAccessibilityElements {
                     try await expectContainers(names, in: window, "Nastavení › \(tab)")
                 }
+            }
+        }
+    }
+
+    /// The card Jednotný kurz of a year with a computed rate names the table of the month-end rates once Kurzy ke konci
+    /// měsíců opens it; the group exists only while the table is open.
+    @Test func theTableOfTheMonthEndRatesOfTheRokCardIsNamedByItsYear() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        let rows = try cnbYearlyRows([2026]).filter { $0.currency == .usd || $0.currency == .eur }
+        try await database.insertCNBRates(rows)
+        await app.updateComputedUniformRates()
+        let table = "Kurzy ČNB ke konci měsíců 2026"
+
+        try await withAppWindow(of: app, size: AppWindowSize.large) { window in
+            app.showSettings(.year)
+            try await waitUntil { window.title == "Nastavení" }
+            try await withAccessibilityElements {
+                try await expectContainers(["Jednotný kurz"], in: window, "Nastavení › Rok")
+                #expect(!containerLabels(in: window).contains(table))
+                let toggle = try #require(accessibilityElement(labelled: "Kurzy ke konci měsíců", in: window))
+                #expect(toggle.accessibilityPerformPress?() == true)
+                try await expectContainers([table], in: window, "Nastavení › Rok")
             }
         }
     }

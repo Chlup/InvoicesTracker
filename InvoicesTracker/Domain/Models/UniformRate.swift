@@ -10,6 +10,10 @@ nonisolated enum UniformRateOrigin: String, Sendable, Hashable, Codable {
 
     /// Typed in by the person.
     case manual
+
+    /// Spočítaný aplikací z kurzů ČNB podle § 38 odst. 7 ZDP: a preliminary rate for a year the GFŘ has not published
+    /// yet, which a published rate replaces.
+    case computed
 }
 
 /// The uniform annual rate (jednotný kurz) of the GFŘ for one currency in one year: `rate` crowns for `amount`
@@ -31,6 +35,15 @@ nonisolated struct UniformRate: Sendable, Hashable, Codable {
     /// When the person confirmed a fetched rate.
     var confirmedAt: Date?
     var origin: UniformRateOrigin
+
+    /// The number of months, from January, whose ČNB month-end rates a computed rate averages: 1 to 12. Nil for a rate
+    /// of any other origin.
+    var computedMonths: Int? = nil
+
+    /// Whether the app computed the rate (`UniformRateOrigin.computed`), so that it is preliminary.
+    var isComputed: Bool {
+        origin == .computed
+    }
 
     /// The same rate as an `ExchangeRate`, to convert amounts with.
     var exchangeRate: ExchangeRate {

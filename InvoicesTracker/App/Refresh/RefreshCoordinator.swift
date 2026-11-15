@@ -450,7 +450,8 @@ final class RefreshCoordinator {
         state.newestCNBDeclaration = try await database.newestCNBDeclaration()
         state.provisionalPaymentDays = try await database.provisionalPaymentDaysWithoutRate()
         let finished = currentYear() - 1
-        let rates = try await database.uniformRates(year: finished)
+        // Rates the app computed are preliminary: they neither stand in for the official ones nor for those typed.
+        let rates = try await database.uniformRates(year: finished).filter { !$0.isComputed }
         // Shipped with the app, or fetched and confirmed.
         let hasOfficialRate = rates.contains { $0.origin != .manual }
         state.finishedYearsWithoutUniformRate = hasOfficialRate ? [] : [finished]

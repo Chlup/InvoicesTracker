@@ -119,7 +119,7 @@ struct SchemaTests {
         defer { removeTemporaryDirectory(directory) }
 
         #expect(try await database.schemaVersion() == Schema.latestVersion)
-        #expect(Schema.latestVersion == 4)
+        #expect(Schema.latestVersion == 5)
         let names = try await tableNames(in: database)
         for table in Self.expectedTables {
             #expect(names.contains(table), "table \(table)")
@@ -187,7 +187,7 @@ struct SchemaTests {
             )
         }
 
-        #expect(try await database.integer("PRAGMA user_version") == 4)
+        #expect(try await database.integer("PRAGMA user_version") == Int64(Schema.latestVersion))
         #expect(children == ["id", "name", "birth_date"])
         #expect(
             childYears == [
@@ -275,7 +275,7 @@ struct SchemaTests {
 
         let database = try Database(fileURL: fileURL, key: key)
 
-        #expect(try await database.schemaVersion() == 4)
+        #expect(try await database.schemaVersion() == Schema.latestVersion)
         // Every row of every table is there, with every value it had but the column that version 3 drops.
         let after = try await database.read { try Self.rows(of: kept, in: $0) }
         #expect(after == before)
@@ -350,7 +350,7 @@ struct SchemaTests {
 
         let database = try Database(fileURL: fileURL, key: key)
 
-        #expect(try await database.schemaVersion() == 4)
+        #expect(try await database.schemaVersion() == Schema.latestVersion)
         // Every row of every table is there, with every value it had but the column that version 3 drops. The rows
         // that hang on the settings of the year are there too: rebuilding the table would have deleted them.
         let after = try await database.read { try Self.rows(of: kept, in: $0) }
@@ -405,7 +405,7 @@ struct SchemaTests {
 
         let database = try Database(fileURL: fileURL, key: key)
 
-        #expect(try await database.schemaVersion() == 4)
+        #expect(try await database.schemaVersion() == Schema.latestVersion)
         let invoice = try #require(try await database.invoice(id: 4))
         #expect(invoice.isdocFingerprint == nil)
         #expect(invoice.number == "20260904")

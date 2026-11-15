@@ -11,11 +11,11 @@ struct YearFXStateTests {
 
     private func rate(
         _ code: String, _ value: String, year: Int = 2025, instruction: String = "GFŘ-D-75",
-        origin: UniformRateOrigin = .builtIn
+        origin: UniformRateOrigin = .builtIn, computedMonths: Int? = nil
     ) -> UniformRate {
         UniformRate(
             year: year, currency: CurrencyCode(code)!, amount: 1, rate: decimal(value), instruction: instruction,
-            sourceURL: nil, confirmedAt: nil, origin: origin)
+            sourceURL: nil, confirmedAt: nil, origin: origin, computedMonths: computedMonths)
     }
 
     private var published2025: [UniformRate] {
@@ -35,15 +35,18 @@ struct YearFXStateTests {
         let daily = state(chosen: .cnbDaily, rates: published2025, paid: [.eur, .usd])
 
         let ready = UniformAvailability.ready(
-            usd: decimal("21.84"), eur: decimal("24.66"), instruction: "GFŘ-D-75", origin: .builtIn)
+            usd: decimal("21.84"), eur: decimal("24.66"), instruction: "GFŘ-D-75", origin: .builtIn,
+            computedMonths: nil)
         #expect(
             uniform
                 == YearFXState(
-                    year: 2025, chosen: .uniform, effective: .uniform, uniform: ready, hasForeignPayments: true))
+                    year: 2025, chosen: .uniform, effective: .uniform, uniform: ready, hasForeignPayments: true,
+                    paidCurrencies: [.eur, .usd]))
         #expect(
             daily
                 == YearFXState(
-                    year: 2025, chosen: .cnbDaily, effective: .cnbDaily, uniform: ready, hasForeignPayments: true))
+                    year: 2025, chosen: .cnbDaily, effective: .cnbDaily, uniform: ready, hasForeignPayments: true,
+                    paidCurrencies: [.eur, .usd]))
     }
 
     @Test func aYearWithoutForeignPaymentsCanTakeAnyRateItHasAndTheChoiceChangesNothing() {
@@ -52,7 +55,9 @@ struct YearFXStateTests {
         let withRate = state(year: 2026, rates: [typed], paid: [])
         let withoutRate = state(year: 2026, rates: [], paid: [])
 
-        #expect(withRate.uniform == .ready(usd: decimal("21.9"), eur: nil, instruction: nil, origin: .manual))
+        #expect(
+            withRate.uniform
+                == .ready(usd: decimal("21.9"), eur: nil, instruction: nil, origin: .manual, computedMonths: nil))
         #expect(withRate.effective == .uniform)
         #expect(withRate.hasForeignPayments == false)
         #expect(withoutRate.uniform == .notPublishedYet(year: 2026))
@@ -69,11 +74,54 @@ struct YearFXStateTests {
 
         #expect(
             state(rates: rates, paid: [.gbp]).uniform
-                == .ready(usd: decimal("21.9"), eur: decimal("24.7"), instruction: "GFŘ-D-80", origin: .manual))
+                == .ready(
+                    usd: decimal("21.9"), eur: decimal("24.7"), instruction: "GFŘ-D-80", origin: .manual,
+                    computedMonths: nil))
         // A year with neither takes the instruction of the rates it has.
         #expect(
             state(rates: [rate("GBP", "28.89")], paid: [.gbp]).uniform
-                == .ready(usd: nil, eur: nil, instruction: "GFŘ-D-75", origin: .builtIn))
+                == .ready(usd: nil, eur: nil, instruction: "GFŘ-D-75", origin: .builtIn, computedMonths: nil))
+    }
+
+    // MARK: Computed rates
+
+    private var computed2026: [UniformRate] {
+        [
+            rate("EUR", "24.35", year: 2026, instruction: "", origin: .computed, computedMonths: 9),
+            rate("USD", "21.35", year: 2026, instruction: "", origin: .computed, computedMonths: 9),
+        ]
+    }
+
+    @Test func aYearWithComputedRatesIsReadyWithItsMonths() {
+        let fxState = state(year: 2026, rates: computed2026, paid: [.usd])
+
+        #expect(
+            fxState.uniform
+                == .ready(
+                    usd: decimal("21.35"), eur: decimal("24.35"), instruction: nil, origin: .computed,
+                    computedMonths: 9))
+        #expect(fxState.uniform.computedMonths == 9)
+        #expect(fxState.effective == .uniform)
+    }
+
+    @Test func aYearWhoseComputedRatesLackAPaidCurrencyMissesIt() {
+        #expect(state(year: 2026, rates: computed2026, paid: [.gbp]).uniform == .missingCurrency(.gbp))
+    }
+
+    @Test func usesComputedRateOnlyWhenTheYearConvertsAtIt() {
+        let chosenUniform = state(year: 2026, rates: computed2026, paid: [.usd])
+        let chosenDaily = state(year: 2026, chosen: .cnbDaily, rates: computed2026, paid: [.usd])
+        let published = state(rates: published2025, paid: [.usd])
+
+        #expect(chosenUniform.usesComputedRate)
+        #expect(chosenDaily.usesComputedRate == false)
+        #expect(published.usesComputedRate == false)
+        #expect(published.uniform.computedMonths == nil)
+    }
+
+    @Test func theStateKeepsThePaidCurrencies() {
+        #expect(state(rates: published2025, paid: [.eur, .usd]).paidCurrencies == [.eur, .usd])
+        #expect(state(rates: [], paid: []).paidCurrencies == [])
     }
 
     // MARK: Not ready

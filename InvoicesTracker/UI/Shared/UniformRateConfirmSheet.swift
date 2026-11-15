@@ -1,11 +1,11 @@
 import SwiftUI
 
 /// The sheet that asks the person to confirm the uniform rates the refresh found for a finished year: what was found,
-/// where it was read, what the table has more and less than the one of the year before, and Použít, Zadat ručně and
-/// Později. Nothing is stored before Použít, which has to be clicked: no button of the sheet is the default one, as the
-/// sheet comes up by itself over whatever the person is doing, and a stray Return must not store a table that changes
-/// the income of the year. Esc is Později. The words and the choices are the model's (`UniformRateConfirmModel`); the
-/// sheet only shows them.
+/// where it was read, whether it agrees with the rates of the year that the app computed, what the table has more and
+/// less than the one of the year before, and Použít, Zadat ručně and Později. Nothing is stored before Použít, which
+/// has to be clicked: no button of the sheet is the default one, as the sheet comes up by itself over whatever the
+/// person is doing, and a stray Return must not store a table that changes the income of the year. Esc is Později. The
+/// words and the choices are the model's (`UniformRateConfirmModel`); the sheet only shows them.
 struct UniformRateConfirmSheet: View {
     @State private var model: UniformRateConfirmModel
 
@@ -17,6 +17,9 @@ struct UniformRateConfirmSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             sources
+            if let comparison = model.computedComparison {
+                Note(.info, icon: .info, text: comparison)
+            }
             if !model.differenceLines.isEmpty {
                 differences
             }

@@ -47,6 +47,7 @@ nonisolated enum Schema {
         Migration(version: 2, apply: createVersion2),
         Migration(version: 3, apply: createVersion3),
         Migration(version: 4, apply: createVersion4),
+        Migration(version: 5, apply: createVersion5),
     ]
 
     /// The version a database has after all migrations ran.
@@ -375,8 +376,9 @@ private nonisolated extension Schema {
         );
         """
 
-    /// A uniform rate is one currency in one year. A ČNB rate is one currency on the day it was declared, quoted for
-    /// `amount` units, which is never zero because a conversion divides by it.
+    /// A uniform rate is one currency in one year. `computed_months` is the number of months a computed rate averages
+    /// (added by version 5), and NULL for a rate of any other origin. A ČNB rate is one currency on the day it was
+    /// declared, quoted for `amount` units, which is never zero because a conversion divides by it.
     static let rateTables = """
         CREATE TABLE uniform_rate (
             year INTEGER NOT NULL,
@@ -590,4 +592,19 @@ private nonisolated extension Schema {
 
     /// What Fakturoid writes for it on an English invoice.
     static let englishBankWording = "Bank transfer"
+}
+
+// MARK: - Version 5
+
+private nonisolated extension Schema {
+    /// The number of months a rate computed by the app averages. The column is added in place, and the rows that
+    /// exist stay as they are, with NULL: none of them was computed.
+    static func createVersion5(_ connection: SQLiteConnection, _ searchIndex: SearchIndexKind) throws {
+        try connection.execute(computedMonthsColumn)
+    }
+
+    /// NULL means the rate was not computed by the app.
+    static let computedMonthsColumn = """
+        ALTER TABLE uniform_rate ADD COLUMN computed_months INTEGER;
+        """
 }

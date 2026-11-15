@@ -1499,7 +1499,7 @@ struct BackupTests {
 
         let restored = try await vault.restore(from: backup, recoveryCode: code)
 
-        #expect(try await restored.schemaVersion() == 4)
+        #expect(try await restored.schemaVersion() == Schema.latestVersion)
         #expect(try await restored.invoiceCount() == 1)
         #expect(try await restored.clientCount() == 1)
         #expect(try await restored.storedSettingsYears() == [2025, 2026])
@@ -1555,7 +1555,7 @@ struct BackupTests {
 
         let restored = try await vault.restore(from: backup, recoveryCode: code)
 
-        #expect(try await restored.schemaVersion() == 4)
+        #expect(try await restored.schemaVersion() == Schema.latestVersion)
         let invoice = try #require(try await restored.invoice(id: 1))
         #expect(invoice.isdocFingerprint == nil)
         #expect(invoice.paymentMethod == "Převodem")

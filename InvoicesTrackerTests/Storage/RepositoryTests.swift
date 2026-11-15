@@ -1437,15 +1437,15 @@ struct RepositoryTests {
         let fetched = Self.uniformRate(year: 2026, .usd, "20.69", origin: .fetched)
 
         // 2026 has none: the rates are stored, and the other years are not touched.
-        #expect(try await database.storeUniformRatesIfNone([fetched], year: 2026))
+        #expect(try await database.storeUniformRatesIfNone([fetched], year: 2026) != nil)
         #expect(try await database.uniformRates(year: 2026) == [fetched])
         #expect(try await database.uniformRates(year: 2025) == kept2025)
 
         // 2026 has rates now, and 2025 has its built-in ones: neither is replaced.
         let other = Self.uniformRate(year: 2026, .eur, "24.10", origin: .fetched)
         let replacing2025 = Self.uniformRate(year: 2025, .usd, "1")
-        #expect(try await database.storeUniformRatesIfNone([other], year: 2026) == false)
-        #expect(try await database.storeUniformRatesIfNone([replacing2025], year: 2025) == false)
+        #expect(try await database.storeUniformRatesIfNone([other], year: 2026) == nil)
+        #expect(try await database.storeUniformRatesIfNone([replacing2025], year: 2025) == nil)
         #expect(try await database.uniformRates(year: 2026) == [fetched])
         #expect(try await database.uniformRates(year: 2025) == kept2025)
     }
@@ -1454,7 +1454,7 @@ struct RepositoryTests {
         let (database, directory) = try makeDatabase()
         defer { removeTemporaryDirectory(directory) }
 
-        #expect(try await database.storeUniformRatesIfNone([], year: 2026) == false)
+        #expect(try await database.storeUniformRatesIfNone([], year: 2026) == nil)
 
         #expect(try await database.uniformRates(year: 2026).isEmpty)
     }

@@ -136,6 +136,31 @@ nonisolated enum RatesStatus {
     ) -> RateStatusRow {
         let label = "Jednotný kurz \(year)"
         let shown = YearTabModel.dollarAndEuroRates(rates)
+        let foundRow = { (instruction: String) in
+            RateStatusRow(
+                label: label, value: "vyšel, čeká na potvrzení",
+                detail: "pokyn \(instruction) · čeká, až ho potvrdíte", tone: .warning, action: .showFinding)
+        }
+        let unreadableRow = RateStatusRow(
+            label: label, value: "nepodařilo se ho přečíst",
+            detail: "Finanční zpravodaj se nepodařilo přečíst – kurz zadejte ručně na kartě Rok \(year).",
+            tone: .warning)
+        // A computed rate stands in for a missing one: a rate the app found or could not read comes first.
+        if shown.contains(where: \.isComputed) {
+            switch search {
+            case .waitingForConfirmation(let instruction):
+                return foundRow(instruction)
+            case .unreadable:
+                return unreadableRow
+            case .notOut, .gaveUp:
+                break
+            }
+        }
+        if let months = shown.compactMap(\.computedMonths).max(), shown.contains(where: \.isComputed) {
+            return RateStatusRow(
+                label: label, value: shown.map(BuilderText.uniformRate).joined(separator: " · "),
+                detail: computedDetail(year: year, months: months, facts: facts), tone: .warning)
+        }
         guard shown.isEmpty else {
             return RateStatusRow(
                 label: label, value: shown.map(BuilderText.uniformRate).joined(separator: " · "),
@@ -148,18 +173,20 @@ nonisolated enum RatesStatus {
             tone: .warning)
         switch search {
         case .waitingForConfirmation(let instruction):
-            return RateStatusRow(
-                label: label, value: "vyšel, čeká na potvrzení", detail: "pokyn \(instruction) · čeká, až ho potvrdíte",
-                tone: .warning, action: .showFinding)
+            return foundRow(instruction)
         case .unreadable:
-            return RateStatusRow(
-                label: label, value: "nepodařilo se ho přečíst",
-                detail: "Finanční zpravodaj se nepodařilo přečíst – kurz zadejte ručně na kartě Rok \(year).",
-                tone: .warning)
+            return unreadableRow
         case .gaveUp:
             return notFound
         case .notOut:
             let today = CivilDate.today(now: facts.now, timeZone: facts.timeZone)
+            if year == today.year, today.month == 1, let february = CivilDate(year: year, month: 2, day: 1) {
+                return RateStatusRow(
+                    label: label, value: "zatím nejde spočítat",
+                    detail: "Leden ještě neskončil. Od \(CzechFormat.date(february)) ho aplikace spočítá z kurzů ČNB;"
+                        + " GFŘ vydá oficiální kurz v lednu \(year + 1).",
+                    tone: .quiet)
+            }
             let detail: String
             switch UniformRateSearch(year: year, today: today) {
             case .notStarted:
@@ -173,6 +200,21 @@ nonisolated enum RatesStatus {
             }
             return RateStatusRow(label: label, value: "zatím nevyšel", detail: detail, tone: .quiet)
         }
+    }
+
+    /// What the row of a rate the app computed from `months` months from January says: that it is preliminary and from
+    /// which months, and what the app does about the official rate of the GFŘ, which follows where its search stands on
+    /// the day of the Mac (`UniformRateSearch`). Once the search is over, the app did not find the official rate and
+    /// the person enters it by hand.
+    private static func computedDetail(year: Int, months: Int, facts: RatesStatusFacts) -> String {
+        let today = CivilDate.today(now: facts.now, timeZone: facts.timeZone)
+        let basis =
+            months < 12 ? "průměr kurzů ČNB za \(BuilderText.monthSpan(months))" : "spočítaný ze všech 12 měsíců"
+        if UniformRateSearch(year: year, today: today) == .over {
+            return "Předběžný – \(basis). Aplikace kurz GFŘ nenašla – zadejte ho podle pokynu GFŘ v Nastavení › Rok."
+        }
+        return "Předběžný – \(basis). GFŘ vydá oficiální kurz v lednu \(year + 1); aplikace ho od"
+            + " \(day(UniformRateSearch.firstDay(of: year))) jednou denně hledá a dá vám ho potvrdit."
     }
 
     /// "2. 1. 2027": a day of the search, or nothing for a year at the end of the calendar.

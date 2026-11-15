@@ -36,6 +36,28 @@ struct YearTabModelTests {
         UniformRate(year: year, currency: currency, amount: 1, rate: decimal(rate), instruction: "", origin: .manual)
     }
 
+    /// The uniform rate of 1 unit of `currency` in `year` that the app computed over `months` months, `rate` crowns.
+    private func computedRate(_ currency: CurrencyCode, _ rate: String, year: Int, months: Int) -> UniformRate {
+        UniformRate(
+            year: year, currency: currency, amount: 1, rate: decimal(rate), instruction: "", origin: .computed,
+            computedMonths: months)
+    }
+
+    /// Stores the ČNB rates of dollars and euros of 2026 up to 16. 10. 2026 (`cnbYearlyRows`, without the dollars when
+    /// `dollarsAreStored`), and has the app compute the preliminary uniform rate of 2026 from those of the ends of
+    /// January to September, as it does when the data opens, when `computes`: 1 USD ≈ 20,96 Kč and 1 EUR ≈ 24,31 Kč.
+    private func storeMonthEndRatesOf2026(
+        in app: AppModel, dollarsAreStored: Bool = false, computes: Bool = true
+    ) async throws {
+        let database = try #require(app.database)
+        let currencies: [CurrencyCode] = dollarsAreStored ? [.eur] : [.usd, .eur]
+        try await database.insertCNBRates(try cnbYearlyRows([2026]).filter { currencies.contains($0.currency) })
+        guard computes else { return }
+        await app.updateComputedUniformRates()
+        let computed = try await database.uniformRates(year: 2026)
+        #expect(computed.count == 2 && computed.allSatisfy { $0.isComputed && $0.computedMonths == 9 })
+    }
+
     // MARK: Profil
 
     @Test func turning2025ToTheUniformRateConvertsAPaidDollarInvoiceAt2184() async throws {
@@ -84,10 +106,11 @@ struct YearTabModelTests {
         let database = try #require(app.database)
         let model = await loadedModel(of: app)
 
-        // 2026 does not have its uniform rate yet, and the menu says no more of it than the design does: that it is
-        // not out. The longer reason of the menu of the rate capsule would make the closed menu as wide as that.
+        // 2026 does not have its uniform rate yet: the app lacks the ČNB rates it computes the rate from. The menu
+        // says no more of it than that it cannot be computed yet, as the card says; the longer reason of the menu of
+        // the rate capsule would make the closed menu as wide as that.
         #expect(model.canChooseUniform == false)
-        #expect(model.uniformOptionLabel == "jednotný kurz za rok – zatím nevyšel")
+        #expect(model.uniformOptionLabel == "jednotný kurz za rok – zatím nejde spočítat")
         #expect(model.shownFXMethod == .cnbDaily)
         // It cannot be chosen.
         await model.setFXMethod(.uniform)
@@ -155,6 +178,30 @@ struct YearTabModelTests {
         #expect(notInApp.canChooseUniform == false)
         #expect(
             notInApp.uniformOptionLabel == "jednotný kurz za rok – v aplikaci není – zadáte ho v Nastavení › Rok 2024")
+    }
+
+    /// The current year does not wait for the GFŘ: in January the menu says, as the card does, that its rate cannot be
+    /// computed yet, as no month has ended. The year just over, whose rate the GFŘ publishes, is not out yet on
+    /// 1. 1. 2027.
+    @Test func theProfilSaysTheRateOfTheCurrentYearCannotBeComputedYetInJanuary() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let january = try await makeSettingsApp(
+            in: directory.appending(path: "January", directoryHint: .isDirectory),
+            clock: ManualClock(localNoon(2027, 1, 15)))
+        january.selectYear(2027)
+        let current = await loadedModel(of: january)
+
+        #expect(current.canChooseUniform == false)
+        #expect(current.uniformOptionLabel == "jednotný kurz za rok – zatím nejde spočítat")
+
+        let newYear = try await makeSettingsApp(
+            in: directory.appending(path: "New Year", directoryHint: .isDirectory),
+            clock: ManualClock(localNoon(2027, 1, 1)))
+        newYear.selectYear(2026)
+        let finished = await loadedModel(of: newYear)
+
+        #expect(finished.uniformOptionLabel == "jednotný kurz za rok – zatím nevyšel")
     }
 
     @Test func theProfilNamesTheFlatRateOfTheExpensesAndItsCap() async throws {
@@ -292,9 +339,11 @@ struct YearTabModelTests {
         let database = try #require(app.database)
         let model = await loadedModel(of: app)
         #expect(model.shownRates.isEmpty)
+        // The app has none of the ČNB rates of 2026 that it computes the preliminary rate from.
         #expect(
             model.missingRateText
-                == "Zatím nevyšel. GFŘ ho zveřejní v lednu 2027; aplikace ho pak sama najde a požádá vás o potvrzení.")
+                == "Zatím ho nejde spočítat – aplikaci chybí kurzy ČNB ke konci některých měsíců. Spočítá ho, až je"
+                + " stáhne.")
 
         #expect(await model.saveManualUniformRates(usd: "21,50", eur: "", instruction: " GFŘ-D-80 "))
 
@@ -537,6 +586,11 @@ struct YearTabModelTests {
         #expect(model.shownRates.map(\.currency) == [.usd, .eur])
         #expect(model.shownRates.map { YearTabModel.rateText($0) } == ["21,84\u{00A0}Kč", "24,66\u{00A0}Kč"])
         #expect(model.rateSource == "pokyn GFŘ-D-75 · v aplikaci od vydání")
+        // An official rate is no computed one: it is edited, and has no rates of the month ends.
+        #expect(!model.isComputed)
+        #expect(model.editRatesTitle == "Upravit")
+        #expect(model.computedNote == nil)
+        #expect(model.monthEndRows.isEmpty && model.monthEndAverage == nil)
     }
 
     @Test func aGFRPageThatCouldNotBeReadIsShownWithItsLink() async throws {
@@ -558,13 +612,48 @@ struct YearTabModelTests {
         #expect(model.missingRateText == "Zatím nevyšel. Aplikace ho jednou denně hledá a dá vám ho potvrdit.")
     }
 
-    /// The card never promises a January that has passed: until 2 January of the next year it says when the GFŘ
+    /// With computed rates stored for the finished year, a GFŘ page that could not be read is still shown with its link
+    /// and the form still opens by itself.
+    @Test func aGFRPageThatCouldNotBeReadIsShownWhileComputedRatesAreStored() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let clock = ManualClock(localNoon(2027, 1, 20))
+        let app = try await makeSettingsApp(in: directory, clock: clock)
+        let page = try #require(
+            URL(string: "https://mf.gov.cz/assets/attachments/2027-01-14_Financni-zpravodaj-c-2-2027.pdf"))
+        var state = RefreshState()
+        state.unreadableUniformPages = [2026: page]
+        let database = try #require(app.database)
+        try await database.saveRefreshState(state)
+        _ = try await database.storeComputedUniformRates(
+            [computedRate(.usd, "21.42", year: 2026, months: 12), computedRate(.eur, "24.40", year: 2026, months: 12)],
+            year: 2026)
+        app.selectYear(2026)
+
+        let model = await loadedModel(of: app)
+
+        #expect(model.unreadablePage == page)
+        #expect(model.editsRates)
+    }
+
+    /// The card never promises a January that has passed. While the year is the current one, the app computes its
+    /// rate from the ČNB month-end rates: in January it says that no month has ended yet, and from February that the
+    /// app lacks some of the rates. Once the year is over, until 2 January of the next year it says when the GFŘ
     /// publishes the rate, from 2 January to 31 March that the app looks for it, and from 1 April that the app does not
     /// have it.
     @Test(arguments: [
         (
+            "2026-01-20",
+            "Zatím ho nejde ani předběžně spočítat – leden 2026 ještě neskončil. Od 1.\u{00A0}2.\u{00A0}2026 ho"
+                + " aplikace spočítá z kurzů ČNB ke konci měsíců; oficiální kurz vyhlásí GFŘ v lednu 2027."
+        ),
+        (
+            "2026-02-01",
+            "Zatím ho nejde spočítat – aplikaci chybí kurzy ČNB ke konci některých měsíců. Spočítá ho, až je stáhne."
+        ),
+        (
             "2026-12-31",
-            "Zatím nevyšel. GFŘ ho zveřejní v lednu 2027; aplikace ho pak sama najde a požádá vás o potvrzení."
+            "Zatím ho nejde spočítat – aplikaci chybí kurzy ČNB ke konci některých měsíců. Spočítá ho, až je stáhne."
         ),
         (
             "2027-01-01",
@@ -576,6 +665,170 @@ struct YearTabModelTests {
     ])
     func theCardSaysWhereTheRateOfAYearWithoutOneStandsOnTheDay(_ day: String, _ text: String) {
         #expect(YearTabModel.missingRateText(year: 2026, today: civilDate(day)) == text)
+    }
+
+    // MARK: A computed rate
+
+    /// A year without an official rate or one entered by hand uses the rate the app computed from the ČNB month-end
+    /// rates: the card writes its rates with "≈", says from which months it was computed and what comes next, and
+    /// offers Zadat ručně in place of Upravit. The form opens empty, and says what saving it does.
+    @Test func theCardOfAComputedRateSaysHowItWasComputedAndOffersZadatRucne() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        try await storeMonthEndRatesOf2026(in: app)
+
+        let model = await loadedModel(of: app)
+
+        #expect(model.isComputed && !model.isManual)
+        #expect(
+            model.shownRates.map { YearTabModel.rateText($0) }
+                == ["≈\u{00A0}20,96\u{00A0}Kč", "≈\u{00A0}24,31\u{00A0}Kč"])
+        #expect(
+            model.rateSource
+                == "Spočítáno podle § 38 odst. 7 ZDP z kurzů ČNB k posledním dnům měsíců leden–září 2026"
+                + " (9\u{00A0}z\u{00A0}12)")
+        #expect(model.editRatesTitle == "Zadat ručně")
+        #expect(model.manualNote == nil)
+        #expect(
+            model.computedNote
+                == "Po každém skončeném měsíci se kurz přepočítá i s ním. Oficiální kurz vyhlásí GFŘ v lednu 2027."
+                + " Aplikace ho pak sama najde, dá vám ho potvrdit a předběžný kurz jím nahradí.")
+        // There is nothing entered by hand to remove.
+        model.askToRemoveRates()
+        #expect(!model.asksToRemove)
+
+        model.startEditingRates()
+
+        #expect(model.editsRates)
+        #expect([model.usdText, model.eurText, model.instructionText] == ["", "", ""])
+        #expect(
+            model.formHint
+                == "Ručně zadaný kurz nahradí předběžný kurz, který aplikace spočítala z kurzů ČNB. Vrátíte ho"
+                + " tlačítkem Odstranit.")
+    }
+
+    /// Zadat ručně replaces the computed rate also with the same values, as the GFŘ rate typed in after a search that
+    /// did not find it is expected to be: the rates are stored as entered by hand, and the card is no longer
+    /// preliminary.
+    @Test func ratesTypedOverAComputedRateWithItsValuesReplaceIt() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        try await storeMonthEndRatesOf2026(in: app)
+        let model = await loadedModel(of: app)
+        model.startEditingRates()
+
+        #expect(await model.saveManualUniformRates(usd: "20,96", eur: "24,31", instruction: ""))
+
+        let stored = try await database.uniformRates(year: 2026)
+        #expect(stored.count == 2 && stored.allSatisfy { $0.origin == .manual && $0.computedMonths == nil })
+        #expect(!model.isComputed && model.isManual)
+        #expect(
+            app.banner?.text
+                == "Jednotný kurz 2026 je uložený. Rok 2026 na něj přepnete v liště nahoře nebo tady v Profilu.")
+    }
+
+    /// Kurzy ke konci měsíců opens the table of the ČNB rates the computed rate averages: a row for each month, the
+    /// day the rate was declared on and the rates of 1 USD and 1 EUR to three places for the months that have ended,
+    /// the last day for those that have not, and the average of the months to the haléř. Another year closes it.
+    @Test func theRatesOfTheMonthEndsAreThoseTheComputedRateAverages() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        try await storeMonthEndRatesOf2026(in: app)
+        let model = await loadedModel(of: app)
+        #expect(!model.showsMonthEnds)
+        #expect(model.monthEndsTitle == "Kurzy ke konci měsíců")
+
+        model.toggleMonthEnds()
+
+        #expect(model.showsMonthEnds)
+        #expect(model.monthEndsTitle == "Skrýt kurzy ke konci měsíců")
+        #expect(YearTabModel.monthEndColumns == ["Měsíc", "Kurz ČNB ze dne", "1\u{00A0}USD", "1\u{00A0}EUR"])
+        let rows = model.monthEndRows
+        try #require(rows.count == 12)
+        #expect(
+            rows.map(\.month) == [
+                "Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen",
+                "Listopad", "Prosinec",
+            ])
+        #expect(rows.map(\.hasEnded) == Array(repeating: true, count: 9) + Array(repeating: false, count: 3))
+        // 31. 1. 2026 is a Saturday: the rate of Friday is the one valid on it.
+        #expect(
+            rows[0]
+                == YearTabModel.MonthEndRow(
+                    month: "Leden", day: "30.\u{00A0}1. (platí i 31.\u{00A0}1.)", usd: "20,413", eur: "24,330",
+                    hasEnded: true))
+        #expect(
+            rows[2]
+                == YearTabModel.MonthEndRow(
+                    month: "Březen", day: "31.\u{00A0}3.", usd: "21,333", eur: "24,515", hasEnded: true))
+        #expect(rows[4].day == "29.\u{00A0}5. (platí i 31.\u{00A0}5.)")
+        #expect(
+            rows[9]
+                == YearTabModel.MonthEndRow(
+                    month: "Říjen", day: "měsíc skončí 31.\u{00A0}10.", usd: "—", eur: "—", hasEnded: false))
+        let average = try #require(model.monthEndAverage)
+        #expect(average.label == "Průměr 9\u{00A0}měsíců, na haléře")
+        #expect(average.usd == "20,96" && average.eur == "24,31")
+        #expect(
+            YearTabModel.monthEndsCaption
+                == "Kurz ČNB platný k poslednímu dni měsíce; o víkendu a ve svátek ten z posledního pracovního dne"
+                + " před ním. Měsíc se započítá den po svém konci.")
+
+        app.selectYear(2025)
+        await model.load()
+
+        #expect(!model.showsMonthEnds && !model.isComputed)
+        #expect(model.monthEndsTitle == "Kurzy ke konci měsíců")
+    }
+
+    /// The average of the month ends says how many months it takes, in the genitive: of one month, of two to twelve
+    /// months. Without a month that has ended, there is none.
+    @Test(arguments: [
+        ("2026-02-15", "Průměr 1\u{00A0}měsíce, na haléře", "20,41", "24,33"),
+        ("2026-03-15", "Průměr 2\u{00A0}měsíců, na haléře", "20,48", "24,29"),
+        ("2026-06-15", "Průměr 5\u{00A0}měsíců, na haléře", "20,79", "24,35"),
+    ])
+    func theAverageOfTheMonthEndsSaysHowManyMonthsItTakes(
+        _ day: String, _ label: String, _ usd: String, _ eur: String
+    ) throws {
+        let table = RateTable(rows: try cnbYearlyRows([2026]))
+        func computation(on day: String) -> PreliminaryUniformRates.Computation {
+            PreliminaryUniformRates.compute(year: 2026, today: civilDate(day)) { table.lookup($0, on: $1) }
+        }
+
+        let average = try #require(YearTabModel.monthEndAverage(of: computation(on: day)))
+
+        #expect(average.label == label && average.usd == usd && average.eur == eur)
+        #expect(YearTabModel.monthEndAverage(of: computation(on: "2026-01-31")) == nil)
+    }
+
+    /// The source of a computed rate names the months it averages, and the note promises the official rate until the
+    /// search of the app for it is over (`UniformRateSearch`), when it says to enter it by hand.
+    @Test func theSourceAndTheNoteOfAComputedRateFollowItsMonthsAndTheSearchForTheOfficialOne() {
+        #expect(
+            YearTabModel.computedSource(year: 2026, months: 1)
+                == "Spočítáno podle § 38 odst. 7 ZDP z kurzů ČNB k posledním dnům měsíců leden 2026"
+                + " (1\u{00A0}z\u{00A0}12)")
+        #expect(
+            YearTabModel.computedSource(year: 2026, months: 12)
+                == "Spočítáno podle § 38 odst. 7 ZDP z kurzů ČNB k posledním dnům měsíců roku 2026"
+                + " (všech\u{00A0}12)")
+        let official =
+            "Oficiální kurz vyhlásí GFŘ v lednu 2027. Aplikace ho pak sama najde, dá vám ho potvrdit a předběžný"
+            + " kurz jím nahradí."
+        #expect(
+            YearTabModel.computedNote(year: 2026, months: 9, today: civilDate("2026-10-17"))
+                == "Po každém skončeném měsíci se kurz přepočítá i s ním. " + official)
+        #expect(YearTabModel.computedNote(year: 2026, months: 12, today: civilDate("2027-01-15")) == official)
+        #expect(YearTabModel.computedNote(year: 2026, months: 12, today: civilDate("2027-03-31")) == official)
+        #expect(
+            YearTabModel.computedNote(year: 2026, months: 12, today: civilDate("2027-04-01"))
+                == "Aplikace kurz GFŘ nenašla. Zadejte ho podle pokynu GFŘ tlačítkem Zadat ručně; do té doby rok"
+                + " používá tento předběžný kurz.")
     }
 
     // MARK: Upravit and Odstranit
@@ -1021,6 +1274,9 @@ struct YearTabModelTests {
         let app = try await makeSettingsApp(in: directory)
         let database = try #require(app.database)
         let dollars = try await storeDollarsPaidIn2026(in: app)
+        // Without the ČNB rates of the end of January, the app cannot compute a preliminary uniform rate of 2026 to
+        // fall back on (`AppModel.updateComputedUniformRates()`).
+        try await database.execute("DELETE FROM cnb_rate WHERE declared_on IN ('2026-01-29', '2026-01-30')")
         let model = await loadedModel(of: app)
         #expect(await model.saveManualUniformRates(usd: "21,90", eur: "", instruction: ""))
         await model.setFXMethod(.uniform)
@@ -1047,12 +1303,103 @@ struct YearTabModelTests {
         #expect(try await database.invoice(id: dollars.id)?.payment == dollars.payment)
         #expect(
             model.missingRateText
-                == "Zatím nevyšel. GFŘ ho zveřejní v lednu 2027; aplikace ho pak sama najde a požádá vás o potvrzení.")
+                == "Zatím ho nejde spočítat – aplikaci chybí kurzy ČNB ke konci některých měsíců. Spočítá ho, až je"
+                + " stáhne.")
         // The write makes the window read the year shown again, and the toolbar then names the daily rates.
         #expect(app.dataVersion > version)
         await app.loadShownYearFX()
         #expect(app.shownYearFX?.effective == .cnbDaily)
         #expect(app.shownYearFXMethod == .cnbDaily)
+    }
+
+    /// Removing the rates entered by hand for the current year, whose table does not ship with the app, falls back to
+    /// the rate the app computes from the ČNB month-end rates: the question names it, the removal stores it at once and
+    /// converts the payments of the year set to the uniform rate at it, and the banner says the year uses it.
+    @Test func removingAManualRateOfTheCurrentYearFallsBackToTheComputedRate() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        let dollars = try await storeDollarsPaidIn2026(in: app)
+        try await storeMonthEndRatesOf2026(in: app, dollarsAreStored: true, computes: false)
+        let model = await loadedModel(of: app)
+        #expect(await model.saveManualUniformRates(usd: "21,90", eur: "24,70", instruction: ""))
+        model.askToRemoveRates()
+        let fallback =
+            "Rok 2026 pak použije předběžný kurz, který aplikace spočítá z kurzů ČNB (1\u{00A0}USD ≈ 20,96\u{00A0}Kč"
+            + " · 1\u{00A0}EUR ≈ 24,31\u{00A0}Kč)."
+        let search = " Oficiální kurz začne aplikace znovu hledat a dá vám ho potvrdit."
+        #expect(model.removalQuestion == fallback + search)
+        await model.setFXMethod(.uniform)
+        #expect(model.removalQuestion == fallback + " Platby roku 2026 se jím přepočtou." + search)
+
+        await model.removeManualUniformRates()
+
+        #expect(model.isComputed && !model.isManual)
+        #expect(
+            try await database.uniformRates(year: 2026).allSatisfy { $0.isComputed && $0.computedMonths == 9 })
+        #expect(
+            app.banner?.text
+                == "Ručně zadaný jednotný kurz 2026 je odstraněný. Rok 2026 teď používá předběžný kurz spočítaný z"
+                + " kurzů ČNB. Aplikace oficiální kurz znovu hledá.")
+        // 10 000,00 USD at 20,96 Kč.
+        let payment = try #require(try await database.invoice(id: dollars.id)?.payment)
+        #expect(payment.conversion == .uniform && payment.czkNetHalere == 20_960_000)
+    }
+
+    /// The texts of a removal that falls back to the computed rate name its rates, say that the payments of a year set
+    /// to the uniform rate are converted at it, and that the app looks for the official rate again: for the current
+    /// and the finished year, the years the app computes a rate for.
+    @Test func theTextsOfARemovalThatFallsBackToTheComputedRateFollowTheYear() {
+        let computed = [
+            computedRate(.usd, "21.42", year: 2026, months: 12), computedRate(.eur, "24.40", year: 2026, months: 12),
+        ]
+        let fallback =
+            "Rok 2026 pak použije předběžný kurz, který aplikace spočítá z kurzů ČNB (1\u{00A0}USD ≈ 21,42\u{00A0}Kč"
+            + " · 1\u{00A0}EUR ≈ 24,40\u{00A0}Kč)."
+        let removed = "Ručně zadaný jednotný kurz 2026 je odstraněný. Rok 2026 teď používá předběžný kurz spočítaný z"
+            + " kurzů ČNB."
+
+        // 10. 2. 2027: 2026 is the finished year, whose official rate the app looks for.
+        #expect(
+            YearTabModel.removalQuestion(
+                year: 2026, today: civilDate("2027-02-10"), choseUniform: false, computed: computed)
+                == fallback + " Oficiální kurz začne aplikace znovu hledat a dá vám ho potvrdit.")
+        #expect(
+            YearTabModel.removalBanner(
+                year: 2026, today: civilDate("2027-02-10"), choseUniform: true, usesComputedRate: true)
+                == removed + " Aplikace oficiální kurz znovu hledá.")
+        // 10. 2. 2028: 2026 is older than the finished year.
+        #expect(
+            YearTabModel.removalQuestion(
+                year: 2026, today: civilDate("2028-02-10"), choseUniform: true, computed: computed)
+                == fallback + " Platby roku 2026 se jím přepočtou.")
+        #expect(
+            YearTabModel.removalBanner(
+                year: 2026, today: civilDate("2028-02-10"), choseUniform: false, usesComputedRate: true)
+                == removed)
+    }
+
+    /// After 31 March the refresh no longer looks for the official rate of the finished year, so neither the question
+    /// nor the banner of the removal promise that it does.
+    @Test func theRemovalOfAComputedRateAfterTheSearchIsOverPromisesNoSearch() {
+        let computed = [
+            computedRate(.usd, "21.42", year: 2026, months: 12), computedRate(.eur, "24.40", year: 2026, months: 12),
+        ]
+
+        let question = YearTabModel.removalQuestion(
+            year: 2026, today: civilDate("2027-04-10"), choseUniform: false, computed: computed)
+        let banner = YearTabModel.removalBanner(
+            year: 2026, today: civilDate("2027-04-10"), choseUniform: false, usesComputedRate: true)
+
+        #expect(
+            question
+                == "Rok 2026 pak použije předběžný kurz, který aplikace spočítá z kurzů ČNB"
+                + " (1\u{00A0}USD ≈ 21,42\u{00A0}Kč · 1\u{00A0}EUR ≈ 24,40\u{00A0}Kč).")
+        #expect(
+            banner
+                == "Ručně zadaný jednotný kurz 2026 je odstraněný. Rok 2026 teď používá předběžný kurz spočítaný z"
+                + " kurzů ČNB.")
     }
 
     /// The banner of a removal is built from the choice the year has once its payments are converted, read anew: the

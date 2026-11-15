@@ -43,7 +43,7 @@ final class RateMenuModel {
         self.app = app
         year = app.asOf.year
         if let known = app.shownYearFX, known.year == year {
-            content = RateMenuBuilder.content(state: known, comparison: nil)
+            content = RateMenuBuilder.content(state: known, comparison: nil, today: app.today)
         }
     }
 
@@ -78,7 +78,7 @@ final class RateMenuModel {
         }
         guard thisLoad == loadsStarted else { return }
         year = shownYear
-        content = RateMenuBuilder.content(state: state, comparison: comparison)
+        content = RateMenuBuilder.content(state: state, comparison: comparison, today: app.today)
         errorText = nil
     }
 

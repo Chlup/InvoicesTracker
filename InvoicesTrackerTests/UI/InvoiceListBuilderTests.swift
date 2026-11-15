@@ -48,6 +48,20 @@ struct InvoiceListBuilderTests {
             on: day, conversion: .cnbDaily, net: net, vat: 0, rate: storedRate("USD", "21.305", declaredOn: day))
     }
 
+    /// The label of the total at the uniform rate says the rate is preliminary when the year's rate is computed.
+    @Test func theUniformLabelSaysPreliminaryForAComputedRate() {
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+
+        let data = build(input(invoices: [dollarInvoice(id: 1)], uniformRates: [computed]))
+        let manual = build(
+            input(invoices: [dollarInvoice(id: 1)], uniformRates: [uniformRate(year: 2026, origin: .manual)]))
+
+        #expect(data.uniformLabel == "Předběžným jednotným kurzem 2026")
+        #expect(manual.uniformLabel == "Jednotným kurzem 2026")
+    }
+
     private func uniformRate(
         _ code: String = "USD", _ rate: String = "21.84", year: Int = 2025, amount: Int = 1,
         instruction: String = "GFŘ-D-75", origin: UniformRateOrigin = .builtIn

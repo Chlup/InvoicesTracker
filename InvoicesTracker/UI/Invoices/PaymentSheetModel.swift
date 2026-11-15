@@ -84,9 +84,9 @@ final class PaymentSheetModel {
     private(set) var effect: ReceiptEffect?
 
     /// A line under the options: the year set to the uniform rate cannot convert the payment at it, and why, as every
-    /// screen says it on the day of the app (`BuilderText.uniformRateMissing(_:year:)`): the year lacks the uniform
-    /// rate of the currency of the payment, or has it and lacks that of another currency it was paid in, which the
-    /// line names; or no rate is there.
+    /// screen says it on the day of the app (`BuilderText.uniformRateMissing(_:year:today:)`): the year lacks the
+    /// uniform rate of the currency of the payment, or has it and lacks that of another currency it was paid in, which
+    /// the line names; or no rate is there.
     private(set) var notice: String?
 
     /// What is wrong with the amount typed, or nil.
@@ -95,6 +95,10 @@ final class PaymentSheetModel {
     /// The payment by the method of the year, whichever is chosen, so that its option can show its value: the stored
     /// payment while the day is the stored one and the stored payment is converted the way the year converts now.
     private(set) var methodPayment: Payment?
+
+    /// Whether the year of the day converts at a uniform rate the app computed (`YearFXState.usesComputedRate`), so
+    /// that the option of the uniform rate is named preliminary.
+    private(set) var usesComputedRate = false
 
     /// The method the payment is converted with by the method of the year the money arrived in: the uniform rate when
     /// the year uses it and has it for the currency, otherwise the ČNB rate of the day.
@@ -232,7 +236,8 @@ final class PaymentSheetModel {
         if payment.conversion == .uniform {
             let year = payment.date.year
             return PaymentOption(
-                title: "Jednotný kurz za rok \(year)", detail: "\(rateLabel) · přepočet zvolený pro rok \(year)",
+                title: (usesComputedRate ? "Předběžný jednotný" : "Jednotný") + " kurz za rok \(year)",
+                detail: "\(rateLabel) · přepočet zvolený pro rok \(year)",
                 value: value)
         }
         let day = CzechFormat.date(payment.date)
@@ -353,6 +358,7 @@ final class PaymentSheetModel {
         guard thisRun == recomputesStarted else { return }
         preview = worked.preview
         methodPayment = worked.methodPayment
+        usesComputedRate = worked.usesComputedRate
         bankPayment = worked.bankPayment
         method = worked.method
         standIn = worked.standIn
@@ -380,6 +386,7 @@ final class PaymentSheetModel {
     private struct Worked {
         var preview: Payment?
         var methodPayment: Payment?
+        var usesComputedRate = false
         var bankPayment: Payment?
         var method: IncomeFXMethod
         var standIn: PaymentStandIn?
@@ -411,6 +418,7 @@ final class PaymentSheetModel {
         var missingUniformRate: UniformAvailability?
         if isForeign {
             let conversion = try await app.fxState(year: day.year)
+            worked.usesComputedRate = conversion.usesComputedRate
             cnbRate = try await database.cnbRate(invoice.currency, on: day)
             let rateOfTheYear = try await database.uniformRate(invoice.currency, year: day.year)?.exchangeRate
             if conversion.effective == .uniform, let rateOfTheYear {
@@ -516,7 +524,7 @@ final class PaymentSheetModel {
                     "Kurz ČNB ke dni přijetí zatím není k dispozici – bez něj nejde příjem přepočítat."
                     + " Počkejte na stažení kurzů nebo zadejte částku v Kč podle banky."
             } else if let missingUniformRate,
-                let reason = BuilderText.uniformRateMissing(missingUniformRate, year: day.year)
+                let reason = BuilderText.uniformRateMissing(missingUniformRate, year: day.year, today: app.today)
             {
                 worked.notice =
                     "Jednotný kurz \(day.year): \(reason). Platba i celý rok \(day.year) se proto zatím přepočtou"

@@ -690,3 +690,40 @@ private func firstElement(among elements: [Any], where matches: (AnyObject) -> B
     }
     return nil
 }
+
+/// What is wrong with how `window` holds what it shows, in words: content that needs more height than the window has,
+/// which makes the window lay its sidebar and its page out taller than itself and shift them up, out of sight; and a
+/// list of the sidebar that does not start under the toolbar. Empty when the window holds its content. A long text that
+/// keeps its height whatever the width, at the top of the window, does that: the window measures it at a narrow width.
+@MainActor
+func windowLayoutProblems(in window: NSWindow) -> [String] {
+    guard let content = window.contentView else { return ["The window has no content"] }
+    var problems: [String] = []
+    let fitting = content.fittingSize.height
+    if fitting > content.bounds.height + 0.5 {
+        problems.append("The content needs \(fitting) points of height in a window \(content.bounds.height) tall")
+    }
+    if let list = sidebarOutline(in: content) {
+        let frame = list.convert(list.bounds, to: nil)
+        if frame.minY < -0.5 || frame.maxY > window.contentLayoutRect.maxY + 0.5 {
+            problems.append("The list of the sidebar is out of place: \(frame)")
+        }
+    }
+    return problems
+}
+
+/// The list of the sidebar under `view`: the first outline view.
+@MainActor
+private func sidebarOutline(in view: NSView) -> NSOutlineView? {
+    if let outline = view as? NSOutlineView {
+        return outline
+    }
+    return view.subviews.lazy.compactMap { sidebarOutline(in: $0) }.first
+}
+
+/// The height `view` takes when it is `width` wide and can be as tall as it likes: what it needs to show all of its
+/// text.
+@MainActor
+func neededHeight(of view: some View, width: CGFloat) -> CGFloat {
+    NSHostingController(rootView: view).sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+}

@@ -344,6 +344,17 @@ struct PredictionBuilderTests {
         #expect(!banner.contains("posledních tří"))
     }
 
+    /// The banner names a computed uniform rate preliminary.
+    @Test func theBannerSaysPreliminaryForAComputedUniformRate() throws {
+        var uniform = PredictionSample.input(year: 2026)
+        uniform.usesUniformRate = true
+        uniform.rateDay = nil
+
+        let banner = PredictionBuilder.page(try outcome(of: uniform), usesComputedRate: true).banner
+
+        #expect(banner.contains("cizí měny předběžným jednotným kurzem 2026"))
+    }
+
     /// The months section is open to change in a year in progress, and says when it was invoiced in a year that is
     /// over.
     @Test func theMonthsSectionHasItsHeadingItsLineAndItsLegend() throws {

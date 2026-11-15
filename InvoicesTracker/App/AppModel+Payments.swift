@@ -19,8 +19,9 @@ extension AppModel {
     /// Every conversion of payments asks for its turn here, where it starts: a choice of how a year converts its income
     /// (`setFXMethod(_:year:)`), new ČNB rates (`ratesUpdated()`), a uniform rate stored or removed
     /// (`convertPaymentsAfterUniformRatesChanged(year:)`), payments that changed
-    /// (`recomputePaymentsAfterChanges(inYears:)`) and the stand-ins of an earlier version
-    /// (`convertUniformStandIns()`). What `pass` is made of never asks for a turn (`recomputePayments(year:in:)`,
+    /// (`recomputePaymentsAfterChanges(inYears:)`), the stand-ins of an earlier version
+    /// (`convertUniformStandIns()`) and a computed uniform rate that changed
+    /// (`updateComputedUniformRates()`). What `pass` is made of never asks for a turn (`recomputePayments(year:in:)`,
     /// `recomputePayments(of:in:)`): a turn waits only for the turns asked for before it, so one that asked for another
     /// turn and waited for it would wait for its own end. Nor does `pass` wait for a step of Zabezpečení a zálohy
     /// (`runSecurityStep(_:)`), which may itself wait for a turn.

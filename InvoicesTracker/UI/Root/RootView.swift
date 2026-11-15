@@ -90,6 +90,12 @@ private struct AppWindow: View {
                     }
                     .pagePadding([.horizontal, .top])
                 }
+                if let notice = preliminaryRateNotice {
+                    PreliminaryRateNotice(title: notice.title, sentence: notice.sentence) {
+                        model.showSettings(.year)
+                    }
+                    .pagePadding([.horizontal, .top])
+                }
                 screenContent
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -135,6 +141,18 @@ private struct AppWindow: View {
         }
     }
 
+    /// The title and the sentence of the notice that the year shown converts at a preliminary uniform rate, when the
+    /// selected screen shows numbers that rate affects and the window has read the year shown. The invoice editor,
+    /// which takes the place of the list of Faktury, has none: an editor that waits behind another screen does not
+    /// hide the notice there.
+    private var preliminaryRateNotice: (title: String, sentence: String)? {
+        let showsEditor = model.screen == .invoices && model.shownEditorRequest != nil
+        guard model.screen.showsPreliminaryRateNotice, !showsEditor,
+            let state = model.shownYearFX, state.year == model.asOf.year
+        else { return nil }
+        return PreliminaryRateNoticeText.content(state: state, today: model.today)
+    }
+
     /// The selected screen: Přehled, Faktury (or the invoice editor in its place), Zálohy a odpočty, Výpočet,
     /// Odhad odvodů, Odběratelé, Simulátor, Rozpočet, Nastavení and Import.
     @ViewBuilder
@@ -174,7 +192,8 @@ private struct AppWindow: View {
     private var shownHeader: ScreenHeader {
         guard model.screen == .invoices, let request = model.shownEditorRequest else {
             return model.screen.header(
-                year: model.asOf.year, asOf: model.asOf.asOf, today: model.today, incomeFX: model.shownYearFXMethod)
+                year: model.asOf.year, asOf: model.asOf.asOf, today: model.today, incomeFX: model.shownYearFXMethod,
+                computedRate: model.shownYearUsesComputedRate)
         }
         if let editor = model.editor {
             return ScreenHeader(title: editor.title, subtitle: editor.subtitle)

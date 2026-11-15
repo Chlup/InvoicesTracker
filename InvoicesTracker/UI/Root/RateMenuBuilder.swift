@@ -1,15 +1,27 @@
 import Foundation
 
+/// How the rate capsule of the toolbar is coloured: by the conversion the year shown uses.
+nonisolated enum RateCapsuleTone: Sendable, Equatable {
+    /// The daily ČNB rates: no tint.
+    case daily
+
+    /// The official uniform rate of the year: tinted blue.
+    case uniform
+
+    /// A uniform rate the app computed, which is preliminary: tinted orange.
+    case preliminary
+}
+
 /// What the rate capsule of the toolbar shows: how the year shown converts its income in other currencies.
 nonisolated struct RateCapsuleContent: Equatable, Sendable {
-    /// "Denní kurz" or "Jednotný kurz".
+    /// "Denní kurz", "Jednotný kurz" or "Jednotný kurz · předběžný".
     var title: String
 
     /// What VoiceOver reads it as: "Přepočet cizích měn v roce 2025: jednotný kurz".
     var accessibilityLabel: String
 
-    /// Whether it is tinted blue: while the year uses its uniform rate.
-    var isTinted: Bool
+    /// How it is coloured: blue while the year uses its uniform rate, orange while that rate is computed.
+    var tone: RateCapsuleTone
 }
 
 /// One choice of the menu of the rate capsule.
@@ -54,13 +66,21 @@ nonisolated struct RateMenuContent: Equatable, Sendable {
 /// that choice), and the uniform rate of the year with its rates and instruction, or disabled with the reason it
 /// cannot be chosen. The method the year uses is checked.
 nonisolated enum RateMenuBuilder {
-    /// The capsule of `year`, which converts by `effective`.
-    static func capsule(year: Int, effective: IncomeFXMethod) -> RateCapsuleContent {
-        let uniform = effective == .uniform
+    /// The capsule of `year`, which converts by `effective`: "Jednotný kurz · předběžný" in orange when `computed`,
+    /// that is, when the uniform rate it converts by is one the app computed.
+    static func capsule(year: Int, effective: IncomeFXMethod, computed: Bool) -> RateCapsuleContent {
+        let prefix = "Přepočet cizích měn v roce \(year): "
+        guard effective == .uniform else {
+            return RateCapsuleContent(
+                title: "Denní kurz", accessibilityLabel: prefix + "denní kurz ČNB", tone: .daily)
+        }
+        guard computed else {
+            return RateCapsuleContent(
+                title: "Jednotný kurz", accessibilityLabel: prefix + "jednotný kurz", tone: .uniform)
+        }
         return RateCapsuleContent(
-            title: uniform ? "Jednotný kurz" : "Denní kurz",
-            accessibilityLabel: "Přepočet cizích měn v roce \(year): " + (uniform ? "jednotný kurz" : "denní kurz ČNB"),
-            isTinted: uniform)
+            title: "Jednotný kurz · předběžný", accessibilityLabel: prefix + "jednotný kurz, předběžný",
+            tone: .preliminary)
     }
 
     /// "Cizí měny v roce 2025": the heading of the menu of `year`.
@@ -70,8 +90,11 @@ nonisolated enum RateMenuBuilder {
 
     /// The menu of the year in `state`. `comparison` is the levies of the year with each method
     /// (`AppModel.levyComparison(year:)`), shown on the items where both methods can be chosen and the year has
-    /// payments in other currencies: a comparison read before the year lost its uniform rate is left out.
-    static func content(state: YearFXState, comparison: (daily: Int64, uniform: Int64)?) -> RateMenuContent {
+    /// payments in other currencies: a comparison read before the year lost its uniform rate is left out. `today` is
+    /// the day of the app, which decides what the menu says of a current year that cannot use its rate yet.
+    static func content(
+        state: YearFXState, comparison: (daily: Int64, uniform: Int64)?, today: CivilDate
+    ) -> RateMenuContent {
         let year = state.year
         let compared = state.uniform.isReady && state.hasForeignPayments ? comparison : nil
         let daily = RateMenuItem(
@@ -79,24 +102,33 @@ nonisolated enum RateMenuBuilder {
             comparison: compared.map { levies(of: $0.daily, against: $0.uniform) },
             isChecked: state.effective == .cnbDaily, isEnabled: true)
         let uniform = RateMenuItem(
-            method: .uniform, title: "Jednotný kurz \(year)", detail: uniformDetail(of: state.uniform, year: year),
+            method: .uniform, title: "Jednotný kurz \(year)",
+            detail: uniformDetail(of: state.uniform, year: year, today: today),
             comparison: compared.map { levies(of: $0.uniform, against: $0.daily) },
             isChecked: state.effective == .uniform, isEnabled: state.uniform.isReady)
-        return RateMenuContent(heading: heading(year: year), items: [daily, uniform], footer: footer(of: state))
+        return RateMenuContent(
+            heading: heading(year: year), items: [daily, uniform], footer: footer(of: state, today: today))
     }
 
     // MARK: Helpers
 
     /// The line under the uniform rate: its rates of 1 USD and 1 EUR with where they are from, or why the year cannot
-    /// use it (`BuilderText.uniformRateMissing(_:year:)`).
-    private static func uniformDetail(of uniform: UniformAvailability, year: Int) -> String {
-        guard case .ready(let usd, let eur, let instruction, let origin) = uniform else {
-            return BuilderText.uniformRateMissing(uniform, year: year) ?? ""
+    /// use it (`BuilderText.uniformRateMissing(_:year:today:)`). A computed rate has "≈" before its rates and says how
+    /// many of the 12 months it averages: "1 USD ≈ 21,35 Kč · 1 EUR ≈ 24,35 Kč · předběžný · průměr kurzů ČNB za
+    /// leden–září (9 z 12 měsíců)".
+    private static func uniformDetail(of uniform: UniformAvailability, year: Int, today: CivilDate) -> String {
+        guard case .ready(let usd, let eur, let instruction, let origin, let computedMonths) = uniform else {
+            return BuilderText.uniformRateMissing(uniform, year: year, today: today) ?? ""
         }
+        let computed = origin == .computed
         let rates = [(CurrencyCode.usd, usd), (CurrencyCode.eur, eur)].compactMap { code, rate in
-            rate.map { BuilderText.uniformRate($0, of: code, amount: 1) }
+            rate.map { BuilderText.uniformRate($0, of: code, amount: 1, computed: computed) }
         }
-        let source = BuilderText.uniformSource(instruction: instruction, origin: origin)
+        var source = BuilderText.uniformSource(
+            instruction: instruction, origin: origin, computedMonths: computedMonths)
+        if computed, let months = computedMonths, (1..<12).contains(months) {
+            source = (source ?? "předběžný") + " (\(months) z 12 měsíců)"
+        }
         return (rates + [source].compactMap { $0 }).joined(separator: " · ")
     }
 
@@ -110,8 +142,9 @@ nonisolated enum RateMenuBuilder {
     }
 
     /// The note under the items: that the choice changes nothing in a year without payments in other currencies, that
-    /// the year is computed at the daily rates until it has its uniform rate, or what the choice applies to.
-    private static func footer(of state: YearFXState) -> String {
+    /// the year is computed at the daily rates until it has its uniform rate, or what the choice applies to. A
+    /// computed rate adds that it gets more exact, or, over all 12 months, that it should match the GFŘ rate.
+    private static func footer(of state: YearFXState, today: CivilDate) -> String {
         let year = state.year
         guard state.hasForeignPayments else {
             return "V roce \(year) nepřišla žádná platba v cizí měně – volba nic nemění."
@@ -121,9 +154,29 @@ nonisolated enum RateMenuBuilder {
                 return "Rok \(year) se zatím počítá denními kurzy ČNB. Jednotným kurzem, který jste pro něj zvolili, se"
                     + " přepočte, až bude kurz v aplikaci."
             }
+            if case .notPublishedYet = state.uniform, year == today.year {
+                if today.month == 1 {
+                    return "Rok \(year) se počítá denními kurzy ČNB. Jednotný kurz půjde zvolit od 1. února, kdy ho"
+                        + " aplikace spočítá z kurzu ČNB za leden."
+                }
+                return "Rok \(year) se počítá denními kurzy ČNB. Jednotný kurz půjde zvolit, až aplikace stáhne"
+                    + " chybějící kurzy ČNB."
+            }
             return "Rok \(year) se počítá denními kurzy ČNB. Jednotný kurz půjde zvolit, až bude pro rok \(year) známý."
         }
-        return "Platí pro všechny platby v cizí měně přijaté v roce \(year) – v Přehledu, Fakturách i Výpočtu."
+        let sentence =
+            "Platí pro všechny platby v cizí měně přijaté v roce \(year) – v Přehledu, Fakturách i Výpočtu."
             + " Každý rok si volbu pamatuje zvlášť."
+        guard let months = state.uniform.computedMonths else { return sentence }
+        if months < 12 {
+            return sentence + " Předběžný kurz se po každém skončeném měsíci zpřesní; oficiální vyhlásí GFŘ v lednu"
+                + " \(year + 1)."
+        }
+        if UniformRateSearch(year: year, today: today) == .over {
+            return sentence + " Kurz je spočítaný ze všech 12 měsíců. Aplikace kurz GFŘ nenašla – zadejte ho podle"
+                + " pokynu GFŘ v Nastavení › Rok."
+        }
+        return sentence + " Kurz je spočítaný ze všech 12 měsíců, takže by se měl shodovat s kurzem GFŘ; až vyjde,"
+            + " aplikace vám ho dá potvrdit."
     }
 }

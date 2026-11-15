@@ -337,6 +337,20 @@ struct InvoiceDetailBuilderTests {
         #expect(detailOf(invoice, asOf: civilDate("2025-12-31")).payment?.note == "jednotný kurz za rok 2025 21,840")
     }
 
+    @Test func aComputedUniformRateIsNamedPreliminary() {
+        var invoice = paidDollarInvoice
+        invoice.payment = .fixture(
+            on: "2026-10-08", conversion: .uniform, net: 31_340_400, vat: 0,
+            rate: storedRate("USD", "21.35", declaredOn: "2026-09-30"))
+
+        let detail = InvoiceDetailBuilder.build(
+            InvoiceDetailInput(
+                invoice: invoice, asOf: civilDate("2026-10-17"), statusDay: today, duzpRate: nil,
+                paymentEffect: nil, estimate: nil, usesComputedRate: true))
+
+        #expect(detail.payment?.note == "předběžný jednotný kurz za rok 2026 21,350")
+    }
+
     @Test func theAmountFromTheBankIsNamedSo() {
         var invoice = paidDollarInvoice
         invoice.payment = .fixture(

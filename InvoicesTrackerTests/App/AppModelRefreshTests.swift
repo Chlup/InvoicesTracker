@@ -73,6 +73,131 @@ struct AppModelRefreshTests {
         #expect(app.uniformRateOffer == nil)
     }
 
+    /// Rates of `year` that the app computed from the ČNB month-end rates, in place of the ones that ship with the app:
+    /// `usd` and `eur` crowns for one unit.
+    private func storeComputedRates(
+        of year: Int, usd: String = "21.35", eur: String = "24.80", in database: Database
+    ) async throws {
+        try await deleteBuiltInRates(of: year, in: database)
+        let rates = [(CurrencyCode.usd, usd), (.eur, eur)].map { currency, rate in
+            UniformRate(
+                year: year, currency: currency, amount: 1, rate: decimal(rate), instruction: "", origin: .computed,
+                computedMonths: 9)
+        }
+        _ = try await database.storeComputedUniformRates(rates, year: year)
+    }
+
+    @Test func aFindingIsOfferedForAYearWithOnlyComputedRates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await storeComputedRates(of: 2025, in: try #require(app.database))
+        let finding = try gfrFinding2025()
+
+        await app.offerUniformRate(finding)
+
+        #expect(app.pendingUniformRate == finding)
+        #expect(app.uniformRateOffer == finding)
+    }
+
+    @Test func confirmingAFindingReplacesTheComputedRates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        try await storeComputedRates(of: 2025, in: database)
+        let finding = try gfrFinding2025()
+        await app.offerUniformRate(finding)
+
+        try await app.confirmUniformRate(finding)
+
+        let stored = try await database.uniformRates(year: 2025)
+        #expect(stored.count == 31)
+        #expect(stored.allSatisfy { $0.origin == .fetched && $0.computedMonths == nil })
+    }
+
+    /// Confirming the GFŘ rate of a year that had the rate the app computed says, in the green banner, that the
+    /// official rate agrees with it, so that nothing changed.
+    @Test func confirmingARateThatAgreesWithTheComputedOneSaysSo() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await storeComputedRates(of: 2025, usd: "21.84", eur: "24.66", in: try #require(app.database))
+
+        try await app.confirmUniformRate(try gfrFinding2025())
+
+        #expect(
+            app.banner?.text
+                == "Jednotný kurz 2025 z pokynu GFŘ-D-75 je potvrzený. Shoduje se s předběžným kurzem, částky se"
+                + " nezměnily.")
+    }
+
+    /// Confirming a GFŘ rate that differs from the computed one says by how much, currency by currency, and that the
+    /// payments of the year are converted at it, when the year is set to the uniform rate.
+    @Test func confirmingARateThatDiffersFromTheComputedOneSaysHowAndThatThePaymentsAreConverted() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let database = try #require(app.database)
+        let id = try await database.saveInvoice(paidDollarInvoiceOf2025())
+        try await database.updateYearSettings(2025) { $0.incomeFXMethod = .uniform }
+        try await storeComputedRates(of: 2025, in: database)
+
+        try await app.confirmUniformRate(try gfrFinding2025())
+
+        #expect(
+            app.banner?.text
+                == "Jednotný kurz 2025 z pokynu GFŘ-D-75 je potvrzený. Od předběžného se liší (1\u{00A0}USD 21,35 →"
+                + " 21,84\u{00A0}Kč, 1\u{00A0}EUR 24,80 → 24,66\u{00A0}Kč), platby roku 2025 jsou jím přepočtené.")
+        // 1 000 USD at 21,84 Kč.
+        #expect(try await database.invoice(id: id)?.payment?.czkNetHalere == 2_184_000)
+    }
+
+    /// A year set to the daily ČNB rates keeps its payments when the GFŘ rate replaces the computed one: the banner
+    /// says only how the rates differ.
+    @Test func confirmingARateThatDiffersFromTheComputedOneForAYearOnTheDailyRatesSaysOnlyHow() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await storeComputedRates(of: 2025, in: try #require(app.database))
+
+        try await app.confirmUniformRate(try gfrFinding2025())
+
+        #expect(
+            app.banner?.text
+                == "Jednotný kurz 2025 z pokynu GFŘ-D-75 je potvrzený. Od předběžného se liší (1\u{00A0}USD 21,35 →"
+                + " 21,84\u{00A0}Kč, 1\u{00A0}EUR 24,80 → 24,66\u{00A0}Kč).")
+    }
+
+    /// A confirmation that replaces no computed rate shows no banner, as before the app computed any.
+    @Test func confirmingTheRateOfAYearWithoutComputedRatesShowsNoBanner() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        try await deleteBuiltInRates(of: 2025, in: try #require(app.database))
+
+        try await app.confirmUniformRate(try gfrFinding2025())
+
+        #expect(try await #require(app.database).uniformRates(year: 2025).count == 31)
+        #expect(app.banner == nil)
+    }
+
+    @Test func theReminderIsRestoredForAYearWithOnlyComputedRates() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let before = try await makeApp(in: directory)
+        let database = try #require(before.database)
+        try await storeComputedRates(of: 2025, in: database)
+        var state = RefreshState()
+        state.gaveUpUniform = [2025]
+        try await database.saveRefreshState(state)
+        await database.close()
+        let app = makeAppModel(in: directory)
+        await app.launch()
+
+        #expect(app.uniformRateReminderYear == 2025)
+    }
+
     @Test func aFindingWithNoRateInItIsNotOffered() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }

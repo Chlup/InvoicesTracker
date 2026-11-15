@@ -113,6 +113,18 @@ struct ScreenTests {
                 == "Rok 2026 · odhad příjmů a odvodů za celý rok z faktur do 30.\u{00A0}12.\u{00A0}2026")
     }
 
+    /// The line under the title of Faktury says the uniform rate is preliminary when the year's rate is computed.
+    @Test func fakturyNamesAPreliminaryUniformRate() {
+        #expect(
+            Screen.invoices.header(
+                year: 2026, asOf: today, today: today, incomeFX: .uniform, computedRate: true
+            ).subtitle == "Rok 2026 · částky bez DPH, v Kč předběžným jednotným kurzem")
+        #expect(
+            Screen.invoices.header(
+                year: 2026, asOf: today, today: today, incomeFX: .cnbDaily, computedRate: true
+            ).subtitle == "Rok 2026 · částky bez DPH, v Kč kurzem ČNB ke dni platby, nezaplacené ke dni vystavení")
+    }
+
     /// The line under the title of Faktury names how the year converts its income in other currencies: the method it
     /// uses, which is the uniform rate only while the year has it. With the daily rates it says too that an invoice
     /// that is not paid yet is converted as of the day it was issued.

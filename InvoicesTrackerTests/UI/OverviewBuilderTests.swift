@@ -1922,6 +1922,20 @@ struct OverviewBuilderTests {
         #expect(line.source.hasPrefix("pokyn GFŘ-D-90, zadáno ručně · "))
     }
 
+    /// The line names the rate preliminary when the rates of the year are computed, and not otherwise.
+    @Test func theUniformLineSaysPreliminaryForAComputedRate() throws {
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+        let manual = uniformRate("USD", "21.9", year: 2026, instruction: "", origin: .manual)
+
+        let computedLine = try #require(build(input(foreignCurrencies: [.usd], uniformRates: [computed])).uniformLine)
+        let manualLine = try #require(build(input(foreignCurrencies: [.usd], uniformRates: [manual])).uniformLine)
+
+        #expect(computedLine.title == "Předběžný jednotný kurz za rok 2026")
+        #expect(manualLine.title == "Jednotný kurz za rok 2026")
+    }
+
     /// Where uniform rates are from, as every screen says it: the instruction of official ones, and for rates entered
     /// by hand that they were, with their instruction when they have one.
     @Test func theSourceOfUniformRatesAlwaysMarksThoseEnteredByHand() {
@@ -1940,6 +1954,34 @@ struct OverviewBuilderTests {
         #expect(BuilderText.uniformSource(instruction: nil, origin: .manual) == "zadáno ručně")
         #expect(BuilderText.uniformSource(instruction: "GFŘ-D-75", origin: .builtIn) == "pokyn GFŘ-D-75")
         #expect(BuilderText.uniformSource(instruction: nil, origin: .fetched) == nil)
+    }
+
+    /// A computed rate is written with "≈", every other with "=", and a computed one says which months it averages.
+    @Test func aComputedUniformRateIsWrittenWithAnApproximationSignAndItsMonths() {
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+        let fetched = uniformRate("USD", "21.35", year: 2026, instruction: "GFŘ-D-99", origin: .fetched)
+
+        #expect(BuilderText.uniformRate(computed) == "1\u{00A0}USD ≈ 21,35\u{00A0}Kč")
+        #expect(BuilderText.uniformRate(fetched) == "1\u{00A0}USD = 21,35\u{00A0}Kč")
+        #expect(
+            BuilderText.uniformRate(decimal("21.35"), of: .usd, amount: 1, computed: true)
+                == "1\u{00A0}USD ≈ 21,35\u{00A0}Kč")
+        #expect(
+            BuilderText.uniformRate(decimal("21.35"), of: .usd, amount: 1) == "1\u{00A0}USD = 21,35\u{00A0}Kč")
+        #expect(BuilderText.monthSpan(1) == "leden")
+        #expect(BuilderText.monthSpan(9) == "leden–září")
+        #expect(
+            BuilderText.uniformSource(instruction: "", origin: .computed, computedMonths: 9)
+                == "předběžný · průměr kurzů ČNB za leden–září")
+        #expect(
+            BuilderText.uniformSource(instruction: "", origin: .computed, computedMonths: 1)
+                == "předběžný · průměr kurzů ČNB za leden")
+        #expect(
+            BuilderText.uniformSource(instruction: "", origin: .computed, computedMonths: 12)
+                == "předběžný · spočítaný ze všech 12 měsíců")
+        #expect(BuilderText.uniformSource(of: [computed]) == "předběžný · průměr kurzů ČNB za leden–září")
     }
 
     // MARK: The latest receipts

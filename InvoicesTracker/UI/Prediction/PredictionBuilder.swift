@@ -49,8 +49,11 @@ nonisolated enum PredictionBuilder {
     /// part of the income up to that day is converted at a provisional rate (`RulesWarning.provisionalIncome`). The
     /// banner of a year that is over then no longer says that nothing is estimated, as it does not for levies worked
     /// out with the rules of another year. Nothing else of the page changes: the rate puts no sign "≈" on the income,
-    /// on the levies or on the net income.
-    static func page(_ outcome: PredictionOutcome, hasProvisionalIncome: Bool = false) -> PredictionPage {
+    /// on the levies or on the net income. `usesComputedRate` says that the uniform rate of the year is one the app
+    /// computed, which the banner names preliminary.
+    static func page(
+        _ outcome: PredictionOutcome, hasProvisionalIncome: Bool = false, usesComputedRate: Bool = false
+    ) -> PredictionPage {
         let prediction = outcome.prediction
         let year = prediction.year
         let isClosed = prediction.isClosed
@@ -76,7 +79,8 @@ nonisolated enum PredictionBuilder {
                 : incompleteCalculation(outcome, incomeLabel: incomeLabel, incomeNote: incomeNote),
             parts: parts(prediction), nextYearNote: nextYearNote(prediction),
             banner: banner(
-                prediction, rulesAreEstimate: rulesAreEstimate, hasProvisionalIncome: hasProvisionalIncome),
+                prediction, rulesAreEstimate: rulesAreEstimate, hasProvisionalIncome: hasProvisionalIncome,
+                usesComputedRate: usesComputedRate),
             monthsHead: isClosed ? "Faktury po měsících" : "Kdy čekám faktury",
             monthsSub: isClosed ? "Podle data vystavení." : monthsSub, legend: legend(isClosed: isClosed),
             activeRows: active.map { clientRow($0, in: prediction) },
@@ -290,9 +294,10 @@ nonisolated enum PredictionBuilder {
     /// What the estimate counts and what rates it converts the amounts in other currencies with: the ČNB rate of the
     /// day it was declared, or the uniform rate of the year. For a year that is over, that all payments are known and,
     /// unless the engine worked the year out with the rules of another year (`rulesAreEstimate`) or part of the income
-    /// is converted at a provisional rate (`hasProvisionalIncome`), that nothing is estimated.
+    /// is converted at a provisional rate (`hasProvisionalIncome`), that nothing is estimated. A uniform rate the app
+    /// computed (`usesComputedRate`) is named preliminary.
     private static func banner(
-        _ prediction: IncomePrediction, rulesAreEstimate: Bool, hasProvisionalIncome: Bool
+        _ prediction: IncomePrediction, rulesAreEstimate: Bool, hasProvisionalIncome: Bool, usesComputedRate: Bool
     ) -> String {
         if prediction.isClosed {
             let known = "Rok \(prediction.year) skončil: všechny platby jsou známé"
@@ -301,7 +306,7 @@ nonisolated enum PredictionBuilder {
         }
         let rates =
             prediction.usesUniformRate
-            ? "cizí měny jednotným kurzem \(prediction.year)"
+            ? "cizí měny " + (usesComputedRate ? "předběžným jednotným" : "jednotným") + " kurzem \(prediction.year)"
             : "cizí měny kurzem ČNB z " + CzechFormat.date(prediction.rateDay ?? prediction.now)
         return "Odhad vychází z faktur do \(CzechFormat.date(prediction.now)): přijaté platby, vystavené faktury"
             + " a faktury, které podle dosavadního rytmu odběratele ještě přijdou."

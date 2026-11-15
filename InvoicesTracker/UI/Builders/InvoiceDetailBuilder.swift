@@ -40,6 +40,10 @@ nonisolated struct InvoiceDetailInput: Sendable {
 
     /// What a payment would add, and so what it would leave, for an invoice that is not paid and would count as income.
     var estimate: LevyEstimate?
+
+    /// Whether the year of the payment converts at a uniform rate the app computed (`YearFXState.usesComputedRate`).
+    /// The payment's own rate does not say so, so the year's state decides.
+    var usesComputedRate = false
 }
 
 // MARK: - Output
@@ -191,7 +195,9 @@ nonisolated enum InvoiceDetailBuilder {
             itemLines: invoice.items.map { itemLine($0, currency: invoice.currency) },
             facts: facts(of: invoice, duzpRate: input.duzpRate, asOf: input.asOf),
             payment: invoice.payment.map {
-                payment($0, of: invoice, today: input.statusDay, effect: input.paymentEffect)
+                payment(
+                    $0, of: invoice, today: input.statusDay, effect: input.paymentEffect,
+                    usesComputedRate: input.usesComputedRate)
             },
             estimate: invoice.payment == nil
                 ? input.estimate.map { estimateText($0, isDraft: invoice.status == .draft) } : nil,
@@ -403,9 +409,10 @@ nonisolated enum InvoiceDetailBuilder {
 
     /// The payment of `invoice` as the detail says it. The note that it is dated later is for a payment dated after
     /// `today`, whatever year or day the screen is shown as of: the money of a past year's invoice that came in January
-    /// is not later than today.
+    /// is not later than today. A payment at the uniform rate says "předběžný" when the year's rate is computed
+    /// (`usesComputedRate`).
     private static func payment(
-        _ payment: Payment, of invoice: Invoice, today: CivilDate, effect: ReceiptEffect?
+        _ payment: Payment, of invoice: Invoice, today: CivilDate, effect: ReceiptEffect?, usesComputedRate: Bool
     ) -> PaymentDetail {
         let rate = payment.rate.map { CzechFormat.rate($0.rate.rate) }
         let note: String
@@ -418,7 +425,8 @@ nonisolated enum InvoiceDetailBuilder {
             case .bankCZK:
                 note = "částka v Kč podle banky"
             case .uniform:
-                note = "jednotný kurz za rok \(payment.date.year) \(rate ?? "—")"
+                let preliminary = usesComputedRate ? "předběžný " : ""
+                note = preliminary + "jednotný kurz za rok \(payment.date.year) \(rate ?? "—")"
             case .cnbDaily, .czk:
                 note = "kurz ČNB ke dni přijetí \(rate ?? "—")"
             }

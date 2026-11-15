@@ -4,9 +4,11 @@ import Foundation
 nonisolated enum UniformAvailability: Sendable, Equatable {
     /// The year has the uniform rate of every currency it was paid in (of some currency, when it was paid in none):
     /// the rates of 1 USD and 1 EUR in crowns, nil for one it has none of, the GFŘ instruction they were published
-    /// by, nil when they have none (entered by hand without one), and where they are from: entered by hand when any of
-    /// them was, which every screen says (`BuilderText.uniformSource(instruction:origin:)`).
-    case ready(usd: Decimal?, eur: Decimal?, instruction: String?, origin: UniformRateOrigin)
+    /// by, nil when they have none (entered by hand without one), and where they are from: computed by the app when
+    /// any of them was, else entered by hand when any of them was, which every screen says
+    /// (`BuilderText.uniformSource(instruction:origin:computedMonths:)`). `computedMonths` is the number of months a
+    /// computed rate averages, nil when none of them is computed.
+    case ready(usd: Decimal?, eur: Decimal?, instruction: String?, origin: UniformRateOrigin, computedMonths: Int?)
 
     /// The year has uniform rates, but not that of this currency, in which it was paid: the first such one by code.
     case missingCurrency(CurrencyCode)
@@ -29,6 +31,15 @@ nonisolated enum UniformAvailability: Sendable, Equatable {
             return true
         }
         return false
+    }
+
+    /// The number of months the computed rate of the year averages (`UniformRate.computedMonths`), nil when the year
+    /// has no computed rate.
+    var computedMonths: Int? {
+        if case .ready(_, _, _, _, let months) = self {
+            return months
+        }
+        return nil
     }
 }
 
@@ -86,6 +97,16 @@ nonisolated struct YearFXState: Sendable, Equatable {
     /// Whether money in another currency than crowns came in the year, other than amounts the bank credited in crowns:
     /// without it the choice changes nothing.
     let hasForeignPayments: Bool
+
+    /// The currencies the year was paid in that are converted at a rate, as the initializer was given them: what the
+    /// year needs a rate of.
+    var paidCurrencies: [CurrencyCode] = []
+
+    /// Whether the year converts its income at a rate the app computed: the uniform rate is the method it uses, and a
+    /// rate of it is computed, so that the amounts converted are preliminary.
+    var usesComputedRate: Bool {
+        effective == .uniform && uniform.computedMonths != nil
+    }
 }
 
 nonisolated extension YearFXState {
@@ -98,7 +119,7 @@ nonisolated extension YearFXState {
         let uniform = UniformAvailability(year: year, rates: rates, paidCurrencies: paidCurrencies, today: today)
         self.init(
             year: year, chosen: chosen, effective: chosen == .uniform && uniform.isReady ? .uniform : .cnbDaily,
-            uniform: uniform, hasForeignPayments: paidCurrencies.contains { !$0.isCZK })
+            uniform: uniform, hasForeignPayments: paidCurrencies.contains { !$0.isCZK }, paidCurrencies: paidCurrencies)
     }
 }
 
@@ -129,8 +150,9 @@ nonisolated extension UniformAvailability {
     }
 
     /// `.ready` with the rates of 1 USD and 1 EUR of `rates`, and the instruction of those two, or of all of `rates`
-    /// when it has neither: the first that has one. They were entered by hand when any of them was; otherwise they
-    /// are from where the first of them is from.
+    /// when it has neither: the first that has one. They were computed when any of them was, in the months of the
+    /// first such one; otherwise entered by hand when any of them was; otherwise they are from where the first of them
+    /// is from.
     private static func ready(of rates: [UniformRate]) -> UniformAvailability {
         func perUnit(_ currency: CurrencyCode) -> Decimal? {
             rates.first { $0.currency == currency }.map { $0.rate / Decimal($0.amount) }
@@ -139,8 +161,12 @@ nonisolated extension UniformAvailability {
         let named = (dollarsAndEuros.isEmpty ? rates : dollarsAndEuros).sorted { $0.currency < $1.currency }
         let instruction = named.lazy.map { $0.instruction.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+        let computed = named.first { $0.isComputed }
         let origin: UniformRateOrigin =
-            named.contains { $0.origin == .manual } ? .manual : named.first?.origin ?? .builtIn
-        return .ready(usd: perUnit(.usd), eur: perUnit(.eur), instruction: instruction, origin: origin)
+            computed != nil
+            ? .computed : named.contains { $0.origin == .manual } ? .manual : named.first?.origin ?? .builtIn
+        return .ready(
+            usd: perUnit(.usd), eur: perUnit(.eur), instruction: instruction, origin: origin,
+            computedMonths: computed?.computedMonths)
     }
 }

@@ -1444,6 +1444,31 @@ struct RefreshCoordinatorTests {
         #expect(rig.coordinator.status.uniformText == notOut2026)
     }
 
+    /// Rates of 2026 that the app computed from the ČNB month-end rates: preliminary, not official.
+    private let computed2026 = [
+        UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9),
+        UniformRate(
+            year: 2026, currency: .eur, amount: 1, rate: decimal("24.80"), instruction: "", origin: .computed,
+            computedMonths: 9),
+    ]
+
+    /// A finished year whose only rates are the computed ones has no official rate, and none entered by hand, so the
+    /// official one is still looked for.
+    @Test func aFinishedYearWithOnlyComputedRatesIsStillLookedFor() async throws {
+        let (database, directory) = try await databaseIn2027(ratesThrough: "2027-01-05")
+        defer { removeTemporaryDirectory(directory) }
+        _ = try await database.storeComputedUniformRates(computed2026, year: 2026)
+        let rig = makeRig(at: "2027-01-05T15:00:00Z", server: StubHTTPClient(), database: database)
+
+        await rig.coordinator.refresh(.launch)
+
+        let state = try #require(try await database.refreshState())
+        #expect(state.finishedYearsWithoutUniformRate == [2026])
+        #expect(state.finishedYearsWithManualUniformRate == [])
+    }
+
     /// The search for the rates of 2026 ended on 31 March 2027 without them. Rates entered by hand and removed again
     /// before any run saw them start it again: the stored state forgets at once that it ended, and so does the
     /// coordinator, which kept the state of its run.

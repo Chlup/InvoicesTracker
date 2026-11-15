@@ -238,7 +238,7 @@ nonisolated extension ChartColumn {
 
 /// The line under the chart with the uniform rates of the year.
 nonisolated struct UniformLine: Sendable, Hashable {
-    /// "Jednotný kurz za rok 2025".
+    /// "Jednotný kurz za rok 2025", or "Předběžný jednotný kurz za rok 2026" for a rate the app computed.
     var title: String
 
     /// One pill each: "1 USD = 21,84 Kč".
@@ -779,8 +779,9 @@ nonisolated enum OverviewBuilder {
         let conversion = input.incomeFXMethod == .uniform ? "jednotným kurzem" : "denním kurzem ČNB"
         let source = (BuilderText.uniformSource(of: rates).map { $0 + " · " } ?? "")
             + "příjmy se přepočítávají " + conversion
+        let title = rates.contains(where: \.isComputed) ? "Předběžný jednotný kurz" : "Jednotný kurz"
         return UniformLine(
-            title: "Jednotný kurz za rok \(input.year)", rates: rates.map(BuilderText.uniformRate), source: source)
+            title: title + " za rok \(input.year)", rates: rates.map(BuilderText.uniformRate), source: source)
     }
 
     // MARK: The latest receipts
@@ -905,23 +906,32 @@ nonisolated enum BuilderText {
         day.year == year ? CzechFormat.dayMonth(day) : CzechFormat.date(day)
     }
 
-    /// A uniform rate as a pill: "1 USD = 21,84 Kč", "100 JPY = 14,59 Kč". The rate has two decimals, as the GFŘ
-    /// publishes it.
+    /// A uniform rate as a pill: "1 USD = 21,84 Kč", "100 JPY = 14,59 Kč", and "1 USD ≈ 21,35 Kč" for a rate the app
+    /// computed, which is preliminary. The rate has two decimals, as the GFŘ publishes it.
     static func uniformRate(_ rate: UniformRate) -> String {
-        uniformRate(rate.rate, of: rate.currency, amount: rate.amount)
+        uniformRate(rate.rate, of: rate.currency, amount: rate.amount, computed: rate.isComputed)
     }
 
-    /// `rate` crowns for `amount` units of `currency` as a pill: "1 USD = 21,84 Kč" (`uniformRate(_:)`).
-    static func uniformRate(_ rate: Decimal, of currency: CurrencyCode, amount: Int) -> String {
-        "\(amount)\u{00A0}\(currency.code) = \(CzechFormat.rate(rate, fractionDigits: 2))\u{00A0}Kč"
+    /// `rate` crowns for `amount` units of `currency` as a pill: "1 USD = 21,84 Kč", or with "≈" instead of "=" when
+    /// `computed` (`uniformRate(_:)`).
+    static func uniformRate(_ rate: Decimal, of currency: CurrencyCode, amount: Int, computed: Bool = false) -> String {
+        let sign = computed ? "≈" : "="
+        return "\(amount)\u{00A0}\(currency.code) \(sign) \(CzechFormat.rate(rate, fractionDigits: 2))\u{00A0}Kč"
     }
 
-    /// Where uniform rates are from (`uniformSource(instruction:origin:)`), each source once, one after the other:
-    /// "pokyn GFŘ-D-75", "pokyn GFŘ-D-80, zadáno ručně", "zadáno ručně". Nil when none says.
+    /// The months from January a computed rate averages: "leden" for 1, "leden–září" for 9.
+    static func monthSpan(_ months: Int) -> String {
+        months == 1 ? "leden" : "leden–" + CzechFormat.monthNames[months - 1]
+    }
+
+    /// Where uniform rates are from (`uniformSource(instruction:origin:computedMonths:)`), each source once, one after
+    /// the other: "pokyn GFŘ-D-75", "pokyn GFŘ-D-80, zadáno ručně", "zadáno ručně", "předběžný · průměr kurzů ČNB za
+    /// leden–září". Nil when none says.
     static func uniformSource(of rates: [UniformRate]) -> String? {
         var sources: [String] = []
         for rate in rates {
-            if let source = uniformSource(instruction: rate.instruction, origin: rate.origin),
+            if let source = uniformSource(
+                instruction: rate.instruction, origin: rate.origin, computedMonths: rate.computedMonths),
                 !sources.contains(source)
             {
                 sources.append(source)
@@ -932,11 +942,19 @@ nonisolated enum BuilderText {
 
     /// Where a uniform rate published by `instruction` (nil or empty when it has none) and from `origin` is from, as
     /// every screen says it: "pokyn GFŘ-D-75" for an official rate; a rate entered by hand says so also when it has an
-    /// instruction, "pokyn GFŘ-D-80, zadáno ručně", or only "zadáno ručně" without one. Nil for an official rate
-    /// without an instruction.
-    static func uniformSource(instruction: String?, origin: UniformRateOrigin) -> String? {
+    /// instruction, "pokyn GFŘ-D-80, zadáno ručně", or only "zadáno ručně" without one. A computed rate is
+    /// "předběžný · průměr kurzů ČNB za leden–září" over `computedMonths` months, or "předběžný · spočítaný ze všech 12
+    /// měsíců" over a whole year. Nil for an official rate without an instruction.
+    static func uniformSource(
+        instruction: String?, origin: UniformRateOrigin, computedMonths: Int? = nil
+    ) -> String? {
         let named = (instruction ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch (named.isEmpty, origin) {
+        case (_, .computed):
+            guard let months = computedMonths, (1...12).contains(months) else { return "předběžný" }
+            return months == 12
+                ? "předběžný · spočítaný ze všech 12 měsíců"
+                : "předběžný · průměr kurzů ČNB za \(monthSpan(months))"
         case (false, .manual):
             return "pokyn \(named), zadáno ručně"
         case (true, .manual):
@@ -954,6 +972,11 @@ nonisolated enum BuilderText {
         kc < 0 ? "bonus " + CzechFormat.wholeKc(-kc) : CzechFormat.wholeKc(kc)
     }
 
+    /// `1. 2. 2027`, in the no-break form of the card: the day the month-end rates of January can be averaged.
+    private static func februaryFirst(of year: Int) -> String {
+        CivilDate(year: year, month: 2, day: 1).map { CzechFormat.date($0) } ?? ""
+    }
+
     /// Why `year` cannot use its uniform rate (`availability`), as every screen says it on the same day — the menu of
     /// the rate capsule under the rate, Nastavení › Rok in the choice of the conversion, the payment sheet in its
     /// notice: "zatím nevyšel – GFŘ ho zveřejní v lednu 2027" before the app looks for the rate, "zatím nevyšel –
@@ -963,15 +986,25 @@ nonisolated enum BuilderText {
     /// not take the rate of that currency (`UniformRate.currenciesEnteredByHand`). Nil while the year can use its rate.
     ///
     /// One screen shortens it: the choice of the conversion in Nastavení › Rok says only "zatím nevyšel" while the
-    /// GFŘ has not published the rate, as the design draws it, because a menu is as wide as its longest item
+    /// GFŘ has not published the rate, as the design draws it, and "zatím nejde spočítat" while the rate of the
+    /// current year cannot be computed yet, because a menu is as wide as its longest item
     /// (`YearTabModel.uniformOptionLabel`). It gives the reason of this function in every other case.
-    static func uniformRateMissing(_ availability: UniformAvailability, year: Int) -> String? {
+    ///
+    /// The current year (`today`) cannot wait for the GFŘ: the app computes its rate from the ČNB month-end rates. It
+    /// says "zatím nejde spočítat – půjde zvolit od 1. 2. 2027, až skončí leden" in January, when there is no month-end
+    /// rate yet, and in the other months "zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho,
+    /// až je stáhne".
+    static func uniformRateMissing(_ availability: UniformAvailability, year: Int, today: CivilDate) -> String? {
         switch availability {
         case .ready: nil
         case .missingCurrency(let currency):
             UniformRate.currenciesEnteredByHand.contains(currency)
                 ? "chybí jednotný kurz \(currency.code) – zadáte ho v Nastavení › Rok \(year)"
                 : "chybí jednotný kurz \(currency.code) – ručně ho zadat nelze"
+        case .notPublishedYet where year == today.year && today.month == 1:
+            "zatím nejde spočítat – půjde zvolit od \(februaryFirst(of: year)), až skončí leden"
+        case .notPublishedYet where year == today.year:
+            "zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho, až je stáhne"
         case .notPublishedYet: "zatím nevyšel – GFŘ ho zveřejní v lednu \(year + 1)"
         case .searchedFor: "zatím nevyšel – aplikace ho jednou denně hledá"
         case .notInApp: "v aplikaci není – zadáte ho v Nastavení › Rok \(year)"

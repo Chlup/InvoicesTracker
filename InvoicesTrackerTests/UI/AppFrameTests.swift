@@ -92,6 +92,31 @@ struct AppFrameTests {
         }
     }
 
+    /// A long green banner, such as the one that tells that the preliminary uniform rate was computed again, keeps the
+    /// window as it is: the window holds its sidebar and its page, which do not shift up out of sight, and the banner
+    /// is as tall as its sentence needs, not cut.
+    @Test func aLongGreenBannerKeepsTheWindowInPlaceAndShowsAllItsText() async throws {
+        let text =
+            "Předběžný jednotný kurz 2026 je přepočítaný i s kurzem za říjen: 1\u{00A0}USD ≈ 21,38\u{00A0}Kč"
+            + " (dříve 21,35). Platby roku 2026 jsou jím přepočtené."
+        try await EditorFixture.with { f in
+            try await withAppWindow(of: f.app, size: AppWindowSize.minimum) { window in
+                f.app.screen = .computation
+                try await waitUntil { window.title == title(of: .computation, in: f.app) }
+                f.app.banner = AppBanner(text: text, screen: .computation)
+                try await withAccessibilityElements {
+                    try await waitUntil { frameOfGroup(holdingText: text, in: window) != nil }
+                    try await layOut(window)
+                    #expect(windowLayoutProblems(in: window).isEmpty, "\(windowLayoutProblems(in: window))")
+
+                    let banner = try #require(frameOfGroup(holdingText: text, in: window))
+                    let needed = neededHeight(of: BannerView(text: text) {}, width: banner.width)
+                    #expect(banner.height >= needed - 0.5, "The banner is \(banner.height) tall, needs \(needed)")
+                }
+            }
+        }
+    }
+
     /// The frame of the sidebar of `window`, in the coordinates of the window.
     private func sidebarFrame(in window: NSWindow) throws -> CGRect {
         let frameView = try #require(window.contentView?.superview)
