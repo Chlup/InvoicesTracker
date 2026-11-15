@@ -612,6 +612,30 @@ struct YearTabModelTests {
         #expect(model.missingRateText == "Zatím nevyšel. Aplikace ho jednou denně hledá a dá vám ho potvrdit.")
     }
 
+    /// With computed rates stored for the finished year, a GFŘ page that could not be read is still shown with its link
+    /// and the form still opens by itself.
+    @Test func aGFRPageThatCouldNotBeReadIsShownWhileComputedRatesAreStored() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let clock = ManualClock(localNoon(2027, 1, 20))
+        let app = try await makeSettingsApp(in: directory, clock: clock)
+        let page = try #require(
+            URL(string: "https://mf.gov.cz/assets/attachments/2027-01-14_Financni-zpravodaj-c-2-2027.pdf"))
+        var state = RefreshState()
+        state.unreadableUniformPages = [2026: page]
+        let database = try #require(app.database)
+        try await database.saveRefreshState(state)
+        _ = try await database.storeComputedUniformRates(
+            [computedRate(.usd, "21.42", year: 2026, months: 12), computedRate(.eur, "24.40", year: 2026, months: 12)],
+            year: 2026)
+        app.selectYear(2026)
+
+        let model = await loadedModel(of: app)
+
+        #expect(model.unreadablePage == page)
+        #expect(model.editsRates)
+    }
+
     /// The card never promises a January that has passed. While the year is the current one, the app computes its
     /// rate from the ČNB month-end rates: in January it says that no month has ended yet, and from February that the
     /// app lacks some of the rates. Once the year is over, until 2 January of the next year it says when the GFŘ
@@ -1354,6 +1378,28 @@ struct YearTabModelTests {
             YearTabModel.removalBanner(
                 year: 2026, today: civilDate("2028-02-10"), choseUniform: false, usesComputedRate: true)
                 == removed)
+    }
+
+    /// After 31 March the refresh no longer looks for the official rate of the finished year, so neither the question
+    /// nor the banner of the removal promise that it does.
+    @Test func theRemovalOfAComputedRateAfterTheSearchIsOverPromisesNoSearch() {
+        let computed = [
+            computedRate(.usd, "21.42", year: 2026, months: 12), computedRate(.eur, "24.40", year: 2026, months: 12),
+        ]
+
+        let question = YearTabModel.removalQuestion(
+            year: 2026, today: civilDate("2027-04-10"), choseUniform: false, computed: computed)
+        let banner = YearTabModel.removalBanner(
+            year: 2026, today: civilDate("2027-04-10"), choseUniform: false, usesComputedRate: true)
+
+        #expect(
+            question
+                == "Rok 2026 pak použije předběžný kurz, který aplikace spočítá z kurzů ČNB"
+                + " (1\u{00A0}USD ≈ 21,42\u{00A0}Kč · 1\u{00A0}EUR ≈ 24,40\u{00A0}Kč).")
+        #expect(
+            banner
+                == "Ručně zadaný jednotný kurz 2026 je odstraněný. Rok 2026 teď používá předběžný kurz spočítaný z"
+                + " kurzů ČNB.")
     }
 
     /// The banner of a removal is built from the choice the year has once its payments are converted, read anew: the

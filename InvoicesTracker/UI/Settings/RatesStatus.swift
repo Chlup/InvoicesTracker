@@ -136,6 +136,26 @@ nonisolated enum RatesStatus {
     ) -> RateStatusRow {
         let label = "Jednotný kurz \(year)"
         let shown = YearTabModel.dollarAndEuroRates(rates)
+        let foundRow = { (instruction: String) in
+            RateStatusRow(
+                label: label, value: "vyšel, čeká na potvrzení",
+                detail: "pokyn \(instruction) · čeká, až ho potvrdíte", tone: .warning, action: .showFinding)
+        }
+        let unreadableRow = RateStatusRow(
+            label: label, value: "nepodařilo se ho přečíst",
+            detail: "Finanční zpravodaj se nepodařilo přečíst – kurz zadejte ručně na kartě Rok \(year).",
+            tone: .warning)
+        // A computed rate stands in for a missing one: a rate the app found or could not read comes first.
+        if shown.contains(where: \.isComputed) {
+            switch search {
+            case .waitingForConfirmation(let instruction):
+                return foundRow(instruction)
+            case .unreadable:
+                return unreadableRow
+            case .notOut, .gaveUp:
+                break
+            }
+        }
         if let months = shown.compactMap(\.computedMonths).max(), shown.contains(where: \.isComputed) {
             return RateStatusRow(
                 label: label, value: shown.map(BuilderText.uniformRate).joined(separator: " · "),
@@ -153,14 +173,9 @@ nonisolated enum RatesStatus {
             tone: .warning)
         switch search {
         case .waitingForConfirmation(let instruction):
-            return RateStatusRow(
-                label: label, value: "vyšel, čeká na potvrzení", detail: "pokyn \(instruction) · čeká, až ho potvrdíte",
-                tone: .warning, action: .showFinding)
+            return foundRow(instruction)
         case .unreadable:
-            return RateStatusRow(
-                label: label, value: "nepodařilo se ho přečíst",
-                detail: "Finanční zpravodaj se nepodařilo přečíst – kurz zadejte ručně na kartě Rok \(year).",
-                tone: .warning)
+            return unreadableRow
         case .gaveUp:
             return notFound
         case .notOut:

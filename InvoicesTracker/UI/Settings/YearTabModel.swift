@@ -131,7 +131,8 @@ final class YearTabModel {
             let readRates = try await database.uniformRates(year: shown.year)
             let readFXState = try await app.fxState(year: shown.year)
             let readAdjustments = try await database.adjustments(year: shown.year)
-            let unreadable = readRates.isEmpty ? await unreadablePage(of: shown.year, in: database) : nil
+            let unreadable =
+                readRates.allSatisfy(\.isComputed) ? await unreadablePage(of: shown.year, in: database) : nil
             let readComputation =
                 Self.readsComputation(of: shown.year, rates: readRates, today: today)
                 ? try await database.preliminaryUniformRates(year: shown.year, today: today) : nil

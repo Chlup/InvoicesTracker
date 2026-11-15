@@ -102,7 +102,8 @@ struct RateMenuBuilderTests {
     @Test func theCurrentYearInJanuaryCannotChooseTheUniformRateUntilFebruary() {
         let menu = content(of: state(2027, uniform: .notPublishedYet(year: 2027)), today: "2027-01-15")
 
-        #expect(menu.items[1].detail == "zatím nejde spočítat – půjde zvolit od 1. 2. 2027, až skončí leden")
+        #expect(
+            menu.items[1].detail == "zatím nejde spočítat – půjde zvolit od 1.\u{00A0}2.\u{00A0}2027, až skončí leden")
         #expect(!menu.items[1].isEnabled)
         #expect(
             menu.footer

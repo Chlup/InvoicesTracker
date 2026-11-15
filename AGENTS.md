@@ -116,8 +116,9 @@ The code is layered, bottom to top:
     - `today`;
     - the app-wide state.
   - `AppModel.updateComputedUniformRates()` (`AppModel+ComputedUniformRates.swift`) keeps the computed uniform rates
-    current. It runs on open, on a new day, after new ČNB rates and after typed rates are removed. It re-converts the
-    payments of a year set to the uniform rate and shows the banner.
+    current for the current and the previous year. It runs on open, on a new day, after new ČNB rates and after typed
+    rates are removed. It re-converts the payments of a year set to the uniform rate, and shows the banner only when a
+    computed rate changed and the year converts at it.
   - `AppDependencies` injects the clock, time zone, network and system services, so tests run at a fixed day.
 - **UI** (`UI/<Screen>/`):
   - **Per screen:** a `<Name>Screen` view; a `@MainActor @Observable final class <Name>Model`; and a pure `<Name>Builder` that turns loaded data into `<Name>Data`, which carries every displayed text.
@@ -271,8 +272,10 @@ user before building.
   - A card never shows the same number twice.
   - "≈" marks only a lone estimate among actual values: an unpaid invoice, or a conversion at the issue rate. It is
     never used inside an area already marked as an estimate.
-  - One exception: a preliminary uniform rate, one the app computed (origin `computed`, "předběžný"), is always
-    written with "≈" before it, wherever it is shown, also inside the notice and the card that mark it. Every other
-    rate is written with "=".
+  - One exception: a preliminary uniform rate, one the app computed (origin `computed`, "předběžný"), is written
+    with "≈" before it in the rate pills and the rate rows (menu, Přehled, Faktury summary, payment detail, the
+    notice, the Rok and Kurzy rows), also inside the notice and the card that mark it. The cells of the month-end
+    table, and a comparison of the computed rate with another one, are written without it. Every other rate is
+    written with "=".
 - **Invoices.** A paid invoice is not edited, only its payment ("Upravit platbu"). Removing a payment is possible but
   deliberately hard: the person types the invoice number to confirm, and the invoice can then be edited again.

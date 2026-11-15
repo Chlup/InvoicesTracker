@@ -212,8 +212,8 @@ struct PaymentSheetModelTests {
 
         #expect(
             model.notice
-                == "Jednotný kurz 2026: zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho, až je"
-                + " stáhne. Platba i celý rok 2026 se proto zatím přepočtou kurzem ČNB ke dni přijetí.")
+                == "Jednotný kurz 2026: zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho,"
+                + " až je stáhne. Platba i celý rok 2026 se proto zatím přepočtou kurzem ČNB ke dni přijetí.")
         // The year is computed at the ČNB rates of the days until it has its uniform rate: the payment is one at the
         // rate of its day, and waits for nothing.
         let preview = try #require(model.preview)

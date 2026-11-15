@@ -331,6 +331,12 @@ extension YearTabModel {
         ((today.year - 1)...today.year).contains(year)
     }
 
+    /// Whether the app looks for the official rate of `year` on `today`: for the years it computes a rate of
+    /// (`computesRate(of:today:)`), until its search is over (`UniformRateSearch`).
+    private nonisolated static func looksForOfficialRate(of year: Int, today: CivilDate) -> Bool {
+        computesRate(of: year, today: today) && UniformRateSearch(year: year, today: today) != .over
+    }
+
     /// The preliminary rates of dollars and euros that the year falls back to once its rates entered by hand are
     /// removed: those the app computes for it (`computation`), for a year it computes a rate of
     /// (`computesRate(of:today:)`) that has no table shipping with the app, which comes back instead. Empty otherwise,
@@ -375,7 +381,7 @@ extension YearTabModel {
             return "Rok \(year) pak použije předběžný kurz, který aplikace spočítá z kurzů ČNB ("
                 + fallback.map(BuilderText.uniformRate).joined(separator: " · ") + ")."
                 + (choseUniform ? " Platby roku \(year) se jím přepočtou." : "")
-                + (computesRate(of: year, today: today)
+                + (looksForOfficialRate(of: year, today: today)
                     ? " Oficiální kurz začne aplikace znovu hledat a dá vám ho potvrdit." : "")
         }
         let meanwhile =
@@ -410,7 +416,7 @@ extension YearTabModel {
         }
         if usesComputedRate {
             return removed + "Rok \(year) teď používá předběžný kurz spočítaný z kurzů ČNB."
-                + (computesRate(of: year, today: today) ? " Aplikace oficiální kurz znovu hledá." : "")
+                + (looksForOfficialRate(of: year, today: today) ? " Aplikace oficiální kurz znovu hledá." : "")
         }
         let daily = choseUniform ? " Rok \(year) se zatím počítá denními kurzy ČNB." : ""
         if UniformRateSearch(year: year, today: today) == .over {
@@ -487,4 +493,3 @@ extension YearTabModel {
                 usesComputedRate: state.uniform.computedMonths != nil))
     }
 }
-

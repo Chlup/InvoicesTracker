@@ -320,6 +320,41 @@ struct SettingsModelsTests {
         #expect(finished.tone == .warning)
     }
 
+    /// The official rate the app found is shown over the computed rate that stands in for it: the row offers to show
+    /// the finding.
+    @Test func aFoundOfficialRateIsShownOverTheComputedOne() {
+        var january = saturdayFacts()
+        january.now = pragueTime("2027-01-20", 10, 0)
+        january.currentYear = 2027
+        january.finishedYearRates = [
+            computed(2026, "USD", "21.35", months: 12), computed(2026, "EUR", "24.35", months: 12),
+        ]
+        january.currentYearRates = []
+        january.finishedYearSearch = .waitingForConfirmation(instruction: "GFŘ-D-80")
+
+        let row = RatesStatus.rows(january)[1]
+
+        #expect(row.value == "vyšel, čeká na potvrzení")
+        #expect(row.action == .showFinding)
+    }
+
+    /// A GFŘ page the app could not read is said so over the computed rate that stands in for the official one.
+    @Test func anUnreadableOfficialRatePageIsShownOverTheComputedRate() {
+        var january = saturdayFacts()
+        january.now = pragueTime("2027-01-20", 10, 0)
+        january.currentYear = 2027
+        january.finishedYearRates = [
+            computed(2026, "USD", "21.35", months: 12), computed(2026, "EUR", "24.35", months: 12),
+        ]
+        january.currentYearRates = []
+        january.finishedYearSearch = .unreadable
+
+        let row = RatesStatus.rows(january)[1]
+
+        #expect(row.value == "nepodařilo se ho přečíst")
+        #expect(row.action == nil)
+    }
+
     /// In January of the current year no month has ended, so the rate cannot be computed yet.
     @Test func inJanuaryTheCurrentYearCannotBeComputedYet() {
         var january = saturdayFacts()

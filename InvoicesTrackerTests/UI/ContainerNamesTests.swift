@@ -242,6 +242,31 @@ struct ContainerNamesTests {
         }
     }
 
+    /// The card Jednotný kurz of a year with a computed rate names the table of the month-end rates once Kurzy ke konci
+    /// měsíců opens it; the group exists only while the table is open.
+    @Test func theTableOfTheMonthEndRatesOfTheRokCardIsNamedByItsYear() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeSettingsApp(in: directory)
+        let database = try #require(app.database)
+        let rows = try cnbYearlyRows([2026]).filter { $0.currency == .usd || $0.currency == .eur }
+        try await database.insertCNBRates(rows)
+        await app.updateComputedUniformRates()
+        let table = "Kurzy ČNB ke konci měsíců 2026"
+
+        try await withAppWindow(of: app, size: AppWindowSize.large) { window in
+            app.showSettings(.year)
+            try await waitUntil { window.title == "Nastavení" }
+            try await withAccessibilityElements {
+                try await expectContainers(["Jednotný kurz"], in: window, "Nastavení › Rok")
+                #expect(!containerLabels(in: window).contains(table))
+                let toggle = try #require(accessibilityElement(labelled: "Kurzy ke konci měsíců", in: window))
+                #expect(toggle.accessibilityPerformPress?() == true)
+                try await expectContainers([table], in: window, "Nastavení › Rok")
+            }
+        }
+    }
+
     /// Import names its cards as the prototype names them: the choice of the files, then with files collected the
     /// check before the import, and after the import its progress. The files are the invented sample of Fakturoid.
     @Test func theCardsOfImportAreNamedAsThePrototypeNamesThem() async throws {

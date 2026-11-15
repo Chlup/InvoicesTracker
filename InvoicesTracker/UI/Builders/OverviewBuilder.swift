@@ -972,6 +972,11 @@ nonisolated enum BuilderText {
         kc < 0 ? "bonus " + CzechFormat.wholeKc(-kc) : CzechFormat.wholeKc(kc)
     }
 
+    /// `1. 2. 2027`, in the no-break form of the card: the day the month-end rates of January can be averaged.
+    private static func februaryFirst(of year: Int) -> String {
+        CivilDate(year: year, month: 2, day: 1).map { CzechFormat.date($0) } ?? ""
+    }
+
     /// Why `year` cannot use its uniform rate (`availability`), as every screen says it on the same day — the menu of
     /// the rate capsule under the rate, Nastavení › Rok in the choice of the conversion, the payment sheet in its
     /// notice: "zatím nevyšel – GFŘ ho zveřejní v lednu 2027" before the app looks for the rate, "zatím nevyšel –
@@ -997,7 +1002,7 @@ nonisolated enum BuilderText {
                 ? "chybí jednotný kurz \(currency.code) – zadáte ho v Nastavení › Rok \(year)"
                 : "chybí jednotný kurz \(currency.code) – ručně ho zadat nelze"
         case .notPublishedYet where year == today.year && today.month == 1:
-            "zatím nejde spočítat – půjde zvolit od 1. 2. \(year), až skončí leden"
+            "zatím nejde spočítat – půjde zvolit od \(februaryFirst(of: year)), až skončí leden"
         case .notPublishedYet where year == today.year:
             "zatím nejde spočítat – aplikaci chybí kurzy ČNB ke konci měsíců; spočítá ho, až je stáhne"
         case .notPublishedYet: "zatím nevyšel – GFŘ ho zveřejní v lednu \(year + 1)"
