@@ -50,8 +50,11 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
     /// names. `today` is the day Odhad odvodů makes its estimate as of: it names it, whatever `asOf` is. The money
     /// of the current year is received up to `today` even though the cutoff reaches the end of the month, so the lines
     /// that name the day of the income name `min(asOf, today)` there. The title is the name of the screen in the
-    /// sidebar (`title`), except that of Import, which reads Import faktur.
-    func header(year: Int, asOf: CivilDate, today: CivilDate, incomeFX: IncomeFXMethod) -> ScreenHeader {
+    /// sidebar (`title`), except that of Import, which reads Import faktur. `computedRate` says that the uniform rate
+    /// of the year is one the app computed (`YearFXState.usesComputedRate`), which Faktury then names preliminary.
+    func header(
+        year: Int, asOf: CivilDate, today: CivilDate, incomeFX: IncomeFXMethod, computedRate: Bool = false
+    ) -> ScreenHeader {
         let ofYear = "Rok \(year) · "
         let received = asOf.year == today.year ? min(asOf, today) : asOf
         switch self {
@@ -59,8 +62,9 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
             return ScreenHeader(
                 title: "Přehled", subtitle: ofYear + "příjmy od 1.\u{00A0}1. do " + CzechFormat.date(received))
         case .invoices:
+            let uniform = computedRate ? "předběžným jednotným kurzem" : "jednotným kurzem"
             let conversion =
-                incomeFX == .uniform ? "jednotným kurzem" : "kurzem ČNB ke dni platby, nezaplacené ke dni vystavení"
+                incomeFX == .uniform ? uniform : "kurzem ČNB ke dni platby, nezaplacené ke dni vystavení"
             return ScreenHeader(title: "Faktury", subtitle: ofYear + "částky bez DPH, v Kč " + conversion)
         case .advances:
             return ScreenHeader(

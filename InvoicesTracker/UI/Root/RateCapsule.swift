@@ -18,16 +18,9 @@ struct RateCapsule: View {
     /// Whether the menu is open.
     @State private var menuShown = false
 
-    /// Whether the year shown converts at a rate the app computed (`YearFXState.usesComputedRate`), as the window has
-    /// read it: not before it has read the year shown.
-    private var shownYearUsesComputedRate: Bool {
-        guard let state = model.shownYearFX, state.year == model.asOf.year else { return false }
-        return state.usesComputedRate
-    }
-
     var body: some View {
         let capsule = RateMenuBuilder.capsule(
-            year: model.asOf.year, effective: model.shownYearFXMethod, computed: shownYearUsesComputedRate)
+            year: model.asOf.year, effective: model.shownYearFXMethod, computed: model.shownYearUsesComputedRate)
         Button {
             menuShown = true
         } label: {

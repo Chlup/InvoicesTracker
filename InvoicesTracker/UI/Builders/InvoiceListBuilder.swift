@@ -247,7 +247,8 @@ nonisolated struct InvoiceListData: Sendable, Hashable {
     /// they were issued. Invoices in review are not counted until they are resolved.
     var czkTotalHalere: Int64
 
-    /// The label of the total at the uniform rate: "Jednotným kurzem 2026".
+    /// The label of the total at the uniform rate: "Jednotným kurzem 2026", or "Předběžným jednotným kurzem 2026" when
+    /// the rate of the year is one the app computed.
     var uniformLabel: String
 
     /// The figure of the total at the uniform rate, with its tooltip, or nothing for a category without invoices in a
@@ -318,6 +319,7 @@ nonisolated enum InvoiceListBuilder {
             .sorted { $0.key > $1.key }
             .map { OtherYearMatches(year: $0.key, count: $0.value) }
         let year = input.asOf.year
+        let usesComputedRate = input.uniformRates.values.contains { $0.year == input.year && $0.isComputed }
 
         return InvoiceListData(
             rows: shown.map { row(for: $0, input: input, words: isSearching ? words : []) },
@@ -327,7 +329,8 @@ nonisolated enum InvoiceListBuilder {
             },
             countText: summary.count, categoryText: summary.category, reviewHint: summary.reviewHint,
             totalText: PredictionBuilder.kc(ofHalere: summary.czkTotal), czkTotalHalere: summary.czkTotal,
-            uniformLabel: "Jednotným kurzem \(input.year)", uniform: summary.uniform,
+            uniformLabel: (usesComputedRate ? "Předběžným jednotným" : "Jednotným") + " kurzem \(input.year)",
+            uniform: summary.uniform,
             uniformTotalHalere: summary.uniformTotal,
             issueDatesShowYear: shown.contains { $0.invoice.issueDate.year != year },
             paymentDatesShowYear: shown.contains { $0.invoice.payment.map { $0.date.year != year } ?? false },

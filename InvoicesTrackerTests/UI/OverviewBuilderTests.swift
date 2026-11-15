@@ -1922,6 +1922,20 @@ struct OverviewBuilderTests {
         #expect(line.source.hasPrefix("pokyn GFŘ-D-90, zadáno ručně · "))
     }
 
+    /// The line names the rate preliminary when the rates of the year are computed, and not otherwise.
+    @Test func theUniformLineSaysPreliminaryForAComputedRate() throws {
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+        let manual = uniformRate("USD", "21.9", year: 2026, instruction: "", origin: .manual)
+
+        let computedLine = try #require(build(input(foreignCurrencies: [.usd], uniformRates: [computed])).uniformLine)
+        let manualLine = try #require(build(input(foreignCurrencies: [.usd], uniformRates: [manual])).uniformLine)
+
+        #expect(computedLine.title == "Předběžný jednotný kurz za rok 2026")
+        #expect(manualLine.title == "Jednotný kurz za rok 2026")
+    }
+
     /// Where uniform rates are from, as every screen says it: the instruction of official ones, and for rates entered
     /// by hand that they were, with their instruction when they have one.
     @Test func theSourceOfUniformRatesAlwaysMarksThoseEnteredByHand() {

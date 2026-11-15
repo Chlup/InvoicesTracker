@@ -256,6 +256,9 @@ final class InvoicesModel {
                     input.paymentEffect = net.effect
                 }
             }
+            if let payment = invoice.payment, !invoice.currency.isCZK {
+                input.usesComputedRate = try await app.fxState(year: payment.date.year).usesComputedRate
+            }
             guard thisLoad == detailLoadsStarted, openInvoiceID == id else { return }
             openInvoice = invoice
             detail = InvoiceDetailBuilder.build(input)

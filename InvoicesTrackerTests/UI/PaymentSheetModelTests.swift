@@ -820,6 +820,24 @@ struct PaymentSheetModelTests {
                     value: "313\u{00A0}404,00\u{00A0}Kč"))
     }
 
+    @Test func theUniformOptionOfAComputedRateIsPreliminary() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let app = try await makeApp(in: directory)
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+        _ = try await #require(app.database).storeComputedUniformRates([computed], year: 2026)
+        try await setMethod(.uniform, in: app)
+        let invoice = try await unpaidInvoice(10, in: app)
+        let model = PaymentSheetModel(app: app, invoice: invoice)
+        model.date = civilDate("2026-10-02")
+
+        await model.recompute()
+
+        #expect(model.methodOption?.title == "Předběžný jednotný kurz za rok 2026")
+    }
+
     @Test func theUniformOptionOfACurrencyQuotedForManyUnitsNamesTheQuantity() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }

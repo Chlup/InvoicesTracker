@@ -96,6 +96,10 @@ final class PaymentSheetModel {
     /// payment while the day is the stored one and the stored payment is converted the way the year converts now.
     private(set) var methodPayment: Payment?
 
+    /// Whether the year of the day converts at a uniform rate the app computed (`YearFXState.usesComputedRate`), so
+    /// that the option of the uniform rate is named preliminary.
+    private(set) var usesComputedRate = false
+
     /// The method the payment is converted with by the method of the year the money arrived in: the uniform rate when
     /// the year uses it and has it for the currency, otherwise the ČNB rate of the day.
     private(set) var method = IncomeFXMethod.cnbDaily
@@ -232,7 +236,8 @@ final class PaymentSheetModel {
         if payment.conversion == .uniform {
             let year = payment.date.year
             return PaymentOption(
-                title: "Jednotný kurz za rok \(year)", detail: "\(rateLabel) · přepočet zvolený pro rok \(year)",
+                title: (usesComputedRate ? "Předběžný jednotný" : "Jednotný") + " kurz za rok \(year)",
+                detail: "\(rateLabel) · přepočet zvolený pro rok \(year)",
                 value: value)
         }
         let day = CzechFormat.date(payment.date)
@@ -353,6 +358,7 @@ final class PaymentSheetModel {
         guard thisRun == recomputesStarted else { return }
         preview = worked.preview
         methodPayment = worked.methodPayment
+        usesComputedRate = worked.usesComputedRate
         bankPayment = worked.bankPayment
         method = worked.method
         standIn = worked.standIn
@@ -380,6 +386,7 @@ final class PaymentSheetModel {
     private struct Worked {
         var preview: Payment?
         var methodPayment: Payment?
+        var usesComputedRate = false
         var bankPayment: Payment?
         var method: IncomeFXMethod
         var standIn: PaymentStandIn?
@@ -411,6 +418,7 @@ final class PaymentSheetModel {
         var missingUniformRate: UniformAvailability?
         if isForeign {
             let conversion = try await app.fxState(year: day.year)
+            worked.usesComputedRate = conversion.usesComputedRate
             cnbRate = try await database.cnbRate(invoice.currency, on: day)
             let rateOfTheYear = try await database.uniformRate(invoice.currency, year: day.year)?.exchangeRate
             if conversion.effective == .uniform, let rateOfTheYear {

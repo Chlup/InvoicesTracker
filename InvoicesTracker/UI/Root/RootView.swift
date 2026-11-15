@@ -192,7 +192,8 @@ private struct AppWindow: View {
     private var shownHeader: ScreenHeader {
         guard model.screen == .invoices, let request = model.shownEditorRequest else {
             return model.screen.header(
-                year: model.asOf.year, asOf: model.asOf.asOf, today: model.today, incomeFX: model.shownYearFXMethod)
+                year: model.asOf.year, asOf: model.asOf.asOf, today: model.today, incomeFX: model.shownYearFXMethod,
+                computedRate: model.shownYearUsesComputedRate)
         }
         if let editor = model.editor {
             return ScreenHeader(title: editor.title, subtitle: editor.subtitle)

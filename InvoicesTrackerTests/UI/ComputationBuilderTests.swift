@@ -361,6 +361,21 @@ struct ComputationBuilderTests {
         #expect(unknown.assumptions.items[3] == "Cizí měny v Kč jednotným kurzem 2026")
     }
 
+    /// A pinning test: the note takes the source text as it is, so a computed rate reads "předběžný · průměr kurzů ČNB
+    /// za leden–září" with no change of the builder.
+    @Test func theAssumptionsNameAComputedUniformRateAsPreliminary() {
+        let computed = UniformRate(
+            year: 2026, currency: .usd, amount: 1, rate: decimal("21.35"), instruction: "", origin: .computed,
+            computedMonths: 9)
+        let source = BuilderText.uniformSource(of: [computed])
+
+        let page = computationPage(sample, conversion: .uniform, uniformSource: source)
+
+        #expect(
+            page.assumptions.items[3]
+                == "Cizí měny v Kč jednotným kurzem 2026 (předběžný · průměr kurzů ČNB za leden–září)")
+    }
+
     @Test func aLossIsShownWithTheMinusSignAndNoExpenses() throws {
         // A payment of 1 000 Kč and an adjustment of −3 000 Kč: income of −2 000 Kč, no expenses, a loss.
         let sections = build(yearInput(netHalere: 100_000, adjustmentHalere: -300_000))

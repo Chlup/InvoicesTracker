@@ -78,9 +78,11 @@ final class PredictionModel {
             // The payments the page counts as received are those up to the day it is made as of, not those up to the
             // reporting cutoff.
             let isProvisional = try await database.hasProvisionalReceipt(year: year, through: outcome.prediction.now)
+            let usesComputedRate = try await app.fxState(year: year).usesComputedRate
             guard thisLoad == loadsStarted, !Task.isCancelled else { return }
             prediction = outcome.prediction
-            page = PredictionBuilder.page(outcome, hasProvisionalIncome: isProvisional)
+            page = PredictionBuilder.page(
+                outcome, hasProvisionalIncome: isProvisional, usesComputedRate: usesComputedRate)
             rulesWarning =
                 outcome.result.rulesAreEstimate
                 ? RulesWarning.message(year: outcome.result.year, rulesYear: outcome.result.rules.year) : nil

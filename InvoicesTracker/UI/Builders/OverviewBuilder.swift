@@ -238,7 +238,7 @@ nonisolated extension ChartColumn {
 
 /// The line under the chart with the uniform rates of the year.
 nonisolated struct UniformLine: Sendable, Hashable {
-    /// "Jednotný kurz za rok 2025".
+    /// "Jednotný kurz za rok 2025", or "Předběžný jednotný kurz za rok 2026" for a rate the app computed.
     var title: String
 
     /// One pill each: "1 USD = 21,84 Kč".
@@ -779,8 +779,9 @@ nonisolated enum OverviewBuilder {
         let conversion = input.incomeFXMethod == .uniform ? "jednotným kurzem" : "denním kurzem ČNB"
         let source = (BuilderText.uniformSource(of: rates).map { $0 + " · " } ?? "")
             + "příjmy se přepočítávají " + conversion
+        let title = rates.contains(where: \.isComputed) ? "Předběžný jednotný kurz" : "Jednotný kurz"
         return UniformLine(
-            title: "Jednotný kurz za rok \(input.year)", rates: rates.map(BuilderText.uniformRate), source: source)
+            title: title + " za rok \(input.year)", rates: rates.map(BuilderText.uniformRate), source: source)
     }
 
     // MARK: The latest receipts

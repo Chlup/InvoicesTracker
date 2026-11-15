@@ -992,6 +992,13 @@ final class AppModel {
         return shownYearFX.effective
     }
 
+    /// Whether the year shown converts at a rate the app computed (`YearFXState.usesComputedRate`), as the window has
+    /// read it: not before it has read the year shown.
+    var shownYearUsesComputedRate: Bool {
+        guard let shownYearFX, shownYearFX.year == asOf.year else { return false }
+        return shownYearFX.usesComputedRate
+    }
+
     /// Reads how the year shown converts its income in other currencies (`shownYearFX`), whenever what it depends on
     /// may have changed: the year shown, or the data. A failure is logged and leaves nothing read.
     func loadShownYearFX() async {
