@@ -264,6 +264,12 @@ extension Database {
         }
     }
 
+    /// The preliminary uniform rates of `year` as of `today`, computed from the stored ČNB rates of the last day of
+    /// each month that has ended, found with `cnbRate(_:on:)`.
+    func preliminaryUniformRates(year: Int, today: CivilDate) throws -> PreliminaryUniformRates.Computation {
+        try PreliminaryUniformRates.compute(year: year, today: today) { try cnbRate($0, on: $1) }
+    }
+
     /// The latest rate of `currency` declared on or before `day`, with the day it was declared, or nil if there is
     /// none. This is the newest row, not the rate valid on `day`: it is also given for a day after the newest
     /// declaration, and there are no rows for crowns.
