@@ -569,6 +569,9 @@ struct AppModelFXTests {
         defer { removeTemporaryDirectory(directory) }
         let before = try await makeApp(in: directory)
         let database = try #require(before.database)
+        // Without the ČNB rates of the end of January, the app cannot compute a preliminary uniform rate of 2026 either
+        // (`AppModel.updateComputedUniformRates()`): the year has no uniform rate.
+        try await database.execute("DELETE FROM cnb_rate WHERE declared_on IN ('2026-01-29', '2026-01-30')")
         try await database.updateYearSettings(2026) { $0.incomeFXMethod = .uniform }
         var standIn = invoice("20261001", .usd, 1_000_000, issued: "2026-09-30")
         let daily = try await before.convert(standIn, paidOn: civilDate("2026-10-02"), method: .cnbDaily, in: database)

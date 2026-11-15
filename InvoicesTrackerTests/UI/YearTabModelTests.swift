@@ -1021,6 +1021,9 @@ struct YearTabModelTests {
         let app = try await makeSettingsApp(in: directory)
         let database = try #require(app.database)
         let dollars = try await storeDollarsPaidIn2026(in: app)
+        // Without the ČNB rates of the end of January, the app cannot compute a preliminary uniform rate of 2026 to
+        // fall back on (`AppModel.updateComputedUniformRates()`).
+        try await database.execute("DELETE FROM cnb_rate WHERE declared_on IN ('2026-01-29', '2026-01-30')")
         let model = await loadedModel(of: app)
         #expect(await model.saveManualUniformRates(usd: "21,90", eur: "", instruction: ""))
         await model.setFXMethod(.uniform)

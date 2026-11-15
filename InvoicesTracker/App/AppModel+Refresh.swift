@@ -29,8 +29,9 @@ extension AppModel {
     }
 
     /// New ČNB rates came: the provisional payments are converted again in their turn (`recomputePayments(year:in:)`),
-    /// and the screens load again, also when no payment changed, as they show the invoices that are not paid at the
-    /// new rates too. A failure is logged.
+    /// then the preliminary uniform rates are computed with the new rates of the month ends
+    /// (`updateComputedUniformRates()`), and the screens load again, also when nothing changed, as they show the
+    /// invoices that are not paid at the new rates too. A failure is logged.
     func ratesUpdated() async {
         let version = dataVersion
         await convertPaymentsInTurn { database in
@@ -40,6 +41,7 @@ extension AppModel {
                 Self.log("Converting the provisional payments again", failedWith: error)
             }
         }
+        await updateComputedUniformRates()
         if dataVersion == version {
             reloadScreens()
         }

@@ -286,8 +286,9 @@ final class AppModel {
     @ObservationIgnored private var shownYearFXLoads = 0
 
     /// The latest conversion of payments asked for: a choice of how a year converts its income in other currencies, new
-    /// ČNB rates, a uniform rate stored or removed, payments that changed, or the stand-ins of an earlier version. The
-    /// next conversion waits for it, so that they run one at a time (`convertPaymentsInTurn(_:)`), which alone sets it.
+    /// ČNB rates, a uniform rate stored or removed, the preliminary uniform rates computed anew, payments that changed,
+    /// or the stand-ins of an earlier version. The next conversion waits for it, so that they run one at a time
+    /// (`convertPaymentsInTurn(_:)`), which alone sets it.
     @ObservationIgnored var latestConversion: Task<Void, Never>?
 
     /// The model of the Import screen. The app holds it, not the screen, so that an import goes on and its progress is
@@ -653,7 +654,8 @@ final class AppModel {
     ///
     /// Payments that earlier versions stored as stand-ins for a uniform rate are converted last
     /// (`convertUniformStandIns()`), after the backups, so that the backup outside the Mac goes as it would without
-    /// them.
+    /// them. Then the preliminary uniform rates of the current and the finished year are brought up to the ČNB rates
+    /// stored (`updateComputedUniformRates()`).
     func open(
         _ database: Database, completing completion: UnlockCompletion? = nil,
         interrupted change: InterruptedChange? = nil, afterRestore: Bool = false
@@ -673,6 +675,7 @@ final class AppModel {
         await backUpLocallyIfDue()
         await backUpOffMacIfDue(automatic: !afterRestore)
         await convertUniformStandIns()
+        await updateComputedUniformRates()
     }
 
     /// Takes the data the vault has just opened, `database`: its settings and the years it has. Settings or years that
@@ -899,7 +902,9 @@ final class AppModel {
     /// Takes a new day in the time zone of the Mac: the reporting cutoff moves to the last day of the new month when it
     /// follows the automatic cutoff and the month changed, at New Year into the new year, which `newYearBanner` then
     /// tells, and the year menu gets the new current year. The screens load again for the new day whether the cutoff
-    /// moved or not (`ReloadKey`). A backup outside the Mac is made when one is due.
+    /// moved or not (`ReloadKey`). A backup outside the Mac is made when one is due. While the data is open, the
+    /// preliminary uniform rates are computed for the new day (`updateComputedUniformRates()`), as a month may have
+    /// ended, or a year.
     func handleDayChanged(_ today: CivilDate) {
         self.today = today
         if case .newYear(let finished) = asOf.dayChanged(to: today) {
@@ -908,6 +913,9 @@ final class AppModel {
         years = Self.years(withData: yearsWithData, currentYear: today.year)
         if appSettings.backupFolderBookmark != nil {
             Task { await backUpOffMacIfDue() }
+        }
+        if database != nil {
+            Task { await updateComputedUniformRates() }
         }
     }
 

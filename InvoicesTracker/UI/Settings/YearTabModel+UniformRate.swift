@@ -198,12 +198,14 @@ extension YearTabModel {
     /// ships with the app gets it back whole (`Database.restoreBuiltInUniformRates(year:)`); another year is left
     /// without uniform rates (`Database.deleteUniformRates(year:)`), and the refresh looks for the official ones again
     /// when they are due, also when its search for them gave up before (`RefreshCoordinator.searchAgain(for:)`). The
-    /// app then converts the payments of the year again by the method it uses then (`convertPaymentsAgain(of:)`): a
-    /// year set to the uniform rate at the table, or at the daily ČNB rates while it has no rate. The banner says what
-    /// the year uses now (`removalBanner(year:today:choseUniform:)`), from the choice the year has once its payments
-    /// are converted, whatever the tab last loaded of it (`showRemovalBanner(year:)`), and the refresh is told. What
-    /// cannot be removed or converted is logged and said in `saveFailure`, and a choice that cannot be read is logged
-    /// and leaves the banner out.
+    /// app then computes the preliminary uniform rates (`AppModel.updateComputedUniformRates()`), so that the current
+    /// or the finished year left without rates takes the rate the app computes from the ČNB rates at once, and converts
+    /// the payments of the year again by the method it uses then (`convertPaymentsAgain(of:)`): a year set to the
+    /// uniform rate at the table or at the computed rate, or at the daily ČNB rates while it has no rate. The banner
+    /// says what the year uses now (`removalBanner(year:today:choseUniform:)`), from the choice the year has once its
+    /// payments are converted, whatever the tab last loaded of it (`showRemovalBanner(year:)`), and the refresh is
+    /// told. What cannot be removed or converted is logged and said in `saveFailure`, and a choice that cannot be read
+    /// is logged and leaves the banner out.
     func removeManualUniformRates() async {
         guard isManual, !removesRates, let database = app.database else { return }
         removesRates = true
@@ -229,6 +231,7 @@ extension YearTabModel {
             await app.refresh?.searchAgain(for: year)
         }
         await app.didWrite()
+        await app.updateComputedUniformRates()
         let converted = await convertPaymentsAgain(of: year)
         await load()
         if converted {
