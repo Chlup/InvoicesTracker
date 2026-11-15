@@ -87,6 +87,10 @@ struct Note<Actions: View>: View {
     private let gap: CGFloat
     private let actions: Actions
 
+    /// Whether the text keeps the height it needs whatever height it is offered, as a note in a page does. A note at
+    /// the top of the window does not (`atTheTopOfTheWindow()`).
+    private var keepsItsHeight = true
+
     /// The space between the title and the text of a note, in points.
     private static var textGap: CGFloat {
         4
@@ -150,7 +154,7 @@ struct Note<Actions: View>: View {
                 }
             }
             .foregroundStyle(Palette.text)
-            .fixedSize(horizontal: false, vertical: true)
+            .fixedSize(horizontal: false, vertical: keepsItsHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             actions
         }
@@ -163,6 +167,16 @@ struct Note<Actions: View>: View {
     /// Whether the note has actions, which a note made without them does not.
     private var hasActions: Bool {
         Actions.self != EmptyView.self
+    }
+
+    /// The note for the top of the window, above the page, such as the green banner of an action. Its text takes the
+    /// height it needs at the width the window gives it, and no fixed height. The window measures its least size at a
+    /// narrow width, where a long text that keeps its height would stand thousands of points tall and shift the
+    /// sidebar and the page up, out of the window.
+    func atTheTopOfTheWindow() -> Note {
+        var note = self
+        note.keepsItsHeight = false
+        return note
     }
 }
 

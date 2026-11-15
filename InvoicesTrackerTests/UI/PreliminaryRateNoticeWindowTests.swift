@@ -75,6 +75,31 @@ struct PreliminaryRateNoticeWindowTests {
         }
     }
 
+    /// The notice keeps the window as it is: in the smallest window and in a large one, the window holds its sidebar
+    /// and its page, which do not shift up out of sight, and the notice is as tall as its sentence needs, not cut.
+    @Test(arguments: [AppWindowSize.minimum, AppWindowSize.large])
+    func theNoticeKeepsTheWindowInPlaceAndShowsAllItsText(size: CGSize) async throws {
+        try await EditorFixture.with { f in
+            try await storeComputedRateOf2026(in: f.app)
+            try await withAppWindow(of: f.app, size: size) { window in
+                f.app.screen = .invoices
+                try await withAccessibilityElements {
+                    try await waitUntil { showsNotice(in: window) }
+                    try await layOut(window)
+                    #expect(windowLayoutProblems(in: window).isEmpty, "\(windowLayoutProblems(in: window))")
+
+                    let state = try #require(f.app.shownYearFX)
+                    let text = try #require(PreliminaryRateNoticeText.content(state: state, today: f.app.today))
+                    let notice = try #require(accessibilityElement(labelled: name, in: window)?.accessibilityFrame?())
+                    let needed = neededHeight(
+                        of: PreliminaryRateNotice(title: text.title, sentence: text.sentence) {},
+                        width: notice.width)
+                    #expect(notice.height >= needed - 0.5, "The notice is \(notice.height) tall, needs \(needed)")
+                }
+            }
+        }
+    }
+
     /// Podrobnosti of the notice opens Nastavení on the Rok tab.
     @Test func podrobnostiShowsNastaveniRok() async throws {
         try await EditorFixture.with { f in

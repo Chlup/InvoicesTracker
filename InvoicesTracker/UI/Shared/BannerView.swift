@@ -14,6 +14,7 @@ struct BannerView: View {
             Button("Zavřít", action: close)
                 .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))
         }
+        .atTheTopOfTheWindow()
         .onAppear { announce(text) }
         .onChange(of: text) { _, newText in announce(newText) }
     }

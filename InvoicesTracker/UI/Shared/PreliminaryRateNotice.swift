@@ -63,7 +63,9 @@ struct PreliminaryRateNotice: View {
             (Text(verbatim: title).bold().foregroundStyle(Palette.orangeText)
                 + Text(verbatim: " – " + sentence).foregroundStyle(Palette.text))
                 .font(Typography.callout)
-                .fixedSize(horizontal: false, vertical: true)
+                // No fixed height: the window measures its least size at a narrow width, where a sentence that keeps
+                // its height would stand thousands of points tall and push the whole window out of place. Over the
+                // page, the notice still gets the height its sentence needs at the width it has.
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Podrobnosti", action: showDetails)
                 .buttonStyle(CapsuleButtonStyle(.secondary, size: .small))

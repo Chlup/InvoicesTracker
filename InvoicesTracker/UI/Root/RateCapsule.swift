@@ -10,8 +10,10 @@ import SwiftUI
 /// shown or the data changes, and the menu once a choice in it is stored; until it has been read, the capsule names the
 /// daily rates.
 ///
-/// The toolbar draws the glass around it, so the button has no bezel of its own: with one, the toolbar might not fit
-/// the least window, and Nová faktura would go into the menu of the items that do not fit.
+/// The daily capsule has no bezel of its own: the toolbar draws its glass around it, as around the year menu. A tinted
+/// capsule fills the whole of its pill with the tint, as the design draws it. It is a prominent button tinted like Nová
+/// faktura, whose pill the toolbar fills with the tint, so it takes no more room than the glass, and the toolbar still
+/// fits the least window.
 struct RateCapsule: View {
     let model: AppModel
 
@@ -21,6 +23,32 @@ struct RateCapsule: View {
     var body: some View {
         let capsule = RateMenuBuilder.capsule(
             year: model.asOf.year, effective: model.shownYearFXMethod, computed: model.shownYearUsesComputedRate)
+        // The menu hangs on what holds the button, so that a choice in it that changes the tint, and with it the
+        // style of the button, does not take the menu's anchor away.
+        Group {
+            if let tint = tintColor(of: capsule.tone) {
+                button(capsule)
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+            } else {
+                button(capsule)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .contentShape(Capsule())
+                    .buttonStyle(.borderless)
+            }
+        }
+        .accessibilityLabel(capsule.accessibilityLabel)
+        .popover(isPresented: $menuShown, arrowEdge: .bottom) {
+            RateMenu(app: model) {
+                menuShown = false
+            }
+        }
+    }
+
+    /// The button of `capsule`, which opens the menu: the exchange icon, the title and the chevron, in the colour of
+    /// its tone.
+    private func button(_ capsule: RateCapsuleContent) -> some View {
         Button {
             menuShown = true
         } label: {
@@ -35,21 +63,6 @@ struct RateCapsule: View {
                     .foregroundStyle(Palette.text2)
             }
             .foregroundStyle(textColor(of: capsule.tone))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background {
-                if let tint = tintColor(of: capsule.tone) {
-                    Capsule().fill(tint)
-                }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.borderless)
-        .accessibilityLabel(capsule.accessibilityLabel)
-        .popover(isPresented: $menuShown, arrowEdge: .bottom) {
-            RateMenu(app: model) {
-                menuShown = false
-            }
         }
     }
 
