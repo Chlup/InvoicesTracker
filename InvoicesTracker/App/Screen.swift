@@ -35,6 +35,16 @@ nonisolated enum Screen: String, CaseIterable, Hashable, Sendable {
         self == .settings
     }
 
+    /// Whether the screen shows its numbers converted at the uniform rate of the year, so that the notice that the rate
+    /// is preliminary (`PreliminaryRateNotice`) stands under the banner of the window on it: Přehled, Faktury, Zálohy
+    /// a odpočty, Výpočet, Odhad odvodů and Rozpočet.
+    var showsPreliminaryRateNotice: Bool {
+        switch self {
+        case .overview, .invoices, .advances, .computation, .prediction, .budget: true
+        case .clients, .simulator, .settings, .importer: false
+        }
+    }
+
     /// The title and the line under it at the top of the screen, when it shows `year` with the reporting cutoff `asOf`
     /// and the year converts its income in other currencies by `incomeFX` (`YearFXState.effective`), which Faktury
     /// names. `today` is the day Odhad odvodů makes its estimate as of: it names it, whatever `asOf` is. The money

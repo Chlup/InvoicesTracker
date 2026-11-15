@@ -90,6 +90,12 @@ private struct AppWindow: View {
                     }
                     .pagePadding([.horizontal, .top])
                 }
+                if let notice = preliminaryRateNotice {
+                    PreliminaryRateNotice(title: notice.title, sentence: notice.sentence) {
+                        model.showSettings(.year)
+                    }
+                    .pagePadding([.horizontal, .top])
+                }
                 screenContent
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -133,6 +139,14 @@ private struct AppWindow: View {
             // names: it follows the year and every write of the data.
             await model.loadShownYearFX()
         }
+    }
+
+    /// The title and the sentence of the notice that the year shown converts at a preliminary uniform rate, when the
+    /// selected screen shows numbers that rate affects and the window has read the year shown.
+    private var preliminaryRateNotice: (title: String, sentence: String)? {
+        guard model.screen.showsPreliminaryRateNotice, let state = model.shownYearFX, state.year == model.asOf.year
+        else { return nil }
+        return PreliminaryRateNoticeText.content(state: state, today: model.today)
     }
 
     /// The selected screen: Přehled, Faktury (or the invoice editor in its place), Zálohy a odpočty, Výpočet,
